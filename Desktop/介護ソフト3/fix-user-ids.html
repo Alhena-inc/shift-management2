@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>利用者ID修正ツール</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #2c3e50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        button:hover {
+            background: #34495e;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>利用者ID修正ツール</h1>
+    <p>このツールは、利用者IDを長い形式(user_1760624100208_1など)から短い形式(001, 002, 003など)に変換します。</p>
+    <button onclick="fixUserIds()">IDを修正する</button>
+    <div id="result"></div>
+
+    <script>
+        function fixUserIds() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = '処理中...';
+
+            try {
+                // localStorageから利用者データを取得
+                const users = JSON.parse(localStorage.getItem('users') || '[]');
+                
+                if (users.length === 0) {
+                    resultDiv.textContent = '利用者データがありません。';
+                    return;
+                }
+
+                let updated = 0;
+                const oldToNewIdMap = {};
+
+                // 各利用者のIDを確認して修正
+                users.forEach((user, index) => {
+                    const oldId = user.id;
+                    const newId = String(index + 1).padStart(3, '0');
+                    
+                    // IDが既に3桁形式でない場合のみ更新
+                    if (!/^\d{3}$/.test(oldId)) {
+                        oldToNewIdMap[oldId] = newId;
+                        user.id = newId;
+                        user.customerNumber = newId;
+                        updated++;
+                        
+                        // 古いキーのデータを削除
+                        localStorage.removeItem(`user_${oldId}`);
+                        // 新しいキーでデータを保存
+                        localStorage.setItem(`user_${newId}`, JSON.stringify(user));
+                    }
+                });
+
+                // 更新された利用者リストを保存
+                localStorage.setItem('users', JSON.stringify(users));
+
+                // 結果を表示
+                let message = `処理完了!\n\n`;
+                message += `総利用者数: ${users.length}名\n`;
+                message += `更新した利用者数: ${updated}名\n\n`;
+                
+                if (updated > 0) {
+                    message += `変更内容:\n`;
+                    for (const [oldId, newId] of Object.entries(oldToNewIdMap)) {
+                        message += `${oldId} → ${newId}\n`;
+                    }
+                } else {
+                    message += `全ての利用者IDは既に正しい形式です。`;
+                }
+
+                resultDiv.textContent = message;
+                console.log('ID修正完了:', oldToNewIdMap);
+            } catch (error) {
+                resultDiv.textContent = `エラーが発生しました: ${error.message}`;
+                console.error('ID修正エラー:', error);
+            }
+        }
+    </script>
+</body>
+</html>

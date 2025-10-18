@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ポイント管理 - 介護ケアシステム</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- ヘッダー -->
+    <header class="header">
+        <div class="header-left">
+            <i class="fas fa-home"></i>
+            <h1>介護ケアシステム</h1>
+        </div>
+        <div class="header-right">
+            <div class="date-display">
+                <i class="far fa-calendar"></i>
+                <span id="currentDate">2025年10月12日（土）</span>
+            </div>
+            <div class="user-info">
+                <i class="far fa-user"></i>
+                <span>山田 太郎</span>
+            </div>
+            <button class="logout-btn">
+                <i class="fas fa-sign-out-alt"></i>
+                ログアウト
+            </button>
+        </div>
+    </header>
+
+    <!-- ナビゲーション -->
+    <nav class="nav">
+        <a href="index.html" class="nav-item">
+            <i class="fas fa-home"></i>
+            ダッシュボード
+        </a>
+        <a href="users.html" class="nav-item">
+            <i class="fas fa-users"></i>
+            利用者管理
+        </a>
+        <a href="helpers.html" class="nav-item">
+            <i class="fas fa-user-nurse"></i>
+            ヘルパー管理
+        </a>
+        <a href="shifts.html" class="nav-item">
+            <i class="far fa-calendar-alt"></i>
+            ケア内容
+        </a>
+        <a href="shifts.html" class="nav-item">
+            <i class="fas fa-clipboard-list"></i>
+            ケア報告
+        </a>
+        <a href="shifts.html" class="nav-item">
+            <i class="fas fa-chart-bar"></i>
+            実績管理
+        </a>
+        <a href="points.html" class="nav-item active">
+            <i class="fas fa-star"></i>
+            ポイント管理
+        </a>
+    </nav>
+
+    <!-- メインコンテンツ -->
+    <main class="main-content">
+        <!-- 期間選択エリア -->
+        <div class="section" style="margin-bottom: 1.2rem;">
+            <div class="search-filter-area">
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <label style="font-weight: 500;">集計期間:</label>
+                    <div class="date-range">
+                        <input type="text" id="period-start" value="2025/10/01" style="width: 150px;">
+                        <button type="button" class="date-picker-btn">📅</button>
+                        <span>〜</span>
+                        <input type="text" id="period-end" value="2025/10/31" style="width: 150px;">
+                        <button type="button" class="date-picker-btn">📅</button>
+                    </div>
+                    <button class="btn-primary" id="update-period-btn">
+                        <i class="fas fa-sync-alt"></i>
+                        更新
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ポイントランキング -->
+        <div class="section">
+            <div class="section-header">
+                <h2>
+                    <i class="fas fa-trophy"></i>
+                    ヘルパーポイントランキング
+                </h2>
+            </div>
+
+            <div class="users-table-container">
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 80px;">順位</th>
+                            <th>ヘルパー名</th>
+                            <th style="width: 150px;">累計ポイント</th>
+                            <th style="width: 150px;">完了ケア数</th>
+                            <th style="width: 120px;">詳細</th>
+                        </tr>
+                    </thead>
+                    <tbody id="points-table-body">
+                        <!-- JavaScriptで動的に生成されます -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ポイント履歴 -->
+        <div class="section" style="margin-top: 1.5rem;">
+            <div class="section-header">
+                <h2>
+                    <i class="fas fa-history"></i>
+                    ポイント獲得履歴
+                </h2>
+            </div>
+
+            <div class="history-list" id="points-history-list">
+                <!-- JavaScriptで動的に生成されます -->
+            </div>
+        </div>
+    </main>
+
+    <script src="script.js"></script>
+    <script src="points.js"></script>
+</body>
+</html>

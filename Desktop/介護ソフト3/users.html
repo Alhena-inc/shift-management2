@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>利用者管理 - 介護ケアシステム</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- ヘッダー -->
+    <header class="header">
+        <div class="header-left">
+            <i class="fas fa-home"></i>
+            <h1>介護ケアシステム</h1>
+        </div>
+        <div class="header-right">
+            <div class="date-display">
+                <i class="far fa-calendar"></i>
+                <span id="currentDate">2025年10月12日（土）</span>
+            </div>
+            <div class="user-info">
+                <i class="far fa-user"></i>
+                <span>山田 太郎</span>
+            </div>
+            <button class="logout-btn">
+                <i class="fas fa-sign-out-alt"></i>
+                ログアウト
+            </button>
+        </div>
+    </header>
+
+    <!-- ナビゲーション -->
+    <nav class="nav">
+        <a href="index.html" class="nav-item">
+            <i class="fas fa-home"></i>
+            ダッシュボード
+        </a>
+        <a href="users.html" class="nav-item active">
+            <i class="fas fa-users"></i>
+            利用者管理
+        </a>
+        <a href="helpers.html" class="nav-item">
+            <i class="fas fa-user-nurse"></i>
+            ヘルパー管理
+        </a>
+        <a href="shifts.html" class="nav-item">
+            <i class="far fa-calendar-alt"></i>
+            ケア内容
+        </a>
+        <a href="shifts.html" class="nav-item">
+            <i class="fas fa-clipboard-list"></i>
+            ケア報告
+        </a>
+        <a href="shifts.html" class="nav-item">
+            <i class="fas fa-chart-bar"></i>
+            実績管理
+        </a>
+        <a href="points.html" class="nav-item">
+            <i class="fas fa-star"></i>
+            ポイント管理
+        </a>
+    </nav>
+
+    <!-- メインコンテンツ -->
+    <main class="main-content">
+        <!-- 検索・フィルターエリア -->
+        <div class="section" style="margin-bottom: 1.2rem;">
+            <div class="search-filter-area">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="userSearch" placeholder="利用者名、エリア、電話番号で検索...">
+                </div>
+                <div class="filter-buttons">
+                    <select class="filter-select">
+                        <option value="all">すべて</option>
+                        <option value="active">利用中</option>
+                        <option value="inactive">休止中</option>
+                    </select>
+                    <select class="filter-select">
+                        <option value="all">介護度：すべて</option>
+                        <option value="1">要支援1</option>
+                        <option value="2">要支援2</option>
+                        <option value="3">要介護1</option>
+                        <option value="4">要介護2</option>
+                        <option value="5">要介護3</option>
+                        <option value="6">要介護4</option>
+                        <option value="7">要介護5</option>
+                    </select>
+                    <button class="add-user-btn">
+                        <i class="fas fa-plus"></i>
+                        新規登録
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 利用者一覧テーブル -->
+        <div class="section">
+            <div class="section-header">
+                <h2>
+                    <i class="fas fa-users"></i>
+                    利用者一覧 <span class="count-badge">45名</span>
+                </h2>
+                <div class="view-toggle-buttons">
+                    <button class="view-toggle-btn active" data-view="basic">
+                        <i class="fas fa-user"></i> 基本
+                    </button>
+                    <button class="view-toggle-btn" data-view="office">
+                        <i class="fas fa-building"></i> 事業所管理
+                    </button>
+                    <button class="view-toggle-btn" data-view="record">
+                        <i class="fas fa-clipboard"></i> 記録
+                    </button>
+                </div>
+            </div>
+
+            <div class="users-table-container">
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>氏名</th>
+                            <th>年齢</th>
+                            <th>性別</th>
+                            <th>エリア</th>
+                            <th>電話番号</th>
+                            <th>担当ヘルパー</th>
+                            <th>ポイント</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>001</td>
+                            <td class="user-name">
+                                <i class="far fa-user-circle"></i>
+                                佐藤 花子
+                            </td>
+                            <td>78歳</td>
+                            <td><span class="care-level level-3">要介護3</span></td>
+                            <td>東京都新宿区西新宿1-1-1</td>
+                            <td>03-1234-5678</td>
+                            <td>田中 太郎</td>
+                            <td><span class="status-badge active">利用中</span></td>
+                            <td class="action-buttons">
+                                <button class="btn-icon btn-view" title="詳細">
+                                    <i class="far fa-eye"></i>
+                                </button>
+                                <button class="btn-icon btn-edit" title="編集">
+                                    <i class="far fa-edit"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>002</td>
+                            <td class="user-name">
+                                <i class="far fa-user-circle"></i>
+                                鈴木 一郎
+                            </td>
+                            <td>82歳</td>
+                            <td><span class="care-level level-5">要介護5</span></td>
+                            <td>東京都渋谷区渋谷2-2-2</td>
+                            <td>03-2345-6789</td>
+                            <td>山田 次郎</td>
+                            <td><span class="status-badge active">利用中</span></td>
+                            <td class="action-buttons">
+                                <button class="btn-icon btn-view" title="詳細">
+                                    <i class="far fa-eye"></i>
+                                </button>
+                                <button class="btn-icon btn-edit" title="編集">
+                                    <i class="far fa-edit"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>003</td>
+                            <td class="user-name">
+                                <i class="far fa-user-circle"></i>
+                                田中 美咲
+                            </td>
+                            <td>75歳</td>
+                            <td><span class="care-level level-2">要介護2</span></td>
+                            <td>東京都品川区大崎3-3-3</td>
+                            <td>03-3456-7890</td>
+                            <td>佐々木三郎</td>
+                            <td><span class="status-badge active">利用中</span></td>
+                            <td class="action-buttons">
+                                <button class="btn-icon btn-view" title="詳細">
+                                    <i class="far fa-eye"></i>
+                                </button>
+                                <button class="btn-icon btn-edit" title="編集">
+                                    <i class="far fa-edit"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>004</td>
+                            <td class="user-name">
+                                <i class="far fa-user-circle"></i>
+                                高橋 健太
+                            </td>
+                            <td>80歳</td>
+                            <td><span class="care-level level-1">要支援2</span></td>
+                            <td>東京都港区赤坂4-4-4</td>
+                            <td>03-4567-8901</td>
+                            <td>中村 美希</td>
+                            <td><span class="status-badge inactive">休止中</span></td>
+                            <td class="action-buttons">
+                                <button class="btn-icon btn-view" title="詳細">
+                                    <i class="far fa-eye"></i>
+                                </button>
+                                <button class="btn-icon btn-edit" title="編集">
+                                    <i class="far fa-edit"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>005</td>
+                            <td class="user-name">
+                                <i class="far fa-user-circle"></i>
+                                伊藤 和子
+                            </td>
+                            <td>76歳</td>
+                            <td><span class="care-level level-4">要介護4</span></td>
+                            <td>東京都中央区銀座5-5-5</td>
+                            <td>03-5678-9012</td>
+                            <td>田中 太郎</td>
+                            <td><span class="status-badge active">利用中</span></td>
+                            <td class="action-buttons">
+                                <button class="btn-icon btn-view" title="詳細">
+                                    <i class="far fa-eye"></i>
+                                </button>
+                                <button class="btn-icon btn-edit" title="編集">
+                                    <i class="far fa-edit"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- ページネーション -->
+            <div class="pagination">
+                <button class="pagination-btn" disabled>
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <button class="pagination-btn active">1</button>
+                <button class="pagination-btn">2</button>
+                <button class="pagination-btn">3</button>
+                <button class="pagination-btn">4</button>
+                <button class="pagination-btn">5</button>
+                <button class="pagination-btn">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- 新規登録モーダル -->
+    <div id="new-user-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>新規利用者登録</h3>
+                <button class="modal-close" id="new-user-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="new-user-form">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label for="new-user-lastname">苗字 <span class="required">*</span></label>
+                            <input type="text" id="new-user-lastname" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="new-user-firstname">名前 <span class="required">*</span></label>
+                            <input type="text" id="new-user-firstname" required>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label for="new-user-furigana-last">フリガナ（苗字） <span class="required">*</span></label>
+                            <input type="text" id="new-user-furigana-last" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="new-user-furigana-first">フリガナ（名前） <span class="required">*</span></label>
+                            <input type="text" id="new-user-furigana-first" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>性別 <span class="required">*</span></label>
+                        <div class="radio-group">
+                            <label><input type="radio" name="new-gender" value="男性" required> 男性</label>
+                            <label><input type="radio" name="new-gender" value="女性"> 女性</label>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+                        <button type="button" class="btn-secondary" id="cancel-new-user" style="flex: 1;">キャンセル</button>
+                        <button type="submit" class="btn-primary" style="flex: 1;">登録</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script src="users.js"></script>
+</body>
+</html>

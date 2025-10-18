@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>シフト管理 - 介護ケアシステム</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- ヘッダー -->
+    <header class="header">
+        <div class="header-left">
+            <i class="fas fa-home"></i>
+            <h1>介護ケアシステム</h1>
+        </div>
+        <div class="header-right">
+            <div class="date-display">
+                <i class="far fa-calendar"></i>
+                <span id="currentDate">2025年10月12日（土）</span>
+            </div>
+            <div class="user-info">
+                <i class="far fa-user"></i>
+                <span>山田 太郎</span>
+            </div>
+            <button class="logout-btn">
+                <i class="fas fa-sign-out-alt"></i>
+                ログアウト
+            </button>
+        </div>
+    </header>
+
+    <!-- ナビゲーション -->
+    <nav class="nav">
+        <a href="index.html" class="nav-item">
+            <i class="fas fa-home"></i>
+            ダッシュボード
+        </a>
+        <a href="users.html" class="nav-item">
+            <i class="fas fa-users"></i>
+            利用者管理
+        </a>
+        <a href="helpers.html" class="nav-item">
+            <i class="fas fa-user-nurse"></i>
+            ヘルパー管理
+        </a>
+        <a href="shifts.html" class="nav-item active">
+            <i class="far fa-calendar-alt"></i>
+            ケア内容
+        </a>
+        <a href="#" class="nav-item">
+            <i class="fas fa-clipboard-list"></i>
+            ケア報告
+        </a>
+        <a href="#" class="nav-item">
+            <i class="fas fa-chart-bar"></i>
+            実績管理
+        </a>
+        <a href="points.html" class="nav-item">
+            <i class="fas fa-star"></i>
+            ポイント管理
+        </a>
+    </nav>
+
+    <!-- メインコンテンツ -->
+    <main class="main-content">
+        <!-- 今日のケア内容表示エリア -->
+        <div class="section" id="todays-care-section" style="display: none;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+                <h2 style="margin: 0;">
+                    <i class="fas fa-calendar-day"></i>
+                    ケア内容
+                </h2>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <button id="prev-day-btn" class="date-nav-btn">
+                        <i class="fas fa-chevron-left"></i>
+                        前の日
+                    </button>
+                    <div id="todays-date-display" style="font-size: 1.1rem; font-weight: bold; min-width: 200px; text-align: center;">
+                        読み込み中...
+                    </div>
+                    <button id="next-day-btn" class="date-nav-btn">
+                        次の日
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="todays-care-list" class="todays-care-list">
+                <!-- JavaScriptで動的に生成 -->
+            </div>
+        </div>
+    </main>
+
+    <script src="script.js"></script>
+    <script src="shifts.js"></script>
+</body>
+</html>

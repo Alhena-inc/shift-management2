@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>スプレッドシートデータ取得テスト</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            padding: 2rem;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 1rem;
+        }
+        .info {
+            background: #e3f2fd;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+        .log {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            white-space: pre-wrap;
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+        }
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-top: 1rem;
+        }
+        .success {
+            background: #e8f5e9;
+            color: #2e7d32;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-top: 1rem;
+        }
+        button {
+            background: #2c3e50;
+            color: white;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin-top: 1rem;
+        }
+        button:hover {
+            background: #34495e;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            font-size: 0.85rem;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 0.5rem;
+            text-align: left;
+        }
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Google Sheets データ取得テスト</h1>
+
+        <div class="info">
+            <strong>今日の日付:</strong> <span id="today-date"></span><br>
+            <strong>API Key:</strong> AIzaSyAswb_3bHmXdLzbpVBHkMkzvJ2nUagRUU0<br>
+            <strong>Spreadsheet ID:</strong> 1718uvoE5eVthZqypmrbFyHj92T30uSogMSsdSF8-wpA<br>
+            <strong>Sheet Name:</strong> 🔴【今月】25.10月
+        </div>
+
+        <button onclick="fetchData()">データを取得</button>
+
+        <div id="result"></div>
+        <div id="log-container"></div>
+    </div>
+
+    <script>
+        // 今日の日付を表示
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日 (${['日','月','火','水','木','金','土'][today.getDay()]})`;
+        document.getElementById('today-date').textContent = todayStr;
+
+        function log(message, data = null) {
+            console.log(message, data || '');
+            const logContainer = document.getElementById('log-container');
+            if (!logContainer.querySelector('.log')) {
+                logContainer.innerHTML = '<h2>ログ:</h2><div class="log" id="log"></div>';
+            }
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            let logText = `[${timestamp}] ${message}`;
+            if (data) {
+                logText += '\n' + JSON.stringify(data, null, 2);
+            }
+            logDiv.textContent += logText + '\n\n';
+        }
+
+        async function fetchData() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<p>データを取得中...</p>';
+
+            // ログをクリア
+            const logContainer = document.getElementById('log-container');
+            logContainer.innerHTML = '';
+
+            try {
+                const apiKey = 'AIzaSyAswb_3bHmXdLzbpVBHkMkzvJ2nUagRUU0';
+                const spreadsheetId = '1718uvoE5eVthZqypmrbFyHj92T30uSogMSsdSF8-wpA';
+                const sheetName = '🔴【今月】25.10月';
+                const range = `${sheetName}!A1:GZ200`; // ZZより広い範囲に拡大
+                const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?key=${apiKey}`;
+
+                log('APIリクエスト開始', { url });
+
+                const response = await fetch(url);
+
+                log('レスポンスステータス', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    ok: response.ok
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    log('APIエラー', errorData);
+                    throw new Error(`API Error: ${errorData.error?.message || response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                log('取得したデータ', {
+                    行数: data.values?.length || 0,
+                    最初の5行: data.values?.slice(0, 5) || []
+                });
+
+                if (!data.values || data.values.length === 0) {
+                    resultDiv.innerHTML = '<div class="error">❌ シートにデータがありません</div>';
+                    return;
+                }
+
+                // 今日の日付でケア内容を検索
+                const todayDate = new Date().getDate();
+                log('今日の日付', todayDate);
+
+                // 週の設定（配列インデックスは行番号-1）
+                // 第3週: 日付行64→インデックス63, ヘルパー行65→インデックス64, ケア66-85→インデックス65-84
+                const weekConfigs = [
+                    { dateRow: 3, helperRow: 4, careStartRow: 5, careEndRow: 24 },
+                    { dateRow: 33, helperRow: 34, careStartRow: 35, careEndRow: 54 },
+                    { dateRow: 63, helperRow: 64, careStartRow: 65, careEndRow: 84 },
+                    { dateRow: 93, helperRow: 94, careStartRow: 95, careEndRow: 114 },
+                    { dateRow: 123, helperRow: 124, careStartRow: 125, careEndRow: 144 },
+                    { dateRow: 153, helperRow: 154, careStartRow: 155, careEndRow: 174 }
+                ];
+
+                let foundData = [];
+
+                weekConfigs.forEach((config, weekIndex) => {
+                    if (config.dateRow >= data.values.length) return;
+
+                    const dateRow = data.values[config.dateRow];
+                    const helperRow = data.values[config.helperRow];
+
+                    log(`第${weekIndex + 1}週を検索`, {
+                        dateRow行番号: config.dateRow + 1,
+                        dateRow列数: dateRow?.length || 0,
+                        helperRow行番号: config.helperRow + 1,
+                        helperRow列数: helperRow?.length || 0,
+                        '最初の10列': {
+                            dateRow: dateRow?.slice(0, 10) || [],
+                            helperRow: helperRow?.slice(0, 10) || []
+                        }
+                    });
+
+                    // 第3週の場合は64行目のデータを詳しく表示
+                    if (weekIndex === 2 && dateRow) {
+                        log('第3週（64行目）の詳細 - 列70-80付近', {
+                            '列70-80の日付': dateRow.slice(70, 80),
+                            '列70-80のヘルパー': helperRow?.slice(70, 80) || []
+                        });
+                    }
+
+                    if (!dateRow || !helperRow) return;
+
+                    // 列番号をアルファベットに変換
+                    function colToLetter(col) {
+                        let letter = '';
+                        while (col >= 0) {
+                            letter = String.fromCharCode((col % 26) + 65) + letter;
+                            col = Math.floor(col / 26) - 1;
+                        }
+                        return letter;
+                    }
+
+                    // 日付列を検索
+                    for (let col = 0; col < dateRow.length; col++) {
+                        const dateCell = String(dateRow[col] || '').trim();
+                        const dateMatch = dateCell.match(/^(\d+)\(/);
+
+                        if (dateMatch && parseInt(dateMatch[1]) === todayDate) {
+                            const helperName = String(helperRow[col] || '').trim();
+
+                            // ヘルパー名が空の場合はスキップ
+                            if (!helperName) {
+                                continue;
+                            }
+
+                            log(`✓ 今日の日付を発見！`, {
+                                週: weekIndex + 1,
+                                列インデックス: col,
+                                列アルファベット: colToLetter(col),
+                                セル内容: dateCell,
+                                ヘルパー: helperName
+                            });
+
+                            // ケア内容を取得
+                            const careContents = [];
+                            log(`ケア内容取得範囲: 行${config.careStartRow + 1}〜${config.careEndRow + 1}`);
+
+                            for (let row = config.careStartRow; row <= config.careEndRow && row < data.values.length; row++) {
+                                const careRow = data.values[row];
+                                if (careRow && careRow[col]) {
+                                    const content = String(careRow[col]).trim();
+                                    if (content) {
+                                        careContents.push(content);
+                                        log(`  行${row + 1}: ${content}`);
+                                    }
+                                }
+                            }
+
+                            foundData.push({
+                                week: weekIndex + 1,
+                                column: col,
+                                columnLetter: colToLetter(col),
+                                helperName: helperName,
+                                careContents: careContents
+                            });
+
+                            log('ケア内容まとめ', {
+                                ヘルパー: helperName,
+                                件数: careContents.length,
+                                内容: careContents
+                            });
+                        }
+                    }
+                });
+
+                log('検索結果まとめ', {
+                    見つかった件数: foundData.length,
+                    データ: foundData
+                });
+
+                // 結果を表示
+                if (foundData.length === 0) {
+                    resultDiv.innerHTML = '<div class="error">❌ 今日のケア内容が見つかりませんでした</div>';
+                } else {
+                    let html = '<div class="success">✅ データ取得成功！</div>';
+                    html += `<h2>今日のケア内容 (${foundData.length}件)</h2>`;
+
+                    foundData.forEach((item, index) => {
+                        html += `
+                            <div style="background: #f8f9fa; padding: 1rem; border-radius: 4px; margin-top: 1rem;">
+                                <h3 style="margin: 0 0 0.5rem 0;">
+                                    ${index + 1}. ${item.helperName || '不明'}
+                                    <span style="font-size: 0.9rem; color: #666;">(第${item.week}週・${item.columnLetter}列・インデックス${item.column})</span>
+                                </h3>
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 50px;">行</th>
+                                            <th>内容</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                        `;
+
+                        item.careContents.forEach((content, idx) => {
+                            html += `
+                                <tr>
+                                    <td>${idx + 1}</td>
+                                    <td>${content}</td>
+                                </tr>
+                            `;
+                        });
+
+                        html += `
+                                    </tbody>
+                                </table>
+                            </div>
+                        `;
+                    });
+
+                    resultDiv.innerHTML = html;
+                }
+
+            } catch (error) {
+                log('エラー発生', {
+                    message: error.message,
+                    stack: error.stack
+                });
+                resultDiv.innerHTML = `<div class="error">❌ エラー: ${error.message}</div>`;
+            }
+        }
+
+        // ページ読み込み時に自動実行
+        window.addEventListener('DOMContentLoaded', () => {
+            log('ページ読み込み完了');
+            fetchData();
+        });
+    </script>
+</body>
+</html>
