@@ -1,15 +1,14 @@
 // types/index.ts
 
 export type ServiceType =
-  | 'shintai'      // 身体
-  | 'judo'         // 重度
   | 'kaji'         // 家事
-  | 'tsuin'        // 通院
-  | 'kodo'         // 行動
-  | 'ido'          // 移動
-  | 'jimu'         // 事務
-  | 'eigyo'        // 営業
+  | 'judo'         // 重度
+  | 'shintai'      // 身体
+  | 'yasumi_kibou' // 休み希望
   | 'doko'         // 同行
+  | 'shitei_kyuu'  // 指定休
+  | 'yotei'        // 予定
+  | 'kodo_engo'    // 行動
   | 'shinya'       // 深夜
   | 'shinya_doko'; // 深夜(同行)
 
@@ -18,22 +17,23 @@ export const SERVICE_CONFIG: Record<ServiceType, {
   color: string;
   bgColor: string
 }> = {
-  shintai:      { label: '身体', color: '#16a34a', bgColor: '#dcfce7' },
-  judo:         { label: '重度', color: '#dc2626', bgColor: '#fee2e2' },
-  kaji:         { label: '家事', color: '#2563eb', bgColor: '#dbeafe' },
-  tsuin:        { label: '通院', color: '#0891b2', bgColor: '#cffafe' },
-  kodo:         { label: '行動', color: '#9333ea', bgColor: '#f3e8ff' },
-  ido:          { label: '移動', color: '#ca8a04', bgColor: '#fef9c3' },
-  jimu:         { label: '事務', color: '#92400e', bgColor: '#fef3c7' },
-  eigyo:        { label: '営業', color: '#db2777', bgColor: '#fce7f3' },
-  doko:         { label: '同行', color: '#ea580c', bgColor: '#ffedd5' },
-  shinya:       { label: '深夜', color: '#1e3a8a', bgColor: '#dbeafe' },
-  shinya_doko:  { label: '深夜(同行)', color: '#581c87', bgColor: '#f3e8ff' },
+  kaji:         { label: '家事', color: '#9a3412', bgColor: '#fdba74' },  // 薄いオレンジ
+  judo:         { label: '重度', color: '#7c2d12', bgColor: '#fb923c' },  // オレンジ赤
+  shintai:      { label: '身体', color: '#854d0e', bgColor: '#fde047' },  // 黄色
+  yasumi_kibou: { label: '休み希望', color: '#9f1239', bgColor: '#fecdd3' },  // 薄いピンク
+  doko:         { label: '同行', color: '#166534', bgColor: '#86efac' },  // 明るい緑
+  shitei_kyuu:  { label: '指定休', color: '#115e59', bgColor: '#5eead4' },  // ティール
+  yotei:        { label: '予定', color: '#0e7490', bgColor: '#67e8f9' },  // シアン
+  kodo_engo:    { label: '行動', color: '#374151', bgColor: '#9ca3af' },  // グレー
+  shinya:       { label: '深夜', color: '#1e3a8a', bgColor: '#93c5fd' },  // 濃い青
+  shinya_doko:  { label: '深夜(同行)', color: '#581c87', bgColor: '#d8b4fe' },  // 濃い紫
 };
 
 export interface Helper {
   id: string;
   name: string;
+  gender: 'male' | 'female';
+  order: number;
 }
 
 export interface Shift {
@@ -47,6 +47,7 @@ export interface Shift {
   duration: number;       // 時間数
   area: string;           // 区域
   sequence?: number;      // 連番（/2 など）
+  rowIndex?: number;      // 表示行インデックス（0-4）
 }
 
 // 日付ごとのデータ構造

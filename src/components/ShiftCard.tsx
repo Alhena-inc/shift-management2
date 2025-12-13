@@ -10,10 +10,9 @@ export function ShiftCard({ shift }: Props) {
 
   return (
     <div
-      className="text-[9px] leading-tight p-0.5 rounded border-l-2 w-full"
+      className="text-[9px] leading-tight p-0.5 rounded border-l-2 w-full bg-white"
       style={{
-        borderLeftColor: config.color,
-        backgroundColor: config.bgColor
+        borderLeftColor: config.color
       }}
     >
       <div className="font-medium whitespace-nowrap overflow-hidden text-ellipsis">{shift.startTime}-{shift.endTime}</div>
