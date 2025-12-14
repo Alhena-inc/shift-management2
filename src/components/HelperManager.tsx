@@ -14,6 +14,9 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const listContainerRef = useRef<HTMLDivElement>(null);
   const scrollIntervalRef = useRef<number | null>(null);
+  const [localHelpers, setLocalHelpers] = useState<Helper[]>(helpers);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleAddHelper = () => {
     if (!newHelperName.trim()) {
@@ -22,11 +25,11 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
     }
 
     // 男性と女性を分ける
-    const maleHelpers = helpers.filter(h => h.gender === 'male');
-    const femaleHelpers = helpers.filter(h => h.gender === 'female');
+    const maleHelpers = localHelpers.filter(h => h.gender === 'male');
+    const femaleHelpers = localHelpers.filter(h => h.gender === 'female');
 
     // 新しいIDと順番を計算
-    const maxId = Math.max(...helpers.map(h => parseInt(h.id)), 0);
+    const maxId = Math.max(...localHelpers.map(h => parseInt(h.id)), 0);
     const newHelper: Helper = {
       id: String(maxId + 1),
       name: newHelperName.trim(),
@@ -45,13 +48,10 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
     // orderを再設定
     updatedHelpers = updatedHelpers.map((h, idx) => ({ ...h, order: idx + 1 }));
 
-    onUpdate(updatedHelpers);
+    setLocalHelpers(updatedHelpers);
+    setHasChanges(true);
     setNewHelperName('');
     setShowAddForm(false);
-    alert('ヘルパーを追加しました');
-
-    // ヘルパーを追加した後はシフト表に戻る
-    onClose();
   };
 
   // クリーンアップ: スクロールインターバルをクリア
@@ -112,14 +112,15 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
       return;
     }
 
-    const updatedHelpers = [...helpers];
+    const updatedHelpers = [...localHelpers];
     const [draggedHelper] = updatedHelpers.splice(draggedIndex, 1);
     updatedHelpers.splice(dropIndex, 0, draggedHelper);
 
     // orderを再設定
     const reorderedHelpers = updatedHelpers.map((h, idx) => ({ ...h, order: idx + 1 }));
 
-    onUpdate(reorderedHelpers);
+    setLocalHelpers(reorderedHelpers);
+    setHasChanges(true);
     setDraggedIndex(null);
   };
 
@@ -128,11 +129,39 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
       return;
     }
 
-    const updatedHelpers = helpers
+    const updatedHelpers = localHelpers
       .filter(h => h.id !== helperId)
       .map((h, idx) => ({ ...h, order: idx + 1 }));
 
-    onUpdate(updatedHelpers);
+    setLocalHelpers(updatedHelpers);
+    setHasChanges(true);
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await onUpdate(localHelpers);
+      setHasChanges(false);
+      alert('保存しました！');
+      setTimeout(() => {
+        onClose();
+      }, 300);
+    } catch (error) {
+      console.error('保存に失敗しました:', error);
+      alert('保存に失敗しました。もう一度お試しください。');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleClose = () => {
+    if (hasChanges) {
+      if (confirm('保存されていない変更があります。破棄してもよろしいですか？')) {
+        onClose();
+      }
+    } else {
+      onClose();
+    }
   };
 
   return (
@@ -142,12 +171,25 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold">ヘルパー管理</h1>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-            >
-              ← シフト表に戻る
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={handleSave}
+                disabled={!hasChanges || isSaving}
+                className={`px-6 py-3 rounded-lg font-bold text-lg ${
+                  hasChanges && !isSaving
+                    ? 'bg-green-500 text-white hover:bg-green-600'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                {isSaving ? '保存中...' : hasChanges ? '💾 保存する' : '保存済み'}
+              </button>
+              <button
+                onClick={handleClose}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+              >
+                ← シフト表に戻る
+              </button>
+            </div>
           </div>
         </div>
 
@@ -169,7 +211,7 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
 
           {/* ヘルパーリスト表示 */}
           <div ref={listContainerRef} className="space-y-2 max-h-[600px] overflow-y-auto">
-            {helpers.map((helper, index) => {
+            {localHelpers.map((helper, index) => {
               // 性別に応じた背景色
               const bgColor = helper.gender === 'male'
                 ? 'bg-blue-50'

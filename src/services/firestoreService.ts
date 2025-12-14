@@ -19,7 +19,14 @@ const SHIFTS_COLLECTION = 'shifts';
 // ヘルパーを保存
 export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
   try {
+    // まず現在Firestoreにあるすべてのヘルパーを取得
+    const existingHelpers = await loadHelpers();
+    const existingIds = new Set(existingHelpers.map(h => h.id));
+    const newIds = new Set(helpers.map(h => h.id));
+
     const batch = writeBatch(db);
+
+    // 新しいヘルパーリストを保存
     helpers.forEach(helper => {
       const helperRef = doc(db, HELPERS_COLLECTION, helper.id);
       batch.set(helperRef, {
@@ -27,10 +34,21 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
         updatedAt: Timestamp.now()
       });
     });
+
+    // 削除されたヘルパーをFirestoreからも削除
+    existingIds.forEach(id => {
+      if (!newIds.has(id)) {
+        const helperRef = doc(db, HELPERS_COLLECTION, id);
+        batch.delete(helperRef);
+        console.log(`ヘルパーを削除: ${id}`);
+      }
+    });
+
     await batch.commit();
-    console.log('ヘルパー情報を保存しました');
+    console.log(`ヘルパー情報を保存しました (${helpers.length}件)`);
   } catch (error) {
     console.error('ヘルパー保存エラー:', error);
+    throw error;
   }
 };
 
@@ -77,10 +95,13 @@ export const saveShift = async (shift: Shift): Promise<void> => {
 export const loadHelpers = async (): Promise<Helper[]> => {
   try {
     const querySnapshot = await getDocs(collection(db, HELPERS_COLLECTION));
-    const helpers = querySnapshot.docs.map(doc => ({
-      ...doc.data(),
-      id: doc.id
-    } as Helper));
+    const helpers = querySnapshot.docs
+      .map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      } as Helper))
+      // orderフィールドでソート
+      .sort((a, b) => a.order - b.order);
     console.log(`ヘルパー情報を読み込みました (${helpers.length}件)`);
     return helpers;
   } catch (error) {

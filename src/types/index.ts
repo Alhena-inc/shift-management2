@@ -10,23 +10,32 @@ export type ServiceType =
   | 'yotei'        // 予定
   | 'kodo_engo'    // 行動
   | 'shinya'       // 深夜
-  | 'shinya_doko'; // 深夜(同行)
+  | 'shinya_doko'  // 深夜(同行)
+  | 'tsuin'        // 通院
+  | 'ido'          // 移動
+  | 'jimu'         // 事務
+  | 'eigyo';       // 営業
 
 export const SERVICE_CONFIG: Record<ServiceType, {
   label: string;
   color: string;
-  bgColor: string
+  bgColor: string;
+  hourlyRate: number;  // 時給（円）
 }> = {
-  kaji:         { label: '家事', color: '#9a3412', bgColor: '#fdba74' },  // 薄いオレンジ
-  judo:         { label: '重度', color: '#7c2d12', bgColor: '#fb923c' },  // オレンジ赤
-  shintai:      { label: '身体', color: '#854d0e', bgColor: '#fde047' },  // 黄色
-  yasumi_kibou: { label: '休み希望', color: '#9f1239', bgColor: '#fecdd3' },  // 薄いピンク
-  doko:         { label: '同行', color: '#166534', bgColor: '#86efac' },  // 明るい緑
-  shitei_kyuu:  { label: '指定休', color: '#115e59', bgColor: '#5eead4' },  // ティール
-  yotei:        { label: '予定', color: '#0e7490', bgColor: '#67e8f9' },  // シアン
-  kodo_engo:    { label: '行動', color: '#374151', bgColor: '#9ca3af' },  // グレー
-  shinya:       { label: '深夜', color: '#1e3a8a', bgColor: '#93c5fd' },  // 濃い青
-  shinya_doko:  { label: '深夜(同行)', color: '#581c87', bgColor: '#d8b4fe' },  // 濃い紫
+  kaji:         { label: '家事', color: '#9a3412', bgColor: '#fdba74', hourlyRate: 2000 },  // 薄いオレンジ
+  judo:         { label: '重度', color: '#7c2d12', bgColor: '#fb923c', hourlyRate: 2000 },  // オレンジ赤
+  shintai:      { label: '身体', color: '#854d0e', bgColor: '#fde047', hourlyRate: 2000 },  // 黄色
+  yasumi_kibou: { label: '休み希望', color: '#9f1239', bgColor: '#fecdd3', hourlyRate: 0 },  // 薄いピンク
+  doko:         { label: '同行', color: '#166534', bgColor: '#86efac', hourlyRate: 1200 },  // 明るい緑
+  shitei_kyuu:  { label: '指定休', color: '#115e59', bgColor: '#5eead4', hourlyRate: 0 },  // ティール
+  yotei:        { label: '予定', color: '#0e7490', bgColor: '#67e8f9', hourlyRate: 0 },  // シアン
+  kodo_engo:    { label: '行動', color: '#374151', bgColor: '#9ca3af', hourlyRate: 2000 },  // グレー
+  shinya:       { label: '深夜', color: '#1e3a8a', bgColor: '#93c5fd', hourlyRate: 2000 },  // 濃い青
+  shinya_doko:  { label: '深夜(同行)', color: '#581c87', bgColor: '#d8b4fe', hourlyRate: 1200 },  // 濃い紫
+  tsuin:        { label: '通院', color: '#0369a1', bgColor: '#7dd3fc', hourlyRate: 2000 },  // 青
+  ido:          { label: '移動', color: '#065f46', bgColor: '#6ee7b7', hourlyRate: 2000 },  // 緑
+  jimu:         { label: '事務', color: '#4338ca', bgColor: '#a5b4fc', hourlyRate: 1200 },  // インディゴ
+  eigyo:        { label: '営業', color: '#7c3aed', bgColor: '#c4b5fd', hourlyRate: 1200 },  // バイオレット
 };
 
 export interface Helper {
@@ -51,6 +60,14 @@ export interface Shift {
   deleted?: boolean;      // 論理削除フラグ
   deletedAt?: any;        // 削除日時（Firestore Timestamp）
   deletedBy?: string;     // 削除者ID
+  cancelStatus?: 'none' | 'keep_time' | 'remove_time';  // キャンセル状態
+  canceledAt?: any;       // キャンセル日時（Firestore Timestamp）
+  // 給与計算関連
+  regularHours?: number;  // 通常時間
+  nightHours?: number;    // 深夜時間（22:00-08:00）
+  regularPay?: number;    // 通常時間の給与
+  nightPay?: number;      // 深夜時間の給与（25%割増）
+  totalPay?: number;      // 合計給与
 }
 
 // 日付ごとのデータ構造

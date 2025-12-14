@@ -68,36 +68,49 @@ function calculateRegularHours(timeRange: string): number {
 export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Props) {
   const sortedHelpers = useMemo(() => [...helpers].sort((a, b) => a.order - b.order), [helpers]);
 
-  // ヘルパーごとの集計を計算
+  // ヘルパーごとの集計を計算（時間と金額）
   const helperTotals = useMemo(() => {
-    const totals = new Map<string, Record<string, number>>();
+    const totals = new Map<string, Record<string, { hours: number; amount: number }>>();
 
     sortedHelpers.forEach(helper => {
       const helperShifts = shifts.filter(s => s.helperId === helper.id);
-      const serviceTypeTotals: Record<string, number> = {};
+      const serviceTypeTotals: Record<string, { hours: number; amount: number }> = {};
 
       Object.keys(SERVICE_CONFIG).forEach(serviceType => {
-        serviceTypeTotals[serviceType] = 0;
+        serviceTypeTotals[serviceType] = { hours: 0, amount: 0 };
       });
 
       helperShifts.forEach(shift => {
-        if (!shift.startTime || !shift.endTime) return;
+        const hourlyRate = SERVICE_CONFIG[shift.serviceType]?.hourlyRate || 0;
 
-        const timeRange = `${shift.startTime}-${shift.endTime}`;
-        const nightHours = calculateNightHours(timeRange);
-        const regularHours = calculateRegularHours(timeRange);
+        // 時間範囲がある場合は、時間範囲から計算
+        if (shift.startTime && shift.endTime) {
+          const timeRange = `${shift.startTime}-${shift.endTime}`;
+          const nightHours = calculateNightHours(timeRange);
+          const regularHours = calculateRegularHours(timeRange);
 
-        // 深夜時間の集計
-        if (shift.serviceType !== 'doko' && nightHours > 0) {
-          serviceTypeTotals['shinya'] = (serviceTypeTotals['shinya'] || 0) + nightHours;
+          // 深夜時間の集計
+          if (shift.serviceType !== 'doko' && nightHours > 0) {
+            serviceTypeTotals['shinya'].hours += nightHours;
+            // 深夜は元のサービスタイプの時給の25%割増
+            serviceTypeTotals['shinya'].amount += nightHours * hourlyRate * 1.25;
+          }
+          if (shift.serviceType === 'doko' && nightHours > 0) {
+            serviceTypeTotals['shinya_doko'].hours += nightHours;
+            // 深夜同行は1200円の25%割増
+            serviceTypeTotals['shinya_doko'].amount += nightHours * 1200 * 1.25;
+          }
+
+          // 通常時間の集計
+          if (regularHours > 0) {
+            serviceTypeTotals[shift.serviceType].hours += regularHours;
+            serviceTypeTotals[shift.serviceType].amount += regularHours * hourlyRate;
+          }
         }
-        if (shift.serviceType === 'doko' && nightHours > 0) {
-          serviceTypeTotals['shinya_doko'] = (serviceTypeTotals['shinya_doko'] || 0) + nightHours;
-        }
-
-        // 通常時間の集計
-        if (regularHours > 0) {
-          serviceTypeTotals[shift.serviceType] = (serviceTypeTotals[shift.serviceType] || 0) + regularHours;
+        // 時間範囲がなく、時間数だけがある場合は、時間数をそのまま使用
+        else if (shift.duration && shift.duration > 0) {
+          serviceTypeTotals[shift.serviceType].hours += shift.duration;
+          serviceTypeTotals[shift.serviceType].amount += shift.duration * hourlyRate;
         }
       });
 
@@ -110,11 +123,11 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-auto">
-        <div className="sticky top-0 bg-white border-b p-4 flex justify-between items-center">
-          <h2 className="text-2xl font-bold">💰 {year}年{month}月 給与計算</h2>
+        <div className="sticky top-0 bg-gradient-to-r from-green-50 to-blue-50 border-b-4 border-green-500 p-6 flex justify-between items-center z-40">
+          <h2 className="text-3xl font-bold text-gray-800">💰 {year}年{month}月 給与計算</h2>
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors"
+            className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-bold text-lg shadow-md"
           >
             ✕ 閉じる
           </button>
@@ -122,35 +135,48 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
 
         <div className="p-6">
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="bg-gray-100">
-                  <th className="border p-2 sticky left-0 bg-gray-100 z-10">ヘルパー名</th>
+            <table className="w-full border-collapse">
+              <thead className="sticky top-0 z-20">
+                <tr className="bg-gray-200">
+                  <th className="border-2 border-gray-400 p-3 sticky left-0 bg-gray-200 z-30 font-bold text-base min-w-[120px]">ヘルパー名</th>
                   {Object.entries(SERVICE_CONFIG).map(([key, config]) => (
-                    <th key={key} className="border p-2" style={{ backgroundColor: config.bgColor }}>
-                      {config.label}
+                    <th key={key} className="border-2 border-gray-400 p-3 font-bold text-sm min-w-[100px]" style={{ backgroundColor: config.bgColor }}>
+                      <div>{config.label}</div>
+                      <div className="text-xs font-normal mt-1">({config.hourlyRate.toLocaleString()}円/時)</div>
                     </th>
                   ))}
-                  <th className="border p-2 bg-yellow-100 font-bold">合計時間</th>
+                  <th className="border-2 border-gray-400 p-3 bg-yellow-200 font-bold text-base min-w-[120px] sticky right-0 z-30 shadow-lg">合計</th>
                 </tr>
               </thead>
               <tbody>
                 {sortedHelpers.map((helper) => {
                   const totals = helperTotals.get(helper.id) || {};
-                  const totalHours = Object.values(totals).reduce((sum, val) => sum + val, 0);
+                  const totalHours = Object.values(totals).reduce((sum, val) => sum + val.hours, 0);
+                  const totalAmount = Object.values(totals).reduce((sum, val) => sum + val.amount, 0);
 
                   return (
-                    <tr key={helper.id} className="hover:bg-gray-50">
-                      <td className="border p-2 font-medium sticky left-0 bg-white">
+                    <tr key={helper.id} className="hover:bg-gray-50 border-b-2">
+                      <td className="border-2 border-gray-400 p-3 font-bold sticky left-0 bg-white text-base">
                         {helper.name}
                       </td>
-                      {Object.keys(SERVICE_CONFIG).map((serviceType) => (
-                        <td key={serviceType} className="border p-2 text-center">
-                          {totals[serviceType] ? totals[serviceType].toFixed(1) : '0.0'}
-                        </td>
-                      ))}
-                      <td className="border p-2 text-center font-bold bg-yellow-50">
-                        {totalHours.toFixed(1)}
+                      {Object.keys(SERVICE_CONFIG).map((serviceType) => {
+                        const data = totals[serviceType] || { hours: 0, amount: 0 };
+                        return (
+                          <td key={serviceType} className="border-2 border-gray-300 p-3 text-center">
+                            {data.hours > 0 ? (
+                              <div>
+                                <div className="font-bold text-base text-blue-700">{data.hours.toFixed(1)}h</div>
+                                <div className="text-sm text-gray-700 font-semibold mt-1">¥{Math.round(data.amount).toLocaleString()}</div>
+                              </div>
+                            ) : (
+                              <div className="text-gray-300 text-lg">-</div>
+                            )}
+                          </td>
+                        );
+                      })}
+                      <td className="border-2 border-gray-400 p-3 text-center font-bold bg-yellow-50 sticky right-0 z-10 shadow-lg">
+                        <div className="text-lg text-blue-800">{totalHours.toFixed(1)}h</div>
+                        <div className="text-base text-green-700 font-bold mt-1">¥{Math.round(totalAmount).toLocaleString()}</div>
                       </td>
                     </tr>
                   );
@@ -159,14 +185,39 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
             </table>
           </div>
 
-          <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-            <h3 className="font-bold mb-2">📌 集計方法</h3>
-            <ul className="text-sm space-y-1">
-              <li>• 深夜時間（22:00〜翌8:00）と通常時間を自動計算</li>
-              <li>• 深夜：同行以外のすべてのサービスの深夜時間を合計</li>
-              <li>• 深夜(同行)：同行サービスの深夜時間を合計</li>
-              <li>• その他：各サービスの通常時間を合計</li>
-            </ul>
+          <div className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200 shadow-md">
+            <h3 className="font-bold text-xl mb-4 text-blue-900">📌 給与計算ルール</h3>
+            <div className="grid grid-cols-2 gap-6">
+              <div className="bg-white p-4 rounded-lg shadow">
+                <h4 className="font-bold text-lg mb-3 text-gray-700 border-b-2 border-gray-200 pb-2">通常時給（8:00〜22:00）</h4>
+                <ul className="space-y-2 text-base">
+                  <li className="flex justify-between items-center">
+                    <span>身体・重度・家事・通院・行動・移動</span>
+                    <span className="font-bold text-green-700 text-lg">2,000円/時</span>
+                  </li>
+                  <li className="flex justify-between items-center">
+                    <span>事務・営業・同行</span>
+                    <span className="font-bold text-green-700 text-lg">1,200円/時</span>
+                  </li>
+                </ul>
+              </div>
+              <div className="bg-white p-4 rounded-lg shadow">
+                <h4 className="font-bold text-lg mb-3 text-gray-700 border-b-2 border-gray-200 pb-2">深夜時給（22:00〜翌8:00）</h4>
+                <ul className="space-y-2 text-base">
+                  <li className="flex justify-between items-center">
+                    <span>深夜（同行以外）</span>
+                    <span className="font-bold text-orange-700 text-lg">2,500円/時</span>
+                  </li>
+                  <li className="flex justify-between items-center">
+                    <span>深夜（同行）</span>
+                    <span className="font-bold text-orange-700 text-lg">1,500円/時</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div className="mt-4 p-3 bg-yellow-100 rounded-lg border-l-4 border-yellow-500">
+              <p className="text-sm font-semibold text-gray-700">💡 深夜時間（22:00〜翌8:00）は通常時給の25%割増で自動計算されます</p>
+            </div>
           </div>
         </div>
       </div>
