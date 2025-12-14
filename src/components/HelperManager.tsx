@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { Helper } from '../types';
 
 interface Props {
@@ -10,6 +10,10 @@ interface Props {
 export function HelperManager({ helpers, onUpdate, onClose }: Props) {
   const [newHelperName, setNewHelperName] = useState('');
   const [newHelperGender, setNewHelperGender] = useState<'male' | 'female'>('male');
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const listContainerRef = useRef<HTMLDivElement>(null);
+  const scrollIntervalRef = useRef<number | null>(null);
 
   const handleAddHelper = () => {
     if (!newHelperName.trim()) {
@@ -43,16 +47,101 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
 
     onUpdate(updatedHelpers);
     setNewHelperName('');
+    setShowAddForm(false);
     alert('ヘルパーを追加しました');
+
+    // ヘルパーを追加した後はシフト表に戻る
+    onClose();
+  };
+
+  // クリーンアップ: スクロールインターバルをクリア
+  useEffect(() => {
+    return () => {
+      if (scrollIntervalRef.current) {
+        clearInterval(scrollIntervalRef.current);
+      }
+    };
+  }, []);
+
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+
+    // 自動スクロール処理
+    const container = listContainerRef.current;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const scrollThreshold = 80; // スクロールを開始する境界の高さ
+    const scrollSpeed = 10; // スクロール速度
+
+    const mouseY = e.clientY - rect.top;
+
+    // 既存のスクロールインターバルをクリア
+    if (scrollIntervalRef.current) {
+      clearInterval(scrollIntervalRef.current);
+      scrollIntervalRef.current = null;
+    }
+
+    // 上端に近い場合は上にスクロール
+    if (mouseY < scrollThreshold && mouseY > 0) {
+      scrollIntervalRef.current = window.setInterval(() => {
+        container.scrollTop -= scrollSpeed;
+      }, 16);
+    }
+    // 下端に近い場合は下にスクロール
+    else if (mouseY > rect.height - scrollThreshold && mouseY < rect.height) {
+      scrollIntervalRef.current = window.setInterval(() => {
+        container.scrollTop += scrollSpeed;
+      }, 16);
+    }
+  };
+
+  const handleDrop = (dropIndex: number) => {
+    // スクロールインターバルをクリア
+    if (scrollIntervalRef.current) {
+      clearInterval(scrollIntervalRef.current);
+      scrollIntervalRef.current = null;
+    }
+
+    if (draggedIndex === null || draggedIndex === dropIndex) {
+      setDraggedIndex(null);
+      return;
+    }
+
+    const updatedHelpers = [...helpers];
+    const [draggedHelper] = updatedHelpers.splice(draggedIndex, 1);
+    updatedHelpers.splice(dropIndex, 0, draggedHelper);
+
+    // orderを再設定
+    const reorderedHelpers = updatedHelpers.map((h, idx) => ({ ...h, order: idx + 1 }));
+
+    onUpdate(reorderedHelpers);
+    setDraggedIndex(null);
+  };
+
+  const handleDeleteHelper = (helperId: string) => {
+    if (!confirm('このヘルパーを削除してもよろしいですか？')) {
+      return;
+    }
+
+    const updatedHelpers = helpers
+      .filter(h => h.id !== helperId)
+      .map((h, idx) => ({ ...h, order: idx + 1 }));
+
+    onUpdate(updatedHelpers);
   };
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-4xl mx-auto">
         {/* ヘッダー */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <div className="flex justify-between items-center">
-            <h1 className="text-3xl font-bold">ヘルパー追加</h1>
+            <h1 className="text-3xl font-bold">ヘルパー管理</h1>
             <button
               onClick={onClose}
               className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
@@ -62,73 +151,139 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
           </div>
         </div>
 
-        {/* メインコンテンツ */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-
-          {/* フォーム */}
-          <div className="space-y-6">
-            <div>
-              <label className="block text-lg font-medium mb-3">ヘルパー名</label>
-              <input
-                type="text"
-                value={newHelperName}
-                onChange={(e) => setNewHelperName(e.target.value)}
-                placeholder="名前を入力"
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                onKeyDown={(e) => e.key === 'Enter' && handleAddHelper()}
-                autoFocus
-              />
-            </div>
-
-            <div>
-              <label className="block text-lg font-medium mb-3">性別</label>
-              <div className="flex gap-6">
-                <label className="flex items-center gap-3 cursor-pointer p-4 border-2 rounded-lg hover:bg-gray-50 transition-colors"
-                  style={{ borderColor: newHelperGender === 'male' ? '#3b82f6' : '#d1d5db' }}
-                >
-                  <input
-                    type="radio"
-                    value="male"
-                    checked={newHelperGender === 'male'}
-                    onChange={(e) => setNewHelperGender(e.target.value as 'male' | 'female')}
-                    className="w-5 h-5"
-                  />
-                  <span className="text-3xl">👨</span>
-                  <span className="text-lg font-medium">男性</span>
-                </label>
-                <label className="flex items-center gap-3 cursor-pointer p-4 border-2 rounded-lg hover:bg-gray-50 transition-colors"
-                  style={{ borderColor: newHelperGender === 'female' ? '#ec4899' : '#d1d5db' }}
-                >
-                  <input
-                    type="radio"
-                    value="female"
-                    checked={newHelperGender === 'female'}
-                    onChange={(e) => setNewHelperGender(e.target.value as 'male' | 'female')}
-                    className="w-5 h-5"
-                  />
-                  <span className="text-3xl">👩</span>
-                  <span className="text-lg font-medium">女性</span>
-                </label>
-              </div>
-            </div>
+        {/* ヘルパーリスト */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold">ヘルパー一覧</h2>
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+            >
+              {showAddForm ? '✕ 閉じる' : '➕ 新しいヘルパーを追加'}
+            </button>
           </div>
 
-          {/* ボタン */}
-          <div className="flex gap-4 mt-8">
-            <button
-              onClick={onClose}
-              className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-lg font-medium"
-            >
-              キャンセル
-            </button>
-            <button
-              onClick={handleAddHelper}
-              className="flex-1 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-lg font-medium"
-            >
-              ➕ 追加する
-            </button>
+          <p className="text-sm text-gray-600 mb-4">
+            ドラッグ＆ドロップで順番を入れ替えられます
+          </p>
+
+          {/* ヘルパーリスト表示 */}
+          <div ref={listContainerRef} className="space-y-2 max-h-[600px] overflow-y-auto">
+            {helpers.map((helper, index) => {
+              // 性別に応じた背景色
+              const bgColor = helper.gender === 'male'
+                ? 'bg-blue-50'
+                : 'bg-pink-50';
+              const borderColor = helper.gender === 'male'
+                ? 'border-blue-300'
+                : 'border-pink-300';
+
+              return (
+                <div
+                  key={helper.id}
+                  draggable
+                  onDragStart={() => handleDragStart(index)}
+                  onDragOver={handleDragOver}
+                  onDrop={() => handleDrop(index)}
+                  className={`flex items-center justify-between p-4 border-2 rounded-lg cursor-move transition-all ${bgColor} ${
+                    draggedIndex === index ? 'opacity-50 border-blue-500' : borderColor
+                  }`}
+                >
+                  <div className="flex items-center gap-4">
+                    <span className="text-2xl">☰</span>
+                    <span className="text-2xl">{helper.gender === 'male' ? '👨' : '👩'}</span>
+                    <div>
+                      <div className="font-medium text-lg">{helper.name}</div>
+                      <div className="text-sm text-gray-600">
+                        {helper.gender === 'male' ? '男性' : '女性'} · 順番: {helper.order}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteHelper(helper.id)}
+                    className="px-3 py-1 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    🗑️ 削除
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
+
+        {/* 新規追加フォーム */}
+        {showAddForm && (
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-bold mb-4">新しいヘルパーを追加</h2>
+
+            {/* フォーム */}
+            <div className="space-y-6">
+              <div>
+                <label className="block text-lg font-medium mb-3">ヘルパー名</label>
+                <input
+                  type="text"
+                  value={newHelperName}
+                  onChange={(e) => setNewHelperName(e.target.value)}
+                  placeholder="名前を入力"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddHelper()}
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-lg font-medium mb-3">性別</label>
+                <div className="flex gap-6">
+                  <label className="flex items-center gap-3 cursor-pointer p-4 border-2 rounded-lg hover:bg-gray-50 transition-colors"
+                    style={{ borderColor: newHelperGender === 'male' ? '#3b82f6' : '#d1d5db' }}
+                  >
+                    <input
+                      type="radio"
+                      value="male"
+                      checked={newHelperGender === 'male'}
+                      onChange={(e) => setNewHelperGender(e.target.value as 'male' | 'female')}
+                      className="w-5 h-5"
+                    />
+                    <span className="text-3xl">👨</span>
+                    <span className="text-lg font-medium">男性</span>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer p-4 border-2 rounded-lg hover:bg-gray-50 transition-colors"
+                    style={{ borderColor: newHelperGender === 'female' ? '#ec4899' : '#d1d5db' }}
+                  >
+                    <input
+                      type="radio"
+                      value="female"
+                      checked={newHelperGender === 'female'}
+                      onChange={(e) => setNewHelperGender(e.target.value as 'male' | 'female')}
+                      className="w-5 h-5"
+                    />
+                    <span className="text-3xl">👩</span>
+                    <span className="text-lg font-medium">女性</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* ボタン */}
+            <div className="flex gap-4 mt-8">
+              <button
+                onClick={() => {
+                  setShowAddForm(false);
+                  setNewHelperName('');
+                }}
+                className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-lg font-medium"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleAddHelper}
+                className="flex-1 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-lg font-medium"
+              >
+                ➕ 追加する
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

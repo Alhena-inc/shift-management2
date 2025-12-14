@@ -48,6 +48,9 @@ export interface Shift {
   area: string;           // 区域
   sequence?: number;      // 連番（/2 など）
   rowIndex?: number;      // 表示行インデックス（0-4）
+  deleted?: boolean;      // 論理削除フラグ
+  deletedAt?: any;        // 削除日時（Firestore Timestamp）
+  deletedBy?: string;     // 削除者ID
 }
 
 // 日付ごとのデータ構造
