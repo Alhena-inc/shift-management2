@@ -129,18 +129,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     rowIndex: -1
   }), []);
 
-  // シフトをhelperId-date-rowIndexでマップ化
-  const shiftMap = useMemo(() => {
-    const map = new Map<string, Shift>();
-    shifts.forEach((shift) => {
-      if (shift.rowIndex !== undefined) {
-        const key = `${shift.helperId}-${shift.date}-${shift.rowIndex}`;
-        map.set(key, shift);
-      }
-    });
-    return map;
-  }, [shifts]);
-
   // 特定の位置のシフトを取得
   // const getShift = useCallback((helperId: string, date: string, rowIndex: number): Shift | undefined => {
   //   return shiftMap.get(`${helperId}-${date}-${rowIndex}`);
@@ -1444,8 +1432,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     const sourceData: string[] = [];
     const targetData: string[] = [];
     let sourceBgColor = '#ffffff';
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    let targetBgColor = '#ffffff';
 
     // ソースセルのデータを取得
     for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
@@ -1474,12 +1460,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     // ターゲットセルの背景色を取得
     const targetCellSelector = `.editable-cell[data-row="${targetRowIndex}"][data-helper="${targetHelperId}"][data-date="${targetDate}"]`;
     const targetCells = document.querySelectorAll(targetCellSelector);
-    if (targetCells.length > 0) {
-      const parentTd = targetCells[0].closest('td') as HTMLElement;
-      if (parentTd) {
-        targetBgColor = parentTd.style.backgroundColor || '#ffffff';
-      }
-    }
 
     // ソースセルをクリア（移動なのでコピーではない）
     for (let lineIndex = 0; lineIndex < 4; lineIndex++) {

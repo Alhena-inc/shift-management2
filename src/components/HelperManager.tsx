@@ -18,6 +18,9 @@ interface Props {
 }
 
 export function HelperManager({ helpers, onUpdate, onClose }: Props) {
+  // 環境変数からベースURLを取得（開発環境ではlocalhost、本番環境ではVercel URL）
+  const baseUrl = import.meta.env.VITE_APP_URL || window.location.origin;
+
   const [newHelperName, setNewHelperName] = useState('');
   const [newHelperGender, setNewHelperGender] = useState<'male' | 'female'>('male');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -158,9 +161,9 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
   };
 
   const handleCopyUrl = (token: string) => {
-    const url = `${window.location.origin}/personal/${token}`;
+    const url = `${baseUrl}/personal/${token}`;
     navigator.clipboard.writeText(url);
-    alert('URLをコピーしました！\n\n' + url + '\n\nスマホからアクセスする場合は、PCでこのURLを開いてください：\nhttp://192.168.10.113:5173/');
+    alert('URLをコピーしました！\n\n' + url);
   };
 
   const handleSave = async () => {
@@ -285,7 +288,7 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
                         <div className="flex items-center gap-2">
                           <input
                             type="text"
-                            value={`${window.location.origin}/personal/${helper.personalToken}`}
+                            value={`${baseUrl}/personal/${helper.personalToken}`}
                             readOnly
                             className="flex-1 px-3 py-2 text-sm border rounded bg-gray-50"
                           />
