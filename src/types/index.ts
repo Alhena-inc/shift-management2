@@ -43,6 +43,7 @@ export interface Helper {
   name: string;
   gender: 'male' | 'female';
   order: number;
+  personalToken?: string;  // 個人シフト表用のユニークトークン
 }
 
 export interface Shift {

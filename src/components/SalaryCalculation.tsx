@@ -73,7 +73,10 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
     const totals = new Map<string, Record<string, { hours: number; amount: number }>>();
 
     sortedHelpers.forEach(helper => {
-      const helperShifts = shifts.filter(s => s.helperId === helper.id);
+      // 「時間を残さずにキャンセル」(remove_time) は給与計算から除外
+      const helperShifts = shifts.filter(s =>
+        s.helperId === helper.id && s.cancelStatus !== 'remove_time'
+      );
       const serviceTypeTotals: Record<string, { hours: number; amount: number }> = {};
 
       Object.keys(SERVICE_CONFIG).forEach(serviceType => {

@@ -130,16 +130,16 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   }), []);
 
   // シフトをhelperId-date-rowIndexでマップ化
-  // const shiftMap = useMemo(() => {
-  //   const map = new Map<string, Shift>();
-  //   shifts.forEach((shift) => {
-  //     if (shift.rowIndex !== undefined) {
-  //       const key = `${shift.helperId}-${shift.date}-${shift.rowIndex}`;
-  //       map.set(key, shift);
-  //     }
-  //   });
-  //   return map;
-  // }, [shifts]);
+  const shiftMap = useMemo(() => {
+    const map = new Map<string, Shift>();
+    shifts.forEach((shift) => {
+      if (shift.rowIndex !== undefined) {
+        const key = `${shift.helperId}-${shift.date}-${shift.rowIndex}`;
+        map.set(key, shift);
+      }
+    });
+    return map;
+  }, [shifts]);
 
   // 特定の位置のシフトを取得
   // const getShift = useCallback((helperId: string, date: string, rowIndex: number): Shift | undefined => {
@@ -1444,7 +1444,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     const sourceData: string[] = [];
     const targetData: string[] = [];
     let sourceBgColor = '#ffffff';
-    // @ts-ignore - 将来の機能のために保持
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     let targetBgColor = '#ffffff';
 
     // ソースセルのデータを取得

@@ -203,3 +203,31 @@ export const loadDeletedShiftsForMonth = async (year: number, month: number): Pr
     return [];
   }
 };
+
+// トークンでヘルパーを検索
+export const loadHelperByToken = async (token: string): Promise<Helper | null> => {
+  try {
+    const helpersQuery = query(
+      collection(db, HELPERS_COLLECTION),
+      where('personalToken', '==', token)
+    );
+
+    const querySnapshot = await getDocs(helpersQuery);
+    if (querySnapshot.empty) {
+      console.log('トークンに一致するヘルパーが見つかりませんでした');
+      return null;
+    }
+
+    const helperDoc = querySnapshot.docs[0];
+    const helper = {
+      ...helperDoc.data(),
+      id: helperDoc.id
+    } as Helper;
+
+    console.log(`ヘルパーを取得しました: ${helper.name}`);
+    return helper;
+  } catch (error) {
+    console.error('ヘルパー取得エラー:', error);
+    return null;
+  }
+};

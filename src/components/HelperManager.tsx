@@ -1,6 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
 import type { Helper } from '../types';
 
+// ランダムトークン生成関数（10文字）
+const generateToken = (): string => {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let token = '';
+  for (let i = 0; i < 10; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return token;
+};
+
 interface Props {
   helpers: Helper[];
   onUpdate: (helpers: Helper[]) => void;
@@ -137,6 +147,22 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
     setHasChanges(true);
   };
 
+  const handleGenerateToken = (helperId: string) => {
+    const updatedHelpers = localHelpers.map(h =>
+      h.id === helperId
+        ? { ...h, personalToken: generateToken() }
+        : h
+    );
+    setLocalHelpers(updatedHelpers);
+    setHasChanges(true);
+  };
+
+  const handleCopyUrl = (token: string) => {
+    const url = `${window.location.origin}/personal/${token}`;
+    navigator.clipboard.writeText(url);
+    alert('URLをコピーしました！\n\n' + url + '\n\nスマホからアクセスする場合は、PCでこのURLを開いてください：\nhttp://192.168.10.113:5173/');
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
@@ -216,37 +242,76 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
               const bgColor = helper.gender === 'male'
                 ? 'bg-blue-50'
                 : 'bg-pink-50';
-              const borderColor = helper.gender === 'male'
-                ? 'border-blue-300'
-                : 'border-pink-300';
 
               return (
                 <div
                   key={helper.id}
-                  draggable
-                  onDragStart={() => handleDragStart(index)}
-                  onDragOver={handleDragOver}
-                  onDrop={() => handleDrop(index)}
-                  className={`flex items-center justify-between p-4 border-2 rounded-lg cursor-move transition-all ${bgColor} ${
-                    draggedIndex === index ? 'opacity-50 border-blue-500' : borderColor
-                  }`}
+                  className="border-2 rounded-lg transition-all"
+                  style={{ borderColor: helper.gender === 'male' ? '#93c5fd' : '#f9a8d4' }}
                 >
-                  <div className="flex items-center gap-4">
-                    <span className="text-2xl">☰</span>
-                    <span className="text-2xl">{helper.gender === 'male' ? '👨' : '👩'}</span>
-                    <div>
-                      <div className="font-medium text-lg">{helper.name}</div>
-                      <div className="text-sm text-gray-600">
-                        {helper.gender === 'male' ? '男性' : '女性'} · 順番: {helper.order}
+                  {/* ドラッグ可能なヘッダー部分 */}
+                  <div
+                    draggable
+                    onDragStart={() => handleDragStart(index)}
+                    onDragOver={handleDragOver}
+                    onDrop={() => handleDrop(index)}
+                    className={`flex items-center justify-between p-4 cursor-move ${bgColor} ${
+                      draggedIndex === index ? 'opacity-50' : ''
+                    }`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <span className="text-2xl">☰</span>
+                      <span className="text-2xl">{helper.gender === 'male' ? '👨' : '👩'}</span>
+                      <div>
+                        <div className="font-medium text-lg">{helper.name}</div>
+                        <div className="text-sm text-gray-600">
+                          {helper.gender === 'male' ? '男性' : '女性'} · 順番: {helper.order}
+                        </div>
                       </div>
                     </div>
+                    <button
+                      onClick={() => handleDeleteHelper(helper.id)}
+                      className="px-3 py-1 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    >
+                      🗑️ 削除
+                    </button>
                   </div>
-                  <button
-                    onClick={() => handleDeleteHelper(helper.id)}
-                    className="px-3 py-1 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  >
-                    🗑️ 削除
-                  </button>
+
+                  {/* 個人シフト表URL部分 */}
+                  <div className="p-4 bg-white border-t">
+                    <div className="text-sm font-medium mb-2">📱 個人シフト表URL</div>
+                    {helper.personalToken ? (
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={`${window.location.origin}/personal/${helper.personalToken}`}
+                            readOnly
+                            className="flex-1 px-3 py-2 text-sm border rounded bg-gray-50"
+                          />
+                          <button
+                            onClick={() => handleCopyUrl(helper.personalToken!)}
+                            className="px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm whitespace-nowrap"
+                          >
+                            📋 コピー
+                          </button>
+                        </div>
+                        <button
+                          onClick={() => handleGenerateToken(helper.id)}
+                          className="text-xs text-gray-500 hover:text-gray-700 text-left"
+                        >
+                          🔄 URLを再生成
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => handleGenerateToken(helper.id)}
+                        className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
+                      >
+                        ✨ URLを生成
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}

@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { ShiftTable } from './components/ShiftTable';
 import { HelperManager } from './components/HelperManager';
 import { SalaryCalculation } from './components/SalaryCalculation';
+import { PersonalShift } from './components/PersonalShift';
 import { helpers as initialHelpers, shifts as initialShifts } from './data/mockData';
 import { SERVICE_CONFIG } from './types';
 import type { Helper, Shift } from './types';
@@ -9,6 +10,14 @@ import { saveHelpers, saveShiftsForMonth, loadHelpers, loadShiftsForMonth } from
 import { testFirebaseConnection } from './lib/firebase';
 
 function App() {
+  // URLパスをチェック（個人シフト表の場合は別コンポーネントを表示）
+  const path = window.location.pathname;
+  const personalMatch = path.match(/^\/personal\/(.+)$/);
+
+  if (personalMatch) {
+    const token = personalMatch[1];
+    return <PersonalShift token={token} />;
+  }
   const [helpers, setHelpers] = useState<Helper[]>(initialHelpers);
   const [shifts, setShifts] = useState<Shift[]>(initialShifts);
   const [currentYear, setCurrentYear] = useState(2025);
