@@ -3638,12 +3638,52 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                   );
                 })}
               </tr>
-              {/* 精算済み行 */}
-              <tr className="bg-yellow-100">
-                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-yellow-200 font-bold">精算済み</td>
+              {/* 交通費 */}
+              <tr>
+                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-white font-bold">交通費</td>
                 {sortedHelpers.map(helper => (
                   <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
-                    <div className="text-xs text-gray-600">調整額入力可</div>
+                    <div className="text-xs text-gray-600">¥0</div>
+                  </td>
+                ))}
+              </tr>
+              {/* 建替経費 */}
+              <tr>
+                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-white font-bold">建替経費</td>
+                {sortedHelpers.map(helper => (
+                  <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
+                    <div className="text-xs text-gray-600">¥0</div>
+                  </td>
+                ))}
+              </tr>
+              {/* 手当 */}
+              <tr>
+                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-white font-bold">手当</td>
+                {sortedHelpers.map(helper => (
+                  <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
+                    <div className="text-xs text-gray-600">¥0</div>
+                  </td>
+                ))}
+              </tr>
+              {/* 給与総額 */}
+              <tr className="bg-green-50">
+                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-green-100 font-bold">給与総額</td>
+                {sortedHelpers.map(helper => {
+                  const weeklyData = weeklyPaymentSummary.get(helper.id) || [];
+                  const totalAmount = weeklyData.reduce((sum, data) => sum + data.amount, 0);
+                  return (
+                    <td key={helper.id} className="border-2 border-gray-400 p-2 text-center font-bold">
+                      <div className="text-green-700">¥{Math.round(totalAmount).toLocaleString()}</div>
+                    </td>
+                  );
+                })}
+              </tr>
+              {/* 返済 */}
+              <tr>
+                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-white font-bold">返済</td>
+                {sortedHelpers.map(helper => (
+                  <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
+                    <div className="text-xs text-gray-600">¥0</div>
                   </td>
                 ))}
               </tr>
