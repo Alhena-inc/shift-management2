@@ -2382,15 +2382,18 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
   // 月次集計：サービス種別時間数集計
   const serviceTypeSummary = useMemo(() => {
-    const summary = new Map<string, Map<ServiceType, { hours: number; amount: number }>>();
+    const summary = new Map<string, Map<ServiceType | 'shinya' | 'shinya_doko', { hours: number; amount: number }>>();
 
     sortedHelpers.forEach(helper => {
-      const helperData = new Map<ServiceType, { hours: number; amount: number }>();
+      const helperData = new Map<ServiceType | 'shinya' | 'shinya_doko', { hours: number; amount: number }>();
 
       // 各サービス種別を初期化
       Object.keys(SERVICE_CONFIG).forEach(serviceType => {
         helperData.set(serviceType as ServiceType, { hours: 0, amount: 0 });
       });
+      // 深夜専用の項目も初期化
+      helperData.set('shinya', { hours: 0, amount: 0 });
+      helperData.set('shinya_doko', { hours: 0, amount: 0 });
 
       // シフトから集計
       shifts.filter(s => s.helperId === helper.id && s.cancelStatus !== 'remove_time').forEach(shift => {
@@ -2402,26 +2405,26 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           const nightHours = calculateNightHours(timeRange);
           const regularHours = calculateRegularHours(timeRange);
 
-          // 深夜時間の計算
+          // 深夜時間の計算（深夜専用行に集計）
           if (nightHours > 0) {
             if (serviceType === 'doko') {
-              // 深夜同行
-              const current = helperData.get(serviceType) || { hours: 0, amount: 0 };
-              helperData.set(serviceType, {
+              // 深夜同行 → shinya_doko行に加算
+              const current = helperData.get('shinya_doko') || { hours: 0, amount: 0 };
+              helperData.set('shinya_doko', {
                 hours: current.hours + nightHours,
                 amount: current.amount + (nightHours * 1200 * 1.25)
               });
             } else {
-              // 通常サービスの深夜
-              const current = helperData.get(serviceType) || { hours: 0, amount: 0 };
-              helperData.set(serviceType, {
+              // 通常サービスの深夜 → shinya行に加算
+              const current = helperData.get('shinya') || { hours: 0, amount: 0 };
+              helperData.set('shinya', {
                 hours: current.hours + nightHours,
                 amount: current.amount + (nightHours * hourlyRate * 1.25)
               });
             }
           }
 
-          // 通常時間の計算
+          // 通常時間の計算（元のサービスタイプ行に集計）
           if (regularHours > 0) {
             const current = helperData.get(serviceType) || { hours: 0, amount: 0 };
             helperData.set(serviceType, {
@@ -2430,7 +2433,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             });
           }
         } else if (duration && duration > 0) {
-          // 時間数のみの場合
+          // 時間数のみの場合（通常時間として扱う）
           const current = helperData.get(serviceType) || { hours: 0, amount: 0 };
           helperData.set(serviceType, {
             hours: current.hours + duration,
@@ -3488,8 +3491,16 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                   const helperData = serviceTypeSummary.get(helper.id);
                   let totalHours = 0;
                   if (helperData) {
-                    helperData.forEach((data) => {
-                      totalHours += data.hours;
+                    // 表示されている行のみを合計
+                    const displayedTypes: (ServiceType | 'shinya' | 'shinya_doko')[] = [
+                      'shintai', 'judo', 'kaji', 'tsuin', 'ido',
+                      'jimu', 'eigyo', 'doko', 'shinya', 'shinya_doko'
+                    ];
+                    displayedTypes.forEach(type => {
+                      const data = helperData.get(type);
+                      if (data) {
+                        totalHours += data.hours;
+                      }
                     });
                   }
                   return (
@@ -3506,8 +3517,16 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                   const helperData = serviceTypeSummary.get(helper.id);
                   let totalAmount = 0;
                   if (helperData) {
-                    helperData.forEach((data) => {
-                      totalAmount += data.amount;
+                    // 表示されている行のみを合計
+                    const displayedTypes: (ServiceType | 'shinya' | 'shinya_doko')[] = [
+                      'shintai', 'judo', 'kaji', 'tsuin', 'ido',
+                      'jimu', 'eigyo', 'doko', 'shinya', 'shinya_doko'
+                    ];
+                    displayedTypes.forEach(type => {
+                      const data = helperData.get(type);
+                      if (data) {
+                        totalAmount += data.amount;
+                      }
                     });
                   }
                   return (
