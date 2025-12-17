@@ -12,7 +12,7 @@ interface Props {
 
 // 深夜時間帯（22時～翌朝8時）の時間数を計算する関数
 function calculateNightHours(timeRange: string): number {
-  const match = timeRange.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+  const match = timeRange.match(/(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})/);
   if (!match) return 0;
 
   const [, startHour, startMin, endHour, endMin] = match;
@@ -38,7 +38,7 @@ function calculateNightHours(timeRange: string): number {
 
 // 通常時間帯の時間数を計算する関数
 function calculateRegularHours(timeRange: string): number {
-  const match = timeRange.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+  const match = timeRange.match(/(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})/);
   if (!match) return 0;
 
   const [, startHour, startMin, endHour, endMin] = match;
@@ -68,66 +68,171 @@ function calculateRegularHours(timeRange: string): number {
 export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Props) {
   const sortedHelpers = useMemo(() => [...helpers].sort((a, b) => a.order - b.order), [helpers]);
 
-  // ヘルパーごとの集計を計算（時間と金額）
-  const helperTotals = useMemo(() => {
-    const totals = new Map<string, Record<string, { hours: number; amount: number }>>();
+  // 週の範囲を計算（日付ベース: 1-7日、8-14日、15-21日、22-28日、29日〜、6週目は常に0）
+  const weekRanges = useMemo(() => {
+    const weeks: { weekNumber: number; startDate: string; endDate: string; isGrayedOut?: boolean }[] = [];
+    const daysInMonth = new Date(year, month, 0).getDate();
+
+    // 1週目: 1-7日
+    weeks.push({
+      weekNumber: 1,
+      startDate: `${year}-${String(month).padStart(2, '0')}-01`,
+      endDate: `${year}-${String(month).padStart(2, '0')}-07`
+    });
+
+    // 2週目: 8-14日
+    weeks.push({
+      weekNumber: 2,
+      startDate: `${year}-${String(month).padStart(2, '0')}-08`,
+      endDate: `${year}-${String(month).padStart(2, '0')}-14`
+    });
+
+    // 3週目: 15-21日
+    weeks.push({
+      weekNumber: 3,
+      startDate: `${year}-${String(month).padStart(2, '0')}-15`,
+      endDate: `${year}-${String(month).padStart(2, '0')}-21`
+    });
+
+    // 4週目: 22-28日
+    weeks.push({
+      weekNumber: 4,
+      startDate: `${year}-${String(month).padStart(2, '0')}-22`,
+      endDate: `${year}-${String(month).padStart(2, '0')}-28`
+    });
+
+    // 5週目: 29日〜月末 + 12月の場合は1/1〜1/4
+    if (month === 12) {
+      // 12月の場合: 29-31日 + 1/1-1/4
+      const nextYear = year + 1;
+      weeks.push({
+        weekNumber: 5,
+        startDate: `${year}-12-29`,
+        endDate: `${nextYear}-01-04`
+      });
+    } else if (daysInMonth >= 29) {
+      // 通常月: 29日〜月末
+      weeks.push({
+        weekNumber: 5,
+        startDate: `${year}-${String(month).padStart(2, '0')}-29`,
+        endDate: `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`
+      });
+    } else {
+      // 29日未満の月（2月など）は5週目なし - グレーアウト
+      weeks.push({
+        weekNumber: 5,
+        startDate: '',
+        endDate: '',
+        isGrayedOut: true
+      });
+    }
+
+    // 6週目: 月によってはデータがある場合があるため、常に表示
+    // データの有無は後で判定
+    weeks.push({
+      weekNumber: 6,
+      startDate: '', // データがある場合のみ後で設定
+      endDate: '',
+      isGrayedOut: false // 初期値はfalse、データがなければ後で変更
+    });
+
+    return weeks;
+  }, [year, month]);
+
+  // ヘルパーごとの週別集計を計算
+  const helperWeeklyTotals = useMemo(() => {
+    const totals = new Map<string, { hours: number; amount: number }[]>();
 
     sortedHelpers.forEach(helper => {
-      // 「時間を残さずにキャンセル」(remove_time) は給与計算から除外
-      const helperShifts = shifts.filter(s =>
-        s.helperId === helper.id && s.cancelStatus !== 'remove_time'
-      );
-      const serviceTypeTotals: Record<string, { hours: number; amount: number }> = {};
+      const weeklyData: { hours: number; amount: number }[] = [];
 
-      Object.keys(SERVICE_CONFIG).forEach(serviceType => {
-        serviceTypeTotals[serviceType] = { hours: 0, amount: 0 };
+      weekRanges.forEach(week => {
+        let totalHours = 0;
+        let totalAmount = 0;
+
+        // グレーアウトされた週（5週目で日付がない場合）は0として扱う
+        if (week.isGrayedOut) {
+          weeklyData.push({ hours: 0, amount: 0 });
+          return;
+        }
+
+        // 6週目で日付範囲が空の場合も通常通り処理（データがなければ自然に0になる）
+        if (week.weekNumber === 6 && (!week.startDate || !week.endDate)) {
+          // 日付範囲が空なので、フィルタで何もマッチせず0になるが、
+          // 背景色を白にするため、ここでは0を設定するだけ
+          weeklyData.push({ hours: 0, amount: 0 });
+          return;
+        }
+
+        // この週のシフトを取得
+        const weekShifts = shifts.filter(s =>
+          s.helperId === helper.id &&
+          s.cancelStatus !== 'remove_time' &&
+          s.date >= week.startDate &&
+          s.date <= week.endDate
+        );
+
+        weekShifts.forEach(shift => {
+          const hourlyRate = SERVICE_CONFIG[shift.serviceType]?.hourlyRate || 0;
+
+          // 時間範囲がある場合
+          if (shift.startTime && shift.endTime) {
+            const timeRange = `${shift.startTime}-${shift.endTime}`;
+            const nightHours = calculateNightHours(timeRange);
+            const regularHours = calculateRegularHours(timeRange);
+
+            // 深夜時間の計算
+            if (nightHours > 0) {
+              if (shift.serviceType === 'doko') {
+                totalHours += nightHours;
+                totalAmount += nightHours * 1200 * 1.25; // 深夜同行
+              } else {
+                totalHours += nightHours;
+                totalAmount += nightHours * hourlyRate * 1.25; // 深夜割増
+              }
+            }
+
+            // 通常時間の計算
+            if (regularHours > 0) {
+              totalHours += regularHours;
+              totalAmount += regularHours * hourlyRate;
+            }
+          }
+          // 時間数のみの場合
+          else if (shift.duration && shift.duration > 0) {
+            totalHours += shift.duration;
+            totalAmount += shift.duration * hourlyRate;
+          }
+        });
+
+        weeklyData.push({ hours: totalHours, amount: totalAmount });
       });
 
-      helperShifts.forEach(shift => {
-        const hourlyRate = SERVICE_CONFIG[shift.serviceType]?.hourlyRate || 0;
-
-        // 時間範囲がある場合は、時間範囲から計算
-        if (shift.startTime && shift.endTime) {
-          const timeRange = `${shift.startTime}-${shift.endTime}`;
-          const nightHours = calculateNightHours(timeRange);
-          const regularHours = calculateRegularHours(timeRange);
-
-          // 深夜時間の集計
-          if (shift.serviceType !== 'doko' && nightHours > 0) {
-            serviceTypeTotals['shinya'].hours += nightHours;
-            // 深夜は元のサービスタイプの時給の25%割増
-            serviceTypeTotals['shinya'].amount += nightHours * hourlyRate * 1.25;
-          }
-          if (shift.serviceType === 'doko' && nightHours > 0) {
-            serviceTypeTotals['shinya_doko'].hours += nightHours;
-            // 深夜同行は1200円の25%割増
-            serviceTypeTotals['shinya_doko'].amount += nightHours * 1200 * 1.25;
-          }
-
-          // 通常時間の集計
-          if (regularHours > 0) {
-            serviceTypeTotals[shift.serviceType].hours += regularHours;
-            serviceTypeTotals[shift.serviceType].amount += regularHours * hourlyRate;
-          }
-        }
-        // 時間範囲がなく、時間数だけがある場合は、時間数をそのまま使用
-        else if (shift.duration && shift.duration > 0) {
-          serviceTypeTotals[shift.serviceType].hours += shift.duration;
-          serviceTypeTotals[shift.serviceType].amount += shift.duration * hourlyRate;
-        }
-      });
-
-      totals.set(helper.id, serviceTypeTotals);
+      totals.set(helper.id, weeklyData);
     });
 
     return totals;
-  }, [sortedHelpers, shifts]);
+  }, [sortedHelpers, shifts, weekRanges]);
+
+  // 各週のデータ有無を判定（全ヘルパーの合計が0ならグレーアウト）
+  const weekHasData = useMemo(() => {
+    return weekRanges.map((_week, weekIndex) => {
+      let totalHours = 0;
+      sortedHelpers.forEach(helper => {
+        const weeklyData = helperWeeklyTotals.get(helper.id) || [];
+        totalHours += weeklyData[weekIndex]?.hours || 0;
+      });
+      return totalHours > 0;
+    });
+  }, [weekRanges, sortedHelpers, helperWeeklyTotals]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-auto">
         <div className="sticky top-0 bg-gradient-to-r from-green-50 to-blue-50 border-b-4 border-green-500 p-6 flex justify-between items-center z-40">
-          <h2 className="text-3xl font-bold text-gray-800">💰 {year}年{month}月 給与計算</h2>
+          <h2 className="text-3xl font-bold text-gray-800">
+            💰 {year}年{month}月{month === 12 ? '（1/1〜1/4含む）' : ''} 給与計算
+          </h2>
           <button
             onClick={onClose}
             className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-bold text-lg shadow-md"
@@ -142,39 +247,51 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
               <thead className="sticky top-0 z-20">
                 <tr className="bg-gray-200">
                   <th className="border-2 border-gray-400 p-3 sticky left-0 bg-gray-200 z-30 font-bold text-base min-w-[120px]">ヘルパー名</th>
-                  {Object.entries(SERVICE_CONFIG).map(([key, config]) => (
-                    <th key={key} className="border-2 border-gray-400 p-3 font-bold text-sm min-w-[100px]" style={{ backgroundColor: config.bgColor }}>
-                      <div>{config.label}</div>
-                      <div className="text-xs font-normal mt-1">({config.hourlyRate.toLocaleString()}円/時)</div>
+                  {weekRanges.map((week, weekIndex) => {
+                    const hasData = weekHasData[weekIndex];
+                    // 6週目は常に白背景（青背景）にする
+                    const shouldShowAsActive = hasData || week.weekNumber === 6;
+                    return (
+                    <th
+                      key={week.weekNumber}
+                      className={`border-2 border-gray-400 p-3 font-bold text-sm min-w-[100px] ${!shouldShowAsActive ? 'bg-gray-400' : 'bg-blue-100'}`}
+                    >
+                      <div>{week.weekNumber}週目</div>
                     </th>
-                  ))}
+                    );
+                  })}
                   <th className="border-2 border-gray-400 p-3 bg-yellow-200 font-bold text-base min-w-[120px] sticky right-0 z-30 shadow-lg">合計</th>
                 </tr>
               </thead>
               <tbody>
                 {sortedHelpers.map((helper) => {
-                  const totals = helperTotals.get(helper.id) || {};
-                  const totalHours = Object.values(totals).reduce((sum, val) => sum + val.hours, 0);
-                  const totalAmount = Object.values(totals).reduce((sum, val) => sum + val.amount, 0);
+                  const weeklyData = helperWeeklyTotals.get(helper.id) || [];
+                  const totalHours = weeklyData.reduce((sum, data) => sum + data.hours, 0);
+                  const totalAmount = weeklyData.reduce((sum, data) => sum + data.amount, 0);
 
                   return (
                     <tr key={helper.id} className="hover:bg-gray-50 border-b-2">
                       <td className="border-2 border-gray-400 p-3 font-bold sticky left-0 bg-white text-base">
                         {helper.name}
                       </td>
-                      {Object.keys(SERVICE_CONFIG).map((serviceType) => {
-                        const data = totals[serviceType] || { hours: 0, amount: 0 };
+                      {weeklyData.map((data, index) => {
+                        const hasData = weekHasData[index];
+                        // 6週目は常に白背景にする
+                        const shouldShowAsActive = hasData || weekRanges[index]?.weekNumber === 6;
                         return (
-                          <td key={serviceType} className="border-2 border-gray-300 p-3 text-center">
-                            {data.hours > 0 ? (
-                              <div>
-                                <div className="font-bold text-base text-blue-700">{data.hours.toFixed(1)}h</div>
-                                <div className="text-sm text-gray-700 font-semibold mt-1">¥{Math.round(data.amount).toLocaleString()}</div>
-                              </div>
-                            ) : (
-                              <div className="text-gray-300 text-lg">-</div>
-                            )}
-                          </td>
+                        <td
+                          key={index}
+                          className={`border-2 border-gray-300 p-3 text-center ${!shouldShowAsActive ? 'bg-gray-300' : ''}`}
+                        >
+                          {data.hours > 0 ? (
+                            <div>
+                              <div className="font-bold text-base text-blue-700">{data.hours.toFixed(1)}h</div>
+                              <div className="text-sm text-gray-700 font-semibold mt-1">¥{Math.round(data.amount).toLocaleString()}</div>
+                            </div>
+                          ) : (
+                            <div className={`text-lg ${!hasData ? 'text-gray-600' : 'text-gray-300'}`}>0</div>
+                          )}
+                        </td>
                         );
                       })}
                       <td className="border-2 border-gray-400 p-3 text-center font-bold bg-yellow-50 sticky right-0 z-10 shadow-lg">

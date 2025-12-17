@@ -7,7 +7,8 @@ import {
   Timestamp,
   getDocs,
   query,
-  where
+  where,
+  deleteDoc
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type { Helper, Shift } from '../types';
@@ -45,7 +46,6 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
     });
 
     await batch.commit();
-    console.log(`ヘルパー情報を保存しました (${helpers.length}件)`);
   } catch (error) {
     console.error('ヘルパー保存エラー:', error);
     throw error;
@@ -53,26 +53,30 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
 };
 
 // シフトを保存（月ごと）
-export const saveShiftsForMonth = async (year: number, month: number, shifts: Shift[]): Promise<void> => {
+export const saveShiftsForMonth = async (_year: number, _month: number, shifts: Shift[]): Promise<void> => {
   try {
     const batch = writeBatch(db);
 
-    // その月のシフトだけをフィルタ
-    const monthShifts = shifts.filter(shift => {
-      const shiftDate = new Date(shift.date);
-      return shiftDate.getFullYear() === year && shiftDate.getMonth() + 1 === month;
-    });
-
-    monthShifts.forEach(shift => {
+    shifts.forEach(shift => {
       const shiftRef = doc(db, SHIFTS_COLLECTION, shift.id);
-      batch.set(shiftRef, {
+
+      // undefinedのフィールドを除外
+      const shiftData: Record<string, any> = {
         ...shift,
         updatedAt: Timestamp.now()
+      };
+
+      // undefinedのフィールドを削除
+      Object.keys(shiftData).forEach(key => {
+        if (shiftData[key] === undefined) {
+          delete shiftData[key];
+        }
       });
+
+      batch.set(shiftRef, shiftData);
     });
 
     await batch.commit();
-    console.log(`${year}年${month}月のシフトを保存しました (${monthShifts.length}件)`);
   } catch (error) {
     console.error('シフト保存エラー:', error);
   }
@@ -82,10 +86,21 @@ export const saveShiftsForMonth = async (year: number, month: number, shifts: Sh
 export const saveShift = async (shift: Shift): Promise<void> => {
   try {
     const shiftRef = doc(db, SHIFTS_COLLECTION, shift.id);
-    await setDoc(shiftRef, {
+
+    // undefinedのフィールドを除外
+    const shiftData: Record<string, any> = {
       ...shift,
       updatedAt: Timestamp.now()
+    };
+
+    // undefinedのフィールドを削除
+    Object.keys(shiftData).forEach(key => {
+      if (shiftData[key] === undefined) {
+        delete shiftData[key];
+      }
     });
+
+    await setDoc(shiftRef, shiftData);
   } catch (error) {
     console.error('シフト保存エラー:', error);
   }
@@ -102,7 +117,6 @@ export const loadHelpers = async (): Promise<Helper[]> => {
       } as Helper))
       // orderフィールドでソート
       .sort((a, b) => a.order - b.order);
-    console.log(`ヘルパー情報を読み込みました (${helpers.length}件)`);
     return helpers;
   } catch (error) {
     console.error('ヘルパー読み込みエラー:', error);
@@ -134,11 +148,78 @@ export const loadShiftsForMonth = async (year: number, month: number): Promise<S
       // 論理削除されていないデータのみフィルタリング（deletedフィールドがないものも含む）
       .filter(shift => !shift.deleted);
 
-    console.log(`${year}年${month}月のシフトを読み込みました (${shifts.length}件)`);
     return shifts;
   } catch (error) {
     console.error('シフト読み込みエラー:', error);
     return [];
+  }
+};
+
+// シフトを完全削除
+export const deleteShift = async (shiftId: string): Promise<void> => {
+  try {
+    const shiftRef = doc(db, SHIFTS_COLLECTION, shiftId);
+    await deleteDoc(shiftRef);
+    console.log(`シフトを完全削除しました: ${shiftId}`);
+  } catch (error) {
+    console.error('シフト削除エラー:', error);
+    throw error;
+  }
+};
+
+// 月のシフトを全て削除
+export const deleteShiftsForMonth = async (year: number, month: number): Promise<void> => {
+  try {
+    // その月の開始日と終了日を作成
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    // その月のシフトをクエリ
+    const shiftsQuery = query(
+      collection(db, SHIFTS_COLLECTION),
+      where('date', '>=', startDate),
+      where('date', '<=', endDate)
+    );
+
+    const querySnapshot = await getDocs(shiftsQuery);
+    const batch = writeBatch(db);
+
+    // バッチで全て削除
+    querySnapshot.docs.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+
+    await batch.commit();
+    console.log(`${year}年${month}月のシフトを全て削除しました (${querySnapshot.size}件)`);
+  } catch (error) {
+    console.error('月のシフト削除エラー:', error);
+    throw error;
+  }
+};
+
+// 特定の日付のシフトを全て削除
+export const deleteShiftsForDate = async (date: string): Promise<void> => {
+  try {
+    // 指定日付のシフトをクエリ
+    const shiftsQuery = query(
+      collection(db, SHIFTS_COLLECTION),
+      where('date', '==', date)
+    );
+
+    const querySnapshot = await getDocs(shiftsQuery);
+    const batch = writeBatch(db);
+
+    // バッチで全て削除
+    querySnapshot.docs.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+
+    await batch.commit();
+    console.log(`${date}のシフトを全て削除しました (${querySnapshot.size}件)`);
+  } catch (error) {
+    console.error('日付のシフト削除エラー:', error);
+    throw error;
   }
 };
 

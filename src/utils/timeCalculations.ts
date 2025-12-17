@@ -1,6 +1,6 @@
 // 深夜時間帯（22時～翌朝8時）の時間数を計算する関数
 export function calculateNightHours(timeRange: string): number {
-  const match = timeRange.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+  const match = timeRange.match(/(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})/);
   if (!match) return 0;
 
   const [, startHour, startMin, endHour, endMin] = match;
@@ -28,7 +28,7 @@ export function calculateNightHours(timeRange: string): number {
 
 // 通常時間帯（22時より前と8時以降）の時間数を計算する関数
 export function calculateRegularHours(timeRange: string): number {
-  const match = timeRange.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+  const match = timeRange.match(/(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})/);
   if (!match) return 0;
 
   const [, startHour, startMin, endHour, endMin] = match;
@@ -60,7 +60,7 @@ export function calculateRegularHours(timeRange: string): number {
 
 // 時間差を計算する関数
 export function calculateTimeDuration(timeRange: string): string {
-  const match = timeRange.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+  const match = timeRange.match(/(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})/);
   if (!match) return '';
 
   const [, startHour, startMin, endHour, endMin] = match;

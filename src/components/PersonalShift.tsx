@@ -35,8 +35,20 @@ export function PersonalShift({ token }: Props) {
       console.log(`📅 ${currentYear}年${currentMonth}月の全シフト:`, shiftsData.length, '件');
       console.log('全シフトのhelperID一覧:', shiftsData.map(s => ({ id: s.id, helperId: s.helperId, client: s.clientName })));
 
+      // 12月の場合、1月1-4日のシフトも取得
+      let januaryShifts: Shift[] = [];
+      if (currentMonth === 12) {
+        const nextYear = currentYear + 1;
+        const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1);
+        januaryShifts = allJanuaryShifts.filter(shift => {
+          const day = parseInt(shift.date.split('-')[2]);
+          return day >= 1 && day <= 4;
+        });
+      }
+
       // このヘルパーのシフトだけフィルタ
-      const myShifts = shiftsData.filter(s => s.helperId === helperData.id);
+      const allShifts = [...shiftsData, ...januaryShifts];
+      const myShifts = allShifts.filter(s => s.helperId === helperData.id);
       console.log(`✅ ${helperData.name}さんのシフト:`, myShifts.length, '件');
       console.log('フィルタ後のシフト:', myShifts);
       console.log('キャンセルステータス確認:', myShifts.map(s => ({
@@ -58,7 +70,20 @@ export function PersonalShift({ token }: Props) {
 
     const interval = setInterval(async () => {
       const shiftsData = await loadShiftsForMonth(currentYear, currentMonth);
-      const myShifts = shiftsData.filter(s => s.helperId === helper.id);
+
+      // 12月の場合、1月1-4日のシフトも取得
+      let januaryShifts: Shift[] = [];
+      if (currentMonth === 12) {
+        const nextYear = currentYear + 1;
+        const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1);
+        januaryShifts = allJanuaryShifts.filter(shift => {
+          const day = parseInt(shift.date.split('-')[2]);
+          return day >= 1 && day <= 4;
+        });
+      }
+
+      const allShifts = [...shiftsData, ...januaryShifts];
+      const myShifts = allShifts.filter(s => s.helperId === helper.id);
       setShifts(myShifts);
     }, 3000); // 3秒ごと
 
@@ -103,6 +128,32 @@ export function PersonalShift({ token }: Props) {
 
       // 日曜日または月末で週を区切る
       if (dayOfWeekIndex === 0 || day === daysInMonth) {
+        // 12月の最後の週の場合、1月1-4日を追加
+        if (currentMonth === 12 && day === daysInMonth) {
+          const nextYear = currentYear + 1;
+          for (let janDay = 1; janDay <= 4; janDay++) {
+            const janDate = `${nextYear}-01-${String(janDay).padStart(2, '0')}`;
+            const janDayOfWeekIndex = new Date(nextYear, 0, janDay).getDay();
+            const janDayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][janDayOfWeekIndex];
+            const janDayShifts = shifts.filter(s => s.date === janDate).sort((a, b) => a.startTime.localeCompare(b.startTime));
+            const janIsWeekend = janDayOfWeekIndex === 0 || janDayOfWeekIndex === 6;
+
+            currentWeek.push({
+              date: janDate,
+              dayNumber: janDay,
+              dayOfWeek: janDayOfWeek,
+              shifts: janDayShifts,
+              isWeekend: janIsWeekend,
+              isEmpty: false
+            });
+
+            // 1月4日が日曜日か、1月4日まで追加したら週を区切る
+            if (janDayOfWeekIndex === 0 || janDay === 4) {
+              break;
+            }
+          }
+        }
+
         // 7日に満たない場合は空白セルで埋める
         while (currentWeek.length < 7) {
           currentWeek.push({
@@ -244,7 +295,8 @@ export function PersonalShift({ token }: Props) {
                   {[0, 1, 2, 3, 4].map((rowIndex) => (
                     <tr key={rowIndex}>
                       {week.days.map((day, idx) => {
-                        const shift = !day.isEmpty && day.shifts[rowIndex];
+                        // rowIndexプロパティと一致するシフトを探す（元のシフト表の位置を保持）
+                        const shift = !day.isEmpty && day.shifts.find(s => s.rowIndex === rowIndex);
                         const config = shift ? SERVICE_CONFIG[shift.serviceType] : null;
 
                         // セルサイズを小さく固定（50px × 50px）

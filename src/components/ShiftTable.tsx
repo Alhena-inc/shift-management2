@@ -1,7 +1,7 @@
 import { useMemo, useCallback, useEffect, memo, useState, useRef } from 'react';
 import type { Helper, Shift, ServiceType } from '../types';
 import { SERVICE_CONFIG } from '../types';
-import { saveShiftsForMonth, softDeleteShift } from '../services/firestoreService';
+import { saveShiftsForMonth, deleteShift, softDeleteShift } from '../services/firestoreService';
 import { calculateNightHours, calculateRegularHours, calculateTimeDuration } from '../utils/timeCalculations';
 import { calculateShiftPay } from '../utils/salaryCalculations';
 
@@ -26,58 +26,203 @@ interface WeekData {
   days: DayData[];
 }
 
+// 警告が必要なサービスタイプ
+const WARNING_SERVICE_TYPES: ServiceType[] = [
+  'shintai',    // 身体
+  'judo',       // 重度
+  'kaji',       // 家事
+  'tsuin',      // 通院
+  'kodo_engo',  // 行動
+  'ido',        // 移動
+  'jimu',       // 事務
+  'eigyo',      // 営業
+  'doko'        // 同行
+];
+
+// 開始時刻のみで警告が必要かチェック
+function shouldShowWarning(
+  startTime: string | undefined,
+  endTime: string | undefined,
+  serviceType: ServiceType | undefined
+): boolean {
+  // 開始時刻があるのに終了時刻がない、かつ警告対象のサービスタイプの場合
+  if (startTime && !endTime && serviceType) {
+    return WARNING_SERVICE_TYPES.includes(serviceType);
+  }
+  return false;
+}
+
 function groupByWeek(year: number, month: number): WeekData[] {
   const weeks: WeekData[] = [];
   const daysInMonth = new Date(year, month, 0).getDate();
   const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
-  let currentWeek: DayData[] = [];
-  let weekNumber = 1;
 
-  // 1日の曜日を取得
-  const firstDay = new Date(year, month - 1, 1);
-  const firstDayOfWeek = firstDay.getDay(); // 0=日, 1=月, ..., 6=土
+  // 日付ベースで週を区切る（給与計算と同じロジック）
+  const weekRanges = [
+    { weekNumber: 1, start: 1, end: 7 },
+    { weekNumber: 2, start: 8, end: 14 },
+    { weekNumber: 3, start: 15, end: 21 },
+    { weekNumber: 4, start: 22, end: 28 },
+    { weekNumber: 5, start: 29, end: daysInMonth }, // 29日〜月末
+  ];
 
-  // 月曜日から始まるように調整（0=日 → 6, 1=月 → 0, ..., 6=土 → 5）
-  const daysBeforeMonday = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
+  weekRanges.forEach(({ weekNumber, start, end }) => {
+    const currentWeek: DayData[] = [];
 
-  // 1日より前の空白日を追加（グレー背景）
-  for (let i = 0; i < daysBeforeMonday; i++) {
-    currentWeek.push({
-      date: '',  // 空白日
+    // 週の最初の日（start日）の曜日を取得
+    const firstDateInWeek = new Date(year, month - 1, start);
+    const firstDayOfWeek = firstDateInWeek.getDay(); // 0=日, 1=月, ..., 6=土
+
+    // 月曜日から始まるように調整（0=日 → 6, 1=月 → 0, ..., 6=土 → 5）
+    const daysBeforeMonday = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
+
+    // その週の月曜日の日付を計算（start日から戻る）
+    const mondayDate = start - daysBeforeMonday;
+
+    // 月曜日から日曜日まで7日間を生成
+    for (let offset = 0; offset < 7; offset++) {
+      const currentDate = mondayDate + offset;
+
+      // 12月5週目の特殊処理：29日以降 + 1月1-4日
+      if (weekNumber === 5 && month === 12) {
+        if (currentDate > 0 && currentDate <= daysInMonth) {
+          // 12月の日付
+          const date = new Date(year, month - 1, currentDate);
+          const dow = date.getDay();
+
+          currentWeek.push({
+            date: `${year}-${String(month).padStart(2, '0')}-${String(currentDate).padStart(2, '0')}`,
+            dayNumber: currentDate,
+            dayOfWeek: dayNames[dow],
+            dayOfWeekIndex: dow,
+            isEmpty: false
+          });
+        } else if (currentDate > daysInMonth) {
+          // 1月の日付
+          const janDay = currentDate - daysInMonth;
+          if (janDay <= 4) {
+            const nextYear = year + 1;
+            const janDate = new Date(nextYear, 0, janDay);
+            const janDow = janDate.getDay();
+
+            currentWeek.push({
+              date: `${nextYear}-01-${String(janDay).padStart(2, '0')}`,
+              dayNumber: janDay,
+              dayOfWeek: dayNames[janDow],
+              dayOfWeekIndex: janDow,
+              isEmpty: false
+            });
+          } else {
+            // 1/5以降はグレー
+            currentWeek.push({
+              date: '',
+              dayNumber: 0,
+              dayOfWeek: '',
+              dayOfWeekIndex: -1,
+              isEmpty: true
+            });
+          }
+        } else {
+          // 月初より前（11月）はグレー
+          currentWeek.push({
+            date: '',
+            dayNumber: 0,
+            dayOfWeek: '',
+            dayOfWeekIndex: -1,
+            isEmpty: true
+          });
+        }
+      } else {
+        // 通常の週
+        if (currentDate < 1 || currentDate > daysInMonth) {
+          // 月の範囲外はグレー
+          currentWeek.push({
+            date: '',
+            dayNumber: 0,
+            dayOfWeek: '',
+            dayOfWeekIndex: -1,
+            isEmpty: true
+          });
+        } else {
+          // 月の範囲内
+          const date = new Date(year, month - 1, currentDate);
+          const dow = date.getDay();
+
+          currentWeek.push({
+            date: `${year}-${String(month).padStart(2, '0')}-${String(currentDate).padStart(2, '0')}`,
+            dayNumber: currentDate,
+            dayOfWeek: dayNames[dow],
+            dayOfWeekIndex: dow,
+            isEmpty: false
+          });
+        }
+      }
+    }
+
+    // 週に日付がある場合のみ追加
+    if (currentWeek.length > 0) {
+      weeks.push({ weekNumber, days: currentWeek });
+    }
+  });
+
+  // 6週目を追加（空のグレー週、7日間）
+  weeks.push({
+    weekNumber: 6,
+    days: Array(7).fill(null).map(() => ({
+      date: '',
       dayNumber: 0,
       dayOfWeek: '',
       dayOfWeekIndex: -1,
       isEmpty: true
-    });
-  }
-
-  // 実際の日付を追加
-  for (let d = 1; d <= daysInMonth; d++) {
-    const date = new Date(year, month - 1, d);
-    const dow = date.getDay();
-
-    currentWeek.push({
-      date: `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
-      dayNumber: d,
-      dayOfWeek: dayNames[dow],
-      dayOfWeekIndex: dow,
-      isEmpty: false
-    });
-
-    // 日曜日（dow=0）または最終日で週を終了
-    if (dow === 0 || d === daysInMonth) {
-      weeks.push({ weekNumber, days: currentWeek });
-      currentWeek = [];
-      weekNumber++;
-    }
-  }
+    }))
+  });
 
   return weeks;
+}
+
+// シフトを正しい年月に保存するヘルパー関数
+async function saveShiftWithCorrectYearMonth(shift: Shift): Promise<void> {
+  const [shiftYear, shiftMonth] = shift.date.split('-').map(Number);
+  await saveShiftsForMonth(shiftYear, shiftMonth, [shift]);
+}
+
+// 複数のシフトを年月ごとにグループ化して保存
+async function saveShiftsByYearMonth(shifts: Shift[]): Promise<void> {
+  const groupedShifts = new Map<string, Shift[]>();
+
+  shifts.forEach(shift => {
+    const [shiftYear, shiftMonth] = shift.date.split('-').map(Number);
+    const key = `${shiftYear}-${shiftMonth}`;
+
+    if (!groupedShifts.has(key)) {
+      groupedShifts.set(key, []);
+    }
+    groupedShifts.get(key)!.push(shift);
+  });
+
+  await Promise.all(
+    Array.from(groupedShifts.entries()).map(([key, groupShifts]) => {
+      const [shiftYear, shiftMonth] = key.split('-').map(Number);
+      return saveShiftsForMonth(shiftYear, shiftMonth, groupShifts);
+    })
+  );
 }
 
 const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: Props) => {
   const sortedHelpers = useMemo(() => [...helpers].sort((a, b) => a.order - b.order), [helpers]);
   const weeks = useMemo(() => groupByWeek(year, month), [year, month]);
+
+  // タスク1: シフトデータをMapに変換（高速アクセス用）
+  const shiftMap = useMemo(() => {
+    const map = new Map<string, Shift>();
+    shifts.forEach(s => {
+      if (s.rowIndex !== undefined) {
+        const key = `${s.helperId}-${s.date}-${s.rowIndex}`;
+        map.set(key, s);
+      }
+    });
+    return map;
+  }, [shifts]);
 
   // ドラッグ中のセル情報
   const [draggedCell, setDraggedCell] = useState<{ helperId: string; date: string; rowIndex: number } | null>(null);
@@ -88,6 +233,15 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   // 前回選択されたセルを記録（高速クリーンアップ用）
   const lastSelectedCellRef = useRef<HTMLElement | null>(null);
   const lastSelectedRowTdsRef = useRef<HTMLElement[]>([]);
+
+  // Shift+ドラッグ用のref（遅延なし）
+  const isDraggingForSelectionRef = useRef(false);
+  const selectedRowsRef = useRef<Set<string>>(new Set());
+
+  // コピー&ペースト用
+  const copiedCaresRef = useRef<Array<{ helperId: string; date: string; rowIndex: number; data: Shift }>>([]);
+  const [copiedCount, setCopiedCount] = useState(0); // 視覚的フィードバック用
+  const currentTargetCellRef = useRef<{ helperId: string; date: string; rowIndex: number } | null>(null);
 
   // エンターキーの押下回数を追跡するためのMap（セルごと）
   const enterCountRef = useMemo(() => new Map<string, number>(), []);
@@ -100,6 +254,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     data: string[];
     backgroundColor: string;
   }>, []);
+
+  // デバウンス用のタイマー管理（高速化のため）
+  const saveTimersRef = useRef<Map<string, number>>(new Map());
 
   // Redoスタック
   const redoStackRef = useMemo(() => [] as Array<{
@@ -140,60 +297,50 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   // }, [shifts]);
 
   // DOMから直接セルの内容を読み取って集計する関数
-  const calculateServiceTotal = useCallback((helperId: string, date: string, serviceType: string): number => {
-    let total = 0;
+  // タスク4: 集計計算をメモ化（DOM操作なし、shiftMapから直接計算）
+  const serviceTotals = useMemo(() => {
+    const totals = new Map<string, number>();
 
-    // 各行（0-4）をループ
-    for (let rowIndex = 0; rowIndex < 5; rowIndex++) {
-      // 1段目から時間範囲を取得
-      const timeLineSelector = `.editable-cell[data-row="${rowIndex}"][data-line="0"][data-helper="${helperId}"][data-date="${date}"]`;
-      const timeLineCell = document.querySelector(timeLineSelector) as HTMLElement;
-      const timeRange = timeLineCell ? timeLineCell.textContent || '' : '';
+    // すべてのシフトをループ
+    shifts.forEach(shift => {
+      if (!shift.startTime || !shift.endTime) return;
 
-      // 2段目（lineIndex === 1）から利用者名とサービスタイプを取得
-      const serviceLineSelector = `.editable-cell[data-row="${rowIndex}"][data-line="1"][data-helper="${helperId}"][data-date="${date}"]`;
-      const serviceLineCell = document.querySelector(serviceLineSelector) as HTMLElement;
+      const { helperId, date, serviceType, startTime, endTime } = shift;
+      const timeRange = `${startTime}-${endTime}`;
 
-      if (serviceLineCell && timeRange) {
-        const text = serviceLineCell.textContent || '';
-        const match = text.match(/\((.+?)\)/);
+      // 深夜時間と通常時間を計算
+      const nightHours = calculateNightHours(timeRange);
+      const regularHours = calculateRegularHours(timeRange);
 
-        if (match) {
-          const serviceLabel = match[1];
-          // SERVICE_CONFIGから一致するサービスタイプを探す
-          const serviceEntry = Object.entries(SERVICE_CONFIG).find(
-            ([_, config]) => config.label === serviceLabel
-          );
+      // 各サービスタイプの集計キーを作成して加算
+      Object.keys(SERVICE_CONFIG).forEach(targetServiceType => {
+        const key = `${helperId}-${date}-${targetServiceType}`;
+        const current = totals.get(key) || 0;
 
-          if (serviceEntry) {
-            const [currentServiceType, _] = serviceEntry;
-
-            // 深夜時間と通常時間を計算
-            const nightHours = calculateNightHours(timeRange);
-            const regularHours = calculateRegularHours(timeRange);
-
-            // 集計対象のserviceTypeに応じて加算
-            if (serviceType === 'shinya') {
-              // 深夜：同行以外のすべてのサービスの深夜時間を合計
-              if (currentServiceType !== 'doko' && nightHours > 0) {
-                total += nightHours;
-              }
-            } else if (serviceType === 'shinya_doko') {
-              // 深夜(同行)：同行の深夜時間を合計
-              if (currentServiceType === 'doko' && nightHours > 0) {
-                total += nightHours;
-              }
-            } else if (currentServiceType === serviceType) {
-              // 通常のサービスタイプ：そのサービスの通常時間を合計
-              total += regularHours;
-            }
+        if (targetServiceType === 'shinya') {
+          // 深夜：同行以外のすべてのサービスの深夜時間を合計
+          if (serviceType !== 'doko' && nightHours > 0) {
+            totals.set(key, current + nightHours);
           }
+        } else if (targetServiceType === 'shinya_doko') {
+          // 深夜(同行)：同行の深夜時間を合計
+          if (serviceType === 'doko' && nightHours > 0) {
+            totals.set(key, current + nightHours);
+          }
+        } else if (serviceType === targetServiceType) {
+          // 通常のサービスタイプ：そのサービスの通常時間を合計
+          totals.set(key, current + regularHours);
         }
-      }
-    }
+      });
+    });
 
-    return total;
-  }, []);
+    return totals;
+  }, [shifts]);
+
+  const calculateServiceTotal = useCallback((helperId: string, date: string, serviceType: string): number => {
+    const key = `${helperId}-${date}-${serviceType}`;
+    return serviceTotals.get(key) || 0;
+  }, [serviceTotals]);
 
   // 特定のヘルパーと日付の集計行を直接DOM更新する関数
   const updateTotalsForHelperAndDate = useCallback((helperId: string, date: string) => {
@@ -213,8 +360,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
   // ケアを削除する関数
   const deleteCare = useCallback(async (helperId: string, date: string, rowIndex: number, skipMenuClose: boolean = false) => {
-    console.log(`🗑️ deleteCare呼び出し: ${helperId}-${date}-${rowIndex}`);
-
     // 削除前のデータを保存（Undo用）
     const data: string[] = [];
     let backgroundColor = '#ffffff';
@@ -229,8 +374,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         data.push('');
       }
     }
-
-    console.log(`削除前のデータ:`, data);
 
     // 背景色を保存
     const cellSelector = `.editable-cell[data-row="${rowIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
@@ -260,11 +403,19 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       }
     }
 
-    // 背景色もリセット
+    // 背景色と枠線もリセット
     if (cells.length > 0) {
       const parentTd = cells[0].closest('td');
       if (parentTd) {
-        (parentTd as HTMLElement).style.backgroundColor = '#ffffff';
+        const tdElement = parentTd as HTMLElement;
+        tdElement.style.backgroundColor = '#ffffff';
+        // 警告の枠線を削除して通常の枠線に戻す
+        tdElement.style.border = '1px solid #374151';
+        // 右端のヘルパーの場合は右側の枠線を太くする
+        const isLastHelper = tdElement.style.borderRight === '2px solid rgb(0, 0, 0)';
+        if (isLastHelper) {
+          tdElement.style.borderRight = '2px solid #000000';
+        }
       }
       cells.forEach((cell) => {
         const element = cell as HTMLElement;
@@ -281,13 +432,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     // 集計行を更新
     updateTotalsForHelperAndDate(helperId, date);
 
-    // Firestoreで論理削除を実行
+    // Firestoreから完全削除を実行
     const shiftId = `shift-${helperId}-${date}-${rowIndex}`;
     try {
-      await softDeleteShift(shiftId);
-      console.log(`✅ シフトを論理削除しました: ${shiftId}`);
+      await deleteShift(shiftId);
+      console.log('✅ Firestoreから削除完了:', shiftId);
     } catch (error) {
-      console.error('❌ 論理削除に失敗しました:', error);
+      console.error('❌ 削除に失敗しました:', error);
     }
 
     // コンテキストメニューを閉じる（スキップされない場合のみ）
@@ -302,7 +453,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   // Undo関数
   const undo = useCallback(() => {
     if (undoStackRef.length === 0) {
-      console.log('⚠️ Undo履歴がありません');
       return;
     }
 
@@ -368,14 +518,14 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     // 集計行を更新
     updateTotalsForHelperAndDate(helperId, date);
 
-    // Firestoreに保存
-    setTimeout(() => {
+    // Firestoreに保存（即座に実行）
+    (async () => {
       const [timeRange, clientInfo, durationStr, area] = data;
 
       // データが空の場合は論理削除
       if (data.every(line => line.trim() === '')) {
         const shiftId = `shift-${helperId}-${date}-${rowIndex}`;
-        softDeleteShift(shiftId).catch(error => {
+        softDeleteShift(shiftId).catch((error: unknown) => {
           console.error('論理削除に失敗しました:', error);
         });
         console.log('↶ Undoしました（削除状態に戻す）');
@@ -433,18 +583,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         })
       };
 
-      saveShiftsForMonth(year, month, [shift]).then(() => {
-        console.log('↶ Undoしました（Firestoreに保存完了）');
-      }).catch(error => {
-        console.error('Undo後の保存に失敗しました:', error);
-      });
-    }, 100);
+      await saveShiftWithCorrectYearMonth(shift);
+    })();
   }, [undoStackRef, redoStackRef, updateTotalsForHelperAndDate, year, month]);
 
   // Redo関数
   const redo = useCallback(() => {
     if (redoStackRef.length === 0) {
-      console.log('⚠️ Redo履歴がありません');
       return;
     }
 
@@ -510,14 +655,14 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     // 集計行を更新
     updateTotalsForHelperAndDate(helperId, date);
 
-    // Firestoreに保存
-    setTimeout(() => {
+    // Firestoreに保存（即座に実行）
+    (async () => {
       const [timeRange, clientInfo, durationStr, area] = data;
 
       // データが空の場合は論理削除
       if (data.every(line => line.trim() === '')) {
         const shiftId = `shift-${helperId}-${date}-${rowIndex}`;
-        softDeleteShift(shiftId).catch(error => {
+        softDeleteShift(shiftId).catch((error: unknown) => {
           console.error('論理削除に失敗しました:', error);
         });
         console.log('↷ Redoしました（削除状態に戻す）');
@@ -575,85 +720,99 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         })
       };
 
-      saveShiftsForMonth(year, month, [shift]).then(() => {
-        console.log('↷ Redoしました（Firestoreに保存完了）');
-      }).catch(error => {
-        console.error('Redo後の保存に失敗しました:', error);
-      });
-    }, 100);
+      await saveShiftWithCorrectYearMonth(shift);
+      console.log('↷ Redoしました（Firestoreに保存完了）');
+    })().catch((error: unknown) => {
+      console.error('Redo後の保存に失敗しました:', error);
+    });
   }, [redoStackRef, undoStackRef, updateTotalsForHelperAndDate, year, month]);
 
-  // Firestoreから読み込んだデータをセルに反映
+  // タスク3: useEffectのDOM操作を削除 - セルはpropsから直接データを表示するように変更
+  // 集計のみuseEffectで更新（DOM操作なし）
   useEffect(() => {
-    // DOMがレンダリングされた後に実行
-    const timer = setTimeout(() => {
-      shifts.forEach((shift) => {
-        if (shift.rowIndex === undefined) return;
-
-        const { helperId, date, rowIndex, startTime, endTime, clientName, serviceType, duration, area, cancelStatus } = shift;
-
-        // 各ラインのデータ
-        const lines = [
-          startTime && endTime ? `${startTime}-${endTime}` : '',
-          clientName ? `${clientName}(${SERVICE_CONFIG[serviceType]?.label || ''})` : `(${SERVICE_CONFIG[serviceType]?.label || ''})`,
-          duration ? duration.toString() : '',
-          area || ''
-        ];
-
-        // セルにデータを設定
-        for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
-          const cellSelector = `.editable-cell[data-row="${rowIndex}"][data-line="${lineIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
-          const cell = document.querySelector(cellSelector) as HTMLElement;
-          if (cell) {
-            cell.textContent = lines[lineIndex] || '';
-          }
-        }
-
-        // 背景色を設定（キャンセル状態を優先）
-        let bgColor = '#ffffff';
-        if (cancelStatus === 'keep_time' || cancelStatus === 'remove_time') {
-          // キャンセルされている場合は赤色
-          bgColor = '#f87171';
-        } else if (serviceType && SERVICE_CONFIG[serviceType]) {
-          // 通常のサービスタイプの色
-          bgColor = SERVICE_CONFIG[serviceType].bgColor;
-        }
-
-        const cellSelector = `.editable-cell[data-row="${rowIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
-        const cells = document.querySelectorAll(cellSelector);
-
-        if (cells.length > 0) {
-          const parentTd = cells[0].closest('td') as HTMLElement;
-          if (parentTd) {
-            parentTd.style.backgroundColor = bgColor;
-          }
-          cells.forEach((cell) => {
-            const element = cell as HTMLElement;
-            // 現在のoutline状態を保持
-            const currentOutline = element.style.outline;
-            element.style.backgroundColor = bgColor;
-            // outlineを保持（消えないように）
-            if (currentOutline) {
-              element.style.outline = currentOutline;
-            }
-          });
-        }
-      });
-
-      // 集計を更新
-      const updatedSet = new Set<string>();
-      shifts.forEach((shift) => {
-        const key = `${shift.helperId}-${shift.date}`;
-        if (!updatedSet.has(key)) {
-          updatedSet.add(key);
-          updateTotalsForHelperAndDate(shift.helperId, shift.date);
-        }
-      });
-
-    }, 100);
-
-    return () => clearTimeout(timer);
+    const updatedSet = new Set<string>();
+    shifts.forEach((shift) => {
+      const key = `${shift.helperId}-${shift.date}`;
+      if (!updatedSet.has(key)) {
+        updatedSet.add(key);
+        updateTotalsForHelperAndDate(shift.helperId, shift.date);
+      }
+    });
   }, [shifts, updateTotalsForHelperAndDate]);
+
+  // セルのデータと背景色を取得する関数（レンダリング時に使用）
+  const getCellDisplayData = useCallback((helperId: string, date: string, rowIndex: number) => {
+    const shift = shiftMap.get(`${helperId}-${date}-${rowIndex}`);
+
+    if (!shift) {
+      return {
+        lines: ['', '', '', ''],
+        bgColor: '#ffffff',
+        hasWarning: false
+      };
+    }
+
+    const { startTime, endTime, clientName, serviceType, duration, area, cancelStatus } = shift;
+
+    // 各ラインのデータ
+    const timeString = startTime && endTime ? `${startTime}-${endTime}` : (startTime || endTime ? `${startTime || ''}-${endTime || ''}` : '');
+    const lines = [
+      timeString,
+      serviceType === 'other'
+        ? clientName
+        : (clientName ? `${clientName}(${SERVICE_CONFIG[serviceType]?.label || ''})` : `(${SERVICE_CONFIG[serviceType]?.label || ''})`),
+      duration ? duration.toString() : '',
+      area || ''
+    ];
+
+    // 警告が必要かチェック
+    const hasWarning = shouldShowWarning(startTime, endTime, serviceType);
+
+    // 背景色を設定（キャンセル状態を優先）
+    let bgColor = '#ffffff';
+    if (cancelStatus === 'keep_time' || cancelStatus === 'remove_time') {
+      bgColor = '#f87171';
+    } else if (serviceType && SERVICE_CONFIG[serviceType]) {
+      bgColor = SERVICE_CONFIG[serviceType].bgColor;
+    }
+
+    return { lines, bgColor, hasWarning };
+  }, [shiftMap]);
+
+  // refからstateへ同期（描画用）
+  const syncSelection = useCallback(() => {
+    setSelectedRows(new Set(selectedRowsRef.current));
+  }, []);
+
+  // Shift+ドラッグ用イベントハンドラ
+  const handleCellMouseDown = useCallback((e: React.MouseEvent, helperId: string, date: string, rowIndex: number) => {
+    if (e.shiftKey) {
+      isDraggingForSelectionRef.current = true;
+      const rowKey = `${helperId}-${date}-${rowIndex}`;
+      selectedRowsRef.current.add(rowKey);
+      syncSelection();
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, [syncSelection]);
+
+  const handleCellMouseEnter = useCallback((e: React.MouseEvent, helperId: string, date: string, rowIndex: number) => {
+    // Shiftキーが押されている、またはドラッグ中の場合に選択
+    if (isDraggingForSelectionRef.current) {
+      const rowKey = `${helperId}-${date}-${rowIndex}`;
+      selectedRowsRef.current.add(rowKey);
+      syncSelection();
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    // ペースト先のセルを記録
+    currentTargetCellRef.current = { helperId, date, rowIndex };
+  }, [syncSelection]);
+
+  const handleCellMouseUp = useCallback(() => {
+    isDraggingForSelectionRef.current = false;
+  }, []);
 
   // セルをコピーする関数
   const copyCellData = useCallback((helperId: string, date: string, rowIndex: number) => {
@@ -783,7 +942,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           rowIndex
         };
 
-        saveShiftsForMonth(year, month, [shift]);
+        saveShiftWithCorrectYearMonth(shift);
       }
     }, 100);
 
@@ -792,9 +951,31 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
   // キーボードイベント（Cmd+C / Cmd+V / Cmd+Z / Cmd+Shift+Z / 直接入力）のリスナー
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
       // Cmd+C または Ctrl+C
       if ((e.metaKey || e.ctrlKey) && e.key === 'c' && !e.shiftKey) {
+        // 複数選択がある場合
+        if (selectedRowsRef.current.size > 0) {
+          e.preventDefault();
+          const caresToCopy: Array<{ helperId: string; date: string; rowIndex: number; data: Shift }> = [];
+
+          selectedRowsRef.current.forEach(rowKey => {
+            const [helperId, date, rowIndexStr] = rowKey.split('-');
+            const rowIndex = parseInt(rowIndexStr);
+            const shift = shiftMap.get(`${helperId}-${date}-${rowIndex}`);
+
+            if (shift) {
+              caresToCopy.push({ helperId, date, rowIndex, data: shift });
+            }
+          });
+
+          copiedCaresRef.current = caresToCopy;
+          setCopiedCount(caresToCopy.length);
+          console.log(`${caresToCopy.length}件のケアをコピーしました`);
+          return;
+        }
+
+        // 単一選択の場合
         if (selectedCellRef.helperId && selectedCellRef.rowIndex >= 0) {
           e.preventDefault();
           copyCellData(selectedCellRef.helperId, selectedCellRef.date, selectedCellRef.rowIndex);
@@ -804,9 +985,378 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
       // Cmd+V または Ctrl+V
       if ((e.metaKey || e.ctrlKey) && e.key === 'v' && !e.shiftKey) {
+        // 複数コピーされたケアをペースト
+        if (copiedCaresRef.current.length > 0 && currentTargetCellRef.current) {
+          e.preventDefault();
+          const targetCell = currentTargetCellRef.current;
+          const shiftsToSave: Shift[] = [];
+
+          copiedCaresRef.current.forEach((copiedCare) => {
+            const newShift: Shift = {
+              ...copiedCare.data,
+              id: `${targetCell.helperId}-${targetCell.date}-${targetCell.rowIndex}-${Date.now()}-${Math.random()}`,
+              helperId: targetCell.helperId,
+              date: targetCell.date,
+              rowIndex: targetCell.rowIndex
+            };
+
+            shiftsToSave.push(newShift);
+          });
+
+          // 保存
+          try {
+            await saveShiftsByYearMonth(shiftsToSave);
+            onUpdateShifts([...shifts.filter(s => !(s.helperId === targetCell.helperId && s.date === targetCell.date && s.rowIndex === targetCell.rowIndex)), ...shiftsToSave]);
+            console.log(`${shiftsToSave.length}件のケアをペーストしました`);
+          } catch (error: unknown) {
+            console.error('ペーストエラー:', error);
+          }
+          return;
+        }
+
         if (selectedCellRef.helperId && selectedCellRef.rowIndex >= 0) {
           e.preventDefault();
-          pasteCellData(selectedCellRef.helperId, selectedCellRef.date, selectedCellRef.rowIndex);
+
+          // クリップボードからデータを取得してペースト
+          navigator.clipboard.readText().then(async (clipboardText) => {
+            // タブ区切りがあるかチェック（スプレッドシートからの複数列コピー）
+            const hasTabDelimiter = clipboardText.includes('\t');
+
+            if (hasTabDelimiter) {
+              // 2次元データ（複数列）のペースト処理
+              const startDate = selectedCellRef.date;
+              const startRowIndex = selectedCellRef.rowIndex;
+
+              // ペースト開始位置のヘルパーのindexを取得
+              const startHelperIndex = sortedHelpers.findIndex(h => h.id === selectedCellRef.helperId);
+              if (startHelperIndex === -1) {
+                console.error('開始ヘルパーが見つかりません');
+                return;
+              }
+
+              // 行とタブで2次元配列に分割
+              const rows = clipboardText.split(/\r?\n/);
+              const grid: string[][] = rows.map(row => row.split('\t'));
+
+              const shiftsToSave: Shift[] = [];
+              const updatedHelperDates = new Set<string>();
+
+              // 各セルを処理（行位置を保持）
+              for (let colIndex = 0; colIndex < grid[0]?.length || 0; colIndex++) {
+                const targetHelperIndex = startHelperIndex + colIndex;
+                if (targetHelperIndex >= sortedHelpers.length) {
+                  console.log(`列${colIndex}: ヘルパーの範囲外`);
+                  continue;
+                }
+
+                const targetHelper = sortedHelpers[targetHelperIndex];
+                console.log(`列${colIndex}: ${targetHelper.name}`);
+
+                // 4行ごとにグループ化（1シフト = 4行）、空行も位置として保持
+                for (let i = 0; i < grid.length; i += 4) {
+                  const shiftData = [
+                    grid[i]?.[colIndex] || '',
+                    grid[i + 1]?.[colIndex] || '',
+                    grid[i + 2]?.[colIndex] || '',
+                    grid[i + 3]?.[colIndex] || ''
+                  ];
+
+                  if (shiftData.some(line => line.trim() !== '')) {
+                    const currentRowIndex = startRowIndex + Math.floor(i / 4);
+
+                    // DOM要素にデータを設定
+                    for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
+                      const targetSelector = `.editable-cell[data-row="${currentRowIndex}"][data-line="${lineIndex}"][data-helper="${targetHelper.id}"][data-date="${startDate}"]`;
+                      const targetCell = document.querySelector(targetSelector) as HTMLElement;
+
+                      if (targetCell) {
+                        targetCell.textContent = shiftData[lineIndex];
+
+                        // 1段目（時間）の場合、3段目（時間数）を自動計算
+                        if (lineIndex === 0 && shiftData[lineIndex]) {
+                          const duration = calculateTimeDuration(shiftData[lineIndex]);
+                          if (duration) {
+                            const durationSelector = `.editable-cell[data-row="${currentRowIndex}"][data-line="2"][data-helper="${targetHelper.id}"][data-date="${startDate}"]`;
+                            const durationCell = document.querySelector(durationSelector) as HTMLElement;
+                            if (durationCell) {
+                              durationCell.textContent = duration;
+                              shiftData[2] = duration;
+                            }
+                          }
+                        }
+
+                        // 2段目（利用者名）の場合、サービスタイプから背景色を設定
+                        if (lineIndex === 1 && shiftData[lineIndex]) {
+                          const match = shiftData[lineIndex].match(/\((.+?)\)/);
+                          if (match) {
+                            const serviceLabel = match[1];
+                            const serviceEntry = Object.entries(SERVICE_CONFIG).find(
+                              ([_, config]) => config.label === serviceLabel
+                            );
+
+                            if (serviceEntry) {
+                              const [_, config] = serviceEntry;
+
+                              const parentTd = targetCell.closest('td');
+                              if (parentTd) {
+                                (parentTd as HTMLElement).style.backgroundColor = config.bgColor;
+                              }
+
+                              const cellSelector = `[data-row="${currentRowIndex}"][data-helper="${targetHelper.id}"][data-date="${startDate}"].editable-cell`;
+                              const cellElements = document.querySelectorAll(cellSelector);
+                              cellElements.forEach((cell) => {
+                                (cell as HTMLElement).style.backgroundColor = config.bgColor;
+                              });
+                            }
+                          }
+                        }
+                      }
+                    }
+
+                    // Firestoreに保存するデータを準備
+                    const [timeRange, clientInfo, durationStr, area] = shiftData;
+
+                    const match = clientInfo.match(/\((.+?)\)/);
+                    let serviceType: ServiceType = 'other'; // デフォルトはother（自由入力）
+
+                    if (match) {
+                      const serviceLabel = match[1];
+                      const serviceEntry = Object.entries(SERVICE_CONFIG).find(
+                        ([_, config]) => config.label === serviceLabel
+                      );
+                      if (serviceEntry) {
+                        serviceType = serviceEntry[0] as ServiceType;
+                      }
+                    }
+
+                    const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
+                    const timeMatch = timeRange.match(/(\d{1,2}:\d{2})(?:\s*[-~]\s*(\d{1,2}:\d{2}))?/);
+                    const startTime = timeMatch ? timeMatch[1] : '';
+                    const endTime = timeMatch && timeMatch[2] ? timeMatch[2] : '';
+
+                    const shiftId = `shift-${targetHelper.id}-${startDate}-${currentRowIndex}`;
+                    const existingShift = shifts.find(s => s.id === shiftId);
+                    const newCancelStatus = existingShift?.cancelStatus;
+
+                    // 給与を計算（会議とその他は計算しない）
+                    const payCalculation = (serviceType === 'kaigi' || serviceType === 'other')
+                      ? { regularHours: 0, nightHours: 0, regularPay: 0, nightPay: 0, totalPay: 0 }
+                      : calculateShiftPay(serviceType, timeRange);
+
+                    const shift: Shift = {
+                      id: shiftId,
+                      date: startDate,
+                      helperId: targetHelper.id,
+                      clientName,
+                      serviceType,
+                      startTime,
+                      endTime,
+                      duration: parseFloat(durationStr) || 0,
+                      area,
+                      rowIndex: currentRowIndex,
+                      ...(newCancelStatus ? { cancelStatus: newCancelStatus } : {}),
+                      regularHours: payCalculation.regularHours,
+                      nightHours: payCalculation.nightHours,
+                      regularPay: payCalculation.regularPay,
+                      nightPay: payCalculation.nightPay,
+                      totalPay: payCalculation.totalPay
+                    };
+
+                    shiftsToSave.push(shift);
+                    updatedHelperDates.add(`${targetHelper.id}|${startDate}`);
+                  }
+                }
+              }
+
+              // 各ヘルパーと日付の組み合わせで集計を更新
+              updatedHelperDates.forEach(key => {
+                const [helperId, date] = key.split('|');
+                updateTotalsForHelperAndDate(helperId, date);
+              });
+
+              // Firestoreに一括保存（正しい年月に保存）
+              if (shiftsToSave.length > 0) {
+                try {
+                  await saveShiftsByYearMonth(shiftsToSave);
+
+                  // ローカルのshifts配列を更新
+                  const updatedShifts = shifts.filter(s =>
+                    !shiftsToSave.some(newShift => newShift.id === s.id)
+                  );
+                  updatedShifts.push(...shiftsToSave);
+                  onUpdateShifts(updatedShifts);
+
+                  console.log(`✅ ${shiftsToSave.length}件のシフトをペーストして保存しました`);
+                } catch (error) {
+                  console.error('ペーストデータの保存に失敗しました:', error);
+                }
+              }
+            } else {
+              // タブ区切りがない場合：従来の1列ペースト処理
+              const lines = clipboardText.split(/\r?\n/).filter(line => line.trim() !== '');
+
+              if (lines.length > 1) {
+                // 複数行データの場合：1列のシフトとして処理
+                console.log(`📋 スプレッドシートからペースト: ${lines.length}行`);
+
+                const helperId = selectedCellRef.helperId;
+                const date = selectedCellRef.date;
+                const startRowIndex = selectedCellRef.rowIndex;
+
+                // 4行ごとにグループ化（1つのシフト = 4行）
+                const shiftGroups: string[][] = [];
+                for (let i = 0; i < lines.length; i += 4) {
+                  const group = [
+                    lines[i] || '',
+                    lines[i + 1] || '',
+                    lines[i + 2] || '',
+                    lines[i + 3] || ''
+                  ];
+                  shiftGroups.push(group);
+                }
+
+                console.log(`📦 ${shiftGroups.length}件のシフトをペーストします`);
+
+                const shiftsToSave: Shift[] = [];
+
+                // 各シフトグループを順番に配置
+                for (let groupIndex = 0; groupIndex < shiftGroups.length; groupIndex++) {
+                  const currentRow = (startRowIndex + groupIndex).toString();
+                  const dataToSave = shiftGroups[groupIndex];
+
+                  // DOM要素にデータを設定
+                  for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
+                    const targetSelector = `.editable-cell[data-row="${currentRow}"][data-line="${lineIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
+                    const targetCell = document.querySelector(targetSelector) as HTMLElement;
+
+                    if (targetCell) {
+                      targetCell.textContent = dataToSave[lineIndex];
+
+                      // 1段目（時間）の場合、3段目（時間数）を自動計算
+                      if (lineIndex === 0 && dataToSave[lineIndex]) {
+                        const duration = calculateTimeDuration(dataToSave[lineIndex]);
+                        if (duration) {
+                          const durationSelector = `.editable-cell[data-row="${currentRow}"][data-line="2"][data-helper="${helperId}"][data-date="${date}"]`;
+                          const durationCell = document.querySelector(durationSelector) as HTMLElement;
+                          if (durationCell) {
+                            durationCell.textContent = duration;
+                            dataToSave[2] = duration;
+                          }
+                        }
+                      }
+
+                      // 2段目（利用者名）の場合、サービスタイプから背景色を設定
+                      if (lineIndex === 1 && dataToSave[lineIndex]) {
+                        const match = dataToSave[lineIndex].match(/\((.+?)\)/);
+                        if (match) {
+                          const serviceLabel = match[1];
+                          const serviceEntry = Object.entries(SERVICE_CONFIG).find(
+                            ([_, config]) => config.label === serviceLabel
+                          );
+
+                          if (serviceEntry) {
+                            const [_, config] = serviceEntry;
+
+                            const parentTd = targetCell.closest('td');
+                            if (parentTd) {
+                              (parentTd as HTMLElement).style.backgroundColor = config.bgColor;
+                            }
+
+                            const cellSelector = `[data-row="${currentRow}"][data-helper="${helperId}"][data-date="${date}"].editable-cell`;
+                            const cellElements = document.querySelectorAll(cellSelector);
+                            cellElements.forEach((cell) => {
+                              (cell as HTMLElement).style.backgroundColor = config.bgColor;
+                            });
+                          }
+                        }
+                      }
+                    }
+                  }
+
+                  // Firestoreに保存するデータを準備
+                  const [timeRange, clientInfo, durationStr, area] = dataToSave;
+
+                  if (dataToSave.some(line => line.trim() !== '')) {
+                    const match = clientInfo.match(/\((.+?)\)/);
+                    let serviceType: ServiceType = 'other'; // デフォルトはother（自由入力）
+
+                    if (match) {
+                      const serviceLabel = match[1];
+                      const serviceEntry = Object.entries(SERVICE_CONFIG).find(
+                        ([_, config]) => config.label === serviceLabel
+                      );
+                      if (serviceEntry) {
+                        serviceType = serviceEntry[0] as ServiceType;
+                      }
+                    }
+
+                    const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
+                    const timeMatch = timeRange.match(/(\d{1,2}:\d{2})(?:\s*[-~]\s*(\d{1,2}:\d{2}))?/);
+                    const startTime = timeMatch ? timeMatch[1] : '';
+                    const endTime = timeMatch && timeMatch[2] ? timeMatch[2] : '';
+
+                    const shiftId = `shift-${helperId}-${date}-${currentRow}`;
+                    const existingShift = shifts.find(s => s.id === shiftId);
+                    const newCancelStatus = existingShift?.cancelStatus;
+
+                    // 給与を計算（会議とその他は計算しない）
+                    const payCalculation = (serviceType === 'kaigi' || serviceType === 'other')
+                      ? { regularHours: 0, nightHours: 0, regularPay: 0, nightPay: 0, totalPay: 0 }
+                      : calculateShiftPay(serviceType, timeRange);
+
+                    const shift: Shift = {
+                      id: shiftId,
+                      date,
+                      helperId,
+                      clientName,
+                      serviceType,
+                      startTime,
+                      endTime,
+                      duration: parseFloat(durationStr) || 0,
+                      area,
+                      rowIndex: parseInt(currentRow),
+                      ...(newCancelStatus ? { cancelStatus: newCancelStatus } : {}),
+                      regularHours: payCalculation.regularHours,
+                      nightHours: payCalculation.nightHours,
+                      regularPay: payCalculation.regularPay,
+                      nightPay: payCalculation.nightPay,
+                      totalPay: payCalculation.totalPay
+                    };
+
+                    shiftsToSave.push(shift);
+                  }
+                }
+
+                // 集計を更新
+                updateTotalsForHelperAndDate(helperId, date);
+
+                // Firestoreに一括保存
+                if (shiftsToSave.length > 0) {
+                  try {
+                    await saveShiftsByYearMonth(shiftsToSave);
+
+                    // ローカルのshifts配列を更新
+                    const updatedShifts = shifts.filter(s =>
+                      !shiftsToSave.some(newShift => newShift.id === s.id)
+                    );
+                    updatedShifts.push(...shiftsToSave);
+                    onUpdateShifts(updatedShifts);
+
+                    console.log(`✅ ${shiftsToSave.length}件のシフトをペーストして保存しました`);
+                  } catch (error) {
+                    console.error('ペーストデータの保存に失敗しました:', error);
+                  }
+                }
+              } else {
+                // 単一行データの場合：内部コピーバッファからペースト
+                pasteCellData(selectedCellRef.helperId, selectedCellRef.date, selectedCellRef.rowIndex);
+              }
+            }
+          }).catch(error => {
+            console.error('クリップボードの読み取りに失敗しました:', error);
+            // フォールバック：内部コピーバッファを使用
+            pasteCellData(selectedCellRef.helperId, selectedCellRef.date, selectedCellRef.rowIndex);
+          });
         }
         return;
       }
@@ -881,11 +1431,39 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           cell.style.removeProperty('box-shadow');
         }
       }
+
+      // Escapeキー: 複数選択を解除
+      if (e.key === 'Escape') {
+        selectedRowsRef.current.clear();
+        syncSelection();
+        e.preventDefault();
+      }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [selectedCellRef, copyCellData, pasteCellData, undo, redo]);
+  }, [selectedCellRef, copyCellData, pasteCellData, undo, redo, syncSelection, shiftMap]);
+
+  // グローバルイベントリスナー（Shift+ドラッグ用）
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      isDraggingForSelectionRef.current = false;
+    };
+
+    const handleGlobalKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        isDraggingForSelectionRef.current = false;
+      }
+    };
+
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+    document.addEventListener('keyup', handleGlobalKeyUp);
+
+    return () => {
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+      document.removeEventListener('keyup', handleGlobalKeyUp);
+    };
+  }, []);
 
   // 日付全体をコピーする関数
   const copyDateShifts = useCallback((sourceDate: string) => {
@@ -1040,6 +1618,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     cancelKeepTimeBtn.onclick = async () => {
       console.log(`📝 キャンセル（時間残す）処理開始 - ${targetRows.length}件`);
 
+      const canceledShifts: Shift[] = [];
+
       // 全ての行を並列処理で一気に更新
       await Promise.all(targetRows.map(async (key) => {
         const parts = key.split('-');
@@ -1138,13 +1718,24 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           };
 
           try {
-            await saveShiftsForMonth(year, month, [shift]);
+            await saveShiftWithCorrectYearMonth(shift);
+            canceledShifts.push(shift);
             console.log(`✅ 保存完了: ${key}`);
           } catch (error) {
             console.error('キャンセル情報の保存に失敗しました:', error);
           }
         }
       }));
+
+      // shifts配列も更新（cancelStatusを追加）
+      const updatedShifts = shifts.map(s => {
+        const canceledShift = canceledShifts.find(cs => cs.id === s.id);
+        if (canceledShift) {
+          return canceledShift;
+        }
+        return s;
+      });
+      onUpdateShifts(updatedShifts);
 
       // Redoスタックをクリア
       redoStackRef.length = 0;
@@ -1179,6 +1770,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     cancelAllBtn.onmouseout = () => cancelAllBtn.style.backgroundColor = 'transparent';
     cancelAllBtn.onclick = async () => {
       console.log(`📝 キャンセル（時間残さず）処理開始 - ${targetRows.length}件`);
+
+      const canceledShifts: Shift[] = [];
 
       // 全ての行を並列処理で一気に更新
       await Promise.all(targetRows.map(async (key) => {
@@ -1285,13 +1878,24 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           };
 
           try {
-            await saveShiftsForMonth(year, month, [shift]);
+            await saveShiftWithCorrectYearMonth(shift);
+            canceledShifts.push(shift);
             console.log(`✅ 保存完了: ${key}`);
           } catch (error) {
             console.error('キャンセル情報の保存に失敗しました:', error);
           }
         }
       }));
+
+      // shifts配列も更新（cancelStatusを追加）
+      const updatedShifts = shifts.map(s => {
+        const canceledShift = canceledShifts.find(cs => cs.id === s.id);
+        if (canceledShift) {
+          return canceledShift;
+        }
+        return s;
+      });
+      onUpdateShifts(updatedShifts);
 
       // Redoスタックをクリア
       redoStackRef.length = 0;
@@ -1358,6 +1962,202 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       menu.remove();
       console.log('✅ ケア削除処理完了');
     };
+
+    // 対象セル（複数選択含む）がキャンセル状態かチェック
+    const hasCanceledShift = targetRows.some(key => {
+      const parts = key.split('-');
+      const rowIdx = parseInt(parts[parts.length - 1]);
+      const hId = parts[0];
+      const dt = parts.slice(1, parts.length - 1).join('-');
+      const shiftId = `shift-${hId}-${dt}-${rowIdx}`;
+      const existingShift = shifts.find(s => s.id === shiftId);
+      return existingShift?.cancelStatus === 'keep_time' || existingShift?.cancelStatus === 'remove_time';
+    });
+
+    // キャンセル取り消しボタン（キャンセル状態のセルが含まれる場合のみ表示）
+    if (hasCanceledShift) {
+      const undoCancelBtn = document.createElement('div');
+      undoCancelBtn.textContent = 'キャンセルを取り消し';
+      undoCancelBtn.style.padding = '8px 16px';
+      undoCancelBtn.style.cursor = 'pointer';
+      undoCancelBtn.style.color = '#059669';
+      undoCancelBtn.style.fontWeight = 'bold';
+      undoCancelBtn.style.borderTop = '1px solid #e5e7eb';
+      undoCancelBtn.onmouseover = () => undoCancelBtn.style.backgroundColor = '#d1fae5';
+      undoCancelBtn.onmouseout = () => undoCancelBtn.style.backgroundColor = 'transparent';
+      undoCancelBtn.onclick = async () => {
+        console.log(`♻️ キャンセル取り消し処理開始 - ${targetRows.length}件`);
+
+        const restoredShifts: Shift[] = [];
+
+        // 全ての行を並列処理で一気に更新
+        await Promise.all(targetRows.map(async (key) => {
+          const parts = key.split('-');
+          const rowIdx = parseInt(parts[parts.length - 1]);
+          const hId = parts[0];
+          const dt = parts.slice(1, parts.length - 1).join('-');
+
+          console.log(`処理中: ${key}`);
+
+          // 既存のシフトデータを取得
+          const shiftId = `shift-${hId}-${dt}-${rowIdx}`;
+          const existingShift = shifts.find(s => s.id === shiftId);
+
+          // 4つのラインのデータを取得
+          const data: string[] = [];
+          for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
+            const cellSelector = `.editable-cell[data-row="${rowIdx}"][data-line="${lineIndex}"][data-helper="${hId}"][data-date="${dt}"]`;
+            const cell = document.querySelector(cellSelector) as HTMLElement;
+            data.push(cell ? cell.textContent || '' : '');
+          }
+
+          let [timeRange, clientInfo, durationStr, area] = data;
+
+          // remove_timeの場合、Firestoreから元の時間データを復元
+          if (existingShift?.cancelStatus === 'remove_time' && existingShift.startTime && existingShift.endTime) {
+            timeRange = `${existingShift.startTime}-${existingShift.endTime}`;
+            const duration = calculateTimeDuration(timeRange);
+            durationStr = duration || '';
+
+            // DOM要素にも時間を復元
+            const timeCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="0"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
+            const durationCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="2"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
+            if (timeCell) timeCell.textContent = timeRange;
+            if (durationCell) durationCell.textContent = durationStr;
+
+            console.log(`時間を復元: ${timeRange}, duration: ${durationStr}`);
+          }
+
+          // keep_timeの場合も、時間数が空の場合は再計算
+          if (existingShift?.cancelStatus === 'keep_time' && timeRange && !durationStr) {
+            const duration = calculateTimeDuration(timeRange);
+            durationStr = duration || '';
+
+            // DOM要素にも時間数を復元
+            const durationCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="2"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
+            if (durationCell) durationCell.textContent = durationStr;
+
+            console.log(`時間数を復元: ${durationStr}`);
+          }
+
+          // サービスタイプを抽出して元の背景色を取得
+          let bgColor = '#ffffff';
+          const match = clientInfo.match(/\((.+?)\)/);
+          if (match) {
+            const serviceLabel = match[1];
+            const serviceEntry = Object.entries(SERVICE_CONFIG).find(
+              ([_, config]) => config.label === serviceLabel
+            );
+            if (serviceEntry) {
+              const [_, config] = serviceEntry;
+              bgColor = config.bgColor;
+            }
+          }
+
+          // 背景色を元に戻す
+          const cellSelector = `.editable-cell[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
+          const cells = document.querySelectorAll(cellSelector);
+          if (cells.length > 0) {
+            const parentTd = cells[0].closest('td') as HTMLElement;
+            if (parentTd) {
+              parentTd.style.backgroundColor = bgColor;
+            }
+            cells.forEach((cell) => {
+              const element = cell as HTMLElement;
+              const currentOutline = element.style.outline;
+              element.style.backgroundColor = bgColor;
+              if (currentOutline) {
+                element.style.outline = currentOutline;
+              }
+            });
+          }
+
+          // 集計を更新
+          updateTotalsForHelperAndDate(hId, dt);
+
+          // Firestoreに保存（cancelStatusを削除）
+          if (data.some(line => line.trim() !== '')) {
+            let serviceType: ServiceType = 'shintai';
+            if (match) {
+              const serviceLabel = match[1];
+              const serviceEntry = Object.entries(SERVICE_CONFIG).find(
+                ([_, config]) => config.label === serviceLabel
+              );
+              if (serviceEntry) {
+                serviceType = serviceEntry[0] as ServiceType;
+              }
+            }
+
+            const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
+            const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+            const startTime = timeMatch ? timeMatch[1] : '';
+            const endTime = timeMatch ? timeMatch[2] : '';
+
+            // 給与を計算
+            const payCalculation = calculateShiftPay(serviceType, timeRange);
+
+            const shift: Shift = {
+              id: `shift-${hId}-${dt}-${rowIdx}`,
+              date: dt,
+              helperId: hId,
+              clientName,
+              serviceType,
+              startTime,
+              endTime,
+              duration: parseFloat(durationStr) || 0,
+              area,
+              rowIndex: rowIdx,
+              // 給与情報を追加
+              regularHours: payCalculation.regularHours,
+              nightHours: payCalculation.nightHours,
+              regularPay: payCalculation.regularPay,
+              nightPay: payCalculation.nightPay,
+              totalPay: payCalculation.totalPay
+              // cancelStatusフィールドは含めない（削除状態）
+            };
+
+            try {
+              await saveShiftWithCorrectYearMonth(shift);
+              restoredShifts.push(shift);
+              console.log(`✅ 保存完了: ${key}`);
+            } catch (error) {
+              console.error('キャンセル取り消し情報の保存に失敗しました:', error);
+            }
+          }
+        }));
+
+        // shifts配列も更新（復元されたシフトで置き換え）
+        const updatedShifts = shifts.map(s => {
+          const restoredShift = restoredShifts.find(rs => rs.id === s.id);
+          if (restoredShift) {
+            return restoredShift;
+          }
+          return s;
+        });
+        onUpdateShifts(updatedShifts);
+
+        // 複数選択をクリア
+        setSelectedRows(new Set());
+
+        // 前回選択されたtdのoutlineのみ削除
+        lastSelectedRowTdsRef.current.forEach(td => {
+          td.style.removeProperty('outline');
+          td.style.removeProperty('outline-offset');
+        });
+        lastSelectedRowTdsRef.current = [];
+
+        // 前回選択されたセルのbox-shadowのみ削除
+        if (lastSelectedCellRef.current) {
+          lastSelectedCellRef.current.style.removeProperty('box-shadow');
+          lastSelectedCellRef.current = null;
+        }
+
+        menu.remove();
+        console.log('✅ キャンセル取り消し処理完了');
+      };
+
+      menu.appendChild(undoCancelBtn);
+    }
 
     menu.appendChild(cancelKeepTimeBtn);
     menu.appendChild(cancelAllBtn);
@@ -1516,7 +2316,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     setTimeout(() => {
       // ソースセルを削除（論理削除）
       const sourceShiftId = `shift-${sourceHelperId}-${sourceDate}-${sourceRowIndex}`;
-      softDeleteShift(sourceShiftId).catch(error => {
+      softDeleteShift(sourceShiftId).catch((error: unknown) => {
         console.error('ソースセルの削除に失敗:', error);
       });
 
@@ -1551,7 +2351,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           area,
           rowIndex: targetRowIndex
         };
-        saveShiftsForMonth(year, month, [shift]);
+        saveShiftWithCorrectYearMonth(shift);
       }
     }, 10);
 
@@ -1663,7 +2463,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     );
                   }
 
+                  // タスク3: セルデータを取得（DOM操作なし、Mapから直接取得）
+                  const cellDisplayData = getCellDisplayData(helper.id, day.date, rowIndex);
+
                   // 通常の日の場合は編集可能なセルを表示
+                  const rowKey = `${helper.id}-${day.date}-${rowIndex}`;
+                  const isSelected = selectedRows.has(rowKey);
+
                   return (
                     <td
                       key={`${day.date}-${helper.id}-input-${rowIndex}`}
@@ -1675,14 +2481,22 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                         maxWidth: '80px',
                         padding: '0',
                         boxSizing: 'border-box',
-                        border: '1px solid #374151',
-                        borderRight: isLastHelper ? '2px solid #000000' : '1px solid #374151',
+                        border: cellDisplayData.hasWarning ? '3px solid #f97316' : '1px solid #374151',
+                        borderRight: isLastHelper ? '2px solid #000000' : (cellDisplayData.hasWarning ? '3px solid #f97316' : '1px solid #374151'),
                         cursor: draggedCell && draggedCell.helperId === helper.id && draggedCell.date === day.date && draggedCell.rowIndex === rowIndex
                           ? 'grabbing'
                           : 'grab',
-                        opacity: draggedCell && draggedCell.helperId === helper.id && draggedCell.date === day.date && draggedCell.rowIndex === rowIndex ? 0.5 : 1
+                        opacity: draggedCell && draggedCell.helperId === helper.id && draggedCell.date === day.date && draggedCell.rowIndex === rowIndex ? 0.5 : 1,
+                        backgroundColor: cellDisplayData.bgColor,
+                        outline: isSelected ? '2px solid #2196F3' : 'none',
+                        boxShadow: isSelected ? 'inset 0 0 0 2px rgba(33, 150, 243, 0.15)' : 'none',
+                        transition: 'none'
                       }}
+                      title={cellDisplayData.hasWarning ? '⚠️ 終了時刻が入力されていません' : undefined}
                       onMouseDown={(e) => {
+                        // Shift+ドラッグ用の処理
+                        handleCellMouseDown(e, helper.id, day.date, rowIndex);
+
                         // contentEditableの要素をクリックした場合はドラッグを無効化
                         const target = e.target as HTMLElement;
                         if (target.contentEditable === 'true' || target.closest('[contenteditable="true"]')) {
@@ -1691,6 +2505,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                           e.currentTarget.draggable = true;
                         }
                       }}
+                      onMouseEnter={(e) => {
+                        handleCellMouseEnter(e, helper.id, day.date, rowIndex);
+                      }}
+                      onMouseUp={handleCellMouseUp}
                       onContextMenu={(e) => {
                         showContextMenu(e, helper.id, day.date, rowIndex);
                       }}
@@ -1957,6 +2775,157 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                               const cellKey = `${helperId}-${date}-${currentRow}-${currentLine}`;
                               enterCountRef.set(cellKey, 0);
                             }}
+                            onPaste={async (e) => {
+                              e.preventDefault();
+
+                              const helperId = e.currentTarget.dataset.helper || '';
+                              const date = e.currentTarget.dataset.date || '';
+                              const currentRow = e.currentTarget.dataset.row || '0';
+                              const currentLine = parseInt(e.currentTarget.dataset.line || '0');
+
+                              // クリップボードからテキストを取得
+                              const clipboardText = e.clipboardData.getData('text/plain');
+
+                              // 改行で分割
+                              const lines = clipboardText.split(/\r?\n/).filter(line => line.trim() !== '');
+
+                              if (lines.length === 0) {
+                                return;
+                              }
+
+                              console.log(`📋 ペースト処理開始: ${lines.length}行`);
+
+                              // 現在のセルから順番に貼り付け
+                              const dataToSave: string[] = ['', '', '', ''];
+
+                              for (let i = 0; i < Math.min(lines.length, 4 - currentLine); i++) {
+                                const targetLine = currentLine + i;
+                                const targetSelector = `.editable-cell[data-row="${currentRow}"][data-line="${targetLine}"][data-helper="${helperId}"][data-date="${date}"]`;
+                                const targetCell = document.querySelector(targetSelector) as HTMLElement;
+
+                                if (targetCell) {
+                                  targetCell.textContent = lines[i];
+                                  dataToSave[targetLine] = lines[i];
+
+                                  // 1段目（時間）の場合、3段目（時間数）を自動計算
+                                  if (targetLine === 0) {
+                                    const duration = calculateTimeDuration(lines[i]);
+                                    if (duration) {
+                                      const durationSelector = `.editable-cell[data-row="${currentRow}"][data-line="2"][data-helper="${helperId}"][data-date="${date}"]`;
+                                      const durationCell = document.querySelector(durationSelector) as HTMLElement;
+                                      if (durationCell) {
+                                        durationCell.textContent = duration;
+                                        dataToSave[2] = duration;
+                                      }
+                                    }
+                                  }
+
+                                  // 2段目（利用者名）の場合、サービスタイプから背景色を設定
+                                  if (targetLine === 1) {
+                                    const match = lines[i].match(/\((.+?)\)/);
+                                    if (match) {
+                                      const serviceLabel = match[1];
+                                      const serviceEntry = Object.entries(SERVICE_CONFIG).find(
+                                        ([_, config]) => config.label === serviceLabel
+                                      );
+
+                                      if (serviceEntry) {
+                                        const [_, config] = serviceEntry;
+
+                                        // 親のtd要素と全セルに背景色を設定
+                                        const parentTd = targetCell.closest('td');
+                                        if (parentTd) {
+                                          (parentTd as HTMLElement).style.backgroundColor = config.bgColor;
+                                        }
+
+                                        const cellSelector = `[data-row="${currentRow}"][data-helper="${helperId}"][data-date="${date}"].editable-cell`;
+                                        const cellElements = document.querySelectorAll(cellSelector);
+                                        cellElements.forEach((cell) => {
+                                          (cell as HTMLElement).style.backgroundColor = config.bgColor;
+                                        });
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+
+                              // 全4ラインのデータを取得（既存データも含む）
+                              for (let i = 0; i < 4; i++) {
+                                if (dataToSave[i] === '') {
+                                  const cellSelector = `.editable-cell[data-row="${currentRow}"][data-line="${i}"][data-helper="${helperId}"][data-date="${date}"]`;
+                                  const cell = document.querySelector(cellSelector) as HTMLElement;
+                                  if (cell) {
+                                    dataToSave[i] = cell.textContent || '';
+                                  }
+                                }
+                              }
+
+                              // 集計を更新
+                              updateTotalsForHelperAndDate(helperId, date);
+
+                              // Firestoreに保存
+                              const [timeRange, clientInfo, durationStr, area] = dataToSave;
+
+                              if (dataToSave.some(line => line.trim() !== '')) {
+                                const match = clientInfo.match(/\((.+?)\)/);
+                                let serviceType: ServiceType = 'shintai';
+
+                                if (match) {
+                                  const serviceLabel = match[1];
+                                  const serviceEntry = Object.entries(SERVICE_CONFIG).find(
+                                    ([_, config]) => config.label === serviceLabel
+                                  );
+                                  if (serviceEntry) {
+                                    serviceType = serviceEntry[0] as ServiceType;
+                                  }
+                                }
+
+                                const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
+                                const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+                                const startTime = timeMatch ? timeMatch[1] : '';
+                                const endTime = timeMatch ? timeMatch[2] : '';
+
+                                // 既存のシフトを確認してキャンセルステータスを保持
+                                const shiftId = `shift-${helperId}-${date}-${currentRow}`;
+                                const existingShift = shifts.find(s => s.id === shiftId);
+                                const newCancelStatus = existingShift?.cancelStatus;
+
+                                // 給与を計算
+                                const payCalculation = calculateShiftPay(serviceType, timeRange);
+
+                                const shift: Shift = {
+                                  id: shiftId,
+                                  date,
+                                  helperId,
+                                  clientName,
+                                  serviceType,
+                                  startTime,
+                                  endTime,
+                                  duration: parseFloat(durationStr) || 0,
+                                  area,
+                                  rowIndex: parseInt(currentRow),
+                                  ...(newCancelStatus ? { cancelStatus: newCancelStatus } : {}),
+                                  regularHours: payCalculation.regularHours,
+                                  nightHours: payCalculation.nightHours,
+                                  regularPay: payCalculation.regularPay,
+                                  nightPay: payCalculation.nightPay,
+                                  totalPay: payCalculation.totalPay
+                                };
+
+                                try {
+                                  await saveShiftWithCorrectYearMonth(shift);
+
+                                  // ローカルのshifts配列を更新
+                                  const updatedShifts = shifts.filter(s => s.id !== shiftId);
+                                  updatedShifts.push(shift);
+                                  onUpdateShifts(updatedShifts);
+
+                                  console.log('✅ ペーストデータを保存しました');
+                                } catch (error) {
+                                  console.error('ペーストデータの保存に失敗しました:', error);
+                                }
+                              }
+                            }}
                             onBlur={(e) => {
                               // 編集モードを解除（DOM操作）
                               const currentCell = e.currentTarget as HTMLElement;
@@ -1972,72 +2941,101 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                 const date = e.currentTarget.dataset.date || '';
                                 const currentRow = e.currentTarget.dataset.row || '0';
 
-                                // DOM操作で直接集計行を更新（Reactの再レンダリングを回避）
-                                setTimeout(() => updateTotalsForHelperAndDate(helperId, date), 0);
+                                // DOM操作で直接集計行を更新（即座に実行 - 楽観的UI更新）
+                                updateTotalsForHelperAndDate(helperId, date);
 
-                                // Firestoreに保存
-                                setTimeout(() => {
-                                  // 全4ラインのデータを取得
-                                  const lines: string[] = [];
-                                  for (let i = 0; i < 4; i++) {
-                                    const cellSelector = `.editable-cell[data-row="${currentRow}"][data-line="${i}"][data-helper="${helperId}"][data-date="${date}"]`;
-                                    const cell = document.querySelector(cellSelector) as HTMLElement;
-                                    lines.push(cell ? cell.textContent || '' : '');
+                                // デバウンス処理でFirestoreに保存（500ms後）
+                                const saveKey = `${helperId}-${date}-${currentRow}`;
+
+                                // 既存のタイマーをクリア
+                                const existingTimer = saveTimersRef.current.get(saveKey);
+                                if (existingTimer) {
+                                  clearTimeout(existingTimer);
+                                }
+
+                                // 新しいタイマーをセット
+                                const timer = setTimeout(async () => {
+                                  try {
+                                    // 全4ラインのデータを取得
+                                    const lines: string[] = [];
+                                    for (let i = 0; i < 4; i++) {
+                                      const cellSelector = `.editable-cell[data-row="${currentRow}"][data-line="${i}"][data-helper="${helperId}"][data-date="${date}"]`;
+                                      const cell = document.querySelector(cellSelector) as HTMLElement;
+                                      lines.push(cell ? cell.textContent || '' : '');
+                                    }
+
+                                    // データが入力されている場合のみ保存
+                                    if (lines.some(line => line.trim() !== '')) {
+                                      const [timeRange, clientInfo, durationStr, area] = lines;
+
+                                      // サービスタイプを抽出
+                                      const match = clientInfo.match(/\((.+?)\)/);
+                                      let serviceType: ServiceType = 'other';
+                                      if (match) {
+                                        const serviceLabel = match[1];
+                                        const serviceEntry = Object.entries(SERVICE_CONFIG).find(
+                                          ([_, config]) => config.label === serviceLabel
+                                        );
+                                        if (serviceEntry) {
+                                          serviceType = serviceEntry[0] as ServiceType;
+                                        }
+                                      }
+
+                                      const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
+                                      const timeMatch = timeRange.match(/(\d{1,2}:\d{2})(?:\s*-\s*(\d{1,2}:\d{2}))?/);
+                                      const startTime = timeMatch ? timeMatch[1] : '';
+                                      const endTime = timeMatch && timeMatch[2] ? timeMatch[2] : '';
+
+                                      // 給与を計算
+                                      const payCalculation = (serviceType === 'kaigi' || serviceType === 'other')
+                                        ? { regularHours: 0, nightHours: 0, regularPay: 0, nightPay: 0, totalPay: 0 }
+                                        : calculateShiftPay(serviceType, timeRange);
+
+                                      const shiftId = `shift-${helperId}-${date}-${currentRow}`;
+                                      const existingShift = shifts.find(s => s.id === shiftId);
+
+                                      let newCancelStatus = existingShift?.cancelStatus;
+                                      if (existingShift?.cancelStatus === 'remove_time' && timeRange) {
+                                        newCancelStatus = 'keep_time';
+                                      }
+
+                                      const shift: Shift = {
+                                        id: shiftId,
+                                        date,
+                                        helperId,
+                                        clientName,
+                                        serviceType,
+                                        startTime,
+                                        endTime,
+                                        duration: parseFloat(durationStr) || 0,
+                                        area,
+                                        rowIndex: parseInt(currentRow),
+                                        ...(newCancelStatus ? { cancelStatus: newCancelStatus } : {}),
+                                        regularHours: payCalculation.regularHours,
+                                        nightHours: payCalculation.nightHours,
+                                        regularPay: payCalculation.regularPay,
+                                        nightPay: payCalculation.nightPay,
+                                        totalPay: payCalculation.totalPay
+                                      };
+
+                                      // Firestoreに保存（正しい年月に - 1月分も自動的に正しく保存される）
+                                      await saveShiftWithCorrectYearMonth(shift);
+
+                                      // ローカルのshifts配列を更新（画面の再レンダリング用）
+                                      const updatedShifts = shifts.filter(s => s.id !== shift.id);
+                                      updatedShifts.push(shift);
+                                      onUpdateShifts(updatedShifts);
+                                    }
+
+                                    // タイマーをマップから削除
+                                    saveTimersRef.current.delete(saveKey);
+                                  } catch (error) {
+                                    console.error('シフト保存エラー:', error);
                                   }
+                                }, 300); // 300ms後に保存（高速化）
 
-                                  // データが入力されている場合のみ保存
-                                  if (lines.some(line => line.trim() !== '')) {
-                                    const [timeRange, clientInfo, durationStr, area] = lines;
-
-                                    // サービスタイプを抽出
-                                    const match = clientInfo.match(/\((.+?)\)/);
-                                    let serviceType: ServiceType = 'shintai';
-                                    if (match) {
-                                      const serviceLabel = match[1];
-                                      const serviceEntry = Object.entries(SERVICE_CONFIG).find(
-                                        ([_, config]) => config.label === serviceLabel
-                                                  );
-                                                  if (serviceEntry) {
-                                        serviceType = serviceEntry[0] as ServiceType;
-                                                  }
-                                                }
-
-                                                // 利用者名を抽出（括弧を除く）
-                                                const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
-
-                                                // 時間を抽出
-                                                const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
-                                                const startTime = timeMatch ? timeMatch[1] : '';
-                                                const endTime = timeMatch ? timeMatch[2] : '';
-
-                                                // 給与を計算
-                                                const payCalculation = calculateShiftPay(serviceType, timeRange);
-
-                                                // Shiftオブジェクトを作成
-                                                const shift: Shift = {
-                                                  id: `shift-${helperId}-${date}-${currentRow}`,
-                                                  date,
-                                                  helperId,
-                                                  clientName,
-                                                  serviceType,
-                                                  startTime,
-                                                  endTime,
-                                                  duration: parseFloat(durationStr) || 0,
-                                                  area,
-                                                  rowIndex: parseInt(currentRow),
-                                                  // 給与情報を追加
-                                                  regularHours: payCalculation.regularHours,
-                                                  nightHours: payCalculation.nightHours,
-                                                  regularPay: payCalculation.regularPay,
-                                                  nightPay: payCalculation.nightPay,
-                                                  totalPay: payCalculation.totalPay
-                                                };
-
-                                                // Firestoreに保存
-                                                saveShiftsForMonth(year, month, [shift]);
-                                              }
-                                            }, 100);
-                                          }
+                                saveTimersRef.current.set(saveKey, timer);
+                              }
                             }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
@@ -2125,7 +3123,14 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                 }
                               }
                             }}
-                          />
+                          >
+                            {/* タスク3: セルデータを初期表示（DOM操作なし） */}
+                            {lineIndex === 0 && cellDisplayData.hasWarning ? (
+                              <span>⚠️ {cellDisplayData.lines[lineIndex]}</span>
+                            ) : (
+                              cellDisplayData.lines[lineIndex]
+                            )}
+                          </div>
                         );
                         })}
                       </div>
