@@ -66,7 +66,7 @@ function groupByWeek(year: number, month: number): WeekData[] {
     { weekNumber: 5, start: 29, end: daysInMonth }, // 29日〜月末
   ];
 
-  weekRanges.forEach(({ weekNumber, start, end }) => {
+  weekRanges.forEach(({ weekNumber, start }) => {
     const currentWeek: DayData[] = [];
 
     // 週の最初の日（start日）の曜日を取得
@@ -240,7 +240,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
   // コピー&ペースト用
   const copiedCaresRef = useRef<Array<{ helperId: string; date: string; rowIndex: number; data: Shift }>>([]);
-  const [copiedCount, setCopiedCount] = useState(0); // 視覚的フィードバック用
+  const [_copiedCount, setCopiedCount] = useState(0); // 視覚的フィードバック用
   const currentTargetCellRef = useRef<{ helperId: string; date: string; rowIndex: number } | null>(null);
 
   // エンターキーの押下回数を追跡するためのMap（セルごと）

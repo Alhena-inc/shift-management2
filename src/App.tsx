@@ -3,7 +3,7 @@ import { ShiftTable } from './components/ShiftTable';
 import { HelperManager } from './components/HelperManager';
 import { SalaryCalculation } from './components/SalaryCalculation';
 import { PersonalShift } from './components/PersonalShift';
-import { helpers as initialHelpers, shifts as initialShifts } from './data/mockData';
+import { helpers as initialHelpers } from './data/mockData';
 import { SERVICE_CONFIG } from './types';
 import type { Helper, Shift } from './types';
 import { saveHelpers, loadHelpers, loadShiftsForMonth } from './services/firestoreService';
