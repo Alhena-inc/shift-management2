@@ -2450,14 +2450,28 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
   // 月次集計：週払い管理表
   const weeklyPaymentSummary = useMemo(() => {
-    const summary = new Map<string, Array<{ hours: number; amount: number }>>();
+    const summary = new Map<string, Array<{
+      regularHours: number;
+      nightHours: number;
+      nightDokoHours: number;
+      totalHours: number;
+      amount: number;
+    }>>();
 
     sortedHelpers.forEach(helper => {
-      const weeklyData: Array<{ hours: number; amount: number }> = [];
+      const weeklyData: Array<{
+        regularHours: number;
+        nightHours: number;
+        nightDokoHours: number;
+        totalHours: number;
+        amount: number;
+      }> = [];
 
       // 各週（1-6週目）の集計
       weeks.forEach(week => {
-        let totalHours = 0;
+        let regularHours = 0;
+        let nightHours = 0;
+        let nightDokoHours = 0;
         let totalAmount = 0;
 
         week.days.forEach(day => {
@@ -2474,32 +2488,35 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
             if (shift.startTime && shift.endTime) {
               const timeRange = `${shift.startTime}-${shift.endTime}`;
-              const nightHours = calculateNightHours(timeRange);
-              const regularHours = calculateRegularHours(timeRange);
+              const nightHrs = calculateNightHours(timeRange);
+              const regularHrs = calculateRegularHours(timeRange);
 
-              // 深夜時間
-              if (nightHours > 0) {
-                totalHours += nightHours;
+              // 深夜時間の分類
+              if (nightHrs > 0) {
                 if (shift.serviceType === 'doko') {
-                  totalAmount += nightHours * 1200 * 1.25;
+                  nightDokoHours += nightHrs;
+                  totalAmount += nightHrs * 1200 * 1.25;
                 } else {
-                  totalAmount += nightHours * hourlyRate * 1.25;
+                  nightHours += nightHrs;
+                  totalAmount += nightHrs * hourlyRate * 1.25;
                 }
               }
 
               // 通常時間
-              if (regularHours > 0) {
-                totalHours += regularHours;
-                totalAmount += regularHours * hourlyRate;
+              if (regularHrs > 0) {
+                regularHours += regularHrs;
+                totalAmount += regularHrs * hourlyRate;
               }
             } else if (shift.duration && shift.duration > 0) {
-              totalHours += shift.duration;
+              // 時間数のみの場合は通常時間として扱う
+              regularHours += shift.duration;
               totalAmount += shift.duration * hourlyRate;
             }
           });
         });
 
-        weeklyData.push({ hours: totalHours, amount: totalAmount });
+        const totalHours = regularHours + nightHours + nightDokoHours;
+        weeklyData.push({ regularHours, nightHours, nightDokoHours, totalHours, amount: totalAmount });
       });
 
       summary.set(helper.id, weeklyData);
@@ -3577,17 +3594,20 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                   </td>
                   {sortedHelpers.map(helper => {
                     const weeklyData = weeklyPaymentSummary.get(helper.id) || [];
-                    const data = weeklyData[weekIndex] || { hours: 0, amount: 0 };
+                    const data = weeklyData[weekIndex] || {
+                      regularHours: 0,
+                      nightHours: 0,
+                      nightDokoHours: 0,
+                      totalHours: 0,
+                      amount: 0
+                    };
                     return (
-                      <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
-                        {data.hours > 0 ? (
-                          <div>
-                            <div className="font-bold text-blue-700">{data.hours.toFixed(1)}h</div>
-                            <div className="text-xs text-gray-700">¥{Math.round(data.amount).toLocaleString()}</div>
-                          </div>
-                        ) : (
-                          <div className="text-gray-300">0</div>
-                        )}
+                      <td key={helper.id} className="border-2 border-gray-400 p-1 text-center" style={{ fontSize: '10px' }}>
+                        <div className="text-gray-600">通常: {data.regularHours.toFixed(1)}</div>
+                        <div className="text-gray-600">深夜: {data.nightHours.toFixed(1)}</div>
+                        <div className="text-gray-600">深夜同行: {data.nightDokoHours.toFixed(1)}</div>
+                        <div className="font-bold text-blue-700 mt-1">{data.totalHours.toFixed(1)}h</div>
+                        <div className="text-green-700 font-bold">¥{Math.round(data.amount).toLocaleString()}</div>
                       </td>
                     );
                   })}
@@ -3598,12 +3618,18 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 <td className="border-2 border-gray-400 p-2 sticky left-0 bg-blue-100 font-bold">合計</td>
                 {sortedHelpers.map(helper => {
                   const weeklyData = weeklyPaymentSummary.get(helper.id) || [];
-                  const totalHours = weeklyData.reduce((sum, data) => sum + data.hours, 0);
+                  const totalRegularHours = weeklyData.reduce((sum, data) => sum + data.regularHours, 0);
+                  const totalNightHours = weeklyData.reduce((sum, data) => sum + data.nightHours, 0);
+                  const totalNightDokoHours = weeklyData.reduce((sum, data) => sum + data.nightDokoHours, 0);
+                  const totalHours = weeklyData.reduce((sum, data) => sum + data.totalHours, 0);
                   const totalAmount = weeklyData.reduce((sum, data) => sum + data.amount, 0);
                   return (
-                    <td key={helper.id} className="border-2 border-gray-400 p-2 text-center font-bold">
-                      <div className="text-blue-800">{totalHours.toFixed(1)}h</div>
-                      <div className="text-green-700">¥{Math.round(totalAmount).toLocaleString()}</div>
+                    <td key={helper.id} className="border-2 border-gray-400 p-1 text-center font-bold" style={{ fontSize: '10px' }}>
+                      <div className="text-gray-700">通常: {totalRegularHours.toFixed(1)}</div>
+                      <div className="text-gray-700">深夜: {totalNightHours.toFixed(1)}</div>
+                      <div className="text-gray-700">深夜同行: {totalNightDokoHours.toFixed(1)}</div>
+                      <div className="text-blue-800 mt-1 text-sm">{totalHours.toFixed(1)}h</div>
+                      <div className="text-green-700 text-sm">¥{Math.round(totalAmount).toLocaleString()}</div>
                     </td>
                   );
                 })}
