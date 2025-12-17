@@ -2380,6 +2380,131 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     return 'bg-yellow-100';
   }, []);
 
+  // 月次集計：サービス種別時間数集計
+  const serviceTypeSummary = useMemo(() => {
+    const summary = new Map<string, Map<ServiceType, { hours: number; amount: number }>>();
+
+    sortedHelpers.forEach(helper => {
+      const helperData = new Map<ServiceType, { hours: number; amount: number }>();
+
+      // 各サービス種別を初期化
+      Object.keys(SERVICE_CONFIG).forEach(serviceType => {
+        helperData.set(serviceType as ServiceType, { hours: 0, amount: 0 });
+      });
+
+      // シフトから集計
+      shifts.filter(s => s.helperId === helper.id && s.cancelStatus !== 'remove_time').forEach(shift => {
+        const { serviceType, startTime, endTime, duration } = shift;
+        const hourlyRate = SERVICE_CONFIG[serviceType]?.hourlyRate || 0;
+
+        if (startTime && endTime) {
+          const timeRange = `${startTime}-${endTime}`;
+          const nightHours = calculateNightHours(timeRange);
+          const regularHours = calculateRegularHours(timeRange);
+
+          // 深夜時間の計算
+          if (nightHours > 0) {
+            if (serviceType === 'doko') {
+              // 深夜同行
+              const current = helperData.get(serviceType) || { hours: 0, amount: 0 };
+              helperData.set(serviceType, {
+                hours: current.hours + nightHours,
+                amount: current.amount + (nightHours * 1200 * 1.25)
+              });
+            } else {
+              // 通常サービスの深夜
+              const current = helperData.get(serviceType) || { hours: 0, amount: 0 };
+              helperData.set(serviceType, {
+                hours: current.hours + nightHours,
+                amount: current.amount + (nightHours * hourlyRate * 1.25)
+              });
+            }
+          }
+
+          // 通常時間の計算
+          if (regularHours > 0) {
+            const current = helperData.get(serviceType) || { hours: 0, amount: 0 };
+            helperData.set(serviceType, {
+              hours: current.hours + regularHours,
+              amount: current.amount + (regularHours * hourlyRate)
+            });
+          }
+        } else if (duration && duration > 0) {
+          // 時間数のみの場合
+          const current = helperData.get(serviceType) || { hours: 0, amount: 0 };
+          helperData.set(serviceType, {
+            hours: current.hours + duration,
+            amount: current.amount + (duration * hourlyRate)
+          });
+        }
+      });
+
+      summary.set(helper.id, helperData);
+    });
+
+    return summary;
+  }, [sortedHelpers, shifts]);
+
+  // 月次集計：週払い管理表
+  const weeklyPaymentSummary = useMemo(() => {
+    const summary = new Map<string, Array<{ hours: number; amount: number }>>();
+
+    sortedHelpers.forEach(helper => {
+      const weeklyData: Array<{ hours: number; amount: number }> = [];
+
+      // 各週（1-6週目）の集計
+      weeks.forEach(week => {
+        let totalHours = 0;
+        let totalAmount = 0;
+
+        week.days.forEach(day => {
+          if (day.isEmpty) return;
+
+          const dayShifts = shifts.filter(s =>
+            s.helperId === helper.id &&
+            s.date === day.date &&
+            s.cancelStatus !== 'remove_time'
+          );
+
+          dayShifts.forEach(shift => {
+            const hourlyRate = SERVICE_CONFIG[shift.serviceType]?.hourlyRate || 0;
+
+            if (shift.startTime && shift.endTime) {
+              const timeRange = `${shift.startTime}-${shift.endTime}`;
+              const nightHours = calculateNightHours(timeRange);
+              const regularHours = calculateRegularHours(timeRange);
+
+              // 深夜時間
+              if (nightHours > 0) {
+                totalHours += nightHours;
+                if (shift.serviceType === 'doko') {
+                  totalAmount += nightHours * 1200 * 1.25;
+                } else {
+                  totalAmount += nightHours * hourlyRate * 1.25;
+                }
+              }
+
+              // 通常時間
+              if (regularHours > 0) {
+                totalHours += regularHours;
+                totalAmount += regularHours * hourlyRate;
+              }
+            } else if (shift.duration && shift.duration > 0) {
+              totalHours += shift.duration;
+              totalAmount += shift.duration * hourlyRate;
+            }
+          });
+        });
+
+        weeklyData.push({ hours: totalHours, amount: totalAmount });
+      });
+
+      summary.set(helper.id, weeklyData);
+    });
+
+    return summary;
+  }, [sortedHelpers, weeks, shifts]);
+
   return (
     <div className="overflow-x-auto">
       {weeks.map((week) => (
@@ -3217,6 +3342,242 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             </table>
         </div>
       ))}
+
+      {/* 月次集計テーブル1: サービス種別時間数集計 */}
+      <div className="mt-12 mb-8">
+        <h2 className="text-xl font-bold mb-4 bg-blue-100 p-3 rounded">📊 サービス種別時間数集計</h2>
+        <div className="overflow-x-auto">
+          <table className="border-collapse text-xs w-full">
+            <thead>
+              <tr className="bg-gray-200">
+                <th className="border-2 border-gray-400 p-2 sticky left-0 bg-gray-200 z-10 font-bold" style={{ minWidth: '120px' }}>
+                  サービス種別
+                </th>
+                {sortedHelpers.map(helper => (
+                  <th key={helper.id} className="border-2 border-gray-400 p-2 font-bold" style={{ minWidth: '100px' }}>
+                    {helper.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {/* 身体 */}
+              <tr>
+                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-white font-bold">身体</td>
+                {sortedHelpers.map(helper => {
+                  const data = serviceTypeSummary.get(helper.id)?.get('shintai') || { hours: 0, amount: 0 };
+                  return (
+                    <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
+                      {data.hours > 0 ? data.hours.toFixed(1) : '0'}
+                    </td>
+                  );
+                })}
+              </tr>
+              {/* 重度 */}
+              <tr>
+                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-white font-bold">重度</td>
+                {sortedHelpers.map(helper => {
+                  const data = serviceTypeSummary.get(helper.id)?.get('judo') || { hours: 0, amount: 0 };
+                  return (
+                    <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
+                      {data.hours > 0 ? data.hours.toFixed(1) : '0'}
+                    </td>
+                  );
+                })}
+              </tr>
+              {/* 家事 */}
+              <tr>
+                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-white font-bold">家事</td>
+                {sortedHelpers.map(helper => {
+                  const data = serviceTypeSummary.get(helper.id)?.get('kaji') || { hours: 0, amount: 0 };
+                  return (
+                    <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
+                      {data.hours > 0 ? data.hours.toFixed(1) : '0'}
+                    </td>
+                  );
+                })}
+              </tr>
+              {/* 通院 */}
+              <tr>
+                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-white font-bold">通院</td>
+                {sortedHelpers.map(helper => {
+                  const data = serviceTypeSummary.get(helper.id)?.get('tsuin') || { hours: 0, amount: 0 };
+                  return (
+                    <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
+                      {data.hours > 0 ? data.hours.toFixed(1) : '0'}
+                    </td>
+                  );
+                })}
+              </tr>
+              {/* 移動 */}
+              <tr>
+                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-white font-bold">移動</td>
+                {sortedHelpers.map(helper => {
+                  const data = serviceTypeSummary.get(helper.id)?.get('ido') || { hours: 0, amount: 0 };
+                  return (
+                    <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
+                      {data.hours > 0 ? data.hours.toFixed(1) : '0'}
+                    </td>
+                  );
+                })}
+              </tr>
+              {/* 事務(1200) */}
+              <tr>
+                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-white font-bold">事務(1200)</td>
+                {sortedHelpers.map(helper => {
+                  const data = serviceTypeSummary.get(helper.id)?.get('jimu') || { hours: 0, amount: 0 };
+                  return (
+                    <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
+                      {data.hours > 0 ? data.hours.toFixed(1) : '0'}
+                    </td>
+                  );
+                })}
+              </tr>
+              {/* 営業(1200) */}
+              <tr>
+                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-white font-bold">営業(1200)</td>
+                {sortedHelpers.map(helper => {
+                  const data = serviceTypeSummary.get(helper.id)?.get('eigyo') || { hours: 0, amount: 0 };
+                  return (
+                    <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
+                      {data.hours > 0 ? data.hours.toFixed(1) : '0'}
+                    </td>
+                  );
+                })}
+              </tr>
+              {/* 同行(1200) */}
+              <tr>
+                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-white font-bold">同行(1200)</td>
+                {sortedHelpers.map(helper => {
+                  const data = serviceTypeSummary.get(helper.id)?.get('doko') || { hours: 0, amount: 0 };
+                  return (
+                    <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
+                      {data.hours > 0 ? data.hours.toFixed(1) : '0'}
+                    </td>
+                  );
+                })}
+              </tr>
+              {/* サービス時間（合計） */}
+              <tr className="bg-blue-50">
+                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-blue-100 font-bold">サービス時間（合計）</td>
+                {sortedHelpers.map(helper => {
+                  const helperData = serviceTypeSummary.get(helper.id);
+                  let totalHours = 0;
+                  if (helperData) {
+                    helperData.forEach((data) => {
+                      totalHours += data.hours;
+                    });
+                  }
+                  return (
+                    <td key={helper.id} className="border-2 border-gray-400 p-2 text-center font-bold text-blue-700">
+                      {totalHours > 0 ? totalHours.toFixed(1) : '0'}
+                    </td>
+                  );
+                })}
+              </tr>
+              {/* 給与算定 */}
+              <tr className="bg-green-50">
+                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-green-100 font-bold">給与算定</td>
+                {sortedHelpers.map(helper => {
+                  const helperData = serviceTypeSummary.get(helper.id);
+                  let totalAmount = 0;
+                  if (helperData) {
+                    helperData.forEach((data) => {
+                      totalAmount += data.amount;
+                    });
+                  }
+                  return (
+                    <td key={helper.id} className="border-2 border-gray-400 p-2 text-center font-bold text-green-700">
+                      ¥{Math.round(totalAmount).toLocaleString()}
+                    </td>
+                  );
+                })}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 月次集計テーブル2: 週払い管理表 */}
+      <div className="mt-12 mb-8">
+        <h2 className="text-xl font-bold mb-4 bg-purple-100 p-3 rounded">💰 週払い管理表</h2>
+        <div className="overflow-x-auto">
+          <table className="border-collapse text-xs w-full">
+            <thead>
+              <tr className="bg-gray-200">
+                <th className="border-2 border-gray-400 p-2 sticky left-0 bg-gray-200 z-10 font-bold" style={{ minWidth: '100px' }}>
+                  週
+                </th>
+                {sortedHelpers.map(helper => (
+                  <th
+                    key={helper.id}
+                    className="border-2 border-gray-400 p-2 font-bold"
+                    style={{
+                      minWidth: '100px',
+                      backgroundColor: helper.cashPayment ? '#fee2e2' : undefined
+                    }}
+                  >
+                    {helper.name}
+                    {helper.cashPayment && (
+                      <div className="text-red-600 text-xs mt-1">手渡し</div>
+                    )}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {/* 1週目〜6週目 */}
+              {weeks.map((week, weekIndex) => (
+                <tr key={week.weekNumber}>
+                  <td className="border-2 border-gray-400 p-2 sticky left-0 bg-white font-bold">
+                    {week.weekNumber}週目
+                  </td>
+                  {sortedHelpers.map(helper => {
+                    const weeklyData = weeklyPaymentSummary.get(helper.id) || [];
+                    const data = weeklyData[weekIndex] || { hours: 0, amount: 0 };
+                    return (
+                      <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
+                        {data.hours > 0 ? (
+                          <div>
+                            <div className="font-bold text-blue-700">{data.hours.toFixed(1)}h</div>
+                            <div className="text-xs text-gray-700">¥{Math.round(data.amount).toLocaleString()}</div>
+                          </div>
+                        ) : (
+                          <div className="text-gray-300">0</div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+              {/* 合計行 */}
+              <tr className="bg-blue-50">
+                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-blue-100 font-bold">合計</td>
+                {sortedHelpers.map(helper => {
+                  const weeklyData = weeklyPaymentSummary.get(helper.id) || [];
+                  const totalHours = weeklyData.reduce((sum, data) => sum + data.hours, 0);
+                  const totalAmount = weeklyData.reduce((sum, data) => sum + data.amount, 0);
+                  return (
+                    <td key={helper.id} className="border-2 border-gray-400 p-2 text-center font-bold">
+                      <div className="text-blue-800">{totalHours.toFixed(1)}h</div>
+                      <div className="text-green-700">¥{Math.round(totalAmount).toLocaleString()}</div>
+                    </td>
+                  );
+                })}
+              </tr>
+              {/* 精算済み行 */}
+              <tr className="bg-yellow-100">
+                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-yellow-200 font-bold">精算済み</td>
+                {sortedHelpers.map(helper => (
+                  <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
+                    <div className="text-xs text-gray-600">調整額入力可</div>
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 };

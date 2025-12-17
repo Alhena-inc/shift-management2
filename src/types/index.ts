@@ -48,6 +48,7 @@ export interface Helper {
   gender: 'male' | 'female';
   order: number;
   personalToken?: string;  // 個人シフト表用のユニークトークン
+  cashPayment?: boolean;   // 手渡し支払いフラグ
 }
 
 export interface Shift {
