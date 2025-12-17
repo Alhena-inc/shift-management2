@@ -270,7 +270,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   // コピーバッファ（セルのコピー&ペースト用）
   const copyBufferRef = useMemo(() => ({
     data: [] as string[],
-    backgroundColor: '#ffffff'
+    backgroundColor: '#ffffff',
+    cancelStatus: undefined as 'none' | 'keep_time' | 'remove_time' | undefined,
+    canceledAt: undefined as any
   }), []);
 
   // 日付全体のコピーバッファ
@@ -836,12 +838,17 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       }
     }
 
+    // シフトデータからcancelStatusを取得
+    const shift = shiftMap.get(`${helperId}-${date}-${rowIndex}`);
+
     // コピーバッファに保存
     copyBufferRef.data = data;
     copyBufferRef.backgroundColor = backgroundColor;
+    copyBufferRef.cancelStatus = shift?.cancelStatus;
+    copyBufferRef.canceledAt = shift?.canceledAt;
 
-    console.log('📋 セルをコピーしました:', data);
-  }, [copyBufferRef]);
+    console.log('📋 セルをコピーしました:', data, 'cancelStatus:', shift?.cancelStatus);
+  }, [copyBufferRef, shiftMap]);
 
   // セルにペーストする関数
   const pasteCellData = useCallback((helperId: string, date: string, rowIndex: number) => {
@@ -939,7 +946,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           endTime,
           duration: parseFloat(durationStr) || 0,
           area,
-          rowIndex
+          rowIndex,
+          // コピー元のcancelStatusとcanceledAtを引き継ぐ
+          cancelStatus: copyBufferRef.cancelStatus,
+          canceledAt: copyBufferRef.canceledAt
         };
 
         saveShiftWithCorrectYearMonth(shift);
@@ -2314,8 +2324,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
     // Firestoreに保存（速度向上のため10msに短縮）
     setTimeout(() => {
-      // ソースセルを削除（論理削除）
+      // ソースシフトの情報を取得（cancelStatusを含む）
       const sourceShiftId = `shift-${sourceHelperId}-${sourceDate}-${sourceRowIndex}`;
+      const sourceShift = shiftMap.get(`${sourceHelperId}-${sourceDate}-${sourceRowIndex}`);
+
+      // ソースセルを削除（論理削除）
       softDeleteShift(sourceShiftId).catch((error: unknown) => {
         console.error('ソースセルの削除に失敗:', error);
       });
@@ -2349,14 +2362,17 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           endTime,
           duration: parseFloat(durationStr) || 0,
           area,
-          rowIndex: targetRowIndex
+          rowIndex: targetRowIndex,
+          // 元のシフトのcancelStatusとcanceledAtを引き継ぐ
+          cancelStatus: sourceShift?.cancelStatus,
+          canceledAt: sourceShift?.canceledAt
         };
         saveShiftWithCorrectYearMonth(shift);
       }
     }, 10);
 
     setDraggedCell(null);
-  }, [draggedCell, updateTotalsForHelperAndDate, year, month]);
+  }, [draggedCell, updateTotalsForHelperAndDate, shiftMap]);
 
   const getDayHeaderBg = useCallback((dayOfWeekIndex: number) => {
     if (dayOfWeekIndex === 6) return 'bg-blue-200';
