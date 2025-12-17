@@ -3601,13 +3601,15 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                       totalHours: 0,
                       amount: 0
                     };
+                    const totalNightHours = data.nightHours + data.nightDokoHours;
                     return (
-                      <td key={helper.id} className="border-2 border-gray-400 p-1 text-center" style={{ fontSize: '10px' }}>
+                      <td key={helper.id} className="border-2 border-gray-400 p-1 text-center" style={{ fontSize: '10px', lineHeight: '1.4' }}>
                         <div className="text-gray-600">通常: {data.regularHours.toFixed(1)}</div>
-                        <div className="text-gray-600">深夜: {data.nightHours.toFixed(1)}</div>
-                        <div className="text-gray-600">深夜同行: {data.nightDokoHours.toFixed(1)}</div>
-                        <div className="font-bold text-blue-700 mt-1">{data.totalHours.toFixed(1)}h</div>
-                        <div className="text-green-700 font-bold">¥{Math.round(data.amount).toLocaleString()}</div>
+                        <div className="text-gray-600 border-b border-gray-300 pb-1">深夜: {totalNightHours.toFixed(1)}</div>
+                        <div className="font-bold text-blue-700 mt-1">
+                          {data.totalHours.toFixed(1)}h
+                          <span className="ml-2 text-green-700">¥{Math.round(data.amount).toLocaleString()}</span>
+                        </div>
                       </td>
                     );
                   })}
@@ -3623,13 +3625,15 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                   const totalNightDokoHours = weeklyData.reduce((sum, data) => sum + data.nightDokoHours, 0);
                   const totalHours = weeklyData.reduce((sum, data) => sum + data.totalHours, 0);
                   const totalAmount = weeklyData.reduce((sum, data) => sum + data.amount, 0);
+                  const combinedNightHours = totalNightHours + totalNightDokoHours;
                   return (
-                    <td key={helper.id} className="border-2 border-gray-400 p-1 text-center font-bold" style={{ fontSize: '10px' }}>
+                    <td key={helper.id} className="border-2 border-gray-400 p-1 text-center font-bold" style={{ fontSize: '10px', lineHeight: '1.4' }}>
                       <div className="text-gray-700">通常: {totalRegularHours.toFixed(1)}</div>
-                      <div className="text-gray-700">深夜: {totalNightHours.toFixed(1)}</div>
-                      <div className="text-gray-700">深夜同行: {totalNightDokoHours.toFixed(1)}</div>
-                      <div className="text-blue-800 mt-1 text-sm">{totalHours.toFixed(1)}h</div>
-                      <div className="text-green-700 text-sm">¥{Math.round(totalAmount).toLocaleString()}</div>
+                      <div className="text-gray-700 border-b border-gray-300 pb-1">深夜: {combinedNightHours.toFixed(1)}</div>
+                      <div className="text-blue-800 mt-1 text-sm">
+                        {totalHours.toFixed(1)}h
+                        <span className="ml-2 text-green-700">¥{Math.round(totalAmount).toLocaleString()}</span>
+                      </div>
                     </td>
                   );
                 })}
