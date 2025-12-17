@@ -3457,6 +3457,30 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                   );
                 })}
               </tr>
+              {/* 深夜 */}
+              <tr>
+                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-white font-bold">深夜</td>
+                {sortedHelpers.map(helper => {
+                  const data = serviceTypeSummary.get(helper.id)?.get('shinya') || { hours: 0, amount: 0 };
+                  return (
+                    <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
+                      {data.hours > 0 ? data.hours.toFixed(1) : '0'}
+                    </td>
+                  );
+                })}
+              </tr>
+              {/* 深夜(同行) */}
+              <tr>
+                <td className="border-2 border-gray-400 p-2 sticky left-0 bg-white font-bold">深夜(同行)</td>
+                {sortedHelpers.map(helper => {
+                  const data = serviceTypeSummary.get(helper.id)?.get('shinya_doko') || { hours: 0, amount: 0 };
+                  return (
+                    <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
+                      {data.hours > 0 ? data.hours.toFixed(1) : '0'}
+                    </td>
+                  );
+                })}
+              </tr>
               {/* サービス時間（合計） */}
               <tr className="bg-blue-50">
                 <td className="border-2 border-gray-400 p-2 sticky left-0 bg-blue-100 font-bold">サービス時間（合計）</td>
