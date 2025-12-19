@@ -2159,30 +2159,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     setTimeout(() => document.addEventListener('click', closeMenu), 0);
   }, [copyDateShifts, pasteDateShifts, dateCopyBufferRef]);
 
-  // セル選択のトグル（Ctrl/Cmdキーでの複数選択をサポート）
-  const toggleCellSelection = useCallback((helperId: string, date: string, rowIndex: number, isMultiSelect: boolean) => {
-    const cellKey = `${helperId}-${date}-${rowIndex}`;
-
-    setSelectedCells(prev => {
-      const next = new Set(prev);
-
-      if (isMultiSelect) {
-        // Ctrl/Cmd押下時：選択/解除をトグル
-        if (next.has(cellKey)) {
-          next.delete(cellKey);
-        } else {
-          next.add(cellKey);
-        }
-      } else {
-        // 通常クリック：単一選択
-        next.clear();
-        next.add(cellKey);
-      }
-
-      return next;
-    });
-  }, []);
-
   // セル選択の継続（マウスオーバー）
   const handleCellSelectionMove = useCallback((helperId: string, date: string, rowIndex: number) => {
     if (!isSelectingCellsRef.current) return;
@@ -2216,8 +2192,20 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   // 休み希望の設定/解除
   const toggleDayOff = useCallback((helperId: string, date: string, rowIndex: number) => {
     // 選択されたセルから該当のhelperIdとdateのセルを抽出
+    // キーの形式: "helperId-date-rowIndex" なので、最後の部分がrowIndexになる
     const selectedCellsForThisHelperDate = Array.from(selectedCells)
-      .filter(cellKey => cellKey.startsWith(`${helperId}-${date}-`))
+      .filter(cellKey => {
+        // キーを分解: 最後から3番目以降がhelperId-dateの部分
+        const parts = cellKey.split('-');
+        if (parts.length < 3) return false;
+
+        // 最後の1つがrowIndex、残りがhelperId-date
+        const row = parts[parts.length - 1];
+        const cellHelperAndDate = parts.slice(0, -1).join('-');
+        const targetHelperAndDate = `${helperId}-${date}`;
+
+        return cellHelperAndDate === targetHelperAndDate && !isNaN(parseInt(row));
+      })
       .map(cellKey => {
         const parts = cellKey.split('-');
         return parseInt(parts[parts.length - 1]); // rowIndexを取得
@@ -3437,7 +3425,23 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                         });
                         lastSelectedRowTdsRef.current = [];
 
-                        toggleCellSelection(helper.id, day.date, rowIndex, isMultiSelect);
+                        // Ctrl/Cmdキーなしの場合は選択をクリア（ドラッグ選択を新規開始）
+                        if (!isMultiSelect) {
+                          setSelectedCells(new Set());
+                        }
+
+                        // セル選択を追加
+                        const cellKey = `${helper.id}-${day.date}-${rowIndex}`;
+                        setSelectedCells(prev => {
+                          const next = new Set(prev);
+                          if (isMultiSelect && next.has(cellKey)) {
+                            next.delete(cellKey);
+                          } else {
+                            next.add(cellKey);
+                          }
+                          return next;
+                        });
+
                         isSelectingCellsRef.current = true;
                       }}
                       onMouseEnter={(e) => {
