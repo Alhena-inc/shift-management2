@@ -4,7 +4,7 @@ import { SERVICE_CONFIG } from '../types';
 import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests } from '../services/firestoreService';
 import { calculateNightHours, calculateRegularHours, calculateTimeDuration } from '../utils/timeCalculations';
 import { calculateShiftPay } from '../utils/salaryCalculations';
-import { getRowIndicesFromDayOffValue, TIME_SLOTS } from '../utils/timeSlots';
+import { getRowIndicesFromDayOffValue } from '../utils/timeSlots';
 
 // 最適化された入力セルコンポーネント（週払い管理表用）
 interface OptimizedInputCellProps {
@@ -1241,17 +1241,23 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   // セルのデータと背景色を取得する関数（レンダリング時に使用）
   const getCellDisplayData = useCallback((helperId: string, date: string, rowIndex: number) => {
     const shift = shiftMap.get(`${helperId}-${date}-${rowIndex}`);
+
+    // 新形式のキー（行ごと）をチェック
+    const rowSpecificKey = `${helperId}-${date}-${rowIndex}`;
+    const isRowSpecificDayOff = dayOffRequests.has(rowSpecificKey);
+
+    // 旧形式のキー（日付全体）をチェック（後方互換性）
     const dayOffKey = `${helperId}-${date}`;
     const dayOffValue = dayOffRequests.get(dayOffKey);
+    const isOldFormatDayOff = dayOffValue ? getRowIndicesFromDayOffValue(dayOffValue).includes(rowIndex) : false;
 
-    // 休み希望の該当行を判定
-    const isDayOffForThisRow = dayOffValue ? getRowIndicesFromDayOffValue(dayOffValue).includes(rowIndex) : false;
+    // 休み希望の該当行を判定（新形式 または 旧形式）
+    const isDayOffForThisRow = isRowSpecificDayOff || isOldFormatDayOff;
 
     if (!shift) {
-      // 休み希望の場合、該当行にのみ時間指定を表示
-      const dayOffText = isDayOffForThisRow && dayOffValue !== 'all' ? dayOffValue || '' : '';
+      // 休み希望の場合、セルは空のまま背景色のみピンクにする
       return {
-        lines: [dayOffText, '', '', ''],
+        lines: ['', '', '', ''],
         bgColor: isDayOffForThisRow ? '#ffcccc' : '#ffffff',  // 該当行のみピンク背景
         hasWarning: false
       };
@@ -2208,50 +2214,37 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   }, [handleCellSelectionEnd]);
 
   // 休み希望の設定/解除
-  const toggleDayOff = useCallback((helperId: string, date: string) => {
-    const key = `${helperId}-${date}`;
-
+  const toggleDayOff = useCallback((helperId: string, date: string, rowIndex: number) => {
     // 選択されたセルから該当のhelperIdとdateのセルを抽出
     const selectedCellsForThisHelperDate = Array.from(selectedCells)
       .filter(cellKey => cellKey.startsWith(`${helperId}-${date}-`))
       .map(cellKey => {
         const parts = cellKey.split('-');
         return parseInt(parts[parts.length - 1]); // rowIndexを取得
-      })
-      .sort((a, b) => a - b); // 昇順にソート
+      });
+
+    // 選択されたセルがある場合は、それらの行に休み希望を設定
+    const rowsToToggle = selectedCellsForThisHelperDate.length > 0
+      ? selectedCellsForThisHelperDate
+      : [rowIndex]; // 選択なしの場合は右クリックした行のみ
 
     setDayOffRequests(prev => {
       const next = new Map(prev);
-      if (next.has(key)) {
-        next.delete(key);
-        console.log(`✅ 休み希望を解除: ${key}`);
-      } else {
-        let value = 'all';
 
-        // 選択されたセルがある場合は時間範囲を計算
-        if (selectedCellsForThisHelperDate.length > 0) {
-          const minRow = Math.min(...selectedCellsForThisHelperDate);
-          const maxRow = Math.max(...selectedCellsForThisHelperDate);
+      rowsToToggle.forEach(row => {
+        const key = `${helperId}-${date}-${row}`;
 
-          const startSlot = TIME_SLOTS[minRow];
-          const endSlot = TIME_SLOTS[maxRow];
-
-          if (startSlot && endSlot) {
-            const startTime = `${String(startSlot.start).padStart(2, '0')}:00`;
-            const endTime = `${String(endSlot.end).padStart(2, '0')}:00`;
-
-            // 全行選択の場合は'all'
-            if (selectedCellsForThisHelperDate.length === 5 && minRow === 0 && maxRow === 4) {
-              value = 'all';
-            } else {
-              value = `${startTime}-${endTime}`;
-            }
-          }
+        if (next.has(key)) {
+          // 既に休み希望がある場合は解除
+          next.delete(key);
+          console.log(`✅ 休み希望を解除: ${key}`);
+        } else {
+          // 休み希望を設定（値は単に"dayoff"）
+          next.set(key, 'dayoff');
+          console.log(`🏖️ 休み希望を設定: ${key}`);
         }
+      });
 
-        next.set(key, value);
-        console.log(`🏖️ 休み希望を設定: ${key} = ${value}`);
-      }
       // 変更後すぐにFirestoreに保存
       saveDayOffToFirestore(next);
 
@@ -2905,8 +2898,20 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     menu.appendChild(deleteBtn);
 
     // 休み希望の設定/解除ボタン
-    const dayOffKey = `${helperId}-${date}`;
-    const isDayOff = dayOffRequests.has(dayOffKey);
+    // 選択されたセルがある場合は、それらをチェック。なければ右クリックした行のみ
+    const selectedCellsForThisHelperDate = Array.from(selectedCells)
+      .filter(cellKey => cellKey.startsWith(`${helperId}-${date}-`))
+      .map(cellKey => {
+        const parts = cellKey.split('-');
+        return parseInt(parts[parts.length - 1]);
+      });
+
+    const rowsToCheck = selectedCellsForThisHelperDate.length > 0
+      ? selectedCellsForThisHelperDate
+      : [rowIndex];
+
+    // いずれかの行が休み希望かチェック
+    const isDayOff = rowsToCheck.some(row => dayOffRequests.has(`${helperId}-${date}-${row}`));
 
     const dayOffBtn = document.createElement('div');
     dayOffBtn.textContent = isDayOff ? '✅ 休み希望を解除' : '🏖️ 休み希望を設定';
@@ -2916,7 +2921,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     dayOffBtn.onmouseover = () => dayOffBtn.style.backgroundColor = isDayOff ? '#fee2e2' : '#fef3c7';
     dayOffBtn.onmouseout = () => dayOffBtn.style.backgroundColor = 'transparent';
     dayOffBtn.onclick = () => {
-      toggleDayOff(helperId, date);
+      toggleDayOff(helperId, date, rowIndex);
       menu.remove();
     };
 
@@ -2931,7 +2936,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     setTimeout(() => {
       document.addEventListener('click', closeMenu);
     }, 0);
-  }, [deleteCare, selectedRows, setSelectedRows, dayOffRequests, toggleDayOff, saveDayOffToFirestore]);
+  }, [deleteCare, selectedRows, setSelectedRows, dayOffRequests, toggleDayOff, saveDayOffToFirestore, selectedCells]);
 
   // ドラッグ開始
   const handleDragStart = useCallback((e: React.DragEvent, helperId: string, date: string, rowIndex: number) => {
