@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Helper } from '../types';
 import { loadDayOffRequests, saveDayOffRequests } from '../services/firestoreService';
-import { getTimeSlotOptions } from '../utils/timeSlots';
 
 interface DayOffManagerProps {
   helpers: Helper[];
@@ -342,63 +341,59 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
             <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full mx-4">
               <h2 className="text-2xl font-bold mb-6 text-gray-800">休み希望の設定</h2>
 
-              <div className="space-y-3">
-                {/* 時間帯選択ボタン */}
-                {getTimeSlotOptions().map((option) => (
-                  <button
-                    key={option.value}
-                    onClick={() => setDayOffWithTime(option.value)}
-                    className={`w-full px-6 py-3 rounded-lg hover:opacity-90 transition-colors text-lg font-medium ${
-                      option.value === 'all'
-                        ? 'bg-pink-500 text-white hover:bg-pink-600'
-                        : 'bg-blue-500 text-white hover:bg-blue-600'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+              <div className="space-y-4">
+                {/* 終日ボタン */}
+                <button
+                  onClick={() => setDayOffWithTime('all')}
+                  className="w-full px-6 py-4 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors text-lg font-bold"
+                >
+                  終日休み
+                </button>
 
                 <div className="border-t border-gray-200 my-2"></div>
 
-                {/* カスタム時間指定 */}
+                {/* 時間指定 */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">カスタム時間指定</label>
-                  <div className="flex gap-2 items-center">
+                  <label className="block text-base font-medium text-gray-700 mb-3">時間指定</label>
+                  <div className="flex gap-2 items-center mb-2">
                     <input
                       type="time"
                       id="custom-start-time"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+                      className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-lg"
                       defaultValue="08:00"
                     />
-                    <span className="text-gray-500">〜</span>
+                    <span className="text-gray-500 text-lg">〜</span>
                     <input
                       type="time"
                       id="custom-end-time"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+                      className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-lg"
                       placeholder="省略可"
                     />
-                    <button
-                      onClick={() => {
-                        const startInput = document.getElementById('custom-start-time') as HTMLInputElement;
-                        const endInput = document.getElementById('custom-end-time') as HTMLInputElement;
-                        if (startInput) {
-                          const startTime = startInput.value;
-                          const endTime = endInput?.value;
-
-                          // 終了時刻が未入力の場合は「開始時刻-」形式（その行のみ）
-                          if (!endTime) {
-                            setDayOffWithTime(`${startTime}-`);
-                          } else {
-                            setDayOffWithTime(`${startTime}-${endTime}`);
-                          }
-                        }
-                      }}
-                      className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium whitespace-nowrap"
-                    >
-                      設定
-                    </button>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">※終了時刻を省略すると、開始時刻の行のみ休み希望となります</p>
+                  <p className="text-sm text-gray-600 mb-3">
+                    ※終了時刻を省略すると、開始時刻の時間帯のみ休み希望となります<br />
+                    ※時間範囲を指定すると、該当する時間帯の行に自動的に反映されます
+                  </p>
+                  <button
+                    onClick={() => {
+                      const startInput = document.getElementById('custom-start-time') as HTMLInputElement;
+                      const endInput = document.getElementById('custom-end-time') as HTMLInputElement;
+                      if (startInput) {
+                        const startTime = startInput.value;
+                        const endTime = endInput?.value;
+
+                        // 終了時刻が未入力の場合は「開始時刻-」形式（その行のみ）
+                        if (!endTime) {
+                          setDayOffWithTime(`${startTime}-`);
+                        } else {
+                          setDayOffWithTime(`${startTime}-${endTime}`);
+                        }
+                      }
+                    }}
+                    className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-lg font-medium"
+                  >
+                    設定
+                  </button>
                 </div>
 
                 {/* キャンセル */}
