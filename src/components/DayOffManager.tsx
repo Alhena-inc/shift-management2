@@ -375,14 +375,22 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
                       type="time"
                       id="custom-end-time"
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
-                      defaultValue="18:00"
+                      placeholder="省略可"
                     />
                     <button
                       onClick={() => {
                         const startInput = document.getElementById('custom-start-time') as HTMLInputElement;
                         const endInput = document.getElementById('custom-end-time') as HTMLInputElement;
-                        if (startInput && endInput) {
-                          setDayOffWithTime(`${startInput.value}-${endInput.value}`);
+                        if (startInput) {
+                          const startTime = startInput.value;
+                          const endTime = endInput?.value;
+
+                          // 終了時刻が未入力の場合は「開始時刻-」形式（その行のみ）
+                          if (!endTime) {
+                            setDayOffWithTime(`${startTime}-`);
+                          } else {
+                            setDayOffWithTime(`${startTime}-${endTime}`);
+                          }
                         }
                       }}
                       className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium whitespace-nowrap"
@@ -390,6 +398,7 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
                       設定
                     </button>
                   </div>
+                  <p className="text-xs text-gray-500 mt-1">※終了時刻を省略すると、開始時刻の行のみ休み希望となります</p>
                 </div>
 
                 {/* キャンセル */}

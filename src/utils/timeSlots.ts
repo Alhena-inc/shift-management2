@@ -35,6 +35,18 @@ export const getRowIndicesForTimeRange = (startTime: string, endTime: string): n
 };
 
 /**
+ * 特定の時刻が該当する行インデックスを取得（1つの行のみ）
+ * @param time 時刻（"HH:mm"形式）
+ * @returns 該当する行インデックス（見つからない場合は-1）
+ */
+export const getRowIndexForTime = (time: string): number => {
+  const hour = timeToHour(time);
+
+  const slot = TIME_SLOTS.find(s => hour >= s.start && hour < s.end);
+  return slot ? slot.row : -1;
+};
+
+/**
  * 休み希望の値から該当する行インデックスを取得
  * @param value 休み希望の値（"all", "開始時間-終了時間", "開始時間-", "-終了時間"）
  * @returns 該当する行インデックスの配列
@@ -48,9 +60,10 @@ export const getRowIndicesFromDayOffValue = (value: string): number[] => {
   if (value.includes('-')) {
     const [start, end] = value.split('-');
 
-    // "開始時間-" 形式（以降休み）
+    // "開始時間-" 形式（開始時刻のみ）→ その行だけ
     if (!end) {
-      return getRowIndicesForTimeRange(start, '24:00');
+      const rowIndex = getRowIndexForTime(start);
+      return rowIndex >= 0 ? [rowIndex] : [];
     }
 
     // "-終了時間" 形式（まで休み）
@@ -58,7 +71,7 @@ export const getRowIndicesFromDayOffValue = (value: string): number[] => {
       return getRowIndicesForTimeRange('00:00', end);
     }
 
-    // "開始時間-終了時間" 形式
+    // "開始時間-終了時間" 形式（範囲指定）
     return getRowIndicesForTimeRange(start, end);
   }
 
