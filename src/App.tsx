@@ -49,10 +49,67 @@ function App() {
     }
   }, []);
 
-  // URLパスをチェック（個人シフト表の場合は別コンポーネントを表示）
+  // URLパスとクエリパラメータをチェック
   const path = window.location.pathname;
+  const urlParams = new URLSearchParams(window.location.search);
+  const queryToken = urlParams.get('token');
+  const isPwaMode = urlParams.get('pwa') === '1';
   const personalMatch = path.match(/^\/personal\/(.+)$/);
 
+  // PWAインストールモードの場合、インストール手順を表示
+  if (isPwaMode && queryToken) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-6">
+        <div className="max-w-md mx-auto">
+          <div className="bg-white rounded-lg shadow-lg p-8 text-center">
+            <h1 className="text-3xl font-bold mb-4 text-blue-600">📱 アプリをホーム画面に追加</h1>
+
+            <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-6 text-left">
+              <p className="font-bold mb-4 text-lg">このページでホーム画面に追加してください：</p>
+              <ol className="space-y-3 text-base">
+                <li className="flex items-start">
+                  <span className="font-bold mr-2">1.</span>
+                  <span>画面下の <strong className="text-blue-600">共有ボタン（□↑）</strong> をタップ</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="font-bold mr-2">2.</span>
+                  <span><strong className="text-blue-600">「ホーム画面に追加」</strong> をタップ</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="font-bold mr-2">3.</span>
+                  <span><strong className="text-blue-600">「追加」</strong> をタップ</span>
+                </li>
+              </ol>
+            </div>
+
+            <div className="text-gray-600 mb-6">
+              <p>追加後、ホーム画面のアイコンから開くと</p>
+              <p className="font-bold text-blue-600">あなた専用のシフト表が表示されます</p>
+            </div>
+
+            <div className="border-t pt-6">
+              <button
+                onClick={() => window.location.href = `/personal/${queryToken}`}
+                className="text-blue-600 hover:text-blue-800 underline"
+              >
+                ← シフト表に戻る
+              </button>
+            </div>
+          </div>
+
+          {/* プレビュー表示 */}
+          <div className="mt-8">
+            <h2 className="text-xl font-bold mb-4 text-center">シフト表プレビュー</h2>
+            <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+              <PersonalShift token={queryToken} />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // /personal/:token の形式の場合
   if (personalMatch) {
     const token = personalMatch[1];
     return <PersonalShift token={token} />;

@@ -14,6 +14,15 @@ export function PersonalShift({ token }: Props) {
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [isStandalone, setIsStandalone] = useState(false);
+
+  // PWAモードかチェック
+  useEffect(() => {
+    const standalone = window.matchMedia('(display-mode: standalone)').matches
+      || (window.navigator as any).standalone === true;
+    setIsStandalone(standalone);
+    console.log('PWAモード:', standalone);
+  }, []);
 
   // トークンをlocalStorageに保存 & 動的manifestを生成
   useEffect(() => {
@@ -289,8 +298,28 @@ export function PersonalShift({ token }: Props) {
     );
   }
 
+  // アプリ追加ガイドへの移動
+  const handleInstallClick = () => {
+    window.location.href = `/?pwa=1&token=${token}`;
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 pb-8">
+      {/* PWAモードでない場合、インストールガイドを表示 */}
+      {!isStandalone && (
+        <div className="bg-blue-600 text-white p-3 flex justify-between items-center shadow-md">
+          <div>
+            <span className="text-lg font-bold">📱 アプリとして使えます</span>
+          </div>
+          <button
+            onClick={handleInstallClick}
+            className="bg-white text-blue-600 px-4 py-2 rounded-lg font-bold hover:bg-blue-50 transition-colors"
+          >
+            追加する
+          </button>
+        </div>
+      )}
+
       {/* ヘッダー（固定） */}
       <div className="bg-red-600 text-white p-3 sticky top-0 z-10 shadow-md">
         <div className="text-center text-2xl font-bold mb-2">
