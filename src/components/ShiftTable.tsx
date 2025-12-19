@@ -4,7 +4,7 @@ import { SERVICE_CONFIG } from '../types';
 import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests } from '../services/firestoreService';
 import { calculateNightHours, calculateRegularHours, calculateTimeDuration } from '../utils/timeCalculations';
 import { calculateShiftPay } from '../utils/salaryCalculations';
-import { getRowIndicesFromDayOffValue } from '../utils/timeSlots';
+import { getRowIndicesFromDayOffValue, TIME_SLOTS } from '../utils/timeSlots';
 
 // 最適化された入力セルコンポーネント（週払い管理表用）
 interface OptimizedInputCellProps {
@@ -308,6 +308,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
   // 複数選択用のstate
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+
+  // セル複数選択用のstate（キー: "helperId-date-rowIndex"）
+  const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
+  const isSelectingCellsRef = useRef(false); // ドラッグ選択中かどうか
 
   // 休み希望管理（キー: "helperId-date", 値: "all" | "時間-" | "-時間"）
   const [dayOffRequests, setDayOffRequests] = useState<Map<string, string>>(new Map());
@@ -2167,23 +2171,126 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     setTimeout(() => document.addEventListener('click', closeMenu), 0);
   }, [copyDateShifts, pasteDateShifts, dateCopyBufferRef]);
 
+  // セル選択のトグル（Ctrl/Cmdキーでの複数選択をサポート）
+  const toggleCellSelection = useCallback((helperId: string, date: string, rowIndex: number, isMultiSelect: boolean) => {
+    const cellKey = `${helperId}-${date}-${rowIndex}`;
+
+    setSelectedCells(prev => {
+      const next = new Set(prev);
+
+      if (isMultiSelect) {
+        // Ctrl/Cmd押下時：選択/解除をトグル
+        if (next.has(cellKey)) {
+          next.delete(cellKey);
+        } else {
+          next.add(cellKey);
+        }
+      } else {
+        // 通常クリック：単一選択
+        next.clear();
+        next.add(cellKey);
+      }
+
+      return next;
+    });
+  }, []);
+
+  // セル選択の開始（マウスダウン）
+  const handleCellSelectionStart = useCallback((helperId: string, date: string, rowIndex: number, e: React.MouseEvent) => {
+    // 右クリックは無視
+    if (e.button === 2) return;
+
+    const isMultiSelect = e.ctrlKey || e.metaKey;
+    toggleCellSelection(helperId, date, rowIndex, isMultiSelect);
+
+    // ドラッグ選択を開始
+    isSelectingCellsRef.current = true;
+  }, [toggleCellSelection]);
+
+  // セル選択の継続（マウスオーバー）
+  const handleCellSelectionMove = useCallback((helperId: string, date: string, rowIndex: number) => {
+    if (!isSelectingCellsRef.current) return;
+
+    const cellKey = `${helperId}-${date}-${rowIndex}`;
+    setSelectedCells(prev => {
+      const next = new Set(prev);
+      next.add(cellKey);
+      return next;
+    });
+  }, []);
+
+  // セル選択の終了（マウスアップ）
+  const handleCellSelectionEnd = useCallback(() => {
+    isSelectingCellsRef.current = false;
+  }, []);
+
+  // documentにmouseupイベントを登録（セル選択を終了）
+  useEffect(() => {
+    const handleDocumentMouseUp = () => {
+      handleCellSelectionEnd();
+    };
+
+    document.addEventListener('mouseup', handleDocumentMouseUp);
+
+    return () => {
+      document.removeEventListener('mouseup', handleDocumentMouseUp);
+    };
+  }, [handleCellSelectionEnd]);
+
   // 休み希望の設定/解除
   const toggleDayOff = useCallback((helperId: string, date: string) => {
     const key = `${helperId}-${date}`;
+
+    // 選択されたセルから該当のhelperIdとdateのセルを抽出
+    const selectedCellsForThisHelperDate = Array.from(selectedCells)
+      .filter(cellKey => cellKey.startsWith(`${helperId}-${date}-`))
+      .map(cellKey => {
+        const parts = cellKey.split('-');
+        return parseInt(parts[parts.length - 1]); // rowIndexを取得
+      })
+      .sort((a, b) => a - b); // 昇順にソート
+
     setDayOffRequests(prev => {
       const next = new Map(prev);
       if (next.has(key)) {
         next.delete(key);
         console.log(`✅ 休み希望を解除: ${key}`);
       } else {
-        next.set(key, 'all');  // デフォルトは終日休み
-        console.log(`🏖️ 休み希望を設定: ${key}`);
+        let value = 'all';
+
+        // 選択されたセルがある場合は時間範囲を計算
+        if (selectedCellsForThisHelperDate.length > 0) {
+          const minRow = Math.min(...selectedCellsForThisHelperDate);
+          const maxRow = Math.max(...selectedCellsForThisHelperDate);
+
+          const startSlot = TIME_SLOTS[minRow];
+          const endSlot = TIME_SLOTS[maxRow];
+
+          if (startSlot && endSlot) {
+            const startTime = `${String(startSlot.start).padStart(2, '0')}:00`;
+            const endTime = `${String(endSlot.end).padStart(2, '0')}:00`;
+
+            // 全行選択の場合は'all'
+            if (selectedCellsForThisHelperDate.length === 5 && minRow === 0 && maxRow === 4) {
+              value = 'all';
+            } else {
+              value = `${startTime}-${endTime}`;
+            }
+          }
+        }
+
+        next.set(key, value);
+        console.log(`🏖️ 休み希望を設定: ${key} = ${value}`);
       }
       // 変更後すぐにFirestoreに保存
       saveDayOffToFirestore(next);
+
+      // 選択をクリア
+      setSelectedCells(new Set());
+
       return next;
     });
-  }, [saveDayOffToFirestore]);
+  }, [saveDayOffToFirestore, selectedCells]);
 
   // コンテキストメニューを表示する関数
   const showContextMenu = useCallback((e: React.MouseEvent, helperId: string, date: string, rowIndex: number) => {
@@ -3301,7 +3408,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                   // 通常の日の場合は編集可能なセルを表示
                   const rowKey = `${helper.id}-${day.date}-${rowIndex}`;
-                  const isSelected = selectedRows.has(rowKey);
+                  const cellKey = `${helper.id}-${day.date}-${rowIndex}`;
+                  const isSelectedRow = selectedRows.has(rowKey);
+                  const isSelectedCell = selectedCells.has(cellKey);
 
                   return (
                     <td
@@ -3322,8 +3431,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                           : 'grab',
                         opacity: draggedCell && draggedCell.helperId === helper.id && draggedCell.date === day.date && draggedCell.rowIndex === rowIndex ? 0.5 : 1,
                         backgroundColor: cellDisplayData.bgColor,
-                        outline: isSelected ? '2px solid #2196F3' : 'none',
-                        boxShadow: isSelected ? 'inset 0 0 0 2px rgba(33, 150, 243, 0.15)' : 'none',
+                        outline: (isSelectedRow || isSelectedCell) ? '2px solid #2196F3' : 'none',
+                        boxShadow: (isSelectedRow || isSelectedCell) ? 'inset 0 0 0 2px rgba(33, 150, 243, 0.15)' : 'none',
                         transition: 'none'
                       }}
                       title={cellDisplayData.hasWarning ? '⚠️ 終了時刻が入力されていません' : undefined}
@@ -3339,8 +3448,14 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                           e.currentTarget.draggable = true;
                         }
                       }}
+                      onMouseDown={(e) => {
+                        // セル選択の開始
+                        handleCellSelectionStart(helper.id, day.date, rowIndex, e);
+                      }}
                       onMouseEnter={(e) => {
                         handleCellMouseEnter(e, helper.id, day.date, rowIndex);
+                        // セル選択の継続
+                        handleCellSelectionMove(helper.id, day.date, rowIndex);
                       }}
                       onContextMenu={(e) => {
                         showContextMenu(e, helper.id, day.date, rowIndex);
