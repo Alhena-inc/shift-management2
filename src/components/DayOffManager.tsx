@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { Helper } from '../types';
 import { loadDayOffRequests, saveDayOffRequests } from '../services/firestoreService';
+import { getTimeSlotOptions } from '../utils/timeSlots';
 
 interface DayOffManagerProps {
   helpers: Helper[];
@@ -62,17 +63,10 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
   };
 
   // 時間指定で休み希望を設定
-  const setDayOffWithTime = (timeType: 'all' | 'from' | 'until', time?: string) => {
+  const setDayOffWithTime = (value: string) => {
     if (!selectedCell) return;
 
     const key = `${selectedCell.helperId}-${selectedCell.date}`;
-    let value = 'all';
-
-    if (timeType === 'from' && time) {
-      value = `${time}-`;
-    } else if (timeType === 'until' && time) {
-      value = `-${time}`;
-    }
 
     setDayOffRequests(prev => {
       const next = new Map(prev);
@@ -348,65 +342,50 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
             <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full mx-4">
               <h2 className="text-2xl font-bold mb-6 text-gray-800">休み希望の設定</h2>
 
-              <div className="space-y-4">
-                {/* 終日休み */}
-                <button
-                  onClick={() => setDayOffWithTime('all')}
-                  className="w-full px-6 py-4 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors text-lg font-medium"
-                >
-                  終日休み
-                </button>
+              <div className="space-y-3">
+                {/* 時間帯選択ボタン */}
+                {getTimeSlotOptions().map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => setDayOffWithTime(option.value)}
+                    className={`w-full px-6 py-3 rounded-lg hover:opacity-90 transition-colors text-lg font-medium ${
+                      option.value === 'all'
+                        ? 'bg-pink-500 text-white hover:bg-pink-600'
+                        : 'bg-blue-500 text-white hover:bg-blue-600'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
 
-                {/* 〇〇時以降休み */}
+                <div className="border-t border-gray-200 my-2"></div>
+
+                {/* カスタム時間指定 */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">〇〇時以降休み</label>
-                  <div className="flex gap-2">
-                    <select
-                      id="from-time"
-                      className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
-                      defaultValue="17:00"
-                    >
-                      {Array.from({ length: 24 }, (_, i) => {
-                        const hour = String(i).padStart(2, '0');
-                        return (
-                          <option key={hour} value={`${hour}:00`}>{hour}:00</option>
-                        );
-                      })}
-                    </select>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">カスタム時間指定</label>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="time"
+                      id="custom-start-time"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+                      defaultValue="08:00"
+                    />
+                    <span className="text-gray-500">〜</span>
+                    <input
+                      type="time"
+                      id="custom-end-time"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+                      defaultValue="18:00"
+                    />
                     <button
                       onClick={() => {
-                        const select = document.getElementById('from-time') as HTMLSelectElement;
-                        setDayOffWithTime('from', select.value);
+                        const startInput = document.getElementById('custom-start-time') as HTMLInputElement;
+                        const endInput = document.getElementById('custom-end-time') as HTMLInputElement;
+                        if (startInput && endInput) {
+                          setDayOffWithTime(`${startInput.value}-${endInput.value}`);
+                        }
                       }}
-                      className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
-                    >
-                      設定
-                    </button>
-                  </div>
-                </div>
-
-                {/* 〇〇時まで休み */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">〇〇時まで休み</label>
-                  <div className="flex gap-2">
-                    <select
-                      id="until-time"
-                      className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
-                      defaultValue="12:00"
-                    >
-                      {Array.from({ length: 24 }, (_, i) => {
-                        const hour = String(i).padStart(2, '0');
-                        return (
-                          <option key={hour} value={`${hour}:00`}>{hour}:00</option>
-                        );
-                      })}
-                    </select>
-                    <button
-                      onClick={() => {
-                        const select = document.getElementById('until-time') as HTMLSelectElement;
-                        setDayOffWithTime('until', select.value);
-                      }}
-                      className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+                      className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium whitespace-nowrap"
                     >
                       設定
                     </button>

@@ -4,6 +4,7 @@ import { SERVICE_CONFIG } from '../types';
 import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests } from '../services/firestoreService';
 import { calculateNightHours, calculateRegularHours, calculateTimeDuration } from '../utils/timeCalculations';
 import { calculateShiftPay } from '../utils/salaryCalculations';
+import { getRowIndicesFromDayOffValue } from '../utils/timeSlots';
 
 // 最適化された入力セルコンポーネント（週払い管理表用）
 interface OptimizedInputCellProps {
@@ -1238,14 +1239,16 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     const shift = shiftMap.get(`${helperId}-${date}-${rowIndex}`);
     const dayOffKey = `${helperId}-${date}`;
     const dayOffValue = dayOffRequests.get(dayOffKey);
-    const isDayOff = !!dayOffValue;
+
+    // 休み希望の該当行を判定
+    const isDayOffForThisRow = dayOffValue ? getRowIndicesFromDayOffValue(dayOffValue).includes(rowIndex) : false;
 
     if (!shift) {
-      // 休み希望の場合は最初の行に時間指定を表示
-      const dayOffText = dayOffValue === 'all' ? '' : dayOffValue || '';
+      // 休み希望の場合、該当行にのみ時間指定を表示
+      const dayOffText = isDayOffForThisRow && dayOffValue !== 'all' ? dayOffValue || '' : '';
       return {
         lines: [dayOffText, '', '', ''],
-        bgColor: isDayOff ? '#ffcccc' : '#ffffff',  // 休み希望の場合はピンク背景
+        bgColor: isDayOffForThisRow ? '#ffcccc' : '#ffffff',  // 該当行のみピンク背景
         hasWarning: false
       };
     }
@@ -1272,8 +1275,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       bgColor = '#f87171';  // キャンセル状態は赤
     } else if (serviceType && SERVICE_CONFIG[serviceType]) {
       bgColor = SERVICE_CONFIG[serviceType].bgColor;  // サービスタイプの背景色
-    } else if (isDayOff) {
-      bgColor = '#ffcccc';  // 休み希望はピンク
+    } else if (isDayOffForThisRow) {
+      bgColor = '#ffcccc';  // 該当行の休み希望はピンク
     }
 
     return { lines, bgColor, hasWarning };
