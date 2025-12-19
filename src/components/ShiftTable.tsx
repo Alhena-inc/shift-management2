@@ -1291,8 +1291,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     setSelectedRows(new Set(selectedRowsRef.current));
   }, []);
 
-  // RAF用のref
-  const rafIdRef = useRef<number | null>(null);
+  // ドラッグ選択用のref
   const lastProcessedCellRef = useRef<string | null>(null);
   const justStartedDraggingRef = useRef<boolean>(false);
 
@@ -1307,40 +1306,32 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     return td.dataset.cellKey || null;
   }, []);
 
-  // pointermoveハンドラ（RAFでスロットル）
+  // pointermoveハンドラ（即座に反映）
   const handlePointerMove = useCallback((e: PointerEvent) => {
     if (!isDraggingForSelectionRef.current) return;
 
     // 実際にドラッグが開始されたことを記録
     justStartedDraggingRef.current = true;
 
-    // RAFで次フレームまで待機（16ms間隔に制限）
-    if (rafIdRef.current !== null) return;
+    const cellKey = getCellFromPoint(e.clientX, e.clientY);
+    if (!cellKey) return;
 
-    rafIdRef.current = requestAnimationFrame(() => {
-      rafIdRef.current = null;
+    // 同じセルは処理しない（最適化）
+    if (cellKey === lastProcessedCellRef.current) return;
+    lastProcessedCellRef.current = cellKey;
 
-      const cellKey = getCellFromPoint(e.clientX, e.clientY);
-      if (!cellKey) return;
+    // Setに追加（重複は自動で無視される）
+    if (!selectedRowsRef.current.has(cellKey)) {
+      selectedRowsRef.current.add(cellKey);
 
-      // 最初のセルまたは新しいセルを処理
-      if (cellKey !== lastProcessedCellRef.current) {
-        lastProcessedCellRef.current = cellKey;
+      // DOM直接操作で即座に青枠表示
+      const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
+      if (td) {
+        td.style.setProperty('outline', '2px solid #3b82f6', 'important');
+        td.style.setProperty('outline-offset', '-2px', 'important');
+        lastSelectedRowTdsRef.current.push(td);
       }
-
-      // Setに追加（重複は自動で無視される）
-      if (!selectedRowsRef.current.has(cellKey)) {
-        selectedRowsRef.current.add(cellKey);
-
-        // DOM直接操作で即座に青枠表示
-        const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
-        if (td) {
-          td.style.setProperty('outline', '2px solid #3b82f6', 'important');
-          td.style.setProperty('outline-offset', '-2px', 'important');
-          lastSelectedRowTdsRef.current.push(td);
-        }
-      }
-    });
+    }
   }, [getCellFromPoint]);
 
   // pointerupハンドラ
@@ -1350,12 +1341,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
     // リスナー解除
     document.removeEventListener('pointermove', handlePointerMove);
-
-    // RAFをキャンセル
-    if (rafIdRef.current !== null) {
-      cancelAnimationFrame(rafIdRef.current);
-      rafIdRef.current = null;
-    }
 
     // React stateを最後に一度だけ同期
     setSelectedRows(new Set(selectedRowsRef.current));
@@ -1395,9 +1380,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     return () => {
       // コンポーネントアンマウント時にリスナー解除
       document.removeEventListener('pointermove', handlePointerMove);
-      if (rafIdRef.current !== null) {
-        cancelAnimationFrame(rafIdRef.current);
-      }
     };
   }, [handlePointerMove]);
 
