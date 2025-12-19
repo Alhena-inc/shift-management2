@@ -3423,9 +3423,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                   // 通常の日の場合は編集可能なセルを表示
                   const rowKey = `${helper.id}-${day.date}-${rowIndex}`;
-                  const cellKey = `${helper.id}-${day.date}-${rowIndex}`;
                   const isSelectedRow = selectedRows.has(rowKey);
-                  const isSelectedCell = selectedCells.has(cellKey);
 
                   return (
                     <td
@@ -3439,19 +3437,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                         maxWidth: '80px',
                         padding: '0',
                         boxSizing: 'border-box',
-                        border: isSelectedCell
-                          ? '3px solid #2196F3'
-                          : (cellDisplayData.hasWarning ? '3px solid #f97316' : '1px solid #374151'),
-                        borderRight: isSelectedCell
-                          ? '3px solid #2196F3'
-                          : (isLastHelper ? '2px solid #000000' : (cellDisplayData.hasWarning ? '3px solid #f97316' : '1px solid #374151')),
+                        border: cellDisplayData.hasWarning ? '3px solid #f97316' : '1px solid #374151',
+                        borderRight: isLastHelper ? '2px solid #000000' : (cellDisplayData.hasWarning ? '3px solid #f97316' : '1px solid #374151'),
                         cursor: draggedCell && draggedCell.helperId === helper.id && draggedCell.date === day.date && draggedCell.rowIndex === rowIndex
                           ? 'grabbing'
                           : 'grab',
                         opacity: draggedCell && draggedCell.helperId === helper.id && draggedCell.date === day.date && draggedCell.rowIndex === rowIndex ? 0.5 : 1,
-                        backgroundColor: isSelectedCell
-                          ? 'rgba(33, 150, 243, 0.1)'
-                          : (isSelectedRow ? 'rgba(33, 150, 243, 0.05)' : cellDisplayData.bgColor),
+                        backgroundColor: isSelectedRow ? 'rgba(33, 150, 243, 0.05)' : cellDisplayData.bgColor,
                         transition: 'none'
                       }}
                       title={cellDisplayData.hasWarning ? '⚠️ 終了時刻が入力されていません' : undefined}
