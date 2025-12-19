@@ -3439,15 +3439,19 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                         maxWidth: '80px',
                         padding: '0',
                         boxSizing: 'border-box',
-                        border: cellDisplayData.hasWarning ? '3px solid #f97316' : '1px solid #374151',
-                        borderRight: isLastHelper ? '2px solid #000000' : (cellDisplayData.hasWarning ? '3px solid #f97316' : '1px solid #374151'),
+                        border: isSelectedCell
+                          ? '3px solid #2196F3'
+                          : (cellDisplayData.hasWarning ? '3px solid #f97316' : '1px solid #374151'),
+                        borderRight: isSelectedCell
+                          ? '3px solid #2196F3'
+                          : (isLastHelper ? '2px solid #000000' : (cellDisplayData.hasWarning ? '3px solid #f97316' : '1px solid #374151')),
                         cursor: draggedCell && draggedCell.helperId === helper.id && draggedCell.date === day.date && draggedCell.rowIndex === rowIndex
                           ? 'grabbing'
                           : 'grab',
                         opacity: draggedCell && draggedCell.helperId === helper.id && draggedCell.date === day.date && draggedCell.rowIndex === rowIndex ? 0.5 : 1,
-                        backgroundColor: cellDisplayData.bgColor,
-                        outline: (isSelectedRow || isSelectedCell) ? '2px solid #2196F3' : 'none',
-                        boxShadow: (isSelectedRow || isSelectedCell) ? 'inset 0 0 0 2px rgba(33, 150, 243, 0.15)' : 'none',
+                        backgroundColor: isSelectedCell
+                          ? 'rgba(33, 150, 243, 0.1)'
+                          : (isSelectedRow ? 'rgba(33, 150, 243, 0.05)' : cellDisplayData.bgColor),
                         transition: 'none'
                       }}
                       title={cellDisplayData.hasWarning ? '⚠️ 終了時刻が入力されていません' : undefined}
