@@ -2200,7 +2200,22 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     // 右クリックは無視
     if (e.button === 2) return;
 
+    // Shiftキーが押されている場合は、既存のShift+ドラッグ機能を優先（セル選択は無視）
+    if (e.shiftKey) return;
+
     const isMultiSelect = e.ctrlKey || e.metaKey;
+
+    // 既存のShift+ドラッグ選択をクリア
+    setSelectedRows(new Set());
+    selectedRowsRef.current.clear();
+
+    // 前回の青枠をクリア
+    lastSelectedRowTdsRef.current.forEach(td => {
+      td.style.removeProperty('outline');
+      td.style.removeProperty('outline-offset');
+    });
+    lastSelectedRowTdsRef.current = [];
+
     toggleCellSelection(helperId, date, rowIndex, isMultiSelect);
 
     // ドラッグ選択を開始
