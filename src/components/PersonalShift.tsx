@@ -33,11 +33,12 @@ export function PersonalShift({ token }: Props) {
     }
 
     // 動的にmanifest.jsonを生成（ホーム画面追加時に正しいURLで開くため）
-    // クエリパラメータ形式にすることで、静的manifestでも対応可能
+    // PWA起動時に直接個人シフトページを開くようにする
     const manifestData = {
       name: "個人シフト表",
       short_name: "シフト表",
-      start_url: `/?token=${token}`,
+      start_url: `/personal/${token}`,
+      scope: "/",
       display: "standalone",
       background_color: "#ffffff",
       theme_color: "#3b82f6",
