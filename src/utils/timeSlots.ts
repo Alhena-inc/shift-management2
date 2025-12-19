@@ -86,7 +86,7 @@ export const getTimeSlotOptions = () => {
     { value: 'all', label: '終日', startTime: '00:00', endTime: '24:00' },
     ...TIME_SLOTS.map(slot => ({
       value: `${String(slot.start).padStart(2, '0')}:00-${String(slot.end).padStart(2, '0')}:00`,
-      label: `${slot.label} (${slot.range})`,
+      label: slot.label,  // 時間範囲を削除してラベルのみ表示
       startTime: `${String(slot.start).padStart(2, '0')}:00`,
       endTime: `${String(slot.end).padStart(2, '0')}:00`,
     })),
