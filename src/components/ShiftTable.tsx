@@ -3421,26 +3421,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                       }}
                       title={cellDisplayData.hasWarning ? '⚠️ 終了時刻が入力されていません' : undefined}
                       onPointerDown={(e) => {
-                        // Shift+ドラッグの場合
-                        if (e.shiftKey) {
-                          handleCellPointerDown(e, helper.id, day.date, rowIndex);
-                        } else if (e.button !== 2) {
-                          // 通常のクリック・ドラッグ（右クリック以外）でセル選択
-                          const isMultiSelect = e.ctrlKey || e.metaKey;
-
-                          // 既存のShift+ドラッグ選択をクリア
-                          setSelectedRows(new Set());
-                          selectedRowsRef.current.clear();
-                          lastSelectedRowTdsRef.current.forEach(td => {
-                            td.style.removeProperty('outline');
-                            td.style.removeProperty('outline-offset');
-                          });
-                          lastSelectedRowTdsRef.current = [];
-
-                          toggleCellSelection(helper.id, day.date, rowIndex, isMultiSelect);
-                          isSelectingCellsRef.current = true;
-                        }
-
                         // contentEditableの要素をクリックした場合はドラッグを無効化
                         const target = e.target as HTMLElement;
                         if (target.contentEditable === 'true' || target.closest('[contenteditable="true"]')) {
@@ -3448,6 +3428,30 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                         } else {
                           e.currentTarget.draggable = true;
                         }
+
+                        // Shift+ドラッグの場合は即座に処理して終了（他の処理をスキップ）
+                        if (e.shiftKey) {
+                          handleCellPointerDown(e, helper.id, day.date, rowIndex);
+                          return;
+                        }
+
+                        // 右クリックは無視
+                        if (e.button === 2) return;
+
+                        // 通常のクリック・ドラッグでセル選択
+                        const isMultiSelect = e.ctrlKey || e.metaKey;
+
+                        // 既存のShift+ドラッグ選択をクリア
+                        setSelectedRows(new Set());
+                        selectedRowsRef.current.clear();
+                        lastSelectedRowTdsRef.current.forEach(td => {
+                          td.style.removeProperty('outline');
+                          td.style.removeProperty('outline-offset');
+                        });
+                        lastSelectedRowTdsRef.current = [];
+
+                        toggleCellSelection(helper.id, day.date, rowIndex, isMultiSelect);
+                        isSelectingCellsRef.current = true;
                       }}
                       onMouseEnter={(e) => {
                         handleCellMouseEnter(e, helper.id, day.date, rowIndex);
