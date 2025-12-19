@@ -290,14 +290,6 @@ function App() {
         />
       )}
 
-      {currentView === 'addHelper' && (
-        <HelperManager
-          helpers={helpers}
-          onUpdateHelpers={handleUpdateHelpers}
-          onBack={() => setCurrentView('shift')}
-        />
-      )}
-
       <ExpenseModal
         isOpen={isExpenseModalOpen}
         onClose={() => setIsExpenseModalOpen(false)}
