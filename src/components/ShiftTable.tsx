@@ -2399,7 +2399,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       .filter(rowKey => {
         const parts = rowKey.split('-');
         const keyHelperId = parts.slice(0, -2).join('-');
-        const keyDate = parts[parts.length - 2];
         return keyHelperId === helperId;
       })
       .map(rowKey => {

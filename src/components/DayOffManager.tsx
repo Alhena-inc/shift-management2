@@ -302,7 +302,7 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
                   </div>
                 </th>
                 {dates.map((date) => {
-                  const [dateYear, dateMonth, dateDay] = date.split('-').map(Number);
+                  const [, dateMonth, dateDay] = date.split('-').map(Number);
                   const dateObj = new Date(date);
                   const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][dateObj.getDay()];
                   const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
