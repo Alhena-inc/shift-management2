@@ -1,7 +1,7 @@
 import { useMemo, useCallback, useEffect, memo, useState, useRef } from 'react';
 import type { Helper, Shift, ServiceType } from '../types';
 import { SERVICE_CONFIG } from '../types';
-import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests } from '../services/firestoreService';
+import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs } from '../services/firestoreService';
 import { calculateNightHours, calculateRegularHours, calculateTimeDuration } from '../utils/timeCalculations';
 import { calculateShiftPay } from '../utils/salaryCalculations';
 import { getRowIndicesFromDayOffValue } from '../utils/timeSlots';
@@ -313,8 +313,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
   const isSelectingCellsRef = useRef(false); // ドラッグ選択中かどうか
 
-  // 休み希望管理（キー: "helperId-date", 値: "all" | "時間-" | "-時間"）
+  // 休み希望管理（キー: "helperId-date-rowIndex", 値: "dayoff"）
   const [dayOffRequests, setDayOffRequests] = useState<Map<string, string>>(new Map());
+
+  // 指定休管理（キー: "helperId-date", 値: true）- その日の縦列全体が緑色になる
+  const [scheduledDayOffs, setScheduledDayOffs] = useState<Map<string, boolean>>(new Map());
 
   // 前回選択されたセルを記録（高速クリーンアップ用）
   const lastSelectedCellRef = useRef<HTMLElement | null>(null);
@@ -900,11 +903,49 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   useEffect(() => {
     const loadData = async () => {
       try {
-        const requests = await loadDayOffRequests(year, month);
-        setDayOffRequests(requests);
-        console.log(`🏖️ 休み希望を読み込みました: ${year}年${month}月 (${requests.size}件)`);
+        // 12月の場合は翌年1月のデータも読み込む
+        if (month === 12) {
+          const nextYear = year + 1;
+          const [requests, nextMonthRequests] = await Promise.all([
+            loadDayOffRequests(year, month),
+            loadDayOffRequests(nextYear, 1)
+          ]);
+          const combinedRequests = new Map([...requests, ...nextMonthRequests]);
+          setDayOffRequests(combinedRequests);
+          console.log(`🏖️ 休み希望を読み込みました: ${year}年${month}月 (${requests.size}件) + ${nextYear}年1月 (${nextMonthRequests.size}件)`);
+        } else {
+          const requests = await loadDayOffRequests(year, month);
+          setDayOffRequests(requests);
+          console.log(`🏖️ 休み希望を読み込みました: ${year}年${month}月 (${requests.size}件)`);
+        }
       } catch (error) {
         console.error('休み希望の読み込みエラー:', error);
+      }
+    };
+    loadData();
+  }, [year, month]);
+
+  // 指定休を読み込み
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        // 12月の場合は翌年1月のデータも読み込む
+        if (month === 12) {
+          const nextYear = year + 1;
+          const [scheduledDayOffsData, nextMonthScheduled] = await Promise.all([
+            loadScheduledDayOffs(year, month),
+            loadScheduledDayOffs(nextYear, 1)
+          ]);
+          const combinedScheduled = new Map([...scheduledDayOffsData, ...nextMonthScheduled]);
+          setScheduledDayOffs(combinedScheduled);
+          console.log(`🟢 指定休を読み込みました: ${year}年${month}月 (${scheduledDayOffsData.size}件) + ${nextYear}年1月 (${nextMonthScheduled.size}件)`);
+        } else {
+          const scheduledDayOffsData = await loadScheduledDayOffs(year, month);
+          setScheduledDayOffs(scheduledDayOffsData);
+          console.log(`🟢 指定休を読み込みました: ${year}年${month}月 (${scheduledDayOffsData.size}件)`);
+        }
+      } catch (error) {
+        console.error('指定休の読み込みエラー:', error);
       }
     };
     loadData();
@@ -913,10 +954,64 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   // 休み希望を保存する関数
   const saveDayOffToFirestore = useCallback(async (requests: Map<string, string>) => {
     try {
-      await saveDayOffRequests(year, month, requests);
-      console.log(`✅ 休み希望をFirestoreに保存しました (${requests.size}件)`);
+      if (month === 12) {
+        // 12月の場合は、12月と翌年1月のデータを分けて保存
+        const nextYear = year + 1;
+        const currentMonthRequests = new Map<string, string>();
+        const nextMonthRequests = new Map<string, string>();
+
+        requests.forEach((value, key) => {
+          const date = key.split('-').slice(1).join('-'); // helperId-YYYY-MM-DD から YYYY-MM-DD を取得
+          if (date.startsWith(`${nextYear}-01`)) {
+            nextMonthRequests.set(key, value);
+          } else {
+            currentMonthRequests.set(key, value);
+          }
+        });
+
+        await Promise.all([
+          saveDayOffRequests(year, month, currentMonthRequests),
+          saveDayOffRequests(nextYear, 1, nextMonthRequests)
+        ]);
+        console.log(`✅ 休み希望をFirestoreに保存しました: ${year}年${month}月 (${currentMonthRequests.size}件) + ${nextYear}年1月 (${nextMonthRequests.size}件)`);
+      } else {
+        await saveDayOffRequests(year, month, requests);
+        console.log(`✅ 休み希望をFirestoreに保存しました (${requests.size}件)`);
+      }
     } catch (error) {
       console.error('❌ 休み希望の保存に失敗しました:', error);
+    }
+  }, [year, month]);
+
+  // 指定休を保存する関数
+  const saveScheduledDayOffToFirestore = useCallback(async (scheduledDayOffsData: Map<string, boolean>) => {
+    try {
+      if (month === 12) {
+        // 12月の場合は、12月と翌年1月のデータを分けて保存
+        const nextYear = year + 1;
+        const currentMonthScheduled = new Map<string, boolean>();
+        const nextMonthScheduled = new Map<string, boolean>();
+
+        scheduledDayOffsData.forEach((value, key) => {
+          const date = key.split('-').slice(1).join('-'); // helperId-YYYY-MM-DD から YYYY-MM-DD を取得
+          if (date.startsWith(`${nextYear}-01`)) {
+            nextMonthScheduled.set(key, value);
+          } else {
+            currentMonthScheduled.set(key, value);
+          }
+        });
+
+        await Promise.all([
+          saveScheduledDayOffs(year, month, currentMonthScheduled),
+          saveScheduledDayOffs(nextYear, 1, nextMonthScheduled)
+        ]);
+        console.log(`✅ 指定休をFirestoreに保存しました: ${year}年${month}月 (${currentMonthScheduled.size}件) + ${nextYear}年1月 (${nextMonthScheduled.size}件)`);
+      } else {
+        await saveScheduledDayOffs(year, month, scheduledDayOffsData);
+        console.log(`✅ 指定休をFirestoreに保存しました (${scheduledDayOffsData.size}件)`);
+      }
+    } catch (error) {
+      console.error('❌ 指定休の保存に失敗しました:', error);
     }
   }, [year, month]);
 
@@ -1242,6 +1337,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   const getCellDisplayData = useCallback((helperId: string, date: string, rowIndex: number) => {
     const shift = shiftMap.get(`${helperId}-${date}-${rowIndex}`);
 
+    // 指定休をチェック（日付全体）
+    const scheduledDayOffKey = `${helperId}-${date}`;
+    const isScheduledDayOff = scheduledDayOffs.has(scheduledDayOffKey);
+
     // 新形式のキー（行ごと）をチェック
     const rowSpecificKey = `${helperId}-${date}-${rowIndex}`;
     const isRowSpecificDayOff = dayOffRequests.has(rowSpecificKey);
@@ -1255,10 +1354,17 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     const isDayOffForThisRow = isRowSpecificDayOff || isOldFormatDayOff;
 
     if (!shift) {
-      // 休み希望の場合、セルは空のまま背景色のみピンクにする
+      // 指定休が最優先、次に休み希望
+      let bgColor = '#ffffff';
+      if (isScheduledDayOff) {
+        bgColor = '#22c55e';  // 指定休は緑色
+      } else if (isDayOffForThisRow) {
+        bgColor = '#ffcccc';  // 休み希望はピンク
+      }
+
       return {
         lines: ['', '', '', ''],
-        bgColor: isDayOffForThisRow ? '#ffcccc' : '#ffffff',  // 該当行のみピンク背景
+        bgColor,
         hasWarning: false
       };
     }
@@ -1279,10 +1385,12 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     // 警告が必要かチェック
     const hasWarning = shouldShowWarning(startTime, endTime, serviceType);
 
-    // 背景色を設定（優先度：キャンセル > serviceType > 休み希望 > デフォルト）
+    // 背景色を設定（優先度：キャンセル > 指定休 > serviceType > 休み希望 > デフォルト）
     let bgColor = '#ffffff';
     if (cancelStatus === 'keep_time' || cancelStatus === 'remove_time') {
       bgColor = '#f87171';  // キャンセル状態は赤
+    } else if (isScheduledDayOff) {
+      bgColor = '#22c55e';  // 指定休は緑色（縦列全体）
     } else if (serviceType && SERVICE_CONFIG[serviceType]) {
       bgColor = SERVICE_CONFIG[serviceType].bgColor;  // サービスタイプの背景色
     } else if (isDayOffForThisRow) {
@@ -1290,7 +1398,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     }
 
     return { lines, bgColor, hasWarning };
-  }, [shiftMap, dayOffRequests]);
+  }, [shiftMap, dayOffRequests, scheduledDayOffs]);
 
   // refからstateへ同期（描画用）
   const syncSelection = useCallback(() => {
@@ -2191,8 +2299,15 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
   // 休み希望の設定/解除
   const toggleDayOff = useCallback((helperId: string, date: string, rowIndex: number) => {
-    // 選択されたセルから該当のhelperIdとdateのセルを抽出
-    // キーの形式: "helperId-date-rowIndex" なので、最後の部分がrowIndexになる
+    // Shift+クリックでの複数選択 (selectedRows) をチェック
+    const selectedRowsForThisHelperDate = Array.from(selectedRows)
+      .filter(rowKey => rowKey.startsWith(`${helperId}-${date}-`))
+      .map(rowKey => {
+        const parts = rowKey.split('-');
+        return parseInt(parts[parts.length - 1]);
+      });
+
+    // ドラッグ選択 (selectedCells) もチェック
     const selectedCellsForThisHelperDate = Array.from(selectedCells)
       .filter(cellKey => {
         // キーを分解: 最後から3番目以降がhelperId-dateの部分
@@ -2211,9 +2326,12 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         return parseInt(parts[parts.length - 1]); // rowIndexを取得
       });
 
+    // 両方の選択を統合（重複を除去）
+    const allSelectedRows = [...new Set([...selectedRowsForThisHelperDate, ...selectedCellsForThisHelperDate])];
+
     // 選択されたセルがある場合は、それらの行に休み希望を設定
-    const rowsToToggle = selectedCellsForThisHelperDate.length > 0
-      ? selectedCellsForThisHelperDate
+    const rowsToToggle = allSelectedRows.length > 0
+      ? allSelectedRows
       : [rowIndex]; // 選択なしの場合は右クリックした行のみ
 
     setDayOffRequests(prev => {
@@ -2226,10 +2344,34 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           // 既に休み希望がある場合は解除
           next.delete(key);
           console.log(`✅ 休み希望を解除: ${key}`);
+
+          // DOM直接操作で即座に背景色を削除
+          const cellKey = `${helperId}-${date}-${row}`;
+          const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
+          if (td) {
+            td.style.backgroundColor = '#ffffff';
+            // 内部のeditable-cellも更新
+            const cells = td.querySelectorAll('.editable-cell');
+            cells.forEach(cell => {
+              (cell as HTMLElement).style.backgroundColor = '';
+            });
+          }
         } else {
           // 休み希望を設定（値は単に"dayoff"）
           next.set(key, 'dayoff');
           console.log(`🏖️ 休み希望を設定: ${key}`);
+
+          // DOM直接操作で即座にピンク背景を適用
+          const cellKey = `${helperId}-${date}-${row}`;
+          const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
+          if (td) {
+            td.style.backgroundColor = '#ffcccc';
+            // 内部のeditable-cellも更新
+            const cells = td.querySelectorAll('.editable-cell');
+            cells.forEach(cell => {
+              (cell as HTMLElement).style.backgroundColor = '#ffcccc';
+            });
+          }
         }
       });
 
@@ -2238,10 +2380,115 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
       // 選択をクリア
       setSelectedCells(new Set());
+      setSelectedRows(new Set());
+      // DOM要素の青枠も削除
+      lastSelectedRowTdsRef.current.forEach(td => {
+        td.style.removeProperty('outline');
+        td.style.removeProperty('outline-offset');
+      });
+      lastSelectedRowTdsRef.current = [];
 
       return next;
     });
-  }, [saveDayOffToFirestore, selectedCells]);
+  }, [saveDayOffToFirestore, selectedCells, selectedRows, setSelectedRows]);
+
+  // 指定休の設定/解除
+  const toggleScheduledDayOff = useCallback((helperId: string, date: string) => {
+    // Shift+クリックでの複数選択をチェック
+    const selectedRowsForHelper = Array.from(selectedRows)
+      .filter(rowKey => {
+        const parts = rowKey.split('-');
+        const keyHelperId = parts.slice(0, -2).join('-');
+        const keyDate = parts[parts.length - 2];
+        return keyHelperId === helperId;
+      })
+      .map(rowKey => {
+        const parts = rowKey.split('-');
+        return parts[parts.length - 2]; // dateを取得
+      });
+
+    // ドラッグ選択もチェック
+    const selectedCellsForHelper = Array.from(selectedCells)
+      .filter(cellKey => cellKey.startsWith(`${helperId}-`))
+      .map(cellKey => {
+        const parts = cellKey.split('-');
+        return parts[parts.length - 2]; // dateを取得
+      });
+
+    // 両方の選択を統合（重複を除去）
+    const allSelectedDates = [...new Set([...selectedRowsForHelper, ...selectedCellsForHelper])];
+
+    // 選択された日付がある場合は、それらの日に指定休を設定
+    const datesToToggle = allSelectedDates.length > 0
+      ? allSelectedDates
+      : [date]; // 選択なしの場合は右クリックした日のみ
+
+    setScheduledDayOffs(prev => {
+      const next = new Map(prev);
+
+      datesToToggle.forEach(targetDate => {
+        const key = `${helperId}-${targetDate}`;
+
+        if (next.has(key)) {
+          // 既に指定休がある場合は解除
+          next.delete(key);
+          console.log(`✅ 指定休を解除: ${key}`);
+
+          // DOM直接操作で即座に背景色を削除（その日の縦列全体）
+          for (let row = 0; row < 10; row++) {
+            const cellKey = `${helperId}-${targetDate}-${row}`;
+            const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
+            if (td) {
+              // 休み希望があればピンク、なければ白に戻す
+              const dayOffKey = `${helperId}-${targetDate}-${row}`;
+              const hasDayOff = dayOffRequests.has(dayOffKey);
+              td.style.backgroundColor = hasDayOff ? '#ffcccc' : '#ffffff';
+
+              // 内部のeditable-cellも更新
+              const cells = td.querySelectorAll('.editable-cell');
+              cells.forEach(cell => {
+                (cell as HTMLElement).style.backgroundColor = hasDayOff ? '#ffcccc' : '';
+              });
+            }
+          }
+        } else {
+          // 指定休を設定
+          next.set(key, true);
+          console.log(`🟢 指定休を設定: ${key}`);
+
+          // DOM直接操作で即座に緑背景を適用（その日の縦列全体）
+          for (let row = 0; row < 10; row++) {
+            const cellKey = `${helperId}-${targetDate}-${row}`;
+            const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
+            if (td) {
+              td.style.backgroundColor = '#22c55e'; // 緑色
+
+              // 内部のeditable-cellも更新
+              const cells = td.querySelectorAll('.editable-cell');
+              cells.forEach(cell => {
+                (cell as HTMLElement).style.backgroundColor = '#22c55e';
+              });
+            }
+          }
+        }
+      });
+
+      // 変更後すぐにFirestoreに保存
+      saveScheduledDayOffToFirestore(next);
+
+      // 選択をクリア
+      setSelectedCells(new Set());
+      setSelectedRows(new Set());
+      // DOM要素の青枠も削除
+      lastSelectedRowTdsRef.current.forEach(td => {
+        td.style.removeProperty('outline');
+        td.style.removeProperty('outline-offset');
+      });
+      lastSelectedRowTdsRef.current = [];
+
+      return next;
+    });
+  }, [saveScheduledDayOffToFirestore, selectedCells, selectedRows, setSelectedRows, dayOffRequests]);
 
   // コンテキストメニューを表示する関数
   const showContextMenu = useCallback((e: React.MouseEvent, helperId: string, date: string, rowIndex: number) => {
@@ -2886,7 +3133,15 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     menu.appendChild(deleteBtn);
 
     // 休み希望の設定/解除ボタン
-    // 選択されたセルがある場合は、それらをチェック。なければ右クリックした行のみ
+    // Shift+クリックでの複数選択をチェック
+    const selectedRowsForThisHelperDate = Array.from(selectedRows)
+      .filter(rowKey => rowKey.startsWith(`${helperId}-${date}-`))
+      .map(rowKey => {
+        const parts = rowKey.split('-');
+        return parseInt(parts[parts.length - 1]);
+      });
+
+    // ドラッグ選択もチェック
     const selectedCellsForThisHelperDate = Array.from(selectedCells)
       .filter(cellKey => cellKey.startsWith(`${helperId}-${date}-`))
       .map(cellKey => {
@@ -2894,15 +3149,20 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         return parseInt(parts[parts.length - 1]);
       });
 
-    const rowsToCheck = selectedCellsForThisHelperDate.length > 0
-      ? selectedCellsForThisHelperDate
+    // 両方の選択を統合（重複を除去）
+    const allSelectedRows = [...new Set([...selectedRowsForThisHelperDate, ...selectedCellsForThisHelperDate])];
+
+    const rowsToCheck = allSelectedRows.length > 0
+      ? allSelectedRows
       : [rowIndex];
 
     // いずれかの行が休み希望かチェック
     const isDayOff = rowsToCheck.some(row => dayOffRequests.has(`${helperId}-${date}-${row}`));
 
     const dayOffBtn = document.createElement('div');
-    dayOffBtn.textContent = isDayOff ? '✅ 休み希望を解除' : '🏖️ 休み希望を設定';
+    // 選択数を表示
+    const countText = rowsToCheck.length > 1 ? ` (${rowsToCheck.length}件)` : '';
+    dayOffBtn.textContent = isDayOff ? `✅ 休み希望を解除${countText}` : `🏖️ 休み希望を設定${countText}`;
     dayOffBtn.style.padding = '8px 16px';
     dayOffBtn.style.cursor = 'pointer';
     dayOffBtn.style.borderTop = '1px solid #e5e7eb';
@@ -3452,6 +3712,14 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                       onContextMenu={(e) => {
                         showContextMenu(e, helper.id, day.date, rowIndex);
                       }}
+                      onDoubleClick={(e) => {
+                        // セル選択されている場合は指定休を設定
+                        if (selectedRows.size > 0 || selectedCells.size > 0) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          toggleScheduledDayOff(helper.id, day.date);
+                        }
+                      }}
                       onDragStart={(e) => handleDragStart(e, helper.id, day.date, rowIndex)}
                       onDragOver={handleDragOver}
                       onDrop={() => handleDrop(helper.id, day.date, rowIndex)}
@@ -3471,14 +3739,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                               data-date={day.date}
                               className="editable-cell select-none"
                               onDragStart={(e) => e.preventDefault()}
-                              onClick={(e) => {
-                                e.stopPropagation();
+                              onMouseDown={(e) => {
+                                // 右クリックは無視
+                                if (e.button === 2) return;
 
-                                // コンテキストメニューが開いている場合は閉じる
-                                const existingMenu = document.getElementById('context-menu');
-                                if (existingMenu) {
-                                  existingMenu.remove();
-                                }
+                                e.stopPropagation();
 
                                 const currentCell = e.currentTarget as HTMLElement;
                                 const isEditable = currentCell.getAttribute('contenteditable') === 'true';
@@ -3500,35 +3765,18 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                   const newSelected = new Set(selectedRows);
                                   const willBeSelected = !newSelected.has(rowKey);
 
-                                  // 前回の単一選択をクリア
-                                  if (lastSelectedCellRef.current) {
-                                    lastSelectedCellRef.current.style.removeProperty('box-shadow');
-                                    lastSelectedCellRef.current = null;
-                                  }
-
-                                  if (willBeSelected) {
-                                    newSelected.add(rowKey);
-                                    selectedRowsRef.current.add(rowKey);
-                                  } else {
-                                    newSelected.delete(rowKey);
-                                    selectedRowsRef.current.delete(rowKey);
-                                  }
-
                                   // 親のtd要素を取得
                                   const parentTd = currentCell.closest('td') as HTMLElement;
 
-                                  // DOM直接操作で即座に青枠を設定/削除（遅延なし）
+                                  // ★★★ 青枠表示を最優先で実行 ★★★
                                   if (parentTd) {
                                     if (willBeSelected) {
-                                      // td全体に青枠を表示
                                       parentTd.style.setProperty('outline', '2px solid #3b82f6', 'important');
                                       parentTd.style.setProperty('outline-offset', '-2px', 'important');
                                       lastSelectedRowTdsRef.current.push(parentTd);
                                     } else {
-                                      // 青枠を削除
                                       parentTd.style.removeProperty('outline');
                                       parentTd.style.removeProperty('outline-offset');
-                                      // lastSelectedRowTdsRefから削除
                                       const index = lastSelectedRowTdsRef.current.indexOf(parentTd);
                                       if (index > -1) {
                                         lastSelectedRowTdsRef.current.splice(index, 1);
@@ -3536,65 +3784,96 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                     }
                                   }
 
-                                  // React state更新（非同期）
-                                  setTimeout(() => setSelectedRows(newSelected), 0);
+                                  // 前回の単一選択をクリア
+                                  if (lastSelectedCellRef.current) {
+                                    lastSelectedCellRef.current.style.removeProperty('box-shadow');
+                                    lastSelectedCellRef.current = null;
+                                  }
+
+                                  // ★★★ その他の処理は遅延実行 ★★★
+                                  requestAnimationFrame(() => {
+                                    if (willBeSelected) {
+                                      newSelected.add(rowKey);
+                                      selectedRowsRef.current.add(rowKey);
+                                    } else {
+                                      newSelected.delete(rowKey);
+                                      selectedRowsRef.current.delete(rowKey);
+                                    }
+                                    setSelectedRows(newSelected);
+                                  });
                                   return;
                                 }
 
-                                // 通常のクリック処理
-                                // クリック回数を取得
-                                const clickCount = parseInt(currentCell.dataset.clickCount || '0') + 1;
-                                currentCell.dataset.clickCount = clickCount.toString();
+                                // ★★★ 通常のクリック処理 - 青枠表示のみを最初に実行 ★★★
 
-                                if (clickCount === 1) {
-                                  // 前回選択されたセルの青枠を即座に削除（最小限の操作）
-                                  if (lastSelectedCellRef.current && lastSelectedCellRef.current !== currentCell) {
-                                    lastSelectedCellRef.current.style.removeProperty('box-shadow');
-                                    lastSelectedCellRef.current.dataset.clickCount = '0';
+                                // 前回選択されたセルの青枠を即座に削除
+                                if (lastSelectedCellRef.current && lastSelectedCellRef.current !== currentCell) {
+                                  lastSelectedCellRef.current.style.removeProperty('box-shadow');
+                                }
+
+                                // 青枠を即座に表示（最優先 - 遅延なし）
+                                currentCell.style.setProperty('box-shadow', 'inset 0 0 0 1px #3b82f6', 'important');
+                                lastSelectedCellRef.current = currentCell;
+
+                                // ★★★ その他の処理は requestAnimationFrame で遅延実行 ★★★
+                                requestAnimationFrame(() => {
+                                  // 前回選択されたセルのdatasetリセット
+                                  const prevCell = document.querySelector('.editable-cell[data-click-count]') as HTMLElement;
+                                  if (prevCell && prevCell !== currentCell) {
+                                    prevCell.dataset.clickCount = '0';
                                   }
-                                  // 前回の複数選択行の青枠を削除（td要素のoutline）
+
+                                  // 前回の複数選択行の青枠を削除
                                   lastSelectedRowTdsRef.current.forEach(td => {
                                     td.style.removeProperty('outline');
                                     td.style.removeProperty('outline-offset');
                                   });
                                   lastSelectedRowTdsRef.current = [];
 
-                                  // 青枠を即座に表示（最優先 - 遅延なし）
-                                  currentCell.style.setProperty('box-shadow', 'inset 0 0 0 1px #3b82f6', 'important');
-
-                                  // 前回選択されたセルを記録
-                                  lastSelectedCellRef.current = currentCell;
-
                                   // コピー&ペースト用に現在選択されているセルを記録
                                   selectedCellRef.helperId = helper.id;
                                   selectedCellRef.date = day.date;
                                   selectedCellRef.rowIndex = rowIndex;
 
-                                  // 複数選択をクリア（refとstateの両方）
-                                  selectedRowsRef.current.clear();
-                                  setTimeout(() => setSelectedRows(new Set()), 0);
-                                } else if (clickCount >= 2) {
-                                  // 2回目のクリック：編集モードに入る
-                                  currentCell.setAttribute('contenteditable', 'true');
-                                  currentCell.style.userSelect = 'text';
-                                  currentCell.style.webkitUserSelect = 'text';
-                                  currentCell.focus();
-
-                                  // カーソルを末尾に配置
-                                  const range = document.createRange();
-                                  const sel = window.getSelection();
-
-                                  range.selectNodeContents(currentCell);
-                                  range.collapse(false);
-
-                                  if (sel) {
-                                    sel.removeAllRanges();
-                                    sel.addRange(range);
+                                  // 複数選択をクリア（既に空なら更新しない）
+                                  if (selectedRowsRef.current.size > 0) {
+                                    selectedRowsRef.current.clear();
+                                    setSelectedRows(new Set());
                                   }
 
-                                  // クリックカウントをリセット
-                                  currentCell.dataset.clickCount = '0';
-                                }
+                                  // コンテキストメニューが開いている場合は閉じる
+                                  const existingMenu = document.getElementById('context-menu');
+                                  if (existingMenu) {
+                                    existingMenu.remove();
+                                  }
+
+                                  // クリック回数を取得
+                                  const clickCount = parseInt(currentCell.dataset.clickCount || '0') + 1;
+                                  currentCell.dataset.clickCount = clickCount.toString();
+
+                                  if (clickCount >= 2) {
+                                    // 2回目のクリック：編集モードに入る
+                                    currentCell.setAttribute('contenteditable', 'true');
+                                    currentCell.style.userSelect = 'text';
+                                    currentCell.style.webkitUserSelect = 'text';
+                                    currentCell.focus();
+
+                                    // カーソルを末尾に配置
+                                    const range = document.createRange();
+                                    const sel = window.getSelection();
+
+                                    range.selectNodeContents(currentCell);
+                                    range.collapse(false);
+
+                                    if (sel) {
+                                      sel.removeAllRanges();
+                                      sel.addRange(range);
+                                    }
+
+                                    // クリックカウントをリセット
+                                    currentCell.dataset.clickCount = '0';
+                                  }
+                                });
                               }}
                               onDoubleClick={(e) => {
                                 e.stopPropagation();

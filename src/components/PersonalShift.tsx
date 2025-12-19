@@ -15,6 +15,50 @@ export function PersonalShift({ token }: Props) {
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
+  // トークンをlocalStorageに保存 & 動的manifestを生成
+  useEffect(() => {
+    // トークンを保存（PWAモード起動時のリダイレクト用）
+    if (token) {
+      localStorage.setItem('personalShiftToken', token);
+      console.log('💾 トークンをlocalStorageに保存:', token);
+    }
+
+    // 動的にmanifest.jsonを生成（ホーム画面追加時に正しいURLで開くため）
+    const manifestData = {
+      name: "個人シフト表",
+      short_name: "シフト表",
+      start_url: `/personal/${token}`,
+      display: "standalone",
+      background_color: "#ffffff",
+      theme_color: "#3b82f6",
+      icons: [
+        { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
+        { src: "/icon-512.png", sizes: "512x512", type: "image/png" }
+      ]
+    };
+
+    // 既存のmanifestリンクを削除
+    const existingLink = document.querySelector('link[rel="manifest"]');
+    if (existingLink) {
+      existingLink.remove();
+      console.log('🗑️ 既存のmanifestリンクを削除');
+    }
+
+    // 動的manifestを作成
+    const blob = new Blob([JSON.stringify(manifestData)], { type: 'application/json' });
+    const manifestUrl = URL.createObjectURL(blob);
+
+    const link = document.createElement('link');
+    link.rel = 'manifest';
+    link.href = manifestUrl;
+    document.head.appendChild(link);
+    console.log('📱 動的manifestを生成:', manifestData.start_url);
+
+    return () => {
+      URL.revokeObjectURL(manifestUrl);
+    };
+  }, [token]);
+
   // ヘルパー情報を読み込み
   useEffect(() => {
     const loadData = async () => {

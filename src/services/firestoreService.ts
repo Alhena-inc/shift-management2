@@ -426,6 +426,58 @@ export const loadDayOffRequests = async (year: number, month: number): Promise<M
   }
 };
 
+// 指定休を保存（月ごと）- Map版
+export const saveScheduledDayOffs = async (year: number, month: number, scheduledDayOffs: Map<string, boolean>): Promise<void> => {
+  try {
+    const docId = `${year}-${String(month).padStart(2, '0')}`;
+    const docRef = doc(db, 'scheduledDayOffs', docId);
+
+    // MapをArray形式に変換
+    const scheduledDayOffsArray = Array.from(scheduledDayOffs.entries()).map(([key, value]) => ({ key, value }));
+
+    await setDoc(docRef, {
+      scheduledDayOffs: scheduledDayOffsArray,
+      updatedAt: Timestamp.now()
+    });
+
+    console.log(`🟢 指定休を保存しました: ${docId} (${scheduledDayOffs.size}件)`);
+  } catch (error) {
+    console.error('指定休保存エラー:', error);
+    throw error;
+  }
+};
+
+// 指定休を読み込み（月ごと）- Map版
+export const loadScheduledDayOffs = async (year: number, month: number): Promise<Map<string, boolean>> => {
+  try {
+    const docId = `${year}-${String(month).padStart(2, '0')}`;
+    const docSnap = await getDocs(query(collection(db, 'scheduledDayOffs')));
+
+    const targetDoc = docSnap.docs.find(d => d.id === docId);
+    if (targetDoc && targetDoc.exists()) {
+      const data = targetDoc.data();
+      const scheduledDayOffsData = data.scheduledDayOffs || [];
+
+      // 配列からMapに変換
+      const scheduledDayOffs = new Map<string, boolean>();
+      if (Array.isArray(scheduledDayOffsData)) {
+        scheduledDayOffsData.forEach((item: any) => {
+          scheduledDayOffs.set(item.key, item.value);
+        });
+      }
+
+      console.log(`🟢 指定休を読み込みました: ${docId} (${scheduledDayOffs.size}件)`);
+      return scheduledDayOffs;
+    }
+
+    console.log(`🟢 指定休データが見つかりません: ${docId}`);
+    return new Map();
+  } catch (error) {
+    console.error('指定休読み込みエラー:', error);
+    return new Map();
+  }
+};
+
 // 休み希望のリアルタイムリスナー
 export const subscribeToDayOffRequests = (
   year: number,

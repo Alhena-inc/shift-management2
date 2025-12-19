@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Helper } from '../types';
-import { loadDayOffRequests, saveDayOffRequests } from '../services/firestoreService';
+import { loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs } from '../services/firestoreService';
 
 interface DayOffManagerProps {
   helpers: Helper[];
@@ -11,13 +11,16 @@ interface DayOffManagerProps {
 
 // 休み希望の型: "all" (終日), "17:00-" (17時以降), "-12:00" (12時まで)
 type DayOffRequestMap = Map<string, string>;
+type ScheduledDayOffMap = Map<string, boolean>;
 
 export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerProps) => {
   const [dayOffRequests, setDayOffRequests] = useState<DayOffRequestMap>(new Map());
+  const [scheduledDayOffs, setScheduledDayOffs] = useState<ScheduledDayOffMap>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showTimeModal, setShowTimeModal] = useState(false);
   const [selectedCell, setSelectedCell] = useState<{ helperId: string; date: string } | null>(null);
+  const [selectedType, setSelectedType] = useState<'dayOff' | 'scheduled'>('dayOff'); // デフォルトは休み希望
 
   // その月の日数を取得
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -26,15 +29,45 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
     return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   });
 
-  // 休み希望を読み込み
+  // 12月の場合は翌年1月1日から4日も追加
+  if (month === 12) {
+    const nextYear = year + 1;
+    for (let day = 1; day <= 4; day++) {
+      dates.push(`${nextYear}-01-${String(day).padStart(2, '0')}`);
+    }
+  }
+
+  // 休み希望と指定休を読み込み
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        const requests = await loadDayOffRequests(year, month);
-        setDayOffRequests(requests);
+        // 12月の場合は翌年1月のデータも読み込む
+        if (month === 12) {
+          const nextYear = year + 1;
+          const [requests, scheduledDays, nextMonthRequests, nextMonthScheduled] = await Promise.all([
+            loadDayOffRequests(year, month),
+            loadScheduledDayOffs(year, month),
+            loadDayOffRequests(nextYear, 1),
+            loadScheduledDayOffs(nextYear, 1)
+          ]);
+
+          // 12月と翌年1月のデータを統合
+          const combinedRequests = new Map([...requests, ...nextMonthRequests]);
+          const combinedScheduled = new Map([...scheduledDays, ...nextMonthScheduled]);
+
+          setDayOffRequests(combinedRequests);
+          setScheduledDayOffs(combinedScheduled);
+        } else {
+          const [requests, scheduledDays] = await Promise.all([
+            loadDayOffRequests(year, month),
+            loadScheduledDayOffs(year, month)
+          ]);
+          setDayOffRequests(requests);
+          setScheduledDayOffs(scheduledDays);
+        }
       } catch (error) {
-        console.error('休み希望の読み込みエラー:', error);
+        console.error('データの読み込みエラー:', error);
       } finally {
         setIsLoading(false);
       }
@@ -45,11 +78,17 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
   // セルをクリックした時の処理
   const handleCellClick = (helperId: string, date: string) => {
     const key = `${helperId}-${date}`;
-    const existing = dayOffRequests.get(key);
+    const hasDayOff = dayOffRequests.has(key);
+    const hasScheduled = scheduledDayOffs.has(key);
 
-    if (existing) {
+    if (hasDayOff || hasScheduled) {
       // 既に設定されている場合は削除
       setDayOffRequests(prev => {
+        const next = new Map(prev);
+        next.delete(key);
+        return next;
+      });
+      setScheduledDayOffs(prev => {
         const next = new Map(prev);
         next.delete(key);
         return next;
@@ -57,21 +96,32 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
     } else {
       // 未設定の場合はモーダルを開く
       setSelectedCell({ helperId, date });
+      setSelectedType('dayOff'); // デフォルトは休み希望
       setShowTimeModal(true);
     }
   };
 
-  // 時間指定で休み希望を設定
-  const setDayOffWithTime = (value: string) => {
+  // 休み希望または指定休を設定
+  const setDayOffWithTime = (value: string, type: 'dayOff' | 'scheduled' = selectedType) => {
     if (!selectedCell) return;
 
     const key = `${selectedCell.helperId}-${selectedCell.date}`;
 
-    setDayOffRequests(prev => {
-      const next = new Map(prev);
-      next.set(key, value);
-      return next;
-    });
+    if (type === 'scheduled') {
+      // 指定休を設定
+      setScheduledDayOffs(prev => {
+        const next = new Map(prev);
+        next.set(key, true);
+        return next;
+      });
+    } else {
+      // 休み希望を設定
+      setDayOffRequests(prev => {
+        const next = new Map(prev);
+        next.set(key, value);
+        return next;
+      });
+    }
 
     setShowTimeModal(false);
     setSelectedCell(null);
@@ -81,11 +131,52 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await saveDayOffRequests(year, month, dayOffRequests);
-      alert(`${dayOffRequests.size}件の休み希望を保存しました。`);
+      if (month === 12) {
+        // 12月の場合は、12月と翌年1月のデータを分けて保存
+        const nextYear = year + 1;
+        const currentMonthRequests = new Map<string, string>();
+        const nextMonthRequests = new Map<string, string>();
+        const currentMonthScheduled = new Map<string, boolean>();
+        const nextMonthScheduled = new Map<string, boolean>();
+
+        // データを年月ごとに分類
+        dayOffRequests.forEach((value, key) => {
+          const date = key.split('-').slice(1).join('-'); // helperId-YYYY-MM-DD から YYYY-MM-DD を取得
+          if (date.startsWith(`${nextYear}-01`)) {
+            nextMonthRequests.set(key, value);
+          } else {
+            currentMonthRequests.set(key, value);
+          }
+        });
+
+        scheduledDayOffs.forEach((value, key) => {
+          const date = key.split('-').slice(1).join('-');
+          if (date.startsWith(`${nextYear}-01`)) {
+            nextMonthScheduled.set(key, value);
+          } else {
+            currentMonthScheduled.set(key, value);
+          }
+        });
+
+        // 12月と翌年1月のデータを別々に保存
+        await Promise.all([
+          saveDayOffRequests(year, month, currentMonthRequests),
+          saveScheduledDayOffs(year, month, currentMonthScheduled),
+          saveDayOffRequests(nextYear, 1, nextMonthRequests),
+          saveScheduledDayOffs(nextYear, 1, nextMonthScheduled)
+        ]);
+      } else {
+        await Promise.all([
+          saveDayOffRequests(year, month, dayOffRequests),
+          saveScheduledDayOffs(year, month, scheduledDayOffs)
+        ]);
+      }
+
+      const totalCount = dayOffRequests.size + scheduledDayOffs.size;
+      alert(`${totalCount}件（休み希望: ${dayOffRequests.size}件、指定休: ${scheduledDayOffs.size}件）を保存しました。`);
       onBack();
     } catch (error) {
-      console.error('休み希望の保存エラー:', error);
+      console.error('保存エラー:', error);
       alert('保存に失敗しました。');
     } finally {
       setIsSaving(false);
@@ -95,7 +186,7 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
   // ヘルパーの全日程を一括設定/解除
   const toggleHelperAllDays = (helperId: string) => {
     const helperKeys = dates.map(date => `${helperId}-${date}`);
-    const allSelected = helperKeys.every(key => dayOffRequests.has(key));
+    const allSelected = helperKeys.every(key => dayOffRequests.has(key) || scheduledDayOffs.has(key));
 
     setDayOffRequests(prev => {
       const next = new Map(prev);
@@ -103,8 +194,17 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
         // 全て解除
         helperKeys.forEach(key => next.delete(key));
       } else {
-        // 全て設定（終日として）
+        // 全て設定（終日として休み希望）
         helperKeys.forEach(key => next.set(key, 'all'));
+      }
+      return next;
+    });
+
+    setScheduledDayOffs(prev => {
+      const next = new Map(prev);
+      if (allSelected) {
+        // 全て解除
+        helperKeys.forEach(key => next.delete(key));
       }
       return next;
     });
@@ -113,7 +213,7 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
   // 特定の日の全ヘルパーを一括設定/解除
   const toggleDateAllHelpers = (date: string) => {
     const dateKeys = helpers.map(helper => `${helper.id}-${date}`);
-    const allSelected = dateKeys.every(key => dayOffRequests.has(key));
+    const allSelected = dateKeys.every(key => dayOffRequests.has(key) || scheduledDayOffs.has(key));
 
     setDayOffRequests(prev => {
       const next = new Map(prev);
@@ -121,8 +221,17 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
         // 全て解除
         dateKeys.forEach(key => next.delete(key));
       } else {
-        // 全て設定（終日として）
+        // 全て設定（終日として休み希望）
         dateKeys.forEach(key => next.set(key, 'all'));
+      }
+      return next;
+    });
+
+    setScheduledDayOffs(prev => {
+      const next = new Map(prev);
+      if (allSelected) {
+        // 全て解除
+        dateKeys.forEach(key => next.delete(key));
       }
       return next;
     });
@@ -145,7 +254,7 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
             <div>
               <h1 className="text-3xl font-bold text-blue-600">🏖️ 休み希望一括設定</h1>
               <p className="text-4xl font-bold text-gray-800 mt-2">
-                {year}年 {month}月
+                {month === 12 ? `${year}年 ${month}月 〜 ${year + 1}年 1月` : `${year}年 ${month}月`}
               </p>
             </div>
             <button
@@ -162,6 +271,10 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-pink-400 border-2 border-pink-600 rounded"></div>
               <span className="text-lg font-medium">休み希望</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded" style={{ backgroundColor: '#22c55e', border: '2px solid #4ade80' }}></div>
+              <span className="text-lg font-medium">指定休</span>
             </div>
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-white border-2 border-gray-400 rounded"></div>
@@ -189,10 +302,11 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
                   </div>
                 </th>
                 {dates.map((date) => {
-                  const day = parseInt(date.split('-')[2]);
+                  const [dateYear, dateMonth, dateDay] = date.split('-').map(Number);
                   const dateObj = new Date(date);
                   const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][dateObj.getDay()];
                   const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+                  const isNextYear = month === 12 && dateMonth === 1; // 翌年1月かどうか
 
                   return (
                     <th
@@ -203,7 +317,7 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
                     >
                       <div className="flex flex-col items-center gap-1">
                         <span className="text-2xl font-bold text-white">
-                          {day}
+                          {isNextYear ? `1/${dateDay}` : dateDay}
                         </span>
                         <span className={`text-sm font-medium ${isWeekend ? 'text-red-100' : 'text-blue-100'}`}>
                           {dayOfWeek}
@@ -268,28 +382,50 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
                     {dates.map(date => {
                       const key = `${helper.id}-${date}`;
                       const dayOffValue = dayOffRequests.get(key);
-                      const isChecked = !!dayOffValue;
+                      const hasScheduled = scheduledDayOffs.has(key);
+                      const isChecked = !!dayOffValue || hasScheduled;
                       const dateObj = new Date(date);
                       const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+
+                      // 背景色の決定: 指定休 > 休み希望
+                      let bgColor = '';
+                      let hoverColor = 'hover:bg-gray-100';
+                      if (hasScheduled) {
+                        bgColor = 'hover:opacity-90';
+                        hoverColor = 'hover:opacity-90';
+                      } else if (dayOffValue) {
+                        bgColor = 'bg-pink-400';
+                        hoverColor = 'hover:bg-pink-500';
+                      }
 
                       return (
                         <td
                           key={date}
                           className={`px-2 py-2 text-center border-r border-gray-200 cursor-pointer transition-colors ${
                             isWeekend && !isChecked ? 'bg-red-50' : ''
-                          } ${isChecked ? 'bg-pink-400 hover:bg-pink-500' : 'hover:bg-gray-100'}`}
+                          } ${bgColor} ${hoverColor}`}
+                          style={hasScheduled ? { backgroundColor: '#22c55e' } : undefined}
                           onClick={() => handleCellClick(helper.id, date)}
                         >
                           {isChecked ? (
                             <div className="flex flex-col items-center gap-1">
-                              <div className="text-xs font-bold text-white">
-                                {dayOffValue === 'all' ? '終日' : dayOffValue}
-                              </div>
+                              {dayOffValue && (
+                                <div className="text-xs font-bold text-white">
+                                  {dayOffValue === 'all' ? '終日' : dayOffValue}
+                                </div>
+                              )}
+                              {hasScheduled && (
+                                <div className="text-xs font-bold text-green-800">
+                                  指定休
+                                </div>
+                              )}
                               <input
                                 type="checkbox"
                                 checked={true}
                                 readOnly
-                                className="w-4 h-4 cursor-pointer pointer-events-none accent-pink-600"
+                                className={`w-4 h-4 cursor-pointer pointer-events-none ${
+                                  hasScheduled ? 'accent-green-600' : 'accent-pink-600'
+                                }`}
                               />
                             </div>
                           ) : (
@@ -313,8 +449,16 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
         {/* フッター */}
         <div className="mt-6 bg-white rounded-lg shadow-md p-6">
           <div className="flex items-center justify-between">
-            <div className="text-xl">
-              休み希望設定数: <span className="font-bold text-pink-600 text-3xl">{dayOffRequests.size}件</span>
+            <div className="flex gap-6 items-center">
+              <div className="text-xl">
+                休み希望: <span className="font-bold text-pink-600 text-3xl">{dayOffRequests.size}件</span>
+              </div>
+              <div className="text-xl">
+                指定休: <span className="font-bold text-3xl" style={{ color: '#4ade80' }}>{scheduledDayOffs.size}件</span>
+              </div>
+              <div className="text-xl text-gray-600">
+                合計: <span className="font-bold text-gray-800 text-3xl">{dayOffRequests.size + scheduledDayOffs.size}件</span>
+              </div>
             </div>
             <div className="flex gap-4">
               <button
@@ -339,68 +483,118 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
         {showTimeModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200]">
             <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full mx-4">
-              <h2 className="text-2xl font-bold mb-6 text-gray-800">休み希望の設定</h2>
+              <h2 className="text-2xl font-bold mb-6 text-gray-800">
+                {selectedType === 'dayOff' ? '休み希望の設定' : '指定休の設定'}
+              </h2>
 
-              <div className="space-y-4">
-                {/* 終日ボタン */}
-                <button
-                  onClick={() => setDayOffWithTime('all')}
-                  className="w-full px-6 py-4 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors text-lg font-bold"
-                >
-                  終日休み
-                </button>
-
-                <div className="border-t border-gray-200 my-2"></div>
-
-                {/* 時間指定 */}
-                <div>
-                  <label className="block text-base font-medium text-gray-700 mb-3">時間指定</label>
-                  <div className="flex gap-2 items-center mb-2">
-                    <input
-                      type="time"
-                      id="custom-start-time"
-                      className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-lg"
-                      defaultValue="08:00"
-                    />
-                    <span className="text-gray-500 text-lg">〜</span>
-                    <input
-                      type="time"
-                      id="custom-end-time"
-                      className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-lg"
-                      placeholder="省略可"
-                    />
-                  </div>
-                  <p className="text-sm text-gray-600 mb-3">
-                    ※終了時刻を省略すると、開始時刻の時間帯のみ休み希望となります<br />
-                    ※時間範囲を指定すると、該当する時間帯の行に自動的に反映されます
-                  </p>
+              {/* タイプ選択 */}
+              <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                <label className="block text-sm font-medium text-gray-700 mb-3">設定タイプを選択</label>
+                <div className="flex gap-3">
                   <button
-                    onClick={() => {
-                      const startInput = document.getElementById('custom-start-time') as HTMLInputElement;
-                      const endInput = document.getElementById('custom-end-time') as HTMLInputElement;
-                      if (startInput) {
-                        const startTime = startInput.value;
-                        const endTime = endInput?.value;
-
-                        // 終了時刻が未入力の場合は「開始時刻-」形式（その行のみ）
-                        if (!endTime) {
-                          setDayOffWithTime(`${startTime}-`);
-                        } else {
-                          setDayOffWithTime(`${startTime}-${endTime}`);
-                        }
-                      }
-                    }}
-                    className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-lg font-medium"
+                    onClick={() => setSelectedType('dayOff')}
+                    className={`flex-1 px-4 py-3 rounded-lg font-bold transition-all ${
+                      selectedType === 'dayOff'
+                        ? 'bg-pink-500 text-white shadow-lg'
+                        : 'bg-white text-gray-700 border-2 border-gray-300 hover:border-pink-300'
+                    }`}
                   >
-                    設定
+                    休み希望
+                  </button>
+                  <button
+                    onClick={() => setSelectedType('scheduled')}
+                    className={`flex-1 px-4 py-3 rounded-lg font-bold transition-all ${
+                      selectedType === 'scheduled'
+                        ? 'text-white shadow-lg'
+                        : 'bg-white text-gray-700 border-2 border-gray-300 hover:border-green-300'
+                    }`}
+                    style={selectedType === 'scheduled' ? { backgroundColor: '#22c55e' } : undefined}
+                  >
+                    指定休
                   </button>
                 </div>
+              </div>
+
+              <div className="space-y-4">
+                {selectedType === 'scheduled' ? (
+                  /* 指定休の場合は終日のみ */
+                  <>
+                    <button
+                      onClick={() => setDayOffWithTime('all', 'scheduled')}
+                      className="w-full px-6 py-4 text-white rounded-lg hover:opacity-90 transition-colors text-lg font-bold"
+                      style={{ backgroundColor: '#22c55e' }}
+                    >
+                      指定休を設定
+                    </button>
+                    <p className="text-sm text-gray-600 text-center">
+                      ※指定休は終日休みとして設定されます
+                    </p>
+                  </>
+                ) : (
+                  /* 休み希望の場合は時間指定可能 */
+                  <>
+                    {/* 終日ボタン */}
+                    <button
+                      onClick={() => setDayOffWithTime('all', 'dayOff')}
+                      className="w-full px-6 py-4 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors text-lg font-bold"
+                    >
+                      終日休み
+                    </button>
+
+                    <div className="border-t border-gray-200 my-2"></div>
+
+                    {/* 時間指定 */}
+                    <div>
+                      <label className="block text-base font-medium text-gray-700 mb-3">時間指定</label>
+                      <div className="flex gap-2 items-center mb-2">
+                        <input
+                          type="time"
+                          id="custom-start-time"
+                          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-lg"
+                          defaultValue="08:00"
+                        />
+                        <span className="text-gray-500 text-lg">〜</span>
+                        <input
+                          type="time"
+                          id="custom-end-time"
+                          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-lg"
+                          placeholder="省略可"
+                        />
+                      </div>
+                      <p className="text-sm text-gray-600 mb-3">
+                        ※終了時刻を省略すると、開始時刻の時間帯のみ休み希望となります<br />
+                        ※時間範囲を指定すると、該当する時間帯の行に自動的に反映されます
+                      </p>
+                      <button
+                        onClick={() => {
+                          const startInput = document.getElementById('custom-start-time') as HTMLInputElement;
+                          const endInput = document.getElementById('custom-end-time') as HTMLInputElement;
+                          if (startInput) {
+                            const startTime = startInput.value;
+                            const endTime = endInput?.value;
+
+                            // 終了時刻が未入力の場合は「開始時刻-」形式（その行のみ）
+                            if (!endTime) {
+                              setDayOffWithTime(`${startTime}-`, 'dayOff');
+                            } else {
+                              setDayOffWithTime(`${startTime}-${endTime}`, 'dayOff');
+                            }
+                          }
+                        }}
+                        className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-lg font-medium"
+                      >
+                        設定
+                      </button>
+                    </div>
+                  </>
+                )}
 
                 {/* キャンセル */}
                 <button
                   onClick={() => {
                     setShowTimeModal(false);
                     setSelectedCell(null);
+                    setSelectedType('dayOff'); // リセット
                   }}
                   className="w-full px-6 py-3 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition-colors font-medium"
                 >

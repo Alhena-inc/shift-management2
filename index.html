@@ -6,6 +6,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>シフト管理</title>
 
+    <!-- PWA早期リダイレクト（React読み込み前） -->
+    <script>
+      (function() {
+        console.log('=== 早期PWAリダイレクトチェック（index.html） ===');
+
+        var token = localStorage.getItem('personalShiftToken');
+        var isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+        var isIOSStandalone = window.navigator.standalone === true;
+        var isPWA = isStandalone || isIOSStandalone;
+        var isPersonalPage = window.location.pathname.startsWith('/personal/');
+
+        console.log('早期チェック - 現在のパス:', window.location.pathname);
+        console.log('早期チェック - トークン:', token);
+        console.log('早期チェック - スタンドアロン (Chrome/Android):', isStandalone);
+        console.log('早期チェック - スタンドアロン (iOS):', isIOSStandalone);
+        console.log('早期チェック - PWAモード:', isPWA);
+        console.log('早期チェック - 個人シフトページ?:', isPersonalPage);
+        console.log('早期チェック - リダイレクト条件:', {
+          isPWA: isPWA,
+          hasToken: !!token,
+          isPersonalPage: isPersonalPage,
+          shouldRedirect: isPWA && token && !isPersonalPage
+        });
+
+        if (isPWA && token && !isPersonalPage) {
+          console.log('⚡ 早期リダイレクト実行:', '/personal/' + token);
+          window.location.replace('/personal/' + token);
+        } else {
+          console.log('❌ 早期リダイレクトなし');
+        }
+      })();
+    </script>
+
     <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.json" />
 
