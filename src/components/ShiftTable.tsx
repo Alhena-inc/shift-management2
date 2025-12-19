@@ -2195,33 +2195,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     });
   }, []);
 
-  // セル選択の開始（マウスダウン）
-  const handleCellSelectionStart = useCallback((helperId: string, date: string, rowIndex: number, e: React.MouseEvent) => {
-    // 右クリックは無視
-    if (e.button === 2) return;
-
-    // Shiftキーが押されている場合は、既存のShift+ドラッグ機能を優先（セル選択は無視）
-    if (e.shiftKey) return;
-
-    const isMultiSelect = e.ctrlKey || e.metaKey;
-
-    // 既存のShift+ドラッグ選択をクリア
-    setSelectedRows(new Set());
-    selectedRowsRef.current.clear();
-
-    // 前回の青枠をクリア
-    lastSelectedRowTdsRef.current.forEach(td => {
-      td.style.removeProperty('outline');
-      td.style.removeProperty('outline-offset');
-    });
-    lastSelectedRowTdsRef.current = [];
-
-    toggleCellSelection(helperId, date, rowIndex, isMultiSelect);
-
-    // ドラッグ選択を開始
-    isSelectingCellsRef.current = true;
-  }, [toggleCellSelection]);
-
   // セル選択の継続（マウスオーバー）
   const handleCellSelectionMove = useCallback((helperId: string, date: string, rowIndex: number) => {
     if (!isSelectingCellsRef.current) return;
@@ -3448,8 +3421,25 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                       }}
                       title={cellDisplayData.hasWarning ? '⚠️ 終了時刻が入力されていません' : undefined}
                       onPointerDown={(e) => {
-                        // Shift+ドラッグ用の処理
-                        handleCellPointerDown(e, helper.id, day.date, rowIndex);
+                        // Shift+ドラッグの場合
+                        if (e.shiftKey) {
+                          handleCellPointerDown(e, helper.id, day.date, rowIndex);
+                        } else if (e.button !== 2) {
+                          // 通常のクリック・ドラッグ（右クリック以外）でセル選択
+                          const isMultiSelect = e.ctrlKey || e.metaKey;
+
+                          // 既存のShift+ドラッグ選択をクリア
+                          setSelectedRows(new Set());
+                          selectedRowsRef.current.clear();
+                          lastSelectedRowTdsRef.current.forEach(td => {
+                            td.style.removeProperty('outline');
+                            td.style.removeProperty('outline-offset');
+                          });
+                          lastSelectedRowTdsRef.current = [];
+
+                          toggleCellSelection(helper.id, day.date, rowIndex, isMultiSelect);
+                          isSelectingCellsRef.current = true;
+                        }
 
                         // contentEditableの要素をクリックした場合はドラッグを無効化
                         const target = e.target as HTMLElement;
@@ -3458,10 +3448,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                         } else {
                           e.currentTarget.draggable = true;
                         }
-                      }}
-                      onMouseDown={(e) => {
-                        // セル選択の開始
-                        handleCellSelectionStart(helper.id, day.date, rowIndex, e);
                       }}
                       onMouseEnter={(e) => {
                         handleCellMouseEnter(e, helper.id, day.date, rowIndex);
