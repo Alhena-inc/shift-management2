@@ -1,62 +1,49 @@
 <!doctype html>
 <html lang="ja">
   <head>
+    <!-- PWA即時リダイレクト（他のスクリプトより前に実行） -->
+    <script>
+      (function() {
+        // 即座に実行（他のスクリプトより前）
+        var path = window.location.pathname;
+        var search = window.location.search;
+        var token = localStorage.getItem('personalShiftToken');
+
+        console.log('🚀 即時PWAリダイレクトチェック');
+        console.log('現在のパス:', path);
+        console.log('クエリ:', search);
+        console.log('localStorage トークン:', token);
+
+        // クエリパラメータからトークン取得
+        var urlParams = new URLSearchParams(search);
+        var queryToken = urlParams.get('token');
+
+        console.log('クエリトークン:', queryToken);
+
+        if (queryToken) {
+          localStorage.setItem('personalShiftToken', queryToken);
+          token = queryToken;
+          console.log('💾 トークンをlocalStorageに保存:', token);
+        }
+
+        // トークンがあり、個人シフトページでない場合リダイレクト
+        var isPersonalPage = path.indexOf('/personal/') !== -1;
+        console.log('個人シフトページ?:', isPersonalPage);
+        console.log('リダイレクト条件:', { hasToken: !!token, isPersonalPage: isPersonalPage, shouldRedirect: token && !isPersonalPage });
+
+        if (token && !isPersonalPage) {
+          console.log('⚡ リダイレクト実行 → /personal/' + token);
+          window.location.href = '/personal/' + token;
+        } else {
+          console.log('❌ リダイレクトなし');
+        }
+      })();
+    </script>
+
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>シフト管理</title>
-
-    <!-- PWA早期リダイレクト（React読み込み前） -->
-    <script>
-      (function() {
-        console.log('=== 早期PWAリダイレクトチェック（index.html） ===');
-
-        // URLクエリパラメータからトークンを取得
-        var urlParams = new URLSearchParams(window.location.search);
-        var queryToken = urlParams.get('token');
-
-        // localStorageからトークンを取得
-        var storedToken = localStorage.getItem('personalShiftToken');
-
-        // クエリパラメータ優先、なければlocalStorage
-        var token = queryToken || storedToken;
-
-        var isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-        var isIOSStandalone = window.navigator.standalone === true;
-        var isPWA = isStandalone || isIOSStandalone;
-        var isPersonalPage = window.location.pathname.startsWith('/personal/');
-
-        console.log('早期チェック - 現在のパス:', window.location.pathname);
-        console.log('早期チェック - クエリパラメータ:', window.location.search);
-        console.log('早期チェック - クエリトークン:', queryToken);
-        console.log('早期チェック - localStorage トークン:', storedToken);
-        console.log('早期チェック - 使用トークン:', token);
-        console.log('早期チェック - スタンドアロン (Chrome/Android):', isStandalone);
-        console.log('早期チェック - スタンドアロン (iOS):', isIOSStandalone);
-        console.log('早期チェック - PWAモード:', isPWA);
-        console.log('早期チェック - 個人シフトページ?:', isPersonalPage);
-
-        // クエリパラメータでトークンが渡された場合、localStorageに保存
-        if (queryToken) {
-          localStorage.setItem('personalShiftToken', queryToken);
-          console.log('💾 クエリパラメータのトークンをlocalStorageに保存:', queryToken);
-        }
-
-        console.log('早期チェック - リダイレクト条件:', {
-          hasToken: !!token,
-          isPersonalPage: isPersonalPage,
-          shouldRedirect: token && !isPersonalPage
-        });
-
-        // トークンがあって個人シフトページ以外の場合、リダイレクト
-        if (token && !isPersonalPage) {
-          console.log('⚡ 早期リダイレクト実行:', '/personal/' + token);
-          window.location.replace('/personal/' + token);
-        } else {
-          console.log('❌ 早期リダイレクトなし');
-        }
-      })();
-    </script>
 
     <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.json" />
