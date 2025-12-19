@@ -8,7 +8,9 @@ import {
   getDocs,
   query,
   where,
-  deleteDoc
+  deleteDoc,
+  deleteField,
+  onSnapshot
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type { Helper, Shift } from '../types';
@@ -66,14 +68,19 @@ export const saveShiftsForMonth = async (_year: number, _month: number, shifts: 
         updatedAt: Timestamp.now()
       };
 
-      // undefinedのフィールドを削除
+      // undefinedのフィールドを削除またはdeleteField()に置き換え
       Object.keys(shiftData).forEach(key => {
         if (shiftData[key] === undefined) {
-          delete shiftData[key];
+          // cancelStatusが明示的にundefinedの場合は、Firestoreから削除
+          if (key === 'cancelStatus') {
+            shiftData[key] = deleteField();
+          } else {
+            delete shiftData[key];
+          }
         }
       });
 
-      batch.set(shiftRef, shiftData);
+      batch.set(shiftRef, shiftData, { merge: true });
     });
 
     await batch.commit();
@@ -152,6 +159,52 @@ export const loadShiftsForMonth = async (year: number, month: number): Promise<S
   } catch (error) {
     console.error('シフト読み込みエラー:', error);
     return [];
+  }
+};
+
+// リアルタイムリスナー：月のシフトを監視
+export const subscribeToShiftsForMonth = (
+  year: number,
+  month: number,
+  onUpdate: (shifts: Shift[]) => void
+): (() => void) => {
+  try {
+    // その月の開始日と終了日を作成
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    // その月のシフトをクエリ
+    const shiftsQuery = query(
+      collection(db, SHIFTS_COLLECTION),
+      where('date', '>=', startDate),
+      where('date', '<=', endDate)
+    );
+
+    // リアルタイムリスナーを設定
+    const unsubscribe = onSnapshot(
+      shiftsQuery,
+      (querySnapshot) => {
+        const shifts = querySnapshot.docs
+          .map(doc => ({
+            ...doc.data(),
+            id: doc.id
+          } as Shift))
+          // 論理削除されていないデータのみフィルタリング
+          .filter(shift => !shift.deleted);
+
+        console.log(`🔄 リアルタイム更新: ${shifts.length}件のシフトを取得`);
+        onUpdate(shifts);
+      },
+      (error) => {
+        console.error('リアルタイムリスナーエラー:', error);
+      }
+    );
+
+    return unsubscribe;
+  } catch (error) {
+    console.error('リアルタイムリスナー設定エラー:', error);
+    return () => {};
   }
 };
 
@@ -310,5 +363,100 @@ export const loadHelperByToken = async (token: string): Promise<Helper | null> =
   } catch (error) {
     console.error('ヘルパー取得エラー:', error);
     return null;
+  }
+};
+
+// 休み希望を保存（月ごと）- Map版
+export const saveDayOffRequests = async (year: number, month: number, requests: Map<string, string>): Promise<void> => {
+  try {
+    const docId = `${year}-${String(month).padStart(2, '0')}`;
+    const docRef = doc(db, 'dayOffRequests', docId);
+
+    // MapをオブジェクトまたはArray形式に変換
+    const requestsArray = Array.from(requests.entries()).map(([key, value]) => ({ key, value }));
+
+    await setDoc(docRef, {
+      requests: requestsArray,
+      updatedAt: Timestamp.now()
+    });
+
+    console.log(`🏖️ 休み希望を保存しました: ${docId} (${requests.size}件)`);
+  } catch (error) {
+    console.error('休み希望保存エラー:', error);
+    throw error;
+  }
+};
+
+// 休み希望を読み込み（月ごと）- Map版
+export const loadDayOffRequests = async (year: number, month: number): Promise<Map<string, string>> => {
+  try {
+    const docId = `${year}-${String(month).padStart(2, '0')}`;
+    const docSnap = await getDocs(query(collection(db, 'dayOffRequests')));
+
+    const targetDoc = docSnap.docs.find(d => d.id === docId);
+    if (targetDoc && targetDoc.exists()) {
+      const data = targetDoc.data();
+      const requestsData = data.requests || [];
+
+      // 配列からMapに変換
+      const requests = new Map<string, string>();
+      if (Array.isArray(requestsData)) {
+        // 新形式：[{key: string, value: string}, ...]
+        if (requestsData.length > 0 && typeof requestsData[0] === 'object' && 'key' in requestsData[0]) {
+          requestsData.forEach((item: any) => {
+            requests.set(item.key, item.value);
+          });
+        } else {
+          // 旧形式：[key1, key2, ...]（互換性のため、'all'として扱う）
+          requestsData.forEach((key: string) => {
+            requests.set(key, 'all');
+          });
+        }
+      }
+
+      console.log(`🏖️ 休み希望を読み込みました: ${docId} (${requests.size}件)`);
+      return requests;
+    }
+
+    console.log(`🏖️ 休み希望データが見つかりません: ${docId}`);
+    return new Map();
+  } catch (error) {
+    console.error('休み希望読み込みエラー:', error);
+    return new Map();
+  }
+};
+
+// 休み希望のリアルタイムリスナー
+export const subscribeToDayOffRequests = (
+  year: number,
+  month: number,
+  onUpdate: (requests: Set<string>) => void
+): (() => void) => {
+  try {
+    const docId = `${year}-${String(month).padStart(2, '0')}`;
+    const docRef = doc(db, 'dayOffRequests', docId);
+
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          const requests = new Set<string>(data.requests || []);
+          console.log(`🏖️ リアルタイム更新: 休み希望 ${docId} (${requests.size}件)`);
+          onUpdate(requests);
+        } else {
+          console.log(`🏖️ リアルタイム更新: 休み希望データなし ${docId}`);
+          onUpdate(new Set());
+        }
+      },
+      (error) => {
+        console.error('休み希望リアルタイムリスナーエラー:', error);
+      }
+    );
+
+    return unsubscribe;
+  } catch (error) {
+    console.error('休み希望リアルタイムリスナー設定エラー:', error);
+    return () => {};
   }
 };

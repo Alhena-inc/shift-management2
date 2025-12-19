@@ -22,6 +22,8 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
   const baseUrl = import.meta.env.VITE_APP_URL || window.location.origin;
 
   const [newHelperName, setNewHelperName] = useState('');
+  const [newHelperLastName, setNewHelperLastName] = useState('');
+  const [newHelperFirstName, setNewHelperFirstName] = useState('');
   const [newHelperGender, setNewHelperGender] = useState<'male' | 'female'>('male');
   const [showAddForm, setShowAddForm] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -30,10 +32,17 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
   const [localHelpers, setLocalHelpers] = useState<Helper[]>(helpers);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [editingHelperId, setEditingHelperId] = useState<string | null>(null);
+  const [editHelperFirstName, setEditHelperFirstName] = useState('');
 
   const handleAddHelper = () => {
-    if (!newHelperName.trim()) {
-      alert('ヘルパー名を入力してください');
+    // 苗字または名前のどちらかが入力されていればOK
+    const lastName = newHelperLastName.trim();
+    const firstName = newHelperFirstName.trim();
+    const displayName = newHelperName.trim() || lastName; // nameが空なら苗字を使用
+
+    if (!displayName) {
+      alert('苗字を入力してください');
       return;
     }
 
@@ -45,7 +54,9 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
     const maxId = Math.max(...localHelpers.map(h => parseInt(h.id)), 0);
     const newHelper: Helper = {
       id: String(maxId + 1),
-      name: newHelperName.trim(),
+      name: displayName,
+      lastName: lastName || undefined,
+      firstName: firstName || undefined,
       gender: newHelperGender,
       order: 0, // 仮の値
     };
@@ -64,6 +75,8 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
     setLocalHelpers(updatedHelpers);
     setHasChanges(true);
     setNewHelperName('');
+    setNewHelperLastName('');
+    setNewHelperFirstName('');
     setShowAddForm(false);
   };
 
@@ -135,6 +148,50 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
     setLocalHelpers(reorderedHelpers);
     setHasChanges(true);
     setDraggedIndex(null);
+  };
+
+  const handleStartEdit = (helper: Helper) => {
+    setEditingHelperId(helper.id);
+    setEditHelperFirstName(helper.firstName || '');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingHelperId) return;
+
+    const helper = localHelpers.find(h => h.id === editingHelperId);
+    if (!helper) return;
+
+    const updatedHelpers = localHelpers.map(h =>
+      h.id === editingHelperId
+        ? {
+            ...h,
+            lastName: h.name, // 現在のnameを苗字として設定
+            firstName: editHelperFirstName.trim() || undefined
+          }
+        : h
+    );
+
+    setLocalHelpers(updatedHelpers);
+    setEditingHelperId(null);
+    setEditHelperFirstName('');
+
+    // 即座にFirestoreに保存
+    setIsSaving(true);
+    try {
+      await onUpdate(updatedHelpers);
+      alert('✅ 保存しました');
+    } catch (error) {
+      console.error('保存エラー:', error);
+      alert('❌ 保存に失敗しました');
+    } finally {
+      setIsSaving(false);
+      setHasChanges(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingHelperId(null);
+    setEditHelperFirstName('');
   };
 
   const handleDeleteHelper = (helperId: string) => {
@@ -254,30 +311,80 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
                 >
                   {/* ドラッグ可能なヘッダー部分 */}
                   <div
-                    draggable
+                    draggable={editingHelperId !== helper.id}
                     onDragStart={() => handleDragStart(index)}
                     onDragOver={handleDragOver}
                     onDrop={() => handleDrop(index)}
-                    className={`flex items-center justify-between p-4 cursor-move ${bgColor} ${
+                    className={`flex items-center justify-between p-4 ${editingHelperId !== helper.id ? 'cursor-move' : ''} ${bgColor} ${
                       draggedIndex === index ? 'opacity-50' : ''
                     }`}
                   >
-                    <div className="flex items-center gap-4">
-                      <span className="text-2xl">☰</span>
+                    <div className="flex items-center gap-4 flex-1">
+                      {editingHelperId !== helper.id && <span className="text-2xl">☰</span>}
                       <span className="text-2xl">{helper.gender === 'male' ? '👨' : '👩'}</span>
-                      <div>
-                        <div className="font-medium text-lg">{helper.name}</div>
-                        <div className="text-sm text-gray-600">
-                          {helper.gender === 'male' ? '男性' : '女性'} · 順番: {helper.order}
-                        </div>
+                      <div className="flex-1">
+                        {editingHelperId === helper.id ? (
+                          <div className="space-y-2">
+                            <div className="font-medium text-lg">{helper.name}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-gray-600">苗字: {helper.name}</span>
+                              <span className="text-sm text-gray-600">+</span>
+                              <input
+                                type="text"
+                                value={editHelperFirstName}
+                                onChange={(e) => setEditHelperFirstName(e.target.value)}
+                                placeholder="名前を入力"
+                                className="flex-1 px-3 py-2 border rounded text-sm"
+                                autoFocus
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="font-medium text-lg">{helper.name}</div>
+                            <div className="text-sm text-gray-600">
+                              {helper.gender === 'male' ? '男性' : '女性'} · 順番: {helper.order}
+                              {helper.lastName && helper.firstName && ` · ${helper.lastName}${helper.firstName}`}
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleDeleteHelper(helper.id)}
-                      className="px-3 py-1 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                      🗑️ 削除
-                    </button>
+                    <div className="flex gap-2">
+                      {editingHelperId === helper.id ? (
+                        <>
+                          <button
+                            onClick={handleSaveEdit}
+                            disabled={isSaving}
+                            className="px-3 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {isSaving ? '保存中...' : '✓ 保存'}
+                          </button>
+                          <button
+                            onClick={handleCancelEdit}
+                            disabled={isSaving}
+                            className="px-3 py-1 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            ✕ キャンセル
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => handleStartEdit(helper)}
+                            className="px-3 py-1 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          >
+                            ✏️ 編集
+                          </button>
+                          <button
+                            onClick={() => handleDeleteHelper(helper.id)}
+                            className="px-3 py-1 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            🗑️ 削除
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   {/* 個人シフト表URL部分 */}
@@ -329,16 +436,41 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
             {/* フォーム */}
             <div className="space-y-6">
               <div>
-                <label className="block text-lg font-medium mb-3">ヘルパー名</label>
+                <label className="block text-lg font-medium mb-3">シフト表表示名（苗字のみでOK）</label>
                 <input
                   type="text"
                   value={newHelperName}
                   onChange={(e) => setNewHelperName(e.target.value)}
-                  placeholder="名前を入力"
+                  placeholder="例: 田中"
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   onKeyDown={(e) => e.key === 'Enter' && handleAddHelper()}
                   autoFocus
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-lg font-medium mb-3">苗字（経費照合用）</label>
+                  <input
+                    type="text"
+                    value={newHelperLastName}
+                    onChange={(e) => setNewHelperLastName(e.target.value)}
+                    placeholder="例: 田中"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddHelper()}
+                  />
+                </div>
+                <div>
+                  <label className="block text-lg font-medium mb-3">名前（経費照合用）</label>
+                  <input
+                    type="text"
+                    value={newHelperFirstName}
+                    onChange={(e) => setNewHelperFirstName(e.target.value)}
+                    placeholder="例: 太郎"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddHelper()}
+                  />
+                </div>
               </div>
 
               <div>

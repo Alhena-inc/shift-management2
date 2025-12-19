@@ -44,11 +44,20 @@ export const SERVICE_CONFIG: Record<ServiceType, {
 
 export interface Helper {
   id: string;
-  name: string;
+  name: string;           // 苗字（シフト表表示用）
+  lastName?: string;      // 苗字（詳細）
+  firstName?: string;     // 名前
   gender: 'male' | 'female';
   order: number;
   personalToken?: string;  // 個人シフト表用のユニークトークン
   cashPayment?: boolean;   // 手渡し支払いフラグ
+  // 月別の給与関連データ（キー: "YYYY-MM"）
+  monthlyPayments?: Record<string, {
+    transportationAllowance?: number;  // 交通費
+    advanceExpense?: number;           // 建替経費
+    allowance?: number;                // 手当
+    repayment?: number;                // 返済
+  }>;
 }
 
 export interface Shift {

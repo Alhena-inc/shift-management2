@@ -1,9 +1,87 @@
 import { useMemo, useCallback, useEffect, memo, useState, useRef } from 'react';
 import type { Helper, Shift, ServiceType } from '../types';
 import { SERVICE_CONFIG } from '../types';
-import { saveShiftsForMonth, deleteShift, softDeleteShift } from '../services/firestoreService';
+import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests } from '../services/firestoreService';
 import { calculateNightHours, calculateRegularHours, calculateTimeDuration } from '../utils/timeCalculations';
 import { calculateShiftPay } from '../utils/salaryCalculations';
+
+// 最適化された入力セルコンポーネント（週払い管理表用）
+interface OptimizedInputCellProps {
+  helperId: string;
+  fieldType: 'transportationAllowance' | 'advanceExpense' | 'allowance' | 'repayment';
+  initialValue: number;
+  onSave: (helperId: string, fieldType: 'transportationAllowance' | 'advanceExpense' | 'allowance' | 'repayment', value: string) => void;
+}
+
+const OptimizedInputCell = memo(({ helperId, fieldType, initialValue, onSave }: OptimizedInputCellProps) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [localValue, setLocalValue] = useState(String(initialValue || ''));
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleClick = useCallback(() => {
+    setIsEditing(true);
+    // 次のtickでフォーカス（レンダリング完了を待つ）
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, []);
+
+  const handleBlur = useCallback(() => {
+    setIsEditing(false);
+    // 値が変更された場合のみ保存
+    if (localValue !== String(initialValue || '')) {
+      onSave(helperId, fieldType, localValue);
+    }
+  }, [localValue, initialValue, helperId, fieldType, onSave]);
+
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    // ローカルステートのみ更新（親への伝播なし）
+    setLocalValue(e.target.value);
+  }, []);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      inputRef.current?.blur();
+    }
+  }, []);
+
+  // 外部からinitialValueが変更された場合に同期（編集中でない場合のみ）
+  useEffect(() => {
+    if (!isEditing) {
+      setLocalValue(String(initialValue || ''));
+    }
+  }, [initialValue, isEditing]);
+
+  if (!isEditing) {
+    return (
+      <div
+        onClick={handleClick}
+        className="w-full h-full text-center text-xs p-2 cursor-text hover:bg-gray-50"
+      >
+        {initialValue || '-'}
+      </div>
+    );
+  }
+
+  return (
+    <input
+      ref={inputRef}
+      type="number"
+      value={localValue}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      className="w-full h-full text-center text-xs border-0 outline-none focus:bg-blue-50 p-2"
+      autoComplete="off"
+    />
+  );
+}, (prevProps, nextProps) => {
+  // カスタム比較関数：initialValueが変わった場合のみ再レンダリング
+  return prevProps.initialValue === nextProps.initialValue &&
+         prevProps.helperId === nextProps.helperId &&
+         prevProps.fieldType === nextProps.fieldType;
+});
+
+OptimizedInputCell.displayName = 'OptimizedInputCell';
 
 interface Props {
   helpers: Helper[];
@@ -230,6 +308,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   // 複数選択用のstate
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
 
+  // 休み希望管理（キー: "helperId-date", 値: "all" | "時間-" | "-時間"）
+  const [dayOffRequests, setDayOffRequests] = useState<Map<string, string>>(new Map());
+
   // 前回選択されたセルを記録（高速クリーンアップ用）
   const lastSelectedCellRef = useRef<HTMLElement | null>(null);
   const lastSelectedRowTdsRef = useRef<HTMLElement[]>([]);
@@ -246,26 +327,34 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   // エンターキーの押下回数を追跡するためのMap（セルごと）
   const enterCountRef = useMemo(() => new Map<string, number>(), []);
 
-  // Undoスタック
-  const undoStackRef = useMemo(() => [] as Array<{
+  // Undo/Redoアクションの型定義
+  type UndoAction = {
     helperId: string;
     date: string;
     rowIndex: number;
     data: string[];
     backgroundColor: string;
-  }>, []);
+  };
+
+  // Undoスタック（単一操作 or グループ操作）
+  const undoStackRef = useMemo(() => [] as Array<UndoAction | UndoAction[]>, []);
 
   // デバウンス用のタイマー管理（高速化のため）
   const saveTimersRef = useRef<Map<string, number>>(new Map());
 
-  // Redoスタック
-  const redoStackRef = useMemo(() => [] as Array<{
-    helperId: string;
-    date: string;
-    rowIndex: number;
-    data: string[];
-    backgroundColor: string;
-  }>, []);
+  // 給与関連データ（ヘルパーIDごと）
+  const [monthlyPayments, setMonthlyPayments] = useState<Record<string, {
+    transportationAllowance: number;
+    advanceExpense: number;
+    allowance: number;
+    repayment: number;
+  }>>({});
+
+  // 給与データ保存用のデバウンスタイマー
+  const paymentSaveTimersRef = useRef<Map<string, number>>(new Map());
+
+  // Redoスタック（単一操作 or グループ操作）
+  const redoStackRef = useMemo(() => [] as Array<UndoAction | UndoAction[]>, []);
 
   // コピーバッファ（セルのコピー&ペースト用）
   const copyBufferRef = useMemo(() => ({
@@ -378,10 +467,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     }
 
     // 背景色を保存
-    const cellSelector = `.editable-cell[data-row="${rowIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
-    const cells = document.querySelectorAll(cellSelector);
-    if (cells.length > 0) {
-      const parentTd = cells[0].closest('td') as HTMLElement;
+    const bgCellSelector = `.editable-cell[data-row="${rowIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
+    const bgCells = document.querySelectorAll(bgCellSelector);
+    if (bgCells.length > 0) {
+      const parentTd = bgCells[0].closest('td') as HTMLElement;
       if (parentTd) {
         backgroundColor = parentTd.style.backgroundColor || '#ffffff';
       }
@@ -406,8 +495,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     }
 
     // 背景色と枠線もリセット
-    if (cells.length > 0) {
-      const parentTd = cells[0].closest('td');
+    if (bgCells.length > 0) {
+      const parentTd = bgCells[0].closest('td');
       if (parentTd) {
         const tdElement = parentTd as HTMLElement;
         tdElement.style.backgroundColor = '#ffffff';
@@ -419,7 +508,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           tdElement.style.borderRight = '2px solid #000000';
         }
       }
-      cells.forEach((cell) => {
+      bgCells.forEach((cell) => {
         const element = cell as HTMLElement;
         // 現在のoutline状態を保持
         const currentOutline = element.style.outline;
@@ -461,133 +550,171 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     const lastAction = undoStackRef.pop();
     if (!lastAction) return;
 
-    const { helperId, date, rowIndex, data, backgroundColor } = lastAction;
+    // 配列（グループ）かどうかをチェック
+    const actions = Array.isArray(lastAction) ? lastAction : [lastAction];
 
-    // Undo前の現在の状態をRedoスタックに保存
-    const currentData: string[] = [];
-    let currentBackgroundColor = '#ffffff';
+    console.log(`↶ Undo実行: ${actions.length}件の変更を戻します`);
 
-    for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
-      const cellSelector = `.editable-cell[data-row="${rowIndex}"][data-line="${lineIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
-      const cell = document.querySelector(cellSelector) as HTMLElement;
-      currentData.push(cell ? cell.textContent || '' : '');
-    }
+    // Redoスタック用のグループを作成
+    const redoGroup: Array<{
+      helperId: string;
+      date: string;
+      rowIndex: number;
+      data: string[];
+      backgroundColor: string;
+    }> = [];
 
-    const cellSelector = `.editable-cell[data-row="${rowIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
-    const cells = document.querySelectorAll(cellSelector);
-    if (cells.length > 0) {
-      const parentTd = cells[0].closest('td') as HTMLElement;
-      if (parentTd) {
-        currentBackgroundColor = parentTd.style.backgroundColor || '#ffffff';
+    // すべてのアクションを処理
+    actions.forEach((action) => {
+      const { helperId, date, rowIndex, data, backgroundColor } = action;
+
+      // Undo前の現在の状態をRedoグループに保存
+      const currentData: string[] = [];
+      let currentBackgroundColor = '#ffffff';
+
+      for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
+        const cellSelector = `.editable-cell[data-row="${rowIndex}"][data-line="${lineIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
+        const cell = document.querySelector(cellSelector) as HTMLElement;
+        currentData.push(cell ? cell.textContent || '' : '');
       }
-    }
 
-    redoStackRef.push({
-      helperId,
-      date,
-      rowIndex,
-      data: currentData,
-      backgroundColor: currentBackgroundColor
+      const bgCellSelector = `.editable-cell[data-row="${rowIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
+      const bgCells = document.querySelectorAll(bgCellSelector);
+      if (bgCells.length > 0) {
+        const parentTd = bgCells[0].closest('td') as HTMLElement;
+        if (parentTd) {
+          currentBackgroundColor = parentTd.style.backgroundColor || '#ffffff';
+        }
+      }
+
+      // Redoグループに追加
+      redoGroup.push({
+        helperId,
+        date,
+        rowIndex,
+        data: currentData,
+        backgroundColor: currentBackgroundColor
+      });
+
+      // 4つのラインのデータを復元
+      for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
+        const cellSelector = `.editable-cell[data-row="${rowIndex}"][data-line="${lineIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
+        const cell = document.querySelector(cellSelector) as HTMLElement;
+        if (cell) {
+          cell.textContent = data[lineIndex];
+        }
+      }
+
+      // 背景色を復元
+      if (bgCells.length > 0) {
+        const parentTd = bgCells[0].closest('td') as HTMLElement;
+        if (parentTd) {
+          parentTd.style.backgroundColor = backgroundColor || '#ffffff';
+        }
+        bgCells.forEach((cell) => {
+          const element = cell as HTMLElement;
+          // 現在のoutline状態を保持
+          const currentOutline = element.style.outline;
+          element.style.backgroundColor = backgroundColor || '';
+          // outlineを保持（消えないように）
+          if (currentOutline) {
+            element.style.outline = currentOutline;
+          }
+        });
+      }
+
+      // 集計行を更新
+      updateTotalsForHelperAndDate(helperId, date);
     });
 
-    // 4つのラインのデータを復元
-    for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
-      const cellSelector = `.editable-cell[data-row="${rowIndex}"][data-line="${lineIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
-      const cell = document.querySelector(cellSelector) as HTMLElement;
-      if (cell) {
-        cell.textContent = data[lineIndex];
-      }
+    // Redoスタックにグループを追加
+    if (redoGroup.length > 0) {
+      redoStackRef.push(redoGroup);
     }
 
-    // 背景色を復元
-    if (cells.length > 0) {
-      const parentTd = cells[0].closest('td') as HTMLElement;
-      if (parentTd) {
-        parentTd.style.backgroundColor = backgroundColor || '#ffffff';
-      }
-      cells.forEach((cell) => {
-        const element = cell as HTMLElement;
-        // 現在のoutline状態を保持
-        const currentOutline = element.style.outline;
-        element.style.backgroundColor = backgroundColor || '';
-        // outlineを保持（消えないように）
-        if (currentOutline) {
-          element.style.outline = currentOutline;
+    // shifts配列を更新（すべてのアクションを反映）
+    const updatedShifts = shifts.map(s => {
+      const action = actions.find(a => s.id === `shift-${a.helperId}-${a.date}-${a.rowIndex}`);
+      if (action) {
+        const { data, backgroundColor } = action;
+        // DOM要素から最新のデータを取得してShiftオブジェクトを作成
+        const [timeRange, clientInfo, durationStr, area] = data;
+
+        // データが空の場合は削除フラグを立てる
+        if (data.every((line: string) => line.trim() === '')) {
+          return { ...s, deleted: true };
         }
-      });
-    }
 
-    // 集計行を更新
-    updateTotalsForHelperAndDate(helperId, date);
+        // データがある場合は更新
+        const match = clientInfo.match(/\((.+?)\)/);
+        let serviceType: ServiceType = 'shintai';
+        let cancelStatus: 'keep_time' | 'remove_time' | undefined = undefined;
 
-    // Firestoreに保存（即座に実行）
-    (async () => {
-      const [timeRange, clientInfo, durationStr, area] = data;
-
-      // データが空の場合は論理削除
-      if (data.every(line => line.trim() === '')) {
-        const shiftId = `shift-${helperId}-${date}-${rowIndex}`;
-        softDeleteShift(shiftId).catch((error: unknown) => {
-          console.error('論理削除に失敗しました:', error);
-        });
-        console.log('↶ Undoしました（削除状態に戻す）');
-        return;
-      }
-
-      // データがある場合は保存
-      const match = clientInfo.match(/\((.+?)\)/);
-      let serviceType: ServiceType = 'shintai';
-      let cancelStatus: 'keep_time' | 'remove_time' | undefined = undefined;
-
-      if (match) {
-        const serviceLabel = match[1];
-        const serviceEntry = Object.entries(SERVICE_CONFIG).find(
-          ([_, config]) => config.label === serviceLabel
-        );
-        if (serviceEntry) {
-          serviceType = serviceEntry[0] as ServiceType;
+        if (match) {
+          const serviceLabel = match[1];
+          const serviceEntry = Object.entries(SERVICE_CONFIG).find(
+            ([_, config]) => config.label === serviceLabel
+          );
+          if (serviceEntry) {
+            serviceType = serviceEntry[0] as ServiceType;
+          }
         }
-      }
 
-      // 背景色が赤の場合はキャンセル状態
-      if (backgroundColor === '#f87171' || backgroundColor === 'rgb(248, 113, 113)') {
-        // 稼働時間が0の場合は「時間残さず」、それ以外は「時間残す」
-        cancelStatus = parseFloat(durationStr) === 0 ? 'remove_time' : 'keep_time';
-      }
+        // 背景色が赤の場合はキャンセル状態
+        if (backgroundColor === '#f87171' || backgroundColor === 'rgb(248, 113, 113)') {
+          cancelStatus = parseFloat(durationStr) === 0 ? 'remove_time' : 'keep_time';
+        }
 
-      const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
-      const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
-      const startTime = timeMatch ? timeMatch[1] : '';
-      const endTime = timeMatch ? timeMatch[2] : '';
+        const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
+        const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+        const startTime = timeMatch ? timeMatch[1] : '';
+        const endTime = timeMatch ? timeMatch[2] : '';
 
-      // 給与を計算
-      const payCalculation = calculateShiftPay(serviceType, timeRange);
+        // 給与を計算
+        const payCalculation = calculateShiftPay(serviceType, timeRange);
 
-      const shift: Shift = {
-        id: `shift-${helperId}-${date}-${rowIndex}`,
-        date,
-        helperId,
-        clientName,
-        serviceType,
-        startTime,
-        endTime,
-        duration: parseFloat(durationStr) || 0,
-        area,
-        rowIndex,
-        regularHours: payCalculation.regularHours,
-        nightHours: payCalculation.nightHours,
-        regularPay: payCalculation.regularPay,
-        nightPay: payCalculation.nightPay,
-        totalPay: payCalculation.totalPay,
-        ...(cancelStatus && {
+        return {
+          ...s,
+          clientName,
+          serviceType,
+          startTime,
+          endTime,
+          duration: parseFloat(durationStr) || 0,
+          area,
+          regularHours: payCalculation.regularHours,
+          nightHours: payCalculation.nightHours,
+          regularPay: payCalculation.regularPay,
+          nightPay: payCalculation.nightPay,
+          totalPay: payCalculation.totalPay,
           cancelStatus,
-          canceledAt: new Date()
-        })
-      };
+          ...(cancelStatus && { canceledAt: new Date() })
+        };
+      }
+      return s;
+    });
 
-      await saveShiftWithCorrectYearMonth(shift);
-    })();
-  }, [undoStackRef, redoStackRef, updateTotalsForHelperAndDate, year, month]);
+    // 画面を即座に更新（タイムラグなし）
+    onUpdateShifts(updatedShifts);
+
+    // Firestoreへの保存を並列実行（画面更新をブロックしない）
+    actions.forEach((action) => {
+      const shiftId = `shift-${action.helperId}-${action.date}-${action.rowIndex}`;
+      const updatedShift = updatedShifts.find(s => s.id === shiftId);
+      if (updatedShift) {
+        // 削除フラグがある場合は論理削除
+        if (updatedShift.deleted) {
+          softDeleteShift(shiftId)
+            .then(() => console.log('↶ Undoしました（削除状態に戻す）'))
+            .catch((error: unknown) => console.error('Undo後の保存に失敗しました:', error));
+        } else {
+          // 通常の保存
+          saveShiftWithCorrectYearMonth(updatedShift)
+            .then(() => console.log('↶ Undoしました（Firestoreに保存完了）', updatedShift))
+            .catch((error: unknown) => console.error('Undo後の保存に失敗しました:', error));
+        }
+      }
+    });
+  }, [undoStackRef, redoStackRef, updateTotalsForHelperAndDate, year, month, shifts, onUpdateShifts]);
 
   // Redo関数
   const redo = useCallback(() => {
@@ -598,136 +725,195 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     const lastRedo = redoStackRef.pop();
     if (!lastRedo) return;
 
-    const { helperId, date, rowIndex, data, backgroundColor } = lastRedo;
+    // 配列（グループ）かどうかをチェック
+    const actions = Array.isArray(lastRedo) ? lastRedo : [lastRedo];
 
-    // Redo前の現在の状態をUndoスタックに保存
-    const currentData: string[] = [];
-    let currentBackgroundColor = '#ffffff';
+    console.log(`↷ Redo実行: ${actions.length}件の変更をやり直します`);
 
-    for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
-      const cellSelector = `.editable-cell[data-row="${rowIndex}"][data-line="${lineIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
-      const cell = document.querySelector(cellSelector) as HTMLElement;
-      currentData.push(cell ? cell.textContent || '' : '');
-    }
+    // Undoスタック用のグループを作成
+    const undoGroup: Array<{
+      helperId: string;
+      date: string;
+      rowIndex: number;
+      data: string[];
+      backgroundColor: string;
+    }> = [];
 
-    const cellSelector = `.editable-cell[data-row="${rowIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
-    const cells = document.querySelectorAll(cellSelector);
-    if (cells.length > 0) {
-      const parentTd = cells[0].closest('td') as HTMLElement;
-      if (parentTd) {
-        currentBackgroundColor = parentTd.style.backgroundColor || '#ffffff';
-      }
-    }
+    // すべてのアクションを処理
+    actions.forEach((action) => {
+      const { helperId, date, rowIndex, data, backgroundColor } = action;
 
-    undoStackRef.push({
-      helperId,
-      date,
-      rowIndex,
-      data: currentData,
-      backgroundColor: currentBackgroundColor
-    });
+      // Redo前の現在の状態をUndoグループに保存
+      const currentData: string[] = [];
+      let currentBackgroundColor = '#ffffff';
 
-    // 4つのラインのデータを復元
-    for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
-      const cellSelector = `.editable-cell[data-row="${rowIndex}"][data-line="${lineIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
-      const cell = document.querySelector(cellSelector) as HTMLElement;
-      if (cell) {
-        cell.textContent = data[lineIndex];
-      }
-    }
-
-    // 背景色を復元
-    if (cells.length > 0) {
-      const parentTd = cells[0].closest('td') as HTMLElement;
-      if (parentTd) {
-        parentTd.style.backgroundColor = backgroundColor || '#ffffff';
-      }
-      cells.forEach((cell) => {
-        const element = cell as HTMLElement;
-        // 現在のoutline状態を保持
-        const currentOutline = element.style.outline;
-        element.style.backgroundColor = backgroundColor || '';
-        // outlineを保持（消えないように）
-        if (currentOutline) {
-          element.style.outline = currentOutline;
-        }
-      });
-    }
-
-    // 集計行を更新
-    updateTotalsForHelperAndDate(helperId, date);
-
-    // Firestoreに保存（即座に実行）
-    (async () => {
-      const [timeRange, clientInfo, durationStr, area] = data;
-
-      // データが空の場合は論理削除
-      if (data.every(line => line.trim() === '')) {
-        const shiftId = `shift-${helperId}-${date}-${rowIndex}`;
-        softDeleteShift(shiftId).catch((error: unknown) => {
-          console.error('論理削除に失敗しました:', error);
-        });
-        console.log('↷ Redoしました（削除状態に戻す）');
-        return;
+      for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
+        const cellSelector = `.editable-cell[data-row="${rowIndex}"][data-line="${lineIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
+        const cell = document.querySelector(cellSelector) as HTMLElement;
+        currentData.push(cell ? cell.textContent || '' : '');
       }
 
-      // データがある場合は保存
-      const match = clientInfo.match(/\((.+?)\)/);
-      let serviceType: ServiceType = 'shintai';
-      let cancelStatus: 'keep_time' | 'remove_time' | undefined = undefined;
-
-      if (match) {
-        const serviceLabel = match[1];
-        const serviceEntry = Object.entries(SERVICE_CONFIG).find(
-          ([_, config]) => config.label === serviceLabel
-        );
-        if (serviceEntry) {
-          serviceType = serviceEntry[0] as ServiceType;
+      const bgCellSelector = `.editable-cell[data-row="${rowIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
+      const bgCells = document.querySelectorAll(bgCellSelector);
+      if (bgCells.length > 0) {
+        const parentTd = bgCells[0].closest('td') as HTMLElement;
+        if (parentTd) {
+          currentBackgroundColor = parentTd.style.backgroundColor || '#ffffff';
         }
       }
 
-      // 背景色が赤の場合はキャンセル状態
-      if (backgroundColor === '#f87171' || backgroundColor === 'rgb(248, 113, 113)') {
-        // 稼働時間が0の場合は「時間残さず」、それ以外は「時間残す」
-        cancelStatus = parseFloat(durationStr) === 0 ? 'remove_time' : 'keep_time';
-      }
-
-      const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
-      const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
-      const startTime = timeMatch ? timeMatch[1] : '';
-      const endTime = timeMatch ? timeMatch[2] : '';
-
-      // 給与を計算
-      const payCalculation = calculateShiftPay(serviceType, timeRange);
-
-      const shift: Shift = {
-        id: `shift-${helperId}-${date}-${rowIndex}`,
-        date,
+      // Undoグループに追加
+      undoGroup.push({
         helperId,
-        clientName,
-        serviceType,
-        startTime,
-        endTime,
-        duration: parseFloat(durationStr) || 0,
-        area,
+        date,
         rowIndex,
-        regularHours: payCalculation.regularHours,
-        nightHours: payCalculation.nightHours,
-        regularPay: payCalculation.regularPay,
-        nightPay: payCalculation.nightPay,
-        totalPay: payCalculation.totalPay,
-        ...(cancelStatus && {
-          cancelStatus,
-          canceledAt: new Date()
-        })
-      };
+        data: currentData,
+        backgroundColor: currentBackgroundColor
+      });
 
-      await saveShiftWithCorrectYearMonth(shift);
-      console.log('↷ Redoしました（Firestoreに保存完了）');
-    })().catch((error: unknown) => {
-      console.error('Redo後の保存に失敗しました:', error);
+      // 4つのラインのデータを復元
+      for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
+        const cellSelector = `.editable-cell[data-row="${rowIndex}"][data-line="${lineIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
+        const cell = document.querySelector(cellSelector) as HTMLElement;
+        if (cell) {
+          cell.textContent = data[lineIndex];
+        }
+      }
+
+      // 背景色を復元
+      if (bgCells.length > 0) {
+        const parentTd = bgCells[0].closest('td') as HTMLElement;
+        if (parentTd) {
+          parentTd.style.backgroundColor = backgroundColor || '#ffffff';
+        }
+        bgCells.forEach((cell) => {
+          const element = cell as HTMLElement;
+          // 現在のoutline状態を保持
+          const currentOutline = element.style.outline;
+          element.style.backgroundColor = backgroundColor || '';
+          // outlineを保持（消えないように）
+          if (currentOutline) {
+            element.style.outline = currentOutline;
+          }
+        });
+      }
+
+      // 集計行を更新
+      updateTotalsForHelperAndDate(helperId, date);
     });
-  }, [redoStackRef, undoStackRef, updateTotalsForHelperAndDate, year, month]);
+
+    // Undoスタックにグループを追加
+    if (undoGroup.length > 0) {
+      undoStackRef.push(undoGroup);
+    }
+
+    // shifts配列を更新（すべてのアクションを反映）
+    const updatedShifts = shifts.map(s => {
+      const action = actions.find(a => s.id === `shift-${a.helperId}-${a.date}-${a.rowIndex}`);
+      if (action) {
+        const { data, backgroundColor } = action;
+        // DOM要素から最新のデータを取得してShiftオブジェクトを作成
+        const [timeRange, clientInfo, durationStr, area] = data;
+
+        // データが空の場合は削除フラグを立てる
+        if (data.every((line: string) => line.trim() === '')) {
+          return { ...s, deleted: true };
+        }
+
+        // データがある場合は更新
+        const match = clientInfo.match(/\((.+?)\)/);
+        let serviceType: ServiceType = 'shintai';
+        let cancelStatus: 'keep_time' | 'remove_time' | undefined = undefined;
+
+        if (match) {
+          const serviceLabel = match[1];
+          const serviceEntry = Object.entries(SERVICE_CONFIG).find(
+            ([_, config]) => config.label === serviceLabel
+          );
+          if (serviceEntry) {
+            serviceType = serviceEntry[0] as ServiceType;
+          }
+        }
+
+        // 背景色が赤の場合はキャンセル状態
+        if (backgroundColor === '#f87171' || backgroundColor === 'rgb(248, 113, 113)') {
+          cancelStatus = parseFloat(durationStr) === 0 ? 'remove_time' : 'keep_time';
+        }
+
+        const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
+        const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+        const startTime = timeMatch ? timeMatch[1] : '';
+        const endTime = timeMatch ? timeMatch[2] : '';
+
+        // 給与を計算
+        const payCalculation = calculateShiftPay(serviceType, timeRange);
+
+        return {
+          ...s,
+          clientName,
+          serviceType,
+          startTime,
+          endTime,
+          duration: parseFloat(durationStr) || 0,
+          area,
+          regularHours: payCalculation.regularHours,
+          nightHours: payCalculation.nightHours,
+          regularPay: payCalculation.regularPay,
+          nightPay: payCalculation.nightPay,
+          totalPay: payCalculation.totalPay,
+          cancelStatus,
+          ...(cancelStatus && { canceledAt: new Date() })
+        };
+      }
+      return s;
+    });
+
+    // 画面を即座に更新（タイムラグなし）
+    onUpdateShifts(updatedShifts);
+
+    // Firestoreへの保存を並列実行（画面更新をブロックしない）
+    actions.forEach((action) => {
+      const shiftId = `shift-${action.helperId}-${action.date}-${action.rowIndex}`;
+      const updatedShift = updatedShifts.find(s => s.id === shiftId);
+      if (updatedShift) {
+        // 削除フラグがある場合は論理削除
+        if (updatedShift.deleted) {
+          softDeleteShift(shiftId)
+            .then(() => console.log('↷ Redoしました（削除状態に戻す）'))
+            .catch((error: unknown) => console.error('Redo後の保存に失敗しました:', error));
+        } else {
+          // 通常の保存
+          saveShiftWithCorrectYearMonth(updatedShift)
+            .then(() => console.log('↷ Redoしました（Firestoreに保存完了）', updatedShift))
+            .catch((error: unknown) => console.error('Redo後の保存に失敗しました:', error));
+        }
+      }
+    });
+  }, [redoStackRef, undoStackRef, updateTotalsForHelperAndDate, year, month, shifts, onUpdateShifts]);
+
+  // 休み希望を読み込み
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const requests = await loadDayOffRequests(year, month);
+        setDayOffRequests(requests);
+        console.log(`🏖️ 休み希望を読み込みました: ${year}年${month}月 (${requests.size}件)`);
+      } catch (error) {
+        console.error('休み希望の読み込みエラー:', error);
+      }
+    };
+    loadData();
+  }, [year, month]);
+
+  // 休み希望を保存する関数
+  const saveDayOffToFirestore = useCallback(async (requests: Map<string, string>) => {
+    try {
+      await saveDayOffRequests(year, month, requests);
+      console.log(`✅ 休み希望をFirestoreに保存しました (${requests.size}件)`);
+    } catch (error) {
+      console.error('❌ 休み希望の保存に失敗しました:', error);
+    }
+  }, [year, month]);
 
   // タスク3: useEffectのDOM操作を削除 - セルはpropsから直接データを表示するように変更
   // 集計のみuseEffectで更新（DOM操作なし）
@@ -742,14 +928,324 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     });
   }, [shifts, updateTotalsForHelperAndDate]);
 
+  // 給与関連データの初期化（helpersから読み込み）
+  useEffect(() => {
+    const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+    const payments: Record<string, {
+      transportationAllowance: number;
+      advanceExpense: number;
+      allowance: number;
+      repayment: number;
+    }> = {};
+
+    helpers.forEach(helper => {
+      const monthData = helper.monthlyPayments?.[monthKey];
+      payments[helper.id] = {
+        transportationAllowance: monthData?.transportationAllowance || 0,
+        advanceExpense: monthData?.advanceExpense || 0,
+        allowance: monthData?.allowance || 0,
+        repayment: monthData?.repayment || 0
+      };
+    });
+
+    setMonthlyPayments(payments);
+  }, [helpers, year, month]);
+
+  // 交通費・経費APIからデータを取得して反映
+  const fetchAndUpdateExpenseData = useCallback(async (skipConfirmation = false) => {
+    const EXPENSE_API_URL = 'https://script.google.com/macros/s/AKfycbxpVQQVwhdYDPNwZ0kCOUVNyWUKDo6lNirKQVPDKubYfQYIP2nyHqSAWJBnIsHazqVavg/exec';
+
+    try {
+      const monthStr = `${year}/${String(month).padStart(2, '0')}`;
+      const url = `${EXPENSE_API_URL}?action=aggregate&month=${encodeURIComponent(monthStr)}&type=both`;
+
+      console.log('📡 交通費・経費データを取得中...', url);
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.warn('❌ 交通費・経費データの取得に失敗しました (HTTP Error)');
+        return;
+      }
+
+      const data = await response.json();
+      console.log('📦 取得したデータ:', data);
+
+      if (!data.success) {
+        console.warn('❌ 交通費・経費データの取得に失敗しました (API Error)');
+        return;
+      }
+
+      // ヘルパー名から ID を検索するマップを作成
+      const helperNameToId = new Map<string, string>();
+      helpers.forEach(helper => {
+        // シフト表表示名（苗字）
+        helperNameToId.set(helper.name, helper.id);
+
+        // フルネーム（苗字+名前）
+        if (helper.lastName && helper.firstName) {
+          const fullName = `${helper.lastName}${helper.firstName}`;
+          helperNameToId.set(fullName, helper.id);
+        }
+
+        // 苗字のみ
+        if (helper.lastName) {
+          helperNameToId.set(helper.lastName, helper.id);
+        }
+      });
+
+      console.log('👥 登録されているヘルパー:', Array.from(helperNameToId.keys()));
+
+      const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+      const updatedHelpers = [...helpers];
+      let hasChanges = false;
+      const unmatchedNames: string[] = [];
+      const updateSummary: string[] = [];
+      const overwriteList: string[] = [];
+
+      // 上書き対象をチェック
+      if (data.kotsuhi?.list) {
+        data.kotsuhi.list.forEach((item: { name: string; amount: number }) => {
+          const helperId = helperNameToId.get(item.name);
+          if (helperId) {
+            const helperIndex = updatedHelpers.findIndex(h => h.id === helperId);
+            if (helperIndex !== -1) {
+              const currentAmount = updatedHelpers[helperIndex].monthlyPayments?.[monthKey]?.transportationAllowance || 0;
+              if (currentAmount > 0 && currentAmount !== item.amount) {
+                overwriteList.push(`${item.name}: 交通費 ¥${currentAmount.toLocaleString()} → ¥${item.amount.toLocaleString()}`);
+              }
+            }
+          }
+        });
+      }
+
+      if (data.keihi?.list) {
+        data.keihi.list.forEach((item: { name: string; amount: number }) => {
+          const helperId = helperNameToId.get(item.name);
+          if (helperId) {
+            const helperIndex = updatedHelpers.findIndex(h => h.id === helperId);
+            if (helperIndex !== -1) {
+              const currentAmount = updatedHelpers[helperIndex].monthlyPayments?.[monthKey]?.advanceExpense || 0;
+              if (currentAmount > 0 && currentAmount !== item.amount) {
+                overwriteList.push(`${item.name}: 経費 ¥${currentAmount.toLocaleString()} → ¥${item.amount.toLocaleString()}`);
+              }
+            }
+          }
+        });
+      }
+
+      // 上書き確認（手動更新の場合のみ）
+      if (!skipConfirmation && overwriteList.length > 0) {
+        const confirmMessage = `以下のデータを上書きします。よろしいですか？\n\n${overwriteList.join('\n')}`;
+        if (!confirm(confirmMessage)) {
+          console.log('❌ ユーザーがキャンセルしました');
+          return;
+        }
+      }
+
+      // 交通費データを反映
+      if (data.kotsuhi?.list) {
+        console.log('🚃 交通費データ:', data.kotsuhi.list);
+        data.kotsuhi.list.forEach((item: { name: string; amount: number }) => {
+          const helperId = helperNameToId.get(item.name);
+          if (helperId) {
+            const helperIndex = updatedHelpers.findIndex(h => h.id === helperId);
+            if (helperIndex !== -1) {
+              const currentAmount = updatedHelpers[helperIndex].monthlyPayments?.[monthKey]?.transportationAllowance || 0;
+
+              console.log(`  ${item.name}: ${currentAmount} → ${item.amount}`);
+
+              // 金額が変わっている場合のみ更新
+              if (currentAmount !== item.amount) {
+                updatedHelpers[helperIndex] = {
+                  ...updatedHelpers[helperIndex],
+                  monthlyPayments: {
+                    ...updatedHelpers[helperIndex].monthlyPayments,
+                    [monthKey]: {
+                      ...updatedHelpers[helperIndex].monthlyPayments?.[monthKey],
+                      transportationAllowance: item.amount
+                    }
+                  }
+                };
+                hasChanges = true;
+                updateSummary.push(`✅ ${item.name}: 交通費 ¥${item.amount.toLocaleString()}`);
+                console.log(`  ✅ ${item.name}の交通費を更新しました`);
+              }
+            }
+          } else {
+            unmatchedNames.push(`🚃 ${item.name}`);
+            console.warn(`  ⚠️ ヘルパー "${item.name}" が見つかりません`);
+          }
+        });
+      }
+
+      // 経費データを反映
+      if (data.keihi?.list) {
+        console.log('📝 経費データ:', data.keihi.list);
+        data.keihi.list.forEach((item: { name: string; amount: number }) => {
+          const helperId = helperNameToId.get(item.name);
+          if (helperId) {
+            const helperIndex = updatedHelpers.findIndex(h => h.id === helperId);
+            if (helperIndex !== -1) {
+              const currentAmount = updatedHelpers[helperIndex].monthlyPayments?.[monthKey]?.advanceExpense || 0;
+
+              console.log(`  ${item.name}: ${currentAmount} → ${item.amount}`);
+
+              // 金額が変わっている場合のみ更新
+              if (currentAmount !== item.amount) {
+                updatedHelpers[helperIndex] = {
+                  ...updatedHelpers[helperIndex],
+                  monthlyPayments: {
+                    ...updatedHelpers[helperIndex].monthlyPayments,
+                    [monthKey]: {
+                      ...updatedHelpers[helperIndex].monthlyPayments?.[monthKey],
+                      advanceExpense: item.amount
+                    }
+                  }
+                };
+                hasChanges = true;
+                updateSummary.push(`✅ ${item.name}: 経費 ¥${item.amount.toLocaleString()}`);
+                console.log(`  ✅ ${item.name}の経費を更新しました`);
+              }
+            }
+          } else {
+            unmatchedNames.push(`📝 ${item.name}`);
+            console.warn(`  ⚠️ ヘルパー "${item.name}" が見つかりません`);
+          }
+        });
+      }
+
+      // 変更があった場合のみFirestoreに保存
+      if (hasChanges) {
+        await saveHelpers(updatedHelpers);
+        console.log('✅ 交通費・経費データを更新しました');
+
+        // ローカルのmonthlyPaymentsも更新
+        const newPayments: Record<string, {
+          transportationAllowance: number;
+          advanceExpense: number;
+          allowance: number;
+          repayment: number;
+        }> = {};
+
+        updatedHelpers.forEach(helper => {
+          const monthData = helper.monthlyPayments?.[monthKey];
+          newPayments[helper.id] = {
+            transportationAllowance: monthData?.transportationAllowance || 0,
+            advanceExpense: monthData?.advanceExpense || 0,
+            allowance: monthData?.allowance || 0,
+            repayment: monthData?.repayment || 0
+          };
+        });
+
+        setMonthlyPayments(newPayments);
+
+        // 成功通知を表示（手動更新の場合のみ）
+        if (!skipConfirmation) {
+          let message = '✅ 交通費・経費データを更新しました\n\n';
+          message += updateSummary.join('\n');
+
+          if (unmatchedNames.length > 0) {
+            message += '\n\n⚠️ マッチしなかったヘルパー:\n' + unmatchedNames.join('\n');
+          }
+
+          alert(message);
+        }
+      } else if (!skipConfirmation) {
+        let message = 'ℹ️ 更新するデータがありませんでした';
+
+        if (unmatchedNames.length > 0) {
+          message += '\n\n⚠️ マッチしなかったヘルパー:\n' + unmatchedNames.join('\n');
+        }
+
+        alert(message);
+      }
+    } catch (error) {
+      console.error('交通費・経費データの取得エラー:', error);
+      if (!skipConfirmation) {
+        alert('❌ 交通費・経費データの取得に失敗しました');
+      }
+    }
+  }, [helpers, year, month]);
+
+  // ページ読み込み時・月が変わったときに自動的に交通費・経費データを取得
+  useEffect(() => {
+    // 初回読み込み時とヘルパーデータがある場合に実行
+    if (helpers.length > 0) {
+      // 少し遅延させてから実行（ヘルパーデータの読み込み完了を待つ）
+      const timer = setTimeout(() => {
+        fetchAndUpdateExpenseData(true); // 自動取得なので確認なし
+      }, 1000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [year, month, helpers.length, fetchAndUpdateExpenseData]);
+
+  // 給与データを更新・保存する関数（デバウンス付き）
+  const updateMonthlyPayment = useCallback((
+    helperId: string,
+    field: 'transportationAllowance' | 'advanceExpense' | 'allowance' | 'repayment',
+    value: string
+  ) => {
+    const numValue = parseInt(value) || 0;
+
+    // 即座にローカルステートを更新（タイムラグなし）
+    setMonthlyPayments(prev => ({
+      ...prev,
+      [helperId]: {
+        ...prev[helperId],
+        [field]: numValue
+      }
+    }));
+
+    // デバウンス処理：前回のタイマーをクリア
+    const timerKey = `${helperId}-${field}`;
+    const existingTimer = paymentSaveTimersRef.current.get(timerKey);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    // 500ms後にFirestoreに保存
+    const newTimer = window.setTimeout(() => {
+      const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+      const updatedHelpers = helpers.map(h => {
+        if (h.id === helperId) {
+          return {
+            ...h,
+            monthlyPayments: {
+              ...h.monthlyPayments,
+              [monthKey]: {
+                ...h.monthlyPayments?.[monthKey],
+                [field]: numValue
+              }
+            }
+          };
+        }
+        return h;
+      });
+
+      saveHelpers(updatedHelpers).catch(error => {
+        console.error('給与データの保存に失敗しました:', error);
+      });
+
+      paymentSaveTimersRef.current.delete(timerKey);
+    }, 500);
+
+    paymentSaveTimersRef.current.set(timerKey, newTimer);
+  }, [helpers, year, month]);
+
   // セルのデータと背景色を取得する関数（レンダリング時に使用）
   const getCellDisplayData = useCallback((helperId: string, date: string, rowIndex: number) => {
     const shift = shiftMap.get(`${helperId}-${date}-${rowIndex}`);
+    const dayOffKey = `${helperId}-${date}`;
+    const dayOffValue = dayOffRequests.get(dayOffKey);
+    const isDayOff = !!dayOffValue;
 
     if (!shift) {
+      // 休み希望の場合は最初の行に時間指定を表示
+      const dayOffText = dayOffValue === 'all' ? '' : dayOffValue || '';
       return {
-        lines: ['', '', '', ''],
-        bgColor: '#ffffff',
+        lines: [dayOffText, '', '', ''],
+        bgColor: isDayOff ? '#ffcccc' : '#ffffff',  // 休み希望の場合はピンク背景
         hasWarning: false
       };
     }
@@ -770,51 +1266,133 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     // 警告が必要かチェック
     const hasWarning = shouldShowWarning(startTime, endTime, serviceType);
 
-    // 背景色を設定（キャンセル状態を優先）
+    // 背景色を設定（優先度：キャンセル > serviceType > 休み希望 > デフォルト）
     let bgColor = '#ffffff';
     if (cancelStatus === 'keep_time' || cancelStatus === 'remove_time') {
-      bgColor = '#f87171';
+      bgColor = '#f87171';  // キャンセル状態は赤
     } else if (serviceType && SERVICE_CONFIG[serviceType]) {
-      bgColor = SERVICE_CONFIG[serviceType].bgColor;
+      bgColor = SERVICE_CONFIG[serviceType].bgColor;  // サービスタイプの背景色
+    } else if (isDayOff) {
+      bgColor = '#ffcccc';  // 休み希望はピンク
     }
 
     return { lines, bgColor, hasWarning };
-  }, [shiftMap]);
+  }, [shiftMap, dayOffRequests]);
 
   // refからstateへ同期（描画用）
   const syncSelection = useCallback(() => {
     setSelectedRows(new Set(selectedRowsRef.current));
   }, []);
 
+  // RAF用のref
+  const rafIdRef = useRef<number | null>(null);
+  const lastProcessedCellRef = useRef<string | null>(null);
+  const justStartedDraggingRef = useRef<boolean>(false);
+
+  // 座標からセルを特定
+  const getCellFromPoint = useCallback((x: number, y: number) => {
+    const element = document.elementFromPoint(x, y);
+    if (!element) return null;
+
+    const td = element.closest('td[data-cell-key]') as HTMLElement;
+    if (!td) return null;
+
+    return td.dataset.cellKey || null;
+  }, []);
+
+  // pointermoveハンドラ（RAFでスロットル）
+  const handlePointerMove = useCallback((e: PointerEvent) => {
+    if (!isDraggingForSelectionRef.current) return;
+
+    // 実際にドラッグが開始されたことを記録
+    justStartedDraggingRef.current = true;
+
+    // RAFで次フレームまで待機（16ms間隔に制限）
+    if (rafIdRef.current !== null) return;
+
+    rafIdRef.current = requestAnimationFrame(() => {
+      rafIdRef.current = null;
+
+      const cellKey = getCellFromPoint(e.clientX, e.clientY);
+      if (!cellKey) return;
+
+      // 最初のセルまたは新しいセルを処理
+      if (cellKey !== lastProcessedCellRef.current) {
+        lastProcessedCellRef.current = cellKey;
+      }
+
+      // Setに追加（重複は自動で無視される）
+      if (!selectedRowsRef.current.has(cellKey)) {
+        selectedRowsRef.current.add(cellKey);
+
+        // DOM直接操作で即座に青枠表示
+        const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
+        if (td) {
+          td.style.setProperty('outline', '2px solid #3b82f6', 'important');
+          td.style.setProperty('outline-offset', '-2px', 'important');
+          lastSelectedRowTdsRef.current.push(td);
+        }
+      }
+    });
+  }, [getCellFromPoint]);
+
+  // pointerupハンドラ
+  const handlePointerUp = useCallback((_e: PointerEvent) => {
+    isDraggingForSelectionRef.current = false;
+    lastProcessedCellRef.current = null;
+
+    // リスナー解除
+    document.removeEventListener('pointermove', handlePointerMove);
+
+    // RAFをキャンセル
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+
+    // React stateを最後に一度だけ同期
+    setSelectedRows(new Set(selectedRowsRef.current));
+
+    // フラグをリセット（少し遅延させて、clickイベント後に確実にリセット）
+    setTimeout(() => {
+      justStartedDraggingRef.current = false;
+    }, 100);
+  }, [handlePointerMove]);
+
   // Shift+ドラッグ用イベントハンドラ
-  const handleCellMouseDown = useCallback((e: React.MouseEvent, helperId: string, date: string, rowIndex: number) => {
-    if (e.shiftKey) {
-      isDraggingForSelectionRef.current = true;
-      const rowKey = `${helperId}-${date}-${rowIndex}`;
-      selectedRowsRef.current.add(rowKey);
-      syncSelection();
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  }, [syncSelection]);
+  const handleCellPointerDown = useCallback((e: React.PointerEvent, _helperId: string, _date: string, _rowIndex: number) => {
+    if (!e.shiftKey) return;
 
-  const handleCellMouseEnter = useCallback((e: React.MouseEvent, helperId: string, date: string, rowIndex: number) => {
-    // Shiftキーが押されている、またはドラッグ中の場合に選択
-    if (isDraggingForSelectionRef.current) {
-      const rowKey = `${helperId}-${date}-${rowIndex}`;
-      selectedRowsRef.current.add(rowKey);
-      syncSelection();
-      e.preventDefault();
-      e.stopPropagation();
-    }
+    e.preventDefault();
+    e.stopPropagation();
 
+    // ポインターキャプチャで確実にイベントを受け取る
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+
+    isDraggingForSelectionRef.current = true;
+    justStartedDraggingRef.current = false; // まだドラッグしていない
+    lastProcessedCellRef.current = null;
+
+    // documentレベルでpointermoveを監視
+    document.addEventListener('pointermove', handlePointerMove, { passive: true });
+    document.addEventListener('pointerup', handlePointerUp, { once: true });
+  }, [handlePointerMove, handlePointerUp]);
+
+  const handleCellMouseEnter = useCallback((_e: React.MouseEvent, helperId: string, date: string, rowIndex: number) => {
     // ペースト先のセルを記録
     currentTargetCellRef.current = { helperId, date, rowIndex };
-  }, [syncSelection]);
-
-  const handleCellMouseUp = useCallback(() => {
-    isDraggingForSelectionRef.current = false;
   }, []);
+
+  // クリーンアップ用のuseEffect
+  useEffect(() => {
+    return () => {
+      // コンポーネントアンマウント時にリスナー解除
+      document.removeEventListener('pointermove', handlePointerMove);
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+    };
+  }, [handlePointerMove]);
 
   // セルをコピーする関数
   const copyCellData = useCallback((helperId: string, date: string, rowIndex: number) => {
@@ -829,10 +1407,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     }
 
     // 背景色を取得
-    const cellSelector = `.editable-cell[data-row="${rowIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
-    const cells = document.querySelectorAll(cellSelector);
-    if (cells.length > 0) {
-      const parentTd = cells[0].closest('td') as HTMLElement;
+    const bgCellSelector = `.editable-cell[data-row="${rowIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
+    const bgCells = document.querySelectorAll(bgCellSelector);
+    if (bgCells.length > 0) {
+      const parentTd = bgCells[0].closest('td') as HTMLElement;
       if (parentTd) {
         backgroundColor = parentTd.style.backgroundColor || '#ffffff';
       }
@@ -1410,6 +1988,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
           // 編集モードに入る
           cell.setAttribute('contenteditable', 'true');
+          cell.style.userSelect = 'text';
+          cell.style.webkitUserSelect = 'text';
 
           // Backspace/Deleteの場合は内容をクリア
           if (e.key === 'Backspace' || e.key === 'Delete') {
@@ -1445,6 +2025,12 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       // Escapeキー: 複数選択を解除
       if (e.key === 'Escape') {
         selectedRowsRef.current.clear();
+        // DOM要素のoutlineも削除
+        lastSelectedRowTdsRef.current.forEach(td => {
+          td.style.removeProperty('outline');
+          td.style.removeProperty('outline-offset');
+        });
+        lastSelectedRowTdsRef.current = [];
         syncSelection();
         e.preventDefault();
       }
@@ -1578,6 +2164,24 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     setTimeout(() => document.addEventListener('click', closeMenu), 0);
   }, [copyDateShifts, pasteDateShifts, dateCopyBufferRef]);
 
+  // 休み希望の設定/解除
+  const toggleDayOff = useCallback((helperId: string, date: string) => {
+    const key = `${helperId}-${date}`;
+    setDayOffRequests(prev => {
+      const next = new Map(prev);
+      if (next.has(key)) {
+        next.delete(key);
+        console.log(`✅ 休み希望を解除: ${key}`);
+      } else {
+        next.set(key, 'all');  // デフォルトは終日休み
+        console.log(`🏖️ 休み希望を設定: ${key}`);
+      }
+      // 変更後すぐにFirestoreに保存
+      saveDayOffToFirestore(next);
+      return next;
+    });
+  }, [saveDayOffToFirestore]);
+
   // コンテキストメニューを表示する関数
   const showContextMenu = useCallback((e: React.MouseEvent, helperId: string, date: string, rowIndex: number) => {
     e.preventDefault();
@@ -1629,6 +2233,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       console.log(`📝 キャンセル（時間残す）処理開始 - ${targetRows.length}件`);
 
       const canceledShifts: Shift[] = [];
+      const undoGroup: Array<{
+        helperId: string;
+        date: string;
+        rowIndex: number;
+        data: string[];
+        backgroundColor: string;
+      }> = [];
 
       // 全ての行を並列処理で一気に更新
       await Promise.all(targetRows.map(async (key) => {
@@ -1655,17 +2266,17 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         }
 
         // 現在の背景色を保存
-        const cellSelector = `.editable-cell[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
-        const cells = document.querySelectorAll(cellSelector);
-        if (cells.length > 0) {
-          const parentTd = cells[0].closest('td') as HTMLElement;
+        const bgCellSelector = `.editable-cell[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
+        const bgCells = document.querySelectorAll(bgCellSelector);
+        if (bgCells.length > 0) {
+          const parentTd = bgCells[0].closest('td') as HTMLElement;
           if (parentTd) {
             backgroundColor = parentTd.style.backgroundColor || '#ffffff';
           }
         }
 
-        // Undoスタックに保存
-        undoStackRef.push({
+        // Undoグループに追加（個別にpushしない）
+        undoGroup.push({
           helperId: hId,
           date: dt,
           rowIndex: rowIdx,
@@ -1674,12 +2285,12 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         });
 
         // ケア内容はそのまま、背景色のみを赤くする
-        if (cells.length > 0) {
-          const parentTd = cells[0].closest('td') as HTMLElement;
+        if (bgCells.length > 0) {
+          const parentTd = bgCells[0].closest('td') as HTMLElement;
           if (parentTd) {
             parentTd.style.backgroundColor = '#f87171';
           }
-          cells.forEach((cell) => {
+          bgCells.forEach((cell) => {
             const element = cell as HTMLElement;
             const currentOutline = element.style.outline;
             element.style.backgroundColor = '#f87171';
@@ -1737,6 +2348,12 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         }
       }));
 
+      // 複数の変更を1つのグループとしてUndoスタックに追加
+      if (undoGroup.length > 0) {
+        undoStackRef.push(undoGroup);
+        console.log(`📦 Undoグループ保存: ${undoGroup.length}件の変更`);
+      }
+
       // shifts配列も更新（cancelStatusを追加）
       const updatedShifts = shifts.map(s => {
         const canceledShift = canceledShifts.find(cs => cs.id === s.id);
@@ -1751,6 +2368,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       redoStackRef.length = 0;
 
       // 複数選択をクリア
+      selectedRowsRef.current.clear();
       setSelectedRows(new Set());
 
       // 前回選択されたtdのoutlineのみ削除
@@ -1782,6 +2400,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       console.log(`📝 キャンセル（時間残さず）処理開始 - ${targetRows.length}件`);
 
       const canceledShifts: Shift[] = [];
+      const undoGroup: Array<{
+        helperId: string;
+        date: string;
+        rowIndex: number;
+        data: string[];
+        backgroundColor: string;
+      }> = [];
 
       // 全ての行を並列処理で一気に更新
       await Promise.all(targetRows.map(async (key) => {
@@ -1808,17 +2433,17 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         }
 
         // 現在の背景色を保存
-        const cellSelector = `.editable-cell[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
-        const cells = document.querySelectorAll(cellSelector);
-        if (cells.length > 0) {
-          const parentTd = cells[0].closest('td') as HTMLElement;
+        const bgCellSelector = `.editable-cell[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
+        const bgCells = document.querySelectorAll(bgCellSelector);
+        if (bgCells.length > 0) {
+          const parentTd = bgCells[0].closest('td') as HTMLElement;
           if (parentTd) {
             backgroundColor = parentTd.style.backgroundColor || '#ffffff';
           }
         }
 
-        // Undoスタックに保存
-        undoStackRef.push({
+        // Undoグループに追加（個別にpushしない）
+        undoGroup.push({
           helperId: hId,
           date: dt,
           rowIndex: rowIdx,
@@ -1834,12 +2459,12 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         }
 
         // 背景色を赤くする
-        if (cells.length > 0) {
-          const parentTd = cells[0].closest('td') as HTMLElement;
+        if (bgCells.length > 0) {
+          const parentTd = bgCells[0].closest('td') as HTMLElement;
           if (parentTd) {
             parentTd.style.backgroundColor = '#f87171';
           }
-          cells.forEach((cell) => {
+          bgCells.forEach((cell) => {
             const element = cell as HTMLElement;
             const currentOutline = element.style.outline;
             element.style.backgroundColor = '#f87171';
@@ -1897,6 +2522,12 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         }
       }));
 
+      // 複数の変更を1つのグループとしてUndoスタックに追加
+      if (undoGroup.length > 0) {
+        undoStackRef.push(undoGroup);
+        console.log(`📦 Undoグループ保存: ${undoGroup.length}件の変更`);
+      }
+
       // shifts配列も更新（cancelStatusを追加）
       const updatedShifts = shifts.map(s => {
         const canceledShift = canceledShifts.find(cs => cs.id === s.id);
@@ -1911,6 +2542,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       redoStackRef.length = 0;
 
       // 複数選択をクリア
+      selectedRowsRef.current.clear();
       setSelectedRows(new Set());
 
       // 前回選択されたtdのoutlineのみ削除
@@ -1943,6 +2575,32 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       console.log(`🗑️ ケア削除処理開始 - ${targetRows.length}件`);
       console.log(`対象行:`, targetRows);
 
+      // 削除対象の休み希望キーを収集
+      const dayOffKeysToDelete = new Set<string>();
+      targetRows.forEach(key => {
+        const parts = key.split('-');
+        const hId = parts[0];
+        const dt = parts.slice(1, parts.length - 1).join('-');
+        const dayOffKey = `${hId}-${dt}`;
+        if (dayOffRequests.has(dayOffKey)) {
+          dayOffKeysToDelete.add(dayOffKey);
+        }
+      });
+
+      // 休み希望を一括削除
+      if (dayOffKeysToDelete.size > 0) {
+        setDayOffRequests(prev => {
+          const next = new Map(prev);
+          dayOffKeysToDelete.forEach(key => {
+            next.delete(key);
+            console.log(`🏖️ 休み希望を削除: ${key}`);
+          });
+          // Firestoreに保存
+          saveDayOffToFirestore(next);
+          return next;
+        });
+      }
+
       // 全ての行を並列処理で一気に削除
       await Promise.all(targetRows.map(async (key) => {
         const parts = key.split('-');
@@ -1954,6 +2612,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       }));
 
       // 複数選択をクリア
+      selectedRowsRef.current.clear();
       setSelectedRows(new Set());
 
       // 前回選択されたtdのoutlineのみ削除
@@ -1999,6 +2658,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         console.log(`♻️ キャンセル取り消し処理開始 - ${targetRows.length}件`);
 
         const restoredShifts: Shift[] = [];
+        const undoGroup: Array<{
+          helperId: string;
+          date: string;
+          rowIndex: number;
+          data: string[];
+          backgroundColor: string;
+        }> = [];
 
         // 全ての行を並列処理で一気に更新
         await Promise.all(targetRows.map(async (key) => {
@@ -2013,66 +2679,82 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           const shiftId = `shift-${hId}-${dt}-${rowIdx}`;
           const existingShift = shifts.find(s => s.id === shiftId);
 
-          // 4つのラインのデータを取得
-          const data: string[] = [];
+          if (!existingShift) {
+            console.warn(`シフトが見つかりません: ${shiftId}`);
+            return;
+          }
+
+          // Undoスタックに現在の状態（キャンセル状態）を保存
+          const currentData: string[] = [];
           for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
             const cellSelector = `.editable-cell[data-row="${rowIdx}"][data-line="${lineIndex}"][data-helper="${hId}"][data-date="${dt}"]`;
             const cell = document.querySelector(cellSelector) as HTMLElement;
-            data.push(cell ? cell.textContent || '' : '');
+            currentData.push(cell ? cell.textContent || '' : '');
           }
 
-          let [timeRange, clientInfo, durationStr, area] = data;
+          const bgCellSelector = `.editable-cell[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
+          const bgCells = document.querySelectorAll(bgCellSelector);
+          let currentBgColor = '#ffffff';
+          if (bgCells.length > 0) {
+            const parentTd = bgCells[0].closest('td') as HTMLElement;
+            if (parentTd) {
+              currentBgColor = parentTd.style.backgroundColor || '#ffffff';
+            }
+          }
 
-          // remove_timeの場合、Firestoreから元の時間データを復元
-          if (existingShift?.cancelStatus === 'remove_time' && existingShift.startTime && existingShift.endTime) {
-            timeRange = `${existingShift.startTime}-${existingShift.endTime}`;
+          // Undoグループに追加（個別にpushしない）
+          undoGroup.push({
+            helperId: hId,
+            date: dt,
+            rowIndex: rowIdx,
+            data: currentData,
+            backgroundColor: currentBgColor
+          });
+
+          // 既存のシフトデータをベースに、cancelStatusを削除したオブジェクトを作成
+          const restoredShift: Shift = {
+            ...existingShift,
+            // cancelStatusを明示的にundefinedに設定（Firestoreから削除される）
+            cancelStatus: undefined
+          };
+
+          // remove_timeの場合、時間情報を復元
+          if (existingShift.cancelStatus === 'remove_time') {
+            const timeRange = `${existingShift.startTime}-${existingShift.endTime}`;
             const duration = calculateTimeDuration(timeRange);
-            durationStr = duration || '';
+
+            restoredShift.duration = parseFloat(duration || '0');
 
             // DOM要素にも時間を復元
             const timeCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="0"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
             const durationCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="2"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
             if (timeCell) timeCell.textContent = timeRange;
-            if (durationCell) durationCell.textContent = durationStr;
+            if (durationCell) durationCell.textContent = duration || '';
 
-            console.log(`時間を復元: ${timeRange}, duration: ${durationStr}`);
+            console.log(`時間を復元: ${timeRange}, duration: ${duration}`);
           }
 
-          // keep_timeの場合も、時間数が空の場合は再計算
-          if (existingShift?.cancelStatus === 'keep_time' && timeRange && !durationStr) {
-            const duration = calculateTimeDuration(timeRange);
-            durationStr = duration || '';
-
-            // DOM要素にも時間数を復元
-            const durationCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="2"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
-            if (durationCell) durationCell.textContent = durationStr;
-
-            console.log(`時間数を復元: ${durationStr}`);
-          }
-
-          // サービスタイプを抽出して元の背景色を取得
-          let bgColor = '#ffffff';
-          const match = clientInfo.match(/\((.+?)\)/);
-          if (match) {
-            const serviceLabel = match[1];
-            const serviceEntry = Object.entries(SERVICE_CONFIG).find(
-              ([_, config]) => config.label === serviceLabel
-            );
-            if (serviceEntry) {
-              const [_, config] = serviceEntry;
-              bgColor = config.bgColor;
-            }
-          }
+          // 給与を再計算
+          const timeRange = `${restoredShift.startTime}-${restoredShift.endTime}`;
+          const payCalculation = calculateShiftPay(restoredShift.serviceType, timeRange);
+          restoredShift.regularHours = payCalculation.regularHours;
+          restoredShift.nightHours = payCalculation.nightHours;
+          restoredShift.regularPay = payCalculation.regularPay;
+          restoredShift.nightPay = payCalculation.nightPay;
+          restoredShift.totalPay = payCalculation.totalPay;
 
           // 背景色を元に戻す
-          const cellSelector = `.editable-cell[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
-          const cells = document.querySelectorAll(cellSelector);
-          if (cells.length > 0) {
-            const parentTd = cells[0].closest('td') as HTMLElement;
+          const config = SERVICE_CONFIG[restoredShift.serviceType];
+          const bgColor = config?.bgColor || '#ffffff';
+
+          const restoreCellSelector = `.editable-cell[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
+          const restoreCells = document.querySelectorAll(restoreCellSelector);
+          if (restoreCells.length > 0) {
+            const parentTd = restoreCells[0].closest('td') as HTMLElement;
             if (parentTd) {
               parentTd.style.backgroundColor = bgColor;
             }
-            cells.forEach((cell) => {
+            restoreCells.forEach((cell) => {
               const element = cell as HTMLElement;
               const currentOutline = element.style.outline;
               element.style.backgroundColor = bgColor;
@@ -2085,56 +2767,24 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           // 集計を更新
           updateTotalsForHelperAndDate(hId, dt);
 
-          // Firestoreに保存（cancelStatusを削除）
-          if (data.some(line => line.trim() !== '')) {
-            let serviceType: ServiceType = 'shintai';
-            if (match) {
-              const serviceLabel = match[1];
-              const serviceEntry = Object.entries(SERVICE_CONFIG).find(
-                ([_, config]) => config.label === serviceLabel
-              );
-              if (serviceEntry) {
-                serviceType = serviceEntry[0] as ServiceType;
-              }
-            }
-
-            const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
-            const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
-            const startTime = timeMatch ? timeMatch[1] : '';
-            const endTime = timeMatch ? timeMatch[2] : '';
-
-            // 給与を計算
-            const payCalculation = calculateShiftPay(serviceType, timeRange);
-
-            const shift: Shift = {
-              id: `shift-${hId}-${dt}-${rowIdx}`,
-              date: dt,
-              helperId: hId,
-              clientName,
-              serviceType,
-              startTime,
-              endTime,
-              duration: parseFloat(durationStr) || 0,
-              area,
-              rowIndex: rowIdx,
-              // 給与情報を追加
-              regularHours: payCalculation.regularHours,
-              nightHours: payCalculation.nightHours,
-              regularPay: payCalculation.regularPay,
-              nightPay: payCalculation.nightPay,
-              totalPay: payCalculation.totalPay
-              // cancelStatusフィールドは含めない（削除状態）
-            };
-
-            try {
-              await saveShiftWithCorrectYearMonth(shift);
-              restoredShifts.push(shift);
-              console.log(`✅ 保存完了: ${key}`);
-            } catch (error) {
-              console.error('キャンセル取り消し情報の保存に失敗しました:', error);
-            }
+          // Firestoreに保存
+          try {
+            await saveShiftWithCorrectYearMonth(restoredShift);
+            restoredShifts.push(restoredShift);
+            console.log(`✅ Firestoreに保存完了: ${key}`, restoredShift);
+          } catch (error) {
+            console.error('キャンセル取り消し情報の保存に失敗しました:', error);
           }
         }));
+
+        // 複数の変更を1つのグループとしてUndoスタックに追加
+        if (undoGroup.length > 0) {
+          undoStackRef.push(undoGroup);
+          console.log(`📦 Undoグループ保存: ${undoGroup.length}件の変更`);
+        }
+
+        // Redoスタックをクリア
+        redoStackRef.length = 0;
 
         // shifts配列も更新（復元されたシフトで置き換え）
         const updatedShifts = shifts.map(s => {
@@ -2147,6 +2797,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         onUpdateShifts(updatedShifts);
 
         // 複数選択をクリア
+        selectedRowsRef.current.clear();
         setSelectedRows(new Set());
 
         // 前回選択されたtdのoutlineのみ削除
@@ -2172,6 +2823,24 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     menu.appendChild(cancelKeepTimeBtn);
     menu.appendChild(cancelAllBtn);
     menu.appendChild(deleteBtn);
+
+    // 休み希望の設定/解除ボタン
+    const dayOffKey = `${helperId}-${date}`;
+    const isDayOff = dayOffRequests.has(dayOffKey);
+
+    const dayOffBtn = document.createElement('div');
+    dayOffBtn.textContent = isDayOff ? '✅ 休み希望を解除' : '🏖️ 休み希望を設定';
+    dayOffBtn.style.padding = '8px 16px';
+    dayOffBtn.style.cursor = 'pointer';
+    dayOffBtn.style.borderTop = '1px solid #e5e7eb';
+    dayOffBtn.onmouseover = () => dayOffBtn.style.backgroundColor = isDayOff ? '#fee2e2' : '#fef3c7';
+    dayOffBtn.onmouseout = () => dayOffBtn.style.backgroundColor = 'transparent';
+    dayOffBtn.onclick = () => {
+      toggleDayOff(helperId, date);
+      menu.remove();
+    };
+
+    menu.appendChild(dayOffBtn);
     document.body.appendChild(menu);
 
     // 外部クリックでメニューを閉じる
@@ -2182,7 +2851,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     setTimeout(() => {
       document.addEventListener('click', closeMenu);
     }, 0);
-  }, [deleteCare, selectedRows, setSelectedRows]);
+  }, [deleteCare, selectedRows, setSelectedRows, dayOffRequests, toggleDayOff, saveDayOffToFirestore]);
 
   // ドラッグ開始
   const handleDragStart = useCallback((e: React.DragEvent, helperId: string, date: string, rowIndex: number) => {
@@ -2526,7 +3195,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   }, [sortedHelpers, weeks, shifts]);
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto pb-4">
       {weeks.map((week) => (
         <div key={week.weekNumber} className="mb-8">
           <table className="border-collapse text-xs table-fixed">
@@ -2634,6 +3303,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                   return (
                     <td
                       key={`${day.date}-${helper.id}-input-${rowIndex}`}
+                      data-cell-key={`${helper.id}-${day.date}-${rowIndex}`}
                       className="bg-white p-0"
                       draggable={true}
                       style={{
@@ -2654,9 +3324,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                         transition: 'none'
                       }}
                       title={cellDisplayData.hasWarning ? '⚠️ 終了時刻が入力されていません' : undefined}
-                      onMouseDown={(e) => {
+                      onPointerDown={(e) => {
                         // Shift+ドラッグ用の処理
-                        handleCellMouseDown(e, helper.id, day.date, rowIndex);
+                        handleCellPointerDown(e, helper.id, day.date, rowIndex);
 
                         // contentEditableの要素をクリックした場合はドラッグを無効化
                         const target = e.target as HTMLElement;
@@ -2669,7 +3339,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                       onMouseEnter={(e) => {
                         handleCellMouseEnter(e, helper.id, day.date, rowIndex);
                       }}
-                      onMouseUp={handleCellMouseUp}
                       onContextMenu={(e) => {
                         showContextMenu(e, helper.id, day.date, rowIndex);
                       }}
@@ -2690,17 +3359,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                               data-line={lineIndex}
                               data-helper={helper.id}
                               data-date={day.date}
-                              className="editable-cell"
+                              className="editable-cell select-none"
                               onDragStart={(e) => e.preventDefault()}
-                              {...({
-                                onSelectStart: (e: React.SyntheticEvent) => {
-                                  // 編集モードでない時はテキスト選択を防ぐ
-                                  const target = e.currentTarget as HTMLElement;
-                                  if (target.getAttribute('contenteditable') !== 'true') {
-                                    e.preventDefault();
-                                  }
-                                }
-                              } as any)}
                               onClick={(e) => {
                                 e.stopPropagation();
 
@@ -2722,6 +3382,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                                 // Shiftキー押しながらのクリック：複数選択
                                 if (e.shiftKey) {
+                                  // ドラッグした場合はクリック処理をスキップ
+                                  if (justStartedDraggingRef.current) {
+                                    justStartedDraggingRef.current = false;
+                                    return;
+                                  }
                                   const newSelected = new Set(selectedRows);
                                   const willBeSelected = !newSelected.has(rowKey);
 
@@ -2733,8 +3398,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                                   if (willBeSelected) {
                                     newSelected.add(rowKey);
+                                    selectedRowsRef.current.add(rowKey);
                                   } else {
                                     newSelected.delete(rowKey);
+                                    selectedRowsRef.current.delete(rowKey);
                                   }
 
                                   // 親のtd要素を取得
@@ -2793,11 +3460,14 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                   selectedCellRef.date = day.date;
                                   selectedCellRef.rowIndex = rowIndex;
 
-                                  // 複数選択をクリア（非同期）
+                                  // 複数選択をクリア（refとstateの両方）
+                                  selectedRowsRef.current.clear();
                                   setTimeout(() => setSelectedRows(new Set()), 0);
                                 } else if (clickCount >= 2) {
                                   // 2回目のクリック：編集モードに入る
                                   currentCell.setAttribute('contenteditable', 'true');
+                                  currentCell.style.userSelect = 'text';
+                                  currentCell.style.webkitUserSelect = 'text';
                                   currentCell.focus();
 
                                   // カーソルを末尾に配置
@@ -2828,6 +3498,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                 // 編集モードに入る
                                 const currentCell = e.currentTarget as HTMLElement;
                                 currentCell.setAttribute('contenteditable', 'true');
+                                currentCell.style.userSelect = 'text';
+                                currentCell.style.webkitUserSelect = 'text';
                                 currentCell.focus();
 
                                 // クリックカウントをリセット
@@ -3091,6 +3763,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                               // 編集モードを解除（DOM操作）
                               const currentCell = e.currentTarget as HTMLElement;
                               currentCell.setAttribute('contenteditable', 'false');
+                              currentCell.style.userSelect = 'none';
+                              currentCell.style.webkitUserSelect = 'none';
 
                               // 青枠を削除
                               currentCell.style.removeProperty('box-shadow');
@@ -3220,6 +3894,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                 if (shouldMoveOnFirstEnter || enterCount === 1) {
                                   // 移動する前に現在のセルをblur（編集モード終了）
                                   currentCell.setAttribute('contenteditable', 'false');
+                                  currentCell.style.userSelect = 'none';
+                                  currentCell.style.webkitUserSelect = 'none';
 
                                   // 選択範囲を完全にクリア
                                   const selection = window.getSelection();
@@ -3255,6 +3931,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                                         // 次のセルを編集モードにする
                                         nextCell.setAttribute('contenteditable', 'true');
+                                        nextCell.style.userSelect = 'text';
+                                        nextCell.style.webkitUserSelect = 'text';
                                         nextCell.focus();
 
                                         // カーソルを先頭に配置
@@ -3366,7 +4044,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       {/* 月次集計テーブル1: サービス種別時間数集計 */}
       <div className="mt-12 mb-8">
         <h2 className="text-xl font-bold mb-4 bg-blue-100 p-3 rounded">📊 サービス種別時間数集計</h2>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto pb-4">
           <table className="border-collapse text-xs w-full">
             <thead>
               <tr className="bg-gray-200">
@@ -3560,8 +4238,18 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
       {/* 月次集計テーブル2: 週払い管理表 */}
       <div className="mt-12 mb-8">
-        <h2 className="text-xl font-bold mb-4 bg-purple-100 p-3 rounded">💰 週払い管理表</h2>
-        <div className="overflow-x-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold bg-purple-100 p-3 rounded">💰 週払い管理表</h2>
+          <button
+            onClick={() => {
+              fetchAndUpdateExpenseData(false); // 手動更新なので確認あり
+            }}
+            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-semibold"
+          >
+            🔄 交通費・経費更新
+          </button>
+        </div>
+        <div className="overflow-x-auto pb-4">
           <table className="border-collapse text-xs w-full">
             <thead>
               <tr className="bg-gray-200">
@@ -3604,8 +4292,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     const totalNightHours = data.nightHours + data.nightDokoHours;
                     return (
                       <td key={helper.id} className="border-2 border-gray-400 p-1 text-center" style={{ fontSize: '10px', lineHeight: '1.4' }}>
-                        <div className="text-gray-600 border-b border-gray-300 pb-1">通常: {data.regularHours.toFixed(1)}</div>
-                        <div className="text-gray-600 border-b border-gray-300 py-1">深夜: {totalNightHours.toFixed(1)}</div>
+                        <div className="text-black font-semibold border-b border-gray-300 pb-1">通常: {data.regularHours.toFixed(1)}</div>
+                        <div className="text-black font-semibold border-b border-gray-300 py-1">深夜: {totalNightHours.toFixed(1)}</div>
                         <div className="font-bold text-blue-700 mt-1">
                           {data.totalHours.toFixed(1)}h
                           <span className="ml-2 text-green-700">¥{Math.round(data.amount).toLocaleString()}</span>
@@ -3628,8 +4316,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                   const combinedNightHours = totalNightHours + totalNightDokoHours;
                   return (
                     <td key={helper.id} className="border-2 border-gray-400 p-1 text-center font-bold" style={{ fontSize: '10px', lineHeight: '1.4' }}>
-                      <div className="text-gray-700 border-b border-gray-300 pb-1">通常: {totalRegularHours.toFixed(1)}</div>
-                      <div className="text-gray-700 border-b border-gray-300 py-1">深夜: {combinedNightHours.toFixed(1)}</div>
+                      <div className="text-black font-bold border-b border-gray-300 pb-1">通常: {totalRegularHours.toFixed(1)}</div>
+                      <div className="text-black font-bold border-b border-gray-300 py-1">深夜: {combinedNightHours.toFixed(1)}</div>
                       <div className="text-blue-800 mt-1 text-sm">
                         {totalHours.toFixed(1)}h
                         <span className="ml-2 text-green-700">¥{Math.round(totalAmount).toLocaleString()}</span>
@@ -3641,36 +4329,75 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               {/* 交通費 */}
               <tr>
                 <td className="border-2 border-gray-400 p-2 sticky left-0 bg-white font-bold">交通費</td>
-                {sortedHelpers.map(helper => (
-                  <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
-                    <div className="text-xs text-gray-600">¥0</div>
-                  </td>
-                ))}
+                {sortedHelpers.map(helper => {
+                  const savedValue = monthlyPayments[helper.id]?.transportationAllowance || 0;
+                  return (
+                    <td key={helper.id} className="border-2 border-gray-400 p-0 text-center">
+                      <OptimizedInputCell
+                        helperId={helper.id}
+                        fieldType="transportationAllowance"
+                        initialValue={savedValue}
+                        onSave={updateMonthlyPayment}
+                      />
+                    </td>
+                  );
+                })}
               </tr>
               {/* 建替経費 */}
               <tr>
                 <td className="border-2 border-gray-400 p-2 sticky left-0 bg-white font-bold">建替経費</td>
-                {sortedHelpers.map(helper => (
-                  <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
-                    <div className="text-xs text-gray-600">¥0</div>
-                  </td>
-                ))}
+                {sortedHelpers.map(helper => {
+                  const savedValue = monthlyPayments[helper.id]?.advanceExpense || 0;
+                  return (
+                    <td key={helper.id} className="border-2 border-gray-400 p-0 text-center">
+                      <OptimizedInputCell
+                        helperId={helper.id}
+                        fieldType="advanceExpense"
+                        initialValue={savedValue}
+                        onSave={updateMonthlyPayment}
+                      />
+                    </td>
+                  );
+                })}
               </tr>
               {/* 手当 */}
               <tr>
                 <td className="border-2 border-gray-400 p-2 sticky left-0 bg-white font-bold">手当</td>
-                {sortedHelpers.map(helper => (
-                  <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
-                    <div className="text-xs text-gray-600">¥0</div>
-                  </td>
-                ))}
+                {sortedHelpers.map(helper => {
+                  const savedValue = monthlyPayments[helper.id]?.allowance || 0;
+                  return (
+                    <td key={helper.id} className="border-2 border-gray-400 p-0 text-center">
+                      <OptimizedInputCell
+                        helperId={helper.id}
+                        fieldType="allowance"
+                        initialValue={savedValue}
+                        onSave={updateMonthlyPayment}
+                      />
+                    </td>
+                  );
+                })}
               </tr>
               {/* 給与総額 */}
               <tr className="bg-green-50">
                 <td className="border-2 border-gray-400 p-2 sticky left-0 bg-green-100 font-bold">給与総額</td>
                 {sortedHelpers.map(helper => {
                   const weeklyData = weeklyPaymentSummary.get(helper.id) || [];
-                  const totalAmount = weeklyData.reduce((sum, data) => sum + data.amount, 0);
+                  const shiftTotal = weeklyData.reduce((sum, data) => sum + data.amount, 0);
+
+                  const payments = monthlyPayments[helper.id] || {
+                    transportationAllowance: 0,
+                    advanceExpense: 0,
+                    allowance: 0,
+                    repayment: 0
+                  };
+
+                  // 給与総額 = シフト給与 + 交通費 + 建替経費 + 手当 - 返済
+                  const totalAmount = shiftTotal +
+                    payments.transportationAllowance +
+                    payments.advanceExpense +
+                    payments.allowance -
+                    payments.repayment;
+
                   return (
                     <td key={helper.id} className="border-2 border-gray-400 p-2 text-center font-bold">
                       <div className="text-green-700">¥{Math.round(totalAmount).toLocaleString()}</div>
@@ -3681,11 +4408,19 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               {/* 返済 */}
               <tr>
                 <td className="border-2 border-gray-400 p-2 sticky left-0 bg-white font-bold">返済</td>
-                {sortedHelpers.map(helper => (
-                  <td key={helper.id} className="border-2 border-gray-400 p-2 text-center">
-                    <div className="text-xs text-gray-600">¥0</div>
-                  </td>
-                ))}
+                {sortedHelpers.map(helper => {
+                  const savedValue = monthlyPayments[helper.id]?.repayment || 0;
+                  return (
+                    <td key={helper.id} className="border-2 border-gray-400 p-0 text-center">
+                      <OptimizedInputCell
+                        helperId={helper.id}
+                        fieldType="repayment"
+                        initialValue={savedValue}
+                        onSave={updateMonthlyPayment}
+                      />
+                    </td>
+                  );
+                })}
               </tr>
             </tbody>
           </table>

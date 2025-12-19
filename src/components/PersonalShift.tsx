@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { Helper, Shift } from '../types';
 import { SERVICE_CONFIG } from '../types';
-import { loadHelperByToken, loadShiftsForMonth } from '../services/firestoreService';
+import { loadHelperByToken, subscribeToShiftsForMonth } from '../services/firestoreService';
 
 interface Props {
   token: string;
@@ -13,8 +13,9 @@ export function PersonalShift({ token }: Props) {
   const [loading, setLoading] = useState(true);
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
-  // ヘルパー情報とシフトを読み込み
+  // ヘルパー情報を読み込み
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
@@ -29,66 +30,91 @@ export function PersonalShift({ token }: Props) {
         return;
       }
       setHelper(helperData);
-
-      // その月のシフトを取得
-      const shiftsData = await loadShiftsForMonth(currentYear, currentMonth);
-      console.log(`📅 ${currentYear}年${currentMonth}月の全シフト:`, shiftsData.length, '件');
-      console.log('全シフトのhelperID一覧:', shiftsData.map(s => ({ id: s.id, helperId: s.helperId, client: s.clientName })));
-
-      // 12月の場合、1月1-4日のシフトも取得
-      let januaryShifts: Shift[] = [];
-      if (currentMonth === 12) {
-        const nextYear = currentYear + 1;
-        const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1);
-        januaryShifts = allJanuaryShifts.filter(shift => {
-          const day = parseInt(shift.date.split('-')[2]);
-          return day >= 1 && day <= 4;
-        });
-      }
-
-      // このヘルパーのシフトだけフィルタ
-      const allShifts = [...shiftsData, ...januaryShifts];
-      const myShifts = allShifts.filter(s => s.helperId === helperData.id);
-      console.log(`✅ ${helperData.name}さんのシフト:`, myShifts.length, '件');
-      console.log('フィルタ後のシフト:', myShifts);
-      console.log('キャンセルステータス確認:', myShifts.map(s => ({
-        client: s.clientName,
-        date: s.date,
-        cancelStatus: s.cancelStatus
-      })));
-      setShifts(myShifts);
-
       setLoading(false);
     };
 
     loadData();
-  }, [token, currentYear, currentMonth]);
+  }, [token]);
 
-  // リアルタイム更新：3秒ごとにシフトを再読み込み
+  // リアルタイムリスナー：マスターシフトデータを監視
   useEffect(() => {
     if (!helper) return;
 
-    const interval = setInterval(async () => {
-      const shiftsData = await loadShiftsForMonth(currentYear, currentMonth);
+    console.log(`🔄 リアルタイムリスナーを設定: ${currentYear}年${currentMonth}月`);
 
-      // 12月の場合、1月1-4日のシフトも取得
-      let januaryShifts: Shift[] = [];
-      if (currentMonth === 12) {
-        const nextYear = currentYear + 1;
-        const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1);
-        januaryShifts = allJanuaryShifts.filter(shift => {
-          const day = parseInt(shift.date.split('-')[2]);
-          return day >= 1 && day <= 4;
-        });
+    // 現在の月のリアルタイムリスナー
+    const unsubscribeCurrentMonth = subscribeToShiftsForMonth(
+      currentYear,
+      currentMonth,
+      (allShifts) => {
+        let filteredShifts = allShifts.filter(s => s.helperId === helper.id);
+
+        // 12月の場合、1月1-4日のシフトも取得
+        if (currentMonth === 12) {
+          // 1月のリスナーは別途設定
+          setShifts(filteredShifts);
+        } else {
+          setShifts(filteredShifts);
+        }
+
+        setLastUpdate(new Date());
+        console.log(`✅ ${helper.name}さんのシフト更新:`, filteredShifts.length, '件');
+        console.log('キャンセルステータス:', filteredShifts.map(s => ({
+          client: s.clientName,
+          date: s.date,
+          cancelStatus: s.cancelStatus
+        })));
       }
+    );
 
-      const allShifts = [...shiftsData, ...januaryShifts];
-      const myShifts = allShifts.filter(s => s.helperId === helper.id);
-      setShifts(myShifts);
-    }, 3000); // 3秒ごと
+    // 12月の場合、1月1-4日も監視
+    let unsubscribeJanuary: (() => void) | null = null;
+    if (currentMonth === 12) {
+      const nextYear = currentYear + 1;
+      unsubscribeJanuary = subscribeToShiftsForMonth(
+        nextYear,
+        1,
+        (januaryShifts) => {
+          const filteredJanuaryShifts = januaryShifts.filter(shift => {
+            const day = parseInt(shift.date.split('-')[2]);
+            return day >= 1 && day <= 4 && shift.helperId === helper.id;
+          });
 
-    return () => clearInterval(interval);
+          // 現在の月のシフトと結合
+          setShifts(prevShifts => {
+            // 現在の月のシフトのみを保持
+            const currentMonthShifts = prevShifts.filter(s =>
+              s.date.startsWith(`${currentYear}-${String(currentMonth).padStart(2, '0')}`)
+            );
+            return [...currentMonthShifts, ...filteredJanuaryShifts];
+          });
+
+          setLastUpdate(new Date());
+          console.log(`✅ 1月1-4日のシフト更新:`, filteredJanuaryShifts.length, '件');
+        }
+      );
+    }
+
+    // クリーンアップ
+    return () => {
+      console.log('🔌 リアルタイムリスナーを解除');
+      unsubscribeCurrentMonth();
+      if (unsubscribeJanuary) {
+        unsubscribeJanuary();
+      }
+    };
   }, [helper, currentYear, currentMonth]);
+
+  // ページフォーカス時にも再読み込み（タブ切り替え対応）
+  useEffect(() => {
+    const handleFocus = () => {
+      console.log('🔄 ページがフォーカスされました - データは自動更新されます');
+      setLastUpdate(new Date());
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
 
   // 週ごとにシフトをグループ化（月曜始まり、日曜日まで7日単位、常に7列表示）
   const weeks = useMemo(() => {
@@ -364,9 +390,17 @@ export function PersonalShift({ token }: Props) {
         )}
       </div>
 
-      {/* 自動更新インジケーター */}
-      <div className="fixed bottom-4 right-4 bg-green-500 text-white px-3 py-2 rounded-full text-xs shadow-lg">
-        ⟳ 3秒ごとに自動更新
+      {/* リアルタイム更新インジケーター */}
+      <div className="fixed bottom-4 right-4 bg-green-500 text-white px-3 py-2 rounded-lg text-xs shadow-lg">
+        <div className="flex items-center gap-2">
+          <div className="animate-pulse">🔄</div>
+          <div>
+            <div className="font-bold">リアルタイム同期中</div>
+            <div className="text-[10px] opacity-90">
+              最終更新: {lastUpdate.toLocaleTimeString('ja-JP')}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -1,3 +1,25 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* number input のスピナーボタンを非表示 */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* シフトセルのスタイル */
+.editable-cell {
+  outline: none;
+}
+
+/* 選択状態のスタイル（JavaScriptで管理） */
+.editable-cell.selected {
+  box-shadow: inset 0 0 0 2px #3b82f6 !important;
+}
