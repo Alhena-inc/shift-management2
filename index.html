@@ -14,16 +14,24 @@
         console.log('クエリ:', search);
         console.log('localStorage トークン:', token);
 
-        // クエリパラメータからトークン取得
+        // クエリパラメータからトークンとPWAモードを取得
         var urlParams = new URLSearchParams(search);
         var queryToken = urlParams.get('token');
+        var isPwaMode = urlParams.get('pwa') === '1';
 
         console.log('クエリトークン:', queryToken);
+        console.log('PWAインストールモード:', isPwaMode);
 
         if (queryToken) {
           localStorage.setItem('personalShiftToken', queryToken);
           token = queryToken;
           console.log('💾 トークンをlocalStorageに保存:', token);
+        }
+
+        // PWAインストールモード（pwa=1）の場合はリダイレクトしない
+        if (isPwaMode) {
+          console.log('📱 PWAインストールモード - リダイレクトスキップ');
+          return;
         }
 
         // トークンがあり、個人シフトページでない場合リダイレクト
