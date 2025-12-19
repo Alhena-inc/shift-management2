@@ -11,26 +11,45 @@
       (function() {
         console.log('=== 早期PWAリダイレクトチェック（index.html） ===');
 
-        var token = localStorage.getItem('personalShiftToken');
+        // URLクエリパラメータからトークンを取得
+        var urlParams = new URLSearchParams(window.location.search);
+        var queryToken = urlParams.get('token');
+
+        // localStorageからトークンを取得
+        var storedToken = localStorage.getItem('personalShiftToken');
+
+        // クエリパラメータ優先、なければlocalStorage
+        var token = queryToken || storedToken;
+
         var isStandalone = window.matchMedia('(display-mode: standalone)').matches;
         var isIOSStandalone = window.navigator.standalone === true;
         var isPWA = isStandalone || isIOSStandalone;
         var isPersonalPage = window.location.pathname.startsWith('/personal/');
 
         console.log('早期チェック - 現在のパス:', window.location.pathname);
-        console.log('早期チェック - トークン:', token);
+        console.log('早期チェック - クエリパラメータ:', window.location.search);
+        console.log('早期チェック - クエリトークン:', queryToken);
+        console.log('早期チェック - localStorage トークン:', storedToken);
+        console.log('早期チェック - 使用トークン:', token);
         console.log('早期チェック - スタンドアロン (Chrome/Android):', isStandalone);
         console.log('早期チェック - スタンドアロン (iOS):', isIOSStandalone);
         console.log('早期チェック - PWAモード:', isPWA);
         console.log('早期チェック - 個人シフトページ?:', isPersonalPage);
+
+        // クエリパラメータでトークンが渡された場合、localStorageに保存
+        if (queryToken) {
+          localStorage.setItem('personalShiftToken', queryToken);
+          console.log('💾 クエリパラメータのトークンをlocalStorageに保存:', queryToken);
+        }
+
         console.log('早期チェック - リダイレクト条件:', {
-          isPWA: isPWA,
           hasToken: !!token,
           isPersonalPage: isPersonalPage,
-          shouldRedirect: isPWA && token && !isPersonalPage
+          shouldRedirect: token && !isPersonalPage
         });
 
-        if (isPWA && token && !isPersonalPage) {
+        // トークンがあって個人シフトページ以外の場合、リダイレクト
+        if (token && !isPersonalPage) {
           console.log('⚡ 早期リダイレクト実行:', '/personal/' + token);
           window.location.replace('/personal/' + token);
         } else {

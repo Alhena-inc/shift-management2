@@ -24,10 +24,11 @@ export function PersonalShift({ token }: Props) {
     }
 
     // 動的にmanifest.jsonを生成（ホーム画面追加時に正しいURLで開くため）
+    // クエリパラメータ形式にすることで、静的manifestでも対応可能
     const manifestData = {
       name: "個人シフト表",
       short_name: "シフト表",
-      start_url: `/personal/${token}`,
+      start_url: `/?token=${token}`,
       display: "standalone",
       background_color: "#ffffff",
       theme_color: "#3b82f6",
@@ -52,7 +53,10 @@ export function PersonalShift({ token }: Props) {
     link.rel = 'manifest';
     link.href = manifestUrl;
     document.head.appendChild(link);
-    console.log('📱 動的manifestを生成:', manifestData.start_url);
+    console.log('📱 動的manifestを生成:', {
+      start_url: manifestData.start_url,
+      token: token
+    });
 
     return () => {
       URL.revokeObjectURL(manifestUrl);
