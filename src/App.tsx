@@ -340,13 +340,15 @@ function App() {
       </div>
 
       {currentView === 'shift' && (
-        <ShiftTable
-          helpers={helpers}
-          shifts={shifts}
-          year={currentYear}
-          month={currentMonth}
-          onUpdateShifts={handleUpdateShifts}
-        />
+        <div style={{ transform: 'scale(0.75)', transformOrigin: 'top left', width: '133.33%' }}>
+          <ShiftTable
+            helpers={helpers}
+            shifts={shifts}
+            year={currentYear}
+            month={currentMonth}
+            onUpdateShifts={handleUpdateShifts}
+          />
+        </div>
       )}
 
       <ExpenseModal
