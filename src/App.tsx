@@ -340,7 +340,7 @@ function App() {
       </div>
 
       {currentView === 'shift' && (
-        <div style={{ transform: 'scale(0.75)', transformOrigin: 'top left', width: '133.33%' }}>
+        <div style={{ transform: 'scale(0.6)', transformOrigin: 'top left', width: '166.67%' }}>
           <ShiftTable
             helpers={helpers}
             shifts={shifts}
