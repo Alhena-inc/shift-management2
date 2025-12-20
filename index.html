@@ -1,53 +1,6 @@
 <!doctype html>
 <html lang="ja">
   <head>
-    <!-- PWA即時リダイレクト（他のスクリプトより前に実行） -->
-    <script>
-      (function() {
-        // 即座に実行（他のスクリプトより前）
-        var path = window.location.pathname;
-        var search = window.location.search;
-        var token = localStorage.getItem('personalShiftToken');
-
-        console.log('🚀 即時PWAリダイレクトチェック');
-        console.log('現在のパス:', path);
-        console.log('クエリ:', search);
-        console.log('localStorage トークン:', token);
-
-        // クエリパラメータからトークンとPWAモードを取得
-        var urlParams = new URLSearchParams(search);
-        var queryToken = urlParams.get('token');
-        var isPwaMode = urlParams.get('pwa') === '1';
-
-        console.log('クエリトークン:', queryToken);
-        console.log('PWAインストールモード:', isPwaMode);
-
-        if (queryToken) {
-          localStorage.setItem('personalShiftToken', queryToken);
-          token = queryToken;
-          console.log('💾 トークンをlocalStorageに保存:', token);
-        }
-
-        // PWAインストールモード（pwa=1）の場合はリダイレクトしない
-        if (isPwaMode) {
-          console.log('📱 PWAインストールモード - リダイレクトスキップ');
-          return;
-        }
-
-        // トークンがあり、個人シフトページでない場合リダイレクト
-        var isPersonalPage = path.indexOf('/personal/') !== -1;
-        console.log('個人シフトページ?:', isPersonalPage);
-        console.log('リダイレクト条件:', { hasToken: !!token, isPersonalPage: isPersonalPage, shouldRedirect: token && !isPersonalPage });
-
-        if (token && !isPersonalPage) {
-          console.log('⚡ リダイレクト実行 → /personal/' + token);
-          window.location.href = '/personal/' + token;
-        } else {
-          console.log('❌ リダイレクトなし');
-        }
-      })();
-    </script>
-
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
