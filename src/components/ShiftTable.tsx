@@ -1334,71 +1334,96 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   }, [helpers, year, month]);
 
   // セルのデータと背景色を取得する関数（レンダリング時に使用）
+  // 全セルの表示データを事前に計算してキャッシュ（パフォーマンス最適化）
+  const cellDisplayCache = useMemo(() => {
+    const cache = new Map<string, { lines: string[]; bgColor: string; hasWarning: boolean }>();
+
+    sortedHelpers.forEach(helper => {
+      weeks.forEach(week => {
+        week.days.forEach(day => {
+          if (!day.isEmpty) {
+            for (let rowIndex = 0; rowIndex < 5; rowIndex++) {
+              const key = `${helper.id}-${day.date}-${rowIndex}`;
+              const shift = shiftMap.get(key);
+
+              // 指定休をチェック（日付全体）
+              const scheduledDayOffKey = `${helper.id}-${day.date}`;
+              const isScheduledDayOff = scheduledDayOffs.has(scheduledDayOffKey);
+
+              // 新形式のキー（行ごと）をチェック
+              const rowSpecificKey = `${helper.id}-${day.date}-${rowIndex}`;
+              const isRowSpecificDayOff = dayOffRequests.has(rowSpecificKey);
+
+              // 旧形式のキー（日付全体）をチェック（後方互換性）
+              const dayOffKey = `${helper.id}-${day.date}`;
+              const dayOffValue = dayOffRequests.get(dayOffKey);
+              const isOldFormatDayOff = dayOffValue ? getRowIndicesFromDayOffValue(dayOffValue).includes(rowIndex) : false;
+
+              // 休み希望の該当行を判定（新形式 または 旧形式）
+              const isDayOffForThisRow = isRowSpecificDayOff || isOldFormatDayOff;
+
+              if (!shift) {
+                // 指定休が最優先、次に休み希望
+                let bgColor = '#ffffff';
+                if (isScheduledDayOff) {
+                  bgColor = '#22c55e';  // 指定休は緑色
+                } else if (isDayOffForThisRow) {
+                  bgColor = '#ffcccc';  // 休み希望はピンク
+                }
+
+                cache.set(key, {
+                  lines: ['', '', '', ''],
+                  bgColor,
+                  hasWarning: false
+                });
+              } else {
+                const { startTime, endTime, clientName, serviceType, duration, area, cancelStatus } = shift;
+
+                // 各ラインのデータ
+                const timeString = startTime && endTime ? `${startTime}-${endTime}` : (startTime || endTime ? `${startTime || ''}-${endTime || ''}` : '');
+                const lines = [
+                  timeString,
+                  serviceType === 'other'
+                    ? clientName
+                    : (clientName ? `${clientName}(${SERVICE_CONFIG[serviceType]?.label || ''})` : `(${SERVICE_CONFIG[serviceType]?.label || ''})`),
+                  duration ? duration.toString() : '',
+                  area || ''
+                ];
+
+                // 警告が必要かチェック
+                const hasWarning = shouldShowWarning(startTime, endTime, serviceType);
+
+                // 背景色を設定（優先度：キャンセル > 指定休 > serviceType > 休み希望 > デフォルト）
+                let bgColor = '#ffffff';
+                if (cancelStatus === 'keep_time' || cancelStatus === 'remove_time') {
+                  bgColor = '#f87171';  // キャンセル状態は赤
+                } else if (isScheduledDayOff) {
+                  bgColor = '#22c55e';  // 指定休は緑色（縦列全体）
+                } else if (serviceType && SERVICE_CONFIG[serviceType]) {
+                  bgColor = SERVICE_CONFIG[serviceType].bgColor;  // サービスタイプの背景色
+                } else if (isDayOffForThisRow) {
+                  bgColor = '#ffcccc';  // 該当行の休み希望はピンク
+                }
+
+                cache.set(key, { lines, bgColor, hasWarning });
+              }
+            }
+          }
+        });
+      });
+    });
+
+    return cache;
+  }, [sortedHelpers, weeks, shiftMap, dayOffRequests, scheduledDayOffs]);
+
   const getCellDisplayData = useCallback((helperId: string, date: string, rowIndex: number) => {
-    const shift = shiftMap.get(`${helperId}-${date}-${rowIndex}`);
-
-    // 指定休をチェック（日付全体）
-    const scheduledDayOffKey = `${helperId}-${date}`;
-    const isScheduledDayOff = scheduledDayOffs.has(scheduledDayOffKey);
-
-    // 新形式のキー（行ごと）をチェック
-    const rowSpecificKey = `${helperId}-${date}-${rowIndex}`;
-    const isRowSpecificDayOff = dayOffRequests.has(rowSpecificKey);
-
-    // 旧形式のキー（日付全体）をチェック（後方互換性）
-    const dayOffKey = `${helperId}-${date}`;
-    const dayOffValue = dayOffRequests.get(dayOffKey);
-    const isOldFormatDayOff = dayOffValue ? getRowIndicesFromDayOffValue(dayOffValue).includes(rowIndex) : false;
-
-    // 休み希望の該当行を判定（新形式 または 旧形式）
-    const isDayOffForThisRow = isRowSpecificDayOff || isOldFormatDayOff;
-
-    if (!shift) {
-      // 指定休が最優先、次に休み希望
-      let bgColor = '#ffffff';
-      if (isScheduledDayOff) {
-        bgColor = '#22c55e';  // 指定休は緑色
-      } else if (isDayOffForThisRow) {
-        bgColor = '#ffcccc';  // 休み希望はピンク
-      }
-
-      return {
-        lines: ['', '', '', ''],
-        bgColor,
-        hasWarning: false
-      };
-    }
-
-    const { startTime, endTime, clientName, serviceType, duration, area, cancelStatus } = shift;
-
-    // 各ラインのデータ
-    const timeString = startTime && endTime ? `${startTime}-${endTime}` : (startTime || endTime ? `${startTime || ''}-${endTime || ''}` : '');
-    const lines = [
-      timeString,
-      serviceType === 'other'
-        ? clientName
-        : (clientName ? `${clientName}(${SERVICE_CONFIG[serviceType]?.label || ''})` : `(${SERVICE_CONFIG[serviceType]?.label || ''})`),
-      duration ? duration.toString() : '',
-      area || ''
-    ];
-
-    // 警告が必要かチェック
-    const hasWarning = shouldShowWarning(startTime, endTime, serviceType);
-
-    // 背景色を設定（優先度：キャンセル > 指定休 > serviceType > 休み希望 > デフォルト）
-    let bgColor = '#ffffff';
-    if (cancelStatus === 'keep_time' || cancelStatus === 'remove_time') {
-      bgColor = '#f87171';  // キャンセル状態は赤
-    } else if (isScheduledDayOff) {
-      bgColor = '#22c55e';  // 指定休は緑色（縦列全体）
-    } else if (serviceType && SERVICE_CONFIG[serviceType]) {
-      bgColor = SERVICE_CONFIG[serviceType].bgColor;  // サービスタイプの背景色
-    } else if (isDayOffForThisRow) {
-      bgColor = '#ffcccc';  // 該当行の休み希望はピンク
-    }
-
-    return { lines, bgColor, hasWarning };
-  }, [shiftMap, dayOffRequests, scheduledDayOffs]);
+    const key = `${helperId}-${date}-${rowIndex}`;
+    return cellDisplayCache.get(key) || {
+      lines: ['', '', '', ''],
+      bgColor: '#ffffff',
+      hasWarning: false
+    };
+  }, [cellDisplayCache]);
 
   // refからstateへ同期（描画用）
   const syncSelection = useCallback(() => {
@@ -3527,10 +3552,22 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   }, [sortedHelpers, weeks, shifts]);
 
   return (
-    <div className="overflow-x-auto pb-4">
+    <div
+      className="overflow-x-auto pb-4"
+      style={{
+        contain: 'strict',
+        willChange: 'scroll-position'
+      }}
+    >
       {weeks.map((week) => (
         <div key={week.weekNumber} className="mb-8">
-          <table className="border-collapse text-xs table-fixed">
+          <table
+            className="border-collapse text-xs"
+            style={{
+              tableLayout: 'fixed',
+              contain: 'layout style paint'
+            }}
+          >
               <thead>
                 {/* 1行目：日付ヘッダー */}
                 <tr>
@@ -3651,7 +3688,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                           : 'grab',
                         opacity: draggedCell && draggedCell.helperId === helper.id && draggedCell.date === day.date && draggedCell.rowIndex === rowIndex ? 0.5 : 1,
                         backgroundColor: isSelectedRow ? 'rgba(33, 150, 243, 0.05)' : cellDisplayData.bgColor,
-                        transition: 'none'
+                        transition: 'none',
+                        contain: 'layout style paint',
+                        contentVisibility: 'auto'
                       }}
                       title={cellDisplayData.hasWarning ? '⚠️ 終了時刻が入力されていません' : undefined}
                       onPointerDown={(e) => {
@@ -4426,8 +4465,20 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       {/* 月次集計テーブル1: サービス種別時間数集計 */}
       <div className="mt-12 mb-8">
         <h2 className="text-xl font-bold mb-4 bg-blue-100 p-3 rounded">📊 サービス種別時間数集計</h2>
-        <div className="overflow-x-auto pb-4">
-          <table className="border-collapse text-xs w-full">
+        <div
+          className="overflow-x-auto pb-4"
+          style={{
+            contain: 'strict',
+            willChange: 'scroll-position'
+          }}
+        >
+          <table
+            className="border-collapse text-xs w-full"
+            style={{
+              tableLayout: 'fixed',
+              contain: 'layout style paint'
+            }}
+          >
             <thead>
               <tr className="bg-gray-200">
                 <th className="border-2 border-gray-400 p-2 sticky left-0 bg-gray-200 z-10 font-bold" style={{ minWidth: '120px' }}>
@@ -4631,8 +4682,20 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             🔄 交通費・経費更新
           </button>
         </div>
-        <div className="overflow-x-auto pb-4">
-          <table className="border-collapse text-xs w-full">
+        <div
+          className="overflow-x-auto pb-4"
+          style={{
+            contain: 'strict',
+            willChange: 'scroll-position'
+          }}
+        >
+          <table
+            className="border-collapse text-xs w-full"
+            style={{
+              tableLayout: 'fixed',
+              contain: 'layout style paint'
+            }}
+          >
             <thead>
               <tr className="bg-gray-200">
                 <th className="border-2 border-gray-400 p-2 sticky left-0 bg-gray-200 z-10 font-bold" style={{ minWidth: '100px' }}>
