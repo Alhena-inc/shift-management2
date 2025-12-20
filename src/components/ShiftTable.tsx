@@ -3527,11 +3527,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   }, [sortedHelpers, weeks, shifts]);
 
   return (
-    <div className="overflow-x-auto pb-4" style={{
-      transform: 'translateZ(0)',
-      willChange: 'scroll-position',
-      WebkitOverflowScrolling: 'touch'
-    }}>
+    <div className="overflow-x-auto pb-4">
       {weeks.map((week) => (
         <div key={week.weekNumber} className="mb-8">
           <table className="border-collapse text-xs table-fixed">
@@ -4430,11 +4426,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       {/* 月次集計テーブル1: サービス種別時間数集計 */}
       <div className="mt-12 mb-8">
         <h2 className="text-xl font-bold mb-4 bg-blue-100 p-3 rounded">📊 サービス種別時間数集計</h2>
-        <div className="overflow-x-auto pb-4" style={{
-          transform: 'translateZ(0)',
-          willChange: 'scroll-position',
-          WebkitOverflowScrolling: 'touch'
-        }}>
+        <div className="overflow-x-auto pb-4">
           <table className="border-collapse text-xs w-full">
             <thead>
               <tr className="bg-gray-200">
@@ -4639,11 +4631,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             🔄 交通費・経費更新
           </button>
         </div>
-        <div className="overflow-x-auto pb-4" style={{
-          transform: 'translateZ(0)',
-          willChange: 'scroll-position',
-          WebkitOverflowScrolling: 'touch'
-        }}>
+        <div className="overflow-x-auto pb-4">
           <table className="border-collapse text-xs w-full">
             <thead>
               <tr className="bg-gray-200">
