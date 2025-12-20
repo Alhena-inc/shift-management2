@@ -28,7 +28,6 @@ export function PayrollStatement({ helper, shifts, year, month }: Props) {
                         nightPayAmount + nightDokoPayAmount +
                         editableData.expenses + editableData.transportation;
 
-  const isFixed = helper.salaryType === 'fixed';
   const isHourly = helper.salaryType === 'hourly';
 
   // 編集ハンドラー
