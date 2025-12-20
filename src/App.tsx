@@ -12,42 +12,7 @@ import { saveHelpers, loadHelpers, loadShiftsForMonth } from './services/firesto
 import { testFirebaseConnection } from './lib/firebase';
 
 function App() {
-  // PWAモード起動時のリダイレクト処理
-  useEffect(() => {
-    console.log('=== PWA起動時チェック ===');
-    console.log('現在のパス:', window.location.pathname);
-
-    const savedToken = localStorage.getItem('personalShiftToken');
-    console.log('保存済みトークン:', savedToken);
-
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-    const isIOSStandalone = (window.navigator as any).standalone === true;
-    const isPWA = isStandalone || isIOSStandalone;
-
-    console.log('スタンドアロンモード (Chrome/Android):', isStandalone);
-    console.log('スタンドアロンモード (iOS):', isIOSStandalone);
-    console.log('PWAモード判定:', isPWA);
-
-    const currentPath = window.location.pathname;
-    const isPersonalPage = currentPath.startsWith('/personal/');
-
-    console.log('個人シフト表ページ?:', isPersonalPage);
-    console.log('リダイレクト条件チェック:', {
-      isPWA,
-      savedToken: !!savedToken,
-      isPersonalPage,
-      shouldRedirect: isPWA && savedToken && !isPersonalPage
-    });
-
-    // PWAモードで起動 & トークン保存済み & 個人シフト表ページ以外の場合
-    if (isPWA && savedToken && !isPersonalPage) {
-      console.log('🚀 PWAモードで起動 - 個人シフト表にリダイレクト:', savedToken);
-      console.log('リダイレクト先:', `/personal/${savedToken}`);
-      window.location.replace(`/personal/${savedToken}`);
-    } else {
-      console.log('❌ リダイレクトなし');
-    }
-  }, []);
+  // PWA自動リダイレクトを削除（管理者も全体シフトにアクセス可能に）
 
   // URLパスとクエリパラメータをチェック
   const path = window.location.pathname;
