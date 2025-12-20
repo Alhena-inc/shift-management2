@@ -3555,7 +3555,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     <div
       className="overflow-x-auto pb-4"
       style={{
-        contain: 'strict',
         willChange: 'scroll-position'
       }}
     >
@@ -3564,8 +3563,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           <table
             className="border-collapse text-xs"
             style={{
-              tableLayout: 'fixed',
-              contain: 'layout style paint'
+              tableLayout: 'fixed'
             }}
           >
               <thead>
@@ -3688,9 +3686,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                           : 'grab',
                         opacity: draggedCell && draggedCell.helperId === helper.id && draggedCell.date === day.date && draggedCell.rowIndex === rowIndex ? 0.5 : 1,
                         backgroundColor: isSelectedRow ? 'rgba(33, 150, 243, 0.05)' : cellDisplayData.bgColor,
-                        transition: 'none',
-                        contain: 'layout style paint',
-                        contentVisibility: 'auto'
+                        transition: 'none'
                       }}
                       title={cellDisplayData.hasWarning ? '⚠️ 終了時刻が入力されていません' : undefined}
                       onPointerDown={(e) => {
@@ -4468,15 +4464,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         <div
           className="overflow-x-auto pb-4"
           style={{
-            contain: 'strict',
             willChange: 'scroll-position'
           }}
         >
           <table
             className="border-collapse text-xs w-full"
             style={{
-              tableLayout: 'fixed',
-              contain: 'layout style paint'
+              tableLayout: 'fixed'
             }}
           >
             <thead>
@@ -4685,15 +4679,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         <div
           className="overflow-x-auto pb-4"
           style={{
-            contain: 'strict',
             willChange: 'scroll-position'
           }}
         >
           <table
             className="border-collapse text-xs w-full"
             style={{
-              tableLayout: 'fixed',
-              contain: 'layout style paint'
+              tableLayout: 'fixed'
             }}
           >
             <thead>
