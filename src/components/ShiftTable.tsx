@@ -3767,15 +3767,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                   // 親のtd要素を取得
                                   const parentTd = currentCell.closest('td') as HTMLElement;
 
-                                  // ★★★ 青枠表示を最優先で実行 ★★★
+                                  // ★★★ 青枠表示を最優先で実行（CSSクラス使用で高速化） ★★★
                                   if (parentTd) {
                                     if (willBeSelected) {
-                                      parentTd.style.setProperty('outline', '2px solid #3b82f6', 'important');
-                                      parentTd.style.setProperty('outline-offset', '-2px', 'important');
+                                      parentTd.classList.add('shift-cell-multi-selected');
                                       lastSelectedRowTdsRef.current.push(parentTd);
                                     } else {
-                                      parentTd.style.removeProperty('outline');
-                                      parentTd.style.removeProperty('outline-offset');
+                                      parentTd.classList.remove('shift-cell-multi-selected');
                                       const index = lastSelectedRowTdsRef.current.indexOf(parentTd);
                                       if (index > -1) {
                                         lastSelectedRowTdsRef.current.splice(index, 1);
@@ -3783,96 +3781,92 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                     }
                                   }
 
-                                  // 前回の単一選択をクリア
+                                  // 前回の単一選択をクリア（CSSクラス削除）
                                   if (lastSelectedCellRef.current) {
-                                    lastSelectedCellRef.current.style.removeProperty('box-shadow');
+                                    lastSelectedCellRef.current.classList.remove('cell-selected');
                                     lastSelectedCellRef.current = null;
                                   }
 
-                                  // ★★★ その他の処理は遅延実行 ★★★
-                                  requestAnimationFrame(() => {
-                                    if (willBeSelected) {
-                                      newSelected.add(rowKey);
-                                      selectedRowsRef.current.add(rowKey);
-                                    } else {
-                                      newSelected.delete(rowKey);
-                                      selectedRowsRef.current.delete(rowKey);
-                                    }
-                                    setSelectedRows(newSelected);
-                                  });
+                                  // ━━━ 状態更新も即座に実行（同期） ━━━
+                                  if (willBeSelected) {
+                                    newSelected.add(rowKey);
+                                    selectedRowsRef.current.add(rowKey);
+                                  } else {
+                                    newSelected.delete(rowKey);
+                                    selectedRowsRef.current.delete(rowKey);
+                                  }
+                                  setSelectedRows(newSelected);
                                   return;
                                 }
 
-                                // ★★★ 通常のクリック処理 - 青枠表示のみを最初に実行 ★★★
+                                // ★★★ 通常のクリック処理 - 青枠表示のみを最初に実行（CSSクラス使用で高速化） ★★★
 
-                                // 前回選択されたセルの青枠を即座に削除
+                                // 前回選択されたセルの青枠を即座に削除（CSSクラス削除）
                                 if (lastSelectedCellRef.current && lastSelectedCellRef.current !== currentCell) {
-                                  lastSelectedCellRef.current.style.removeProperty('box-shadow');
+                                  lastSelectedCellRef.current.classList.remove('cell-selected');
+                                  // 前回のクリックカウントもリセット
+                                  if (lastSelectedCellRef.current.dataset.clickCount) {
+                                    lastSelectedCellRef.current.dataset.clickCount = '0';
+                                  }
                                 }
 
-                                // 青枠を即座に表示（最優先 - 遅延なし）
-                                currentCell.style.setProperty('box-shadow', 'inset 0 0 0 1px #3b82f6', 'important');
+                                // 青枠を即座に表示（CSSクラス追加 - reflow最小化）
+                                currentCell.classList.add('cell-selected');
                                 lastSelectedCellRef.current = currentCell;
 
-                                // ★★★ その他の処理は requestAnimationFrame で遅延実行 ★★★
-                                requestAnimationFrame(() => {
-                                  // 前回選択されたセルのdatasetリセット
-                                  const prevCell = document.querySelector('.editable-cell[data-click-count]') as HTMLElement;
-                                  if (prevCell && prevCell !== currentCell) {
-                                    prevCell.dataset.clickCount = '0';
-                                  }
+                                // ━━━ その他の処理も即座に同期実行（遅延ゼロ） ━━━
 
-                                  // 前回の複数選択行の青枠を削除
+                                // 前回の複数選択行の青枠を削除（一括でクラス削除）
+                                if (lastSelectedRowTdsRef.current.length > 0) {
                                   lastSelectedRowTdsRef.current.forEach(td => {
-                                    td.style.removeProperty('outline');
-                                    td.style.removeProperty('outline-offset');
+                                    td.classList.remove('shift-cell-multi-selected');
                                   });
                                   lastSelectedRowTdsRef.current = [];
+                                }
 
-                                  // コピー&ペースト用に現在選択されているセルを記録
-                                  selectedCellRef.helperId = helper.id;
-                                  selectedCellRef.date = day.date;
-                                  selectedCellRef.rowIndex = rowIndex;
+                                // コピー&ペースト用に現在選択されているセルを記録
+                                selectedCellRef.helperId = helper.id;
+                                selectedCellRef.date = day.date;
+                                selectedCellRef.rowIndex = rowIndex;
 
-                                  // 複数選択をクリア（既に空なら更新しない）
-                                  if (selectedRowsRef.current.size > 0) {
-                                    selectedRowsRef.current.clear();
-                                    setSelectedRows(new Set());
+                                // 複数選択をクリア（既に空なら更新しない）
+                                if (selectedRowsRef.current.size > 0) {
+                                  selectedRowsRef.current.clear();
+                                  setSelectedRows(new Set());
+                                }
+
+                                // コンテキストメニューが開いている場合は閉じる
+                                const existingMenu = document.getElementById('context-menu');
+                                if (existingMenu) {
+                                  existingMenu.remove();
+                                }
+
+                                // クリック回数を取得
+                                const clickCount = parseInt(currentCell.dataset.clickCount || '0') + 1;
+                                currentCell.dataset.clickCount = clickCount.toString();
+
+                                if (clickCount >= 2) {
+                                  // 2回目のクリック：編集モードに入る
+                                  currentCell.setAttribute('contenteditable', 'true');
+                                  currentCell.style.userSelect = 'text';
+                                  currentCell.style.webkitUserSelect = 'text';
+                                  currentCell.focus();
+
+                                  // カーソルを末尾に配置
+                                  const range = document.createRange();
+                                  const sel = window.getSelection();
+
+                                  range.selectNodeContents(currentCell);
+                                  range.collapse(false);
+
+                                  if (sel) {
+                                    sel.removeAllRanges();
+                                    sel.addRange(range);
                                   }
 
-                                  // コンテキストメニューが開いている場合は閉じる
-                                  const existingMenu = document.getElementById('context-menu');
-                                  if (existingMenu) {
-                                    existingMenu.remove();
-                                  }
-
-                                  // クリック回数を取得
-                                  const clickCount = parseInt(currentCell.dataset.clickCount || '0') + 1;
-                                  currentCell.dataset.clickCount = clickCount.toString();
-
-                                  if (clickCount >= 2) {
-                                    // 2回目のクリック：編集モードに入る
-                                    currentCell.setAttribute('contenteditable', 'true');
-                                    currentCell.style.userSelect = 'text';
-                                    currentCell.style.webkitUserSelect = 'text';
-                                    currentCell.focus();
-
-                                    // カーソルを末尾に配置
-                                    const range = document.createRange();
-                                    const sel = window.getSelection();
-
-                                    range.selectNodeContents(currentCell);
-                                    range.collapse(false);
-
-                                    if (sel) {
-                                      sel.removeAllRanges();
-                                      sel.addRange(range);
-                                    }
-
-                                    // クリックカウントをリセット
-                                    currentCell.dataset.clickCount = '0';
-                                  }
-                                });
+                                  // クリックカウントをリセット
+                                  currentCell.dataset.clickCount = '0';
+                                }
                               }}
                               onDoubleClick={(e) => {
                                 e.stopPropagation();

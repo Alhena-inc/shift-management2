@@ -1,5 +1,6 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getFirestore, collection, addDoc } from 'firebase/firestore';
+import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 
 // Firebase設定（新しいプロジェクト: shift-management-2）
 const firebaseConfig = {
@@ -16,6 +17,14 @@ export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getA
 
 // Firestore初期化
 export const db = getFirestore(app);
+
+// Authentication初期化
+export const auth = getAuth(app);
+
+// Google認証プロバイダー
+export const googleProvider = new GoogleAuthProvider();
+// Sheets APIへのアクセス権限を追加
+googleProvider.addScope('https://www.googleapis.com/auth/spreadsheets');
 
 // 接続テスト関数
 export const testFirebaseConnection = async () => {

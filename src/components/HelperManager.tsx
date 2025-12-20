@@ -25,6 +25,7 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
   const [newHelperLastName, setNewHelperLastName] = useState('');
   const [newHelperFirstName, setNewHelperFirstName] = useState('');
   const [newHelperGender, setNewHelperGender] = useState<'male' | 'female'>('male');
+  const [newHelperSalaryType, setNewHelperSalaryType] = useState<'hourly' | 'fixed'>('hourly');
   const [showAddForm, setShowAddForm] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const listContainerRef = useRef<HTMLDivElement>(null);
@@ -34,6 +35,7 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
   const [isSaving, setIsSaving] = useState(false);
   const [editingHelperId, setEditingHelperId] = useState<string | null>(null);
   const [editHelperFirstName, setEditHelperFirstName] = useState('');
+  const [editHelperSalaryType, setEditHelperSalaryType] = useState<'hourly' | 'fixed'>('hourly');
 
   const handleAddHelper = () => {
     // 苗字または名前のどちらかが入力されていればOK
@@ -58,6 +60,7 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
       lastName: lastName || undefined,
       firstName: firstName || undefined,
       gender: newHelperGender,
+      salaryType: newHelperSalaryType,
       order: 0, // 仮の値
     };
 
@@ -77,6 +80,7 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
     setNewHelperName('');
     setNewHelperLastName('');
     setNewHelperFirstName('');
+    setNewHelperSalaryType('hourly');
     setShowAddForm(false);
   };
 
@@ -153,6 +157,7 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
   const handleStartEdit = (helper: Helper) => {
     setEditingHelperId(helper.id);
     setEditHelperFirstName(helper.firstName || '');
+    setEditHelperSalaryType(helper.salaryType || 'hourly');
   };
 
   const handleSaveEdit = async () => {
@@ -166,7 +171,8 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
         ? {
             ...h,
             lastName: h.name, // 現在のnameを苗字として設定
-            firstName: editHelperFirstName.trim() || undefined
+            firstName: editHelperFirstName.trim() || undefined,
+            salaryType: editHelperSalaryType
           }
         : h
     );
@@ -174,6 +180,7 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
     setLocalHelpers(updatedHelpers);
     setEditingHelperId(null);
     setEditHelperFirstName('');
+    setEditHelperSalaryType('hourly');
 
     // 即座にFirestoreに保存
     setIsSaving(true);
@@ -192,6 +199,7 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
   const handleCancelEdit = () => {
     setEditingHelperId(null);
     setEditHelperFirstName('');
+    setEditHelperSalaryType('hourly');
   };
 
   const handleDeleteHelper = (helperId: string) => {
@@ -324,7 +332,7 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
                       <span className="text-2xl">{helper.gender === 'male' ? '👨' : '👩'}</span>
                       <div className="flex-1">
                         {editingHelperId === helper.id ? (
-                          <div className="space-y-2">
+                          <div className="space-y-3">
                             <div className="font-medium text-lg">{helper.name}</div>
                             <div className="flex items-center gap-2">
                               <span className="text-sm text-gray-600">苗字: {helper.name}</span>
@@ -338,6 +346,37 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
                                 autoFocus
                               />
                             </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-gray-600 font-medium">給与形態:</span>
+                              <div className="flex gap-3">
+                                <label className="flex items-center gap-2 cursor-pointer px-3 py-1 border-2 rounded hover:bg-gray-50 transition-colors"
+                                  style={{ borderColor: editHelperSalaryType === 'hourly' ? '#10b981' : '#d1d5db' }}
+                                >
+                                  <input
+                                    type="radio"
+                                    value="hourly"
+                                    checked={editHelperSalaryType === 'hourly'}
+                                    onChange={(e) => setEditHelperSalaryType(e.target.value as 'hourly' | 'fixed')}
+                                    className="w-4 h-4"
+                                  />
+                                  <span className="text-lg">⏱️</span>
+                                  <span className="text-sm font-medium">時給</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer px-3 py-1 border-2 rounded hover:bg-gray-50 transition-colors"
+                                  style={{ borderColor: editHelperSalaryType === 'fixed' ? '#8b5cf6' : '#d1d5db' }}
+                                >
+                                  <input
+                                    type="radio"
+                                    value="fixed"
+                                    checked={editHelperSalaryType === 'fixed'}
+                                    onChange={(e) => setEditHelperSalaryType(e.target.value as 'hourly' | 'fixed')}
+                                    className="w-4 h-4"
+                                  />
+                                  <span className="text-lg">💼</span>
+                                  <span className="text-sm font-medium">固定給</span>
+                                </label>
+                              </div>
+                            </div>
                           </div>
                         ) : (
                           <>
@@ -345,6 +384,14 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
                             <div className="text-sm text-gray-600">
                               {helper.gender === 'male' ? '男性' : '女性'} · 順番: {helper.order}
                               {helper.lastName && helper.firstName && ` · ${helper.lastName}${helper.firstName}`}
+                              {' · '}
+                              <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                                helper.salaryType === 'hourly'
+                                  ? 'bg-green-100 text-green-700'
+                                  : 'bg-purple-100 text-purple-700'
+                              }`}>
+                                {helper.salaryType === 'hourly' ? '時給' : '固定'}
+                              </span>
                             </div>
                           </>
                         )}
@@ -501,6 +548,38 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
                     />
                     <span className="text-3xl">👩</span>
                     <span className="text-lg font-medium">女性</span>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-lg font-medium mb-3">給与形態</label>
+                <div className="flex gap-6">
+                  <label className="flex items-center gap-3 cursor-pointer p-4 border-2 rounded-lg hover:bg-gray-50 transition-colors"
+                    style={{ borderColor: newHelperSalaryType === 'hourly' ? '#10b981' : '#d1d5db' }}
+                  >
+                    <input
+                      type="radio"
+                      value="hourly"
+                      checked={newHelperSalaryType === 'hourly'}
+                      onChange={(e) => setNewHelperSalaryType(e.target.value as 'hourly' | 'fixed')}
+                      className="w-5 h-5"
+                    />
+                    <span className="text-2xl">⏱️</span>
+                    <span className="text-lg font-medium">時給</span>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer p-4 border-2 rounded-lg hover:bg-gray-50 transition-colors"
+                    style={{ borderColor: newHelperSalaryType === 'fixed' ? '#8b5cf6' : '#d1d5db' }}
+                  >
+                    <input
+                      type="radio"
+                      value="fixed"
+                      checked={newHelperSalaryType === 'fixed'}
+                      onChange={(e) => setNewHelperSalaryType(e.target.value as 'hourly' | 'fixed')}
+                      className="w-5 h-5"
+                    />
+                    <span className="text-2xl">💼</span>
+                    <span className="text-lg font-medium">固定給</span>
                   </label>
                 </div>
               </div>

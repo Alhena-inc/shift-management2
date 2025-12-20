@@ -1,6 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { Helper, Shift } from '../types';
 import { SERVICE_CONFIG } from '../types';
+import { PayrollStatementModal } from './PayrollStatementModal';
+import { PayrollStatementViewModal } from './PayrollStatementViewModal';
 
 interface Props {
   helpers: Helper[];
@@ -66,6 +68,8 @@ function calculateRegularHours(timeRange: string): number {
 }
 
 export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Props) {
+  const [showPayrollModal, setShowPayrollModal] = useState(false);
+  const [showPayrollViewModal, setShowPayrollViewModal] = useState(false);
   const sortedHelpers = useMemo(() => [...helpers].sort((a, b) => a.order - b.order), [helpers]);
 
   // 週の範囲を計算（日付ベース: 1-7日、8-14日、15-21日、22-28日、29日〜、6週目は常に0）
@@ -227,19 +231,34 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
   }, [weekRanges, sortedHelpers, helperWeeklyTotals]);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-auto">
-        <div className="sticky top-0 bg-gradient-to-r from-green-50 to-blue-50 border-b-4 border-green-500 p-6 flex justify-between items-center z-40">
-          <h2 className="text-3xl font-bold text-gray-800">
-            💰 {year}年{month}月{month === 12 ? '（1/1〜1/4含む）' : ''} 給与計算
-          </h2>
-          <button
-            onClick={onClose}
-            className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-bold text-lg shadow-md"
-          >
-            ✕ 閉じる
-          </button>
-        </div>
+    <>
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-auto">
+          <div className="sticky top-0 bg-gradient-to-r from-green-50 to-blue-50 border-b-4 border-green-500 p-6 flex justify-between items-center z-40">
+            <h2 className="text-3xl font-bold text-gray-800">
+              💰 {year}年{month}月{month === 12 ? '（1/1〜1/4含む）' : ''} 給与計算
+            </h2>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowPayrollViewModal(true)}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-bold text-lg shadow-md"
+              >
+                給与明細表示
+              </button>
+              <button
+                onClick={() => setShowPayrollModal(true)}
+                className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-bold text-lg shadow-md"
+              >
+                給与明細作成
+              </button>
+              <button
+                onClick={onClose}
+                className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-bold text-lg shadow-md"
+              >
+                ✕ 閉じる
+              </button>
+            </div>
+          </div>
 
         <div className="p-6">
           <div className="overflow-x-auto">
@@ -342,5 +361,28 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
         </div>
       </div>
     </div>
+
+      {/* 給与明細表示モーダル */}
+      {showPayrollViewModal && (
+        <PayrollStatementViewModal
+          helpers={sortedHelpers}
+          shifts={shifts}
+          year={year}
+          month={month}
+          onClose={() => setShowPayrollViewModal(false)}
+        />
+      )}
+
+      {/* 給与明細作成モーダル */}
+      {showPayrollModal && (
+        <PayrollStatementModal
+          helpers={helpers}
+          shifts={shifts}
+          year={year}
+          month={month}
+          onClose={() => setShowPayrollModal(false)}
+        />
+      )}
+    </>
   );
 }

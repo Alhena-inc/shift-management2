@@ -51,6 +51,7 @@ export interface Helper {
   order: number;
   personalToken?: string;  // 個人シフト表用のユニークトークン
   cashPayment?: boolean;   // 手渡し支払いフラグ
+  salaryType?: 'hourly' | 'fixed';  // 給与タイプ（時給 or 固定給）デフォルトは時給
   // 月別の給与関連データ（キー: "YYYY-MM"）
   monthlyPayments?: Record<string, {
     transportationAllowance?: number;  // 交通費
