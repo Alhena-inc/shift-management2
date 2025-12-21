@@ -1384,14 +1384,31 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               if (!shift) {
                 // 指定休が最優先、次に休み希望
                 let bgColor = '#ffffff';
+                let lines = ['', '', '', ''];
+
                 if (isScheduledDayOff) {
                   bgColor = '#22c55e';  // 指定休は緑色
                 } else if (isDayOffForThisRow) {
-                  bgColor = '#ffcccc';  // 休み希望はピンク
+                  bgColor = 'rgba(255, 182, 193, 0.5)';  // 休み希望はピンク系
+
+                  // 休み希望の時間テキストを表示（最初の行のみ）
+                  if (dayOffValue) {
+                    const affectedRows = getRowIndicesFromDayOffValue(dayOffValue);
+                    const isFirstRow = affectedRows.length > 0 && affectedRows[0] === rowIndex;
+
+                    if (isFirstRow) {
+                      // 最初の行にテキストを表示
+                      if (dayOffValue === 'all') {
+                        lines = ['終日休み', '', '', ''];
+                      } else {
+                        lines = [dayOffValue, '', '', ''];
+                      }
+                    }
+                  }
                 }
 
                 cache.set(key, {
-                  lines: ['', '', '', ''],
+                  lines,
                   bgColor,
                   hasWarning: false
                 });
@@ -1421,7 +1438,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 } else if (serviceType && SERVICE_CONFIG[serviceType]) {
                   bgColor = SERVICE_CONFIG[serviceType].bgColor;  // サービスタイプの背景色
                 } else if (isDayOffForThisRow) {
-                  bgColor = '#ffcccc';  // 該当行の休み希望はピンク
+                  bgColor = 'rgba(255, 182, 193, 0.5)';  // 該当行の休み希望はピンク系
                 }
 
                 cache.set(key, { lines, bgColor, hasWarning });

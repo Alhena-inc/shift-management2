@@ -60,10 +60,18 @@ export const getRowIndicesFromDayOffValue = (value: string): number[] => {
   if (value.includes('-')) {
     const [start, end] = value.split('-');
 
-    // "開始時間-" 形式（開始時刻のみ）→ その行だけ
+    // "開始時間-" 形式（開始時刻のみ）→ その時間以降の全ての行
     if (!end) {
-      const rowIndex = getRowIndexForTime(start);
-      return rowIndex >= 0 ? [rowIndex] : [];
+      const startRowIndex = getRowIndexForTime(start);
+      if (startRowIndex >= 0) {
+        // 開始時刻の行から最後の行（4）まで全て返す
+        const indices: number[] = [];
+        for (let i = startRowIndex; i <= 4; i++) {
+          indices.push(i);
+        }
+        return indices;
+      }
+      return [];
     }
 
     // "-終了時間" 形式（まで休み）

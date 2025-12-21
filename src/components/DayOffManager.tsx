@@ -566,7 +566,7 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                         />
                       </div>
                       <p className="text-sm text-gray-600 mb-3">
-                        ※終了時刻を省略すると、開始時刻の時間帯のみ休み希望となります<br />
+                        ※終了時刻を省略すると、開始時刻以降の全てのケア枠が休み希望となります<br />
                         ※時間範囲を指定すると、該当する時間帯の行に自動的に反映されます
                       </p>
                       <button
