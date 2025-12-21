@@ -3555,7 +3555,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     <div
       className="overflow-x-auto pb-4"
       style={{
-        willChange: 'scroll-position'
+        willChange: 'transform',
+        WebkitOverflowScrolling: 'touch',
+        overflowAnchor: 'none'
       }}
     >
       {weeks.map((week) => (
@@ -3563,7 +3565,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           <table
             className="border-collapse text-xs"
             style={{
-              tableLayout: 'fixed'
+              tableLayout: 'fixed',
+              backfaceVisibility: 'hidden'
             }}
           >
               <thead>
@@ -4464,13 +4467,16 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         <div
           className="overflow-x-auto pb-4"
           style={{
-            willChange: 'scroll-position'
+            willChange: 'transform',
+            WebkitOverflowScrolling: 'touch',
+            overflowAnchor: 'none'
           }}
         >
           <table
             className="border-collapse text-xs w-full"
             style={{
-              tableLayout: 'fixed'
+              tableLayout: 'fixed',
+              backfaceVisibility: 'hidden'
             }}
           >
             <thead>
@@ -4679,13 +4685,16 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         <div
           className="overflow-x-auto pb-4"
           style={{
-            willChange: 'scroll-position'
+            willChange: 'transform',
+            WebkitOverflowScrolling: 'touch',
+            overflowAnchor: 'none'
           }}
         >
           <table
             className="border-collapse text-xs w-full"
             style={{
-              tableLayout: 'fixed'
+              tableLayout: 'fixed',
+              backfaceVisibility: 'hidden'
             }}
           >
             <thead>
