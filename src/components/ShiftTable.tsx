@@ -1424,7 +1424,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                   bgColor = '#22c55e';  // 指定休は緑色
                   // 指定休の表示テキスト（最初の行のみ）
                   if (rowIndex === 0) {
-                    lines = [displayText || '指定休', '', '', ''];
+                    lines = [displayText || '終日', '', '', ''];
                   }
                 } else if (isDayOffForThisRow) {
                   bgColor = 'rgba(255, 182, 193, 0.5)';  // 休み希望はピンク系
@@ -1435,8 +1435,14 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     const isFirstRow = affectedRows.length > 0 && affectedRows[0] === rowIndex;
 
                     if (isFirstRow) {
-                      // 表示テキストを優先、なければデフォルト
-                      lines = [displayText || '休', '', '', ''];
+                      // 表示テキストを優先、なければ終日判定
+                      if (displayText) {
+                        lines = [displayText, '', '', ''];
+                      } else if (dayOffValue === 'all') {
+                        lines = ['終日', '', '', ''];
+                      } else {
+                        lines = ['休', '', '', ''];
+                      }
                     }
                   }
                 }
