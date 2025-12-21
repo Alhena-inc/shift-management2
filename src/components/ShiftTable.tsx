@@ -4705,9 +4705,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 <td className="border-2 border-gray-400 sticky left-0 bg-green-100 font-bold" style={{ padding: '6px 4px', fontSize: '14px' }}>給与算定</td>
                 {sortedHelpers.map(helper => {
                   const helperData = serviceTypeSummary.get(helper.id);
-                  let totalAmount = 0;
+                  let totalHours = 0;
                   if (helperData) {
-                    // 全てのサービスタイプを合計
+                    // 身体から深夜(同行)まで全てのサービスタイプの時間を合計
                     const allTypes: (ServiceType | 'shinya' | 'shinya_doko')[] = [
                       'shintai', 'judo', 'kaji', 'tsuin', 'ido',
                       'jimu', 'eigyo', 'doko', 'shinya', 'shinya_doko'
@@ -4715,13 +4715,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     allTypes.forEach(type => {
                       const data = helperData.get(type);
                       if (data) {
-                        totalAmount += data.amount;
+                        totalHours += data.hours;
                       }
                     });
                   }
                   return (
                     <td key={helper.id} className="border-2 border-gray-400 text-center font-bold text-green-700" style={{ padding: '6px 4px', fontSize: '14px' }}>
-                      ¥{Math.round(totalAmount).toLocaleString()}
+                      {totalHours > 0 ? totalHours.toFixed(1) : '0'}
                     </td>
                   );
                 })}
