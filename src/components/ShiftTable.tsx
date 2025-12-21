@@ -4748,7 +4748,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           <table
             className="border-collapse w-full"
             style={{
-              tableLayout: 'auto',
+              tableLayout: 'fixed',
               backfaceVisibility: 'hidden'
             }}
           >
@@ -4757,6 +4757,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 <th
                   className="border-2 border-gray-400 bg-gray-200 font-bold"
                   style={{
+                    minWidth: '90px',
+                    width: '90px',
                     padding: '8px 4px',
                     fontSize: '15px'
                   }}
@@ -4768,6 +4770,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     key={helper.id}
                     className="border-2 border-gray-400 font-bold"
                     style={{
+                      minWidth: '110px',
+                      width: '110px',
                       padding: '8px 4px',
                       fontSize: '14px',
                       backgroundColor: helper.cashPayment ? '#fee2e2' : undefined
