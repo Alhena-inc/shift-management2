@@ -30,7 +30,10 @@ input[type="number"] {
 
 /* 選択状態のスタイル（JavaScriptで管理） - レイアウト再計算なし */
 .editable-cell.cell-selected {
-  border-color: #3b82f6 !important;
+  border: 2px solid #1a73e8 !important;
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.3) !important;
+  outline: 1px solid #1a73e8 !important;
+  outline-offset: -1px !important;
 }
 
 /* 複数選択状態のスタイル - GPU最適化 */

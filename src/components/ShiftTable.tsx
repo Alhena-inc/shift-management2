@@ -503,6 +503,15 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       const cell = document.querySelector(cellSelector) as HTMLElement;
       if (cell) {
         cell.textContent = '';
+        // 選択状態のクラスを削除
+        cell.classList.remove('cell-selected');
+        // スタイルをすべてクリア
+        cell.style.removeProperty('background-color');
+        cell.style.removeProperty('border');
+        cell.style.removeProperty('border-color');
+        cell.style.removeProperty('box-shadow');
+        cell.style.removeProperty('outline');
+        cell.style.removeProperty('outline-offset');
       }
     }
 
@@ -522,14 +531,18 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       }
       bgCells.forEach((cell) => {
         const element = cell as HTMLElement;
-        // 現在のoutline状態を保持
-        const currentOutline = element.style.outline;
-        element.style.backgroundColor = '';
-        // outlineを保持（消えないように）
-        if (currentOutline) {
-          element.style.outline = currentOutline;
-        }
+        // すべての不要なスタイルをクリア
+        element.style.removeProperty('background-color');
+        element.classList.remove('cell-selected');
       });
+
+      // 削除したセルがlastSelectedCellRefに含まれている場合、クリア
+      if (lastSelectedCellRef.current) {
+        const parentTd = lastSelectedCellRef.current.closest('td');
+        if (parentTd && bgCells[0] && bgCells[0].closest('td') === parentTd) {
+          lastSelectedCellRef.current = null;
+        }
+      }
     }
 
     // 集計行を更新
@@ -3877,10 +3890,21 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                                 // ★★★ 通常のクリック処理 - 青枠表示のみを最初に実行（CSSクラス使用で高速化） ★★★
 
-                                // 前回選択されたセルの青枠を即座に削除（CSSクラス削除）
+                                // すべての既存の選択状態をクリア（単一選択を保証）
+                                const allSelectedCells = document.querySelectorAll('.editable-cell.cell-selected');
+                                allSelectedCells.forEach(cell => {
+                                  if (cell !== currentCell) {
+                                    cell.classList.remove('cell-selected');
+                                    const element = cell as HTMLElement;
+                                    if (element.dataset.clickCount) {
+                                      element.dataset.clickCount = '0';
+                                    }
+                                  }
+                                });
+
+                                // 前回選択されたセルの参照をクリア
                                 if (lastSelectedCellRef.current && lastSelectedCellRef.current !== currentCell) {
                                   lastSelectedCellRef.current.classList.remove('cell-selected');
-                                  // 前回のクリックカウントもリセット
                                   if (lastSelectedCellRef.current.dataset.clickCount) {
                                     lastSelectedCellRef.current.dataset.clickCount = '0';
                                   }
