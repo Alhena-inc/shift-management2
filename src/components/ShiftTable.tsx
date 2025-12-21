@@ -4744,28 +4744,19 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             🔄 交通費・経費更新
           </button>
         </div>
-        <div
-          className="overflow-x-auto pb-4"
-          style={{
-            willChange: 'transform',
-            WebkitOverflowScrolling: 'touch',
-            overflowAnchor: 'none'
-          }}
-        >
+        <div className="pb-4">
           <table
             className="border-collapse w-full"
             style={{
-              tableLayout: 'fixed',
+              tableLayout: 'auto',
               backfaceVisibility: 'hidden'
             }}
           >
             <thead>
               <tr className="bg-gray-200">
                 <th
-                  className="border-2 border-gray-400 sticky left-0 bg-gray-200 z-10 font-bold"
+                  className="border-2 border-gray-400 bg-gray-200 font-bold"
                   style={{
-                    minWidth: '90px',
-                    width: '90px',
                     padding: '8px 4px',
                     fontSize: '15px'
                   }}
@@ -4777,8 +4768,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     key={helper.id}
                     className="border-2 border-gray-400 font-bold"
                     style={{
-                      minWidth: '110px',
-                      width: '110px',
                       padding: '8px 4px',
                       fontSize: '14px',
                       backgroundColor: helper.cashPayment ? '#fee2e2' : undefined
@@ -4797,7 +4786,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               {weeks.map((week, weekIndex) => (
                 <tr key={week.weekNumber}>
                   <td
-                    className="border-2 border-gray-400 sticky left-0 bg-white font-bold"
+                    className="border-2 border-gray-400 bg-white font-bold"
                     style={{
                       padding: '6px 4px',
                       fontSize: '14px'
@@ -4845,7 +4834,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               {/* 合計行 */}
               <tr className="bg-blue-50">
                 <td
-                  className="border-2 border-gray-400 sticky left-0 bg-blue-100 font-bold"
+                  className="border-2 border-gray-400 bg-blue-100 font-bold"
                   style={{
                     padding: '6px 4px',
                     fontSize: '14px'
@@ -4890,7 +4879,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               {/* 交通費 */}
               <tr>
                 <td
-                  className="border-2 border-gray-400 sticky left-0 bg-white font-bold"
+                  className="border-2 border-gray-400 bg-white font-bold"
                   style={{
                     padding: '6px 4px',
                     fontSize: '14px'
@@ -4915,7 +4904,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               {/* 建替経費 */}
               <tr>
                 <td
-                  className="border-2 border-gray-400 sticky left-0 bg-white font-bold"
+                  className="border-2 border-gray-400 bg-white font-bold"
                   style={{
                     padding: '6px 4px',
                     fontSize: '14px'
@@ -4940,7 +4929,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               {/* 手当 */}
               <tr>
                 <td
-                  className="border-2 border-gray-400 sticky left-0 bg-white font-bold"
+                  className="border-2 border-gray-400 bg-white font-bold"
                   style={{
                     padding: '6px 4px',
                     fontSize: '14px'
@@ -4965,7 +4954,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               {/* 給与総額 */}
               <tr className="bg-green-50">
                 <td
-                  className="border-2 border-gray-400 sticky left-0 bg-green-100 font-bold"
+                  className="border-2 border-gray-400 bg-green-100 font-bold"
                   style={{
                     padding: '6px 4px',
                     fontSize: '14px'
@@ -5009,7 +4998,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               {/* 返済 */}
               <tr>
                 <td
-                  className="border-2 border-gray-400 sticky left-0 bg-white font-bold"
+                  className="border-2 border-gray-400 bg-white font-bold"
                   style={{
                     padding: '6px 4px',
                     fontSize: '14px'
