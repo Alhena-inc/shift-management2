@@ -4607,7 +4607,16 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                   サービス種別
                 </th>
                 {sortedHelpers.map(helper => (
-                  <th key={helper.id} className="border-2 border-gray-400 font-bold" style={{ minWidth: '110px', padding: '8px 4px', fontSize: '14px' }}>
+                  <th
+                    key={helper.id}
+                    className="border-2 border-gray-400 font-bold"
+                    style={{
+                      minWidth: '110px',
+                      padding: '8px 4px',
+                      fontSize: '14px',
+                      backgroundColor: helper.gender === 'male' ? '#bfdbfe' : '#fce7f3'
+                    }}
+                  >
                     {helper.name}
                   </th>
                 ))}
@@ -4831,7 +4840,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                       width: '110px',
                       padding: '8px 4px',
                       fontSize: '14px',
-                      backgroundColor: helper.cashPayment ? '#fee2e2' : undefined
+                      backgroundColor: helper.cashPayment
+                        ? '#fee2e2'
+                        : (helper.gender === 'male' ? '#bfdbfe' : '#fce7f3')
                     }}
                   >
                     {helper.name}
