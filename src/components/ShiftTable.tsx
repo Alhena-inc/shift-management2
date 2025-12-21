@@ -4719,8 +4719,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             className="border-collapse w-full"
             style={{
               tableLayout: 'fixed',
-              backfaceVisibility: 'hidden',
-              minWidth: '1200px'
+              backfaceVisibility: 'hidden'
             }}
           >
             <thead>
@@ -4728,10 +4727,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 <th
                   className="border-2 border-gray-400 sticky left-0 bg-gray-200 z-10 font-bold"
                   style={{
-                    minWidth: '120px',
-                    width: '120px',
-                    padding: '12px 8px',
-                    fontSize: '14px'
+                    minWidth: '70px',
+                    width: '70px',
+                    padding: '4px 2px',
+                    fontSize: '11px'
                   }}
                 >
                   週
@@ -4741,16 +4740,16 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     key={helper.id}
                     className="border-2 border-gray-400 font-bold"
                     style={{
-                      minWidth: '150px',
-                      width: '150px',
-                      padding: '12px 8px',
-                      fontSize: '13px',
+                      minWidth: '80px',
+                      width: '80px',
+                      padding: '4px 2px',
+                      fontSize: '10px',
                       backgroundColor: helper.cashPayment ? '#fee2e2' : undefined
                     }}
                   >
                     {helper.name}
                     {helper.cashPayment && (
-                      <div className="text-red-600 mt-1" style={{ fontSize: '11px' }}>手渡し</div>
+                      <div className="text-red-600" style={{ fontSize: '9px', marginTop: '2px' }}>手渡し</div>
                     )}
                   </th>
                 ))}
@@ -4763,8 +4762,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                   <td
                     className="border-2 border-gray-400 sticky left-0 bg-white font-bold"
                     style={{
-                      padding: '10px 8px',
-                      fontSize: '13px'
+                      padding: '3px 2px',
+                      fontSize: '10px'
                     }}
                   >
                     {week.weekNumber}週目
@@ -4784,20 +4783,20 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                         key={helper.id}
                         className="border-2 border-gray-400 text-center"
                         style={{
-                          padding: '8px 6px',
-                          fontSize: '12px',
-                          lineHeight: '1.6'
+                          padding: '2px 1px',
+                          fontSize: '9px',
+                          lineHeight: '1.3'
                         }}
                       >
-                        <div className="text-black font-semibold border-b border-gray-300" style={{ paddingBottom: '4px', marginBottom: '4px' }}>
+                        <div className="text-black font-semibold border-b border-gray-300" style={{ paddingBottom: '1px', marginBottom: '1px' }}>
                           通常: {data.regularHours.toFixed(1)}
                         </div>
-                        <div className="text-black font-semibold border-b border-gray-300" style={{ paddingTop: '4px', paddingBottom: '4px', marginBottom: '4px' }}>
+                        <div className="text-black font-semibold border-b border-gray-300" style={{ paddingTop: '1px', paddingBottom: '1px', marginBottom: '1px' }}>
                           深夜: {totalNightHours.toFixed(1)}
                         </div>
-                        <div className="font-bold text-blue-700" style={{ marginTop: '6px', fontSize: '13px' }}>
+                        <div className="font-bold text-blue-700" style={{ marginTop: '2px', fontSize: '10px' }}>
                           {data.totalHours.toFixed(1)}h
-                          <div className="text-green-700" style={{ marginTop: '2px', fontSize: '12px' }}>
+                          <div className="text-green-700" style={{ marginTop: '1px', fontSize: '9px' }}>
                             ¥{Math.round(data.amount).toLocaleString()}
                           </div>
                         </div>
@@ -4811,8 +4810,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 <td
                   className="border-2 border-gray-400 sticky left-0 bg-blue-100 font-bold"
                   style={{
-                    padding: '10px 8px',
-                    fontSize: '13px'
+                    padding: '3px 2px',
+                    fontSize: '10px'
                   }}
                 >
                   合計
@@ -4830,20 +4829,20 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                       key={helper.id}
                       className="border-2 border-gray-400 text-center font-bold"
                       style={{
-                        padding: '8px 6px',
-                        fontSize: '12px',
-                        lineHeight: '1.6'
+                        padding: '2px 1px',
+                        fontSize: '9px',
+                        lineHeight: '1.3'
                       }}
                     >
-                      <div className="text-black font-bold border-b border-gray-300" style={{ paddingBottom: '4px', marginBottom: '4px' }}>
+                      <div className="text-black font-bold border-b border-gray-300" style={{ paddingBottom: '1px', marginBottom: '1px' }}>
                         通常: {totalRegularHours.toFixed(1)}
                       </div>
-                      <div className="text-black font-bold border-b border-gray-300" style={{ paddingTop: '4px', paddingBottom: '4px', marginBottom: '4px' }}>
+                      <div className="text-black font-bold border-b border-gray-300" style={{ paddingTop: '1px', paddingBottom: '1px', marginBottom: '1px' }}>
                         深夜: {combinedNightHours.toFixed(1)}
                       </div>
-                      <div className="text-blue-800" style={{ marginTop: '6px', fontSize: '14px' }}>
+                      <div className="text-blue-800" style={{ marginTop: '2px', fontSize: '10px' }}>
                         {totalHours.toFixed(1)}h
-                        <div className="text-green-700" style={{ marginTop: '2px', fontSize: '13px' }}>
+                        <div className="text-green-700" style={{ marginTop: '1px', fontSize: '10px' }}>
                           ¥{Math.round(totalAmount).toLocaleString()}
                         </div>
                       </div>
@@ -4856,8 +4855,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 <td
                   className="border-2 border-gray-400 sticky left-0 bg-white font-bold"
                   style={{
-                    padding: '10px 8px',
-                    fontSize: '13px'
+                    padding: '3px 2px',
+                    fontSize: '10px'
                   }}
                 >
                   交通費
@@ -4881,8 +4880,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 <td
                   className="border-2 border-gray-400 sticky left-0 bg-white font-bold"
                   style={{
-                    padding: '10px 8px',
-                    fontSize: '13px'
+                    padding: '3px 2px',
+                    fontSize: '10px'
                   }}
                 >
                   建替経費
@@ -4906,8 +4905,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 <td
                   className="border-2 border-gray-400 sticky left-0 bg-white font-bold"
                   style={{
-                    padding: '10px 8px',
-                    fontSize: '13px'
+                    padding: '3px 2px',
+                    fontSize: '10px'
                   }}
                 >
                   手当
@@ -4931,8 +4930,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 <td
                   className="border-2 border-gray-400 sticky left-0 bg-green-100 font-bold"
                   style={{
-                    padding: '10px 8px',
-                    fontSize: '13px'
+                    padding: '3px 2px',
+                    fontSize: '10px'
                   }}
                 >
                   給与総額
@@ -4960,10 +4959,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                       key={helper.id}
                       className="border-2 border-gray-400 text-center font-bold"
                       style={{
-                        padding: '10px 8px'
+                        padding: '4px 2px'
                       }}
                     >
-                      <div className="text-green-700" style={{ fontSize: '14px' }}>
+                      <div className="text-green-700" style={{ fontSize: '11px' }}>
                         ¥{Math.round(totalAmount).toLocaleString()}
                       </div>
                     </td>
@@ -4975,8 +4974,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 <td
                   className="border-2 border-gray-400 sticky left-0 bg-white font-bold"
                   style={{
-                    padding: '10px 8px',
-                    fontSize: '13px'
+                    padding: '3px 2px',
+                    fontSize: '10px'
                   }}
                 >
                   返済
