@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { ShiftTable } from './components/ShiftTable';
 import { HelperManager } from './components/HelperManager';
 import { SalaryCalculation } from './components/SalaryCalculation';
@@ -150,23 +150,80 @@ function App() {
 
   const handlePreviousMonth = useCallback(() => {
     // 即座に状態更新（遅延なし）
-    if (currentMonth === 1) {
-      setCurrentYear(prev => prev - 1);
-      setCurrentMonth(12);
-    } else {
-      setCurrentMonth(prev => prev - 1);
-    }
-  }, [currentMonth]);
+    setCurrentMonth(prev => {
+      if (prev === 1) {
+        setCurrentYear(year => year - 1);
+        return 12;
+      }
+      return prev - 1;
+    });
+  }, []);
 
   const handleNextMonth = useCallback(() => {
     // 即座に状態更新（遅延なし）
+    setCurrentMonth(prev => {
+      if (prev === 12) {
+        setCurrentYear(year => year + 1);
+        return 1;
+      }
+      return prev + 1;
+    });
+  }, []);
+
+  // 給与計算ボタンのハンドラー
+  const handleOpenSalaryCalculation = useCallback(async () => {
+    // 編集中のセルをすべてblurする
+    const editingCells = document.querySelectorAll('.editable-cell[contenteditable="true"]');
+    editingCells.forEach(cell => {
+      (cell as HTMLElement).blur();
+    });
+
+    // 少し待って保存を完了
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    // 最新データをFirestoreから再読み込み
+    const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth);
+
+    // 12月の場合は翌年1月1〜4日のシフトも読み込む
+    let allShifts = loadedShifts;
     if (currentMonth === 12) {
-      setCurrentYear(prev => prev + 1);
-      setCurrentMonth(1);
-    } else {
-      setCurrentMonth(prev => prev + 1);
+      const nextYear = currentYear + 1;
+      const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1);
+
+      // 1月1日〜4日のみをフィルター
+      const januaryShifts = allJanuaryShifts.filter(shift => {
+        const day = parseInt(shift.date.split('-')[2]);
+        return day >= 1 && day <= 4;
+      });
+
+      allShifts = [...loadedShifts, ...januaryShifts];
     }
-  }, [currentMonth]);
+
+    setShifts(allShifts);
+
+    // 給与計算画面を開く
+    setCurrentView('salary');
+  }, [currentYear, currentMonth]);
+
+  // その他のボタンハンドラー
+  const handleOpenHelperManager = useCallback(() => setCurrentView('addHelper'), []);
+  const handleOpenExpenseModal = useCallback(() => setIsExpenseModalOpen(true), []);
+  const handleOpenDayOffManager = useCallback(() => setCurrentView('dayOff'), []);
+
+  // SERVICE_CONFIGの表示をメモ化
+  const serviceConfigDisplay = useMemo(() => {
+    return Object.entries(SERVICE_CONFIG)
+      .filter(([key, config]) => {
+        // 非表示にするサービスタイプ: 深夜系、給与算出なし、ラベル空
+        const hiddenTypes = ['shinya', 'shinya_doko', 'kaigi', 'other', 'yasumi_kibou', 'shitei_kyuu', 'yotei'];
+        return !hiddenTypes.includes(key) && config.label !== '';
+      })
+      .map(([key, config]) => (
+        <span key={key} className="px-2 py-1 rounded" style={{ backgroundColor: config.bgColor, borderLeft: `3px solid ${config.color}` }}>
+          {config.label}
+        </span>
+      ));
+  }, []);
 
   // ヘルパー管理画面
   if (currentView === 'addHelper') {
@@ -266,72 +323,30 @@ function App() {
             </button>
           </div>
           <div className="flex gap-3 text-sm flex-wrap">
-            {Object.entries(SERVICE_CONFIG)
-              .filter(([key, config]) => {
-                // 非表示にするサービスタイプ: 深夜系、給与算出なし、ラベル空
-                const hiddenTypes = ['shinya', 'shinya_doko', 'kaigi', 'other', 'yasumi_kibou', 'shitei_kyuu', 'yotei'];
-                return !hiddenTypes.includes(key) && config.label !== '';
-              })
-              .map(([key, config]) => (
-                <span key={key} className="px-2 py-1 rounded" style={{ backgroundColor: config.bgColor, borderLeft: `3px solid ${config.color}` }}>
-                  {config.label}
-                </span>
-              ))}
+            {serviceConfigDisplay}
           </div>
         </div>
         <div className="flex gap-3">
           <button
-            onClick={async () => {
-              // 編集中のセルをすべてblurする
-              const editingCells = document.querySelectorAll('.editable-cell[contenteditable="true"]');
-              editingCells.forEach(cell => {
-                (cell as HTMLElement).blur();
-              });
-
-              // 少し待って保存を完了
-              await new Promise(resolve => setTimeout(resolve, 200));
-
-              // 最新データをFirestoreから再読み込み
-              const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth);
-
-              // 12月の場合は翌年1月1〜4日のシフトも読み込む
-              let allShifts = loadedShifts;
-              if (currentMonth === 12) {
-                const nextYear = currentYear + 1;
-                const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1);
-
-                // 1月1日〜4日のみをフィルター
-                const januaryShifts = allJanuaryShifts.filter(shift => {
-                  const day = parseInt(shift.date.split('-')[2]);
-                  return day >= 1 && day <= 4;
-                });
-
-                allShifts = [...loadedShifts, ...januaryShifts];
-              }
-
-              setShifts(allShifts);
-
-              // 給与計算画面を開く
-              setCurrentView('salary');
-            }}
+            onClick={handleOpenSalaryCalculation}
             className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
           >
             💰 給与計算
           </button>
           <button
-            onClick={() => setCurrentView('addHelper')}
+            onClick={handleOpenHelperManager}
             className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
           >
             👥 ヘルパー管理
           </button>
           <button
-            onClick={() => setIsExpenseModalOpen(true)}
+            onClick={handleOpenExpenseModal}
             className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
           >
             📊 交通費・経費
           </button>
           <button
-            onClick={() => setCurrentView('dayOff')}
+            onClick={handleOpenDayOffManager}
             className="px-4 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors"
           >
             🏖️ 休み希望

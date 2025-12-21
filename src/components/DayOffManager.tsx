@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import type { Helper } from '../types';
 import { loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs } from '../services/firestoreService';
 
@@ -13,7 +13,7 @@ interface DayOffManagerProps {
 type DayOffRequestMap = Map<string, string>;
 type ScheduledDayOffMap = Map<string, boolean>;
 
-export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerProps) => {
+export const DayOffManager = memo(function DayOffManager({ helpers, year, month, onBack }: DayOffManagerProps) {
   const [dayOffRequests, setDayOffRequests] = useState<DayOffRequestMap>(new Map());
   const [scheduledDayOffs, setScheduledDayOffs] = useState<ScheduledDayOffMap>(new Map());
   const [isLoading, setIsLoading] = useState(true);
@@ -22,20 +22,24 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
   const [selectedCell, setSelectedCell] = useState<{ helperId: string; date: string } | null>(null);
   const [selectedType, setSelectedType] = useState<'dayOff' | 'scheduled'>('dayOff'); // デフォルトは休み希望
 
-  // その月の日数を取得
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const dates = Array.from({ length: daysInMonth }, (_, i) => {
-    const day = i + 1;
-    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  });
+  // その月の日数を取得（メモ化）
+  const dates = useMemo(() => {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const dateArray = Array.from({ length: daysInMonth }, (_, i) => {
+      const day = i + 1;
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    });
 
-  // 12月の場合は翌年1月1日から4日も追加
-  if (month === 12) {
-    const nextYear = year + 1;
-    for (let day = 1; day <= 4; day++) {
-      dates.push(`${nextYear}-01-${String(day).padStart(2, '0')}`);
+    // 12月の場合は翌年1月1日から4日も追加
+    if (month === 12) {
+      const nextYear = year + 1;
+      for (let day = 1; day <= 4; day++) {
+        dateArray.push(`${nextYear}-01-${String(day).padStart(2, '0')}`);
+      }
     }
-  }
+
+    return dateArray;
+  }, [year, month]);
 
   // 休み希望と指定休を読み込み
   useEffect(() => {
@@ -76,7 +80,7 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
   }, [year, month]);
 
   // セルをクリックした時の処理
-  const handleCellClick = (helperId: string, date: string) => {
+  const handleCellClick = useCallback((helperId: string, date: string) => {
     const key = `${helperId}-${date}`;
     const hasDayOff = dayOffRequests.has(key);
     const hasScheduled = scheduledDayOffs.has(key);
@@ -99,10 +103,10 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
       setSelectedType('dayOff'); // デフォルトは休み希望
       setShowTimeModal(true);
     }
-  };
+  }, [dayOffRequests, scheduledDayOffs]);
 
   // 休み希望または指定休を設定
-  const setDayOffWithTime = (value: string, type: 'dayOff' | 'scheduled' = selectedType) => {
+  const setDayOffWithTime = useCallback((value: string, type: 'dayOff' | 'scheduled' = selectedType) => {
     if (!selectedCell) return;
 
     const key = `${selectedCell.helperId}-${selectedCell.date}`;
@@ -125,10 +129,10 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
 
     setShowTimeModal(false);
     setSelectedCell(null);
-  };
+  }, [selectedCell, selectedType]);
 
   // 保存
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     setIsSaving(true);
     try {
       if (month === 12) {
@@ -181,10 +185,10 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [year, month, dayOffRequests, scheduledDayOffs, onBack]);
 
   // ヘルパーの全日程を一括設定/解除
-  const toggleHelperAllDays = (helperId: string) => {
+  const toggleHelperAllDays = useCallback((helperId: string) => {
     const helperKeys = dates.map(date => `${helperId}-${date}`);
     const allSelected = helperKeys.every(key => dayOffRequests.has(key) || scheduledDayOffs.has(key));
 
@@ -208,10 +212,10 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
       }
       return next;
     });
-  };
+  }, [dates, dayOffRequests, scheduledDayOffs]);
 
   // 特定の日の全ヘルパーを一括設定/解除
-  const toggleDateAllHelpers = (date: string) => {
+  const toggleDateAllHelpers = useCallback((date: string) => {
     const dateKeys = helpers.map(helper => `${helper.id}-${date}`);
     const allSelected = dateKeys.every(key => dayOffRequests.has(key) || scheduledDayOffs.has(key));
 
@@ -235,7 +239,7 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
       }
       return next;
     });
-  };
+  }, [helpers, dayOffRequests, scheduledDayOffs]);
 
   if (isLoading) {
     return (
@@ -607,4 +611,4 @@ export const DayOffManager = ({ helpers, year, month, onBack }: DayOffManagerPro
       </div>
     </div>
   );
-};
+});

@@ -1,4 +1,4 @@
-import { memo, useState, useRef } from 'react';
+import { memo, useState, useRef, useCallback } from 'react';
 import type { Shift, ServiceType } from '../types';
 import { SERVICE_CONFIG } from '../types';
 
@@ -14,6 +14,26 @@ interface ShiftCellProps {
   onDrop: (helperId: string, date: string, rowIndex: number) => void;
   onContextMenu: (e: React.MouseEvent, helperId: string, date: string, rowIndex: number) => void;
   isDragging: boolean;
+}
+
+// Deep comparison helper for shift objects
+function areShiftsEqual(shift1: Shift | undefined, shift2: Shift | undefined): boolean {
+  if (shift1 === shift2) return true;
+  if (!shift1 || !shift2) return shift1 === shift2;
+
+  return (
+    shift1.id === shift2.id &&
+    shift1.date === shift2.date &&
+    shift1.helperId === shift2.helperId &&
+    shift1.clientName === shift2.clientName &&
+    shift1.serviceType === shift2.serviceType &&
+    shift1.startTime === shift2.startTime &&
+    shift1.endTime === shift2.endTime &&
+    shift1.duration === shift2.duration &&
+    shift1.area === shift2.area &&
+    shift1.rowIndex === shift2.rowIndex &&
+    shift1.cancelStatus === shift2.cancelStatus
+  );
 }
 
 export const ShiftCell = memo(({
@@ -34,8 +54,8 @@ export const ShiftCell = memo(({
   const [editingLine, setEditingLine] = useState<number>(-1);
   const cellRef = useRef<HTMLTableCellElement>(null);
 
-  // セルの表示データを取得
-  const getCellData = () => {
+  // セルの表示データを取得 - useMemoで最適化
+  const cellData = useCallback((): string[] => {
     if (!shift) {
       return ['', '', '', ''];
     }
@@ -56,19 +76,18 @@ export const ShiftCell = memo(({
     const areaStr = area || '';
 
     return [timeRange, clientInfo, durationStr, areaStr];
-  };
+  }, [shift])();
 
-  const cellData = getCellData();
   const backgroundColor = shift?.cancelStatus === 'keep_time' || shift?.cancelStatus === 'remove_time'
     ? '#f87171'
     : '#ffffff';
 
-  const handleCellClick = (lineIndex: number) => {
+  const handleCellClick = useCallback((lineIndex: number) => {
     setIsEditing(true);
     setEditingLine(lineIndex);
-  };
+  }, []);
 
-  const handleBlur = (lineIndex: number, value: string) => {
+  const handleBlur = useCallback((lineIndex: number, value: string) => {
     setIsEditing(false);
     setEditingLine(-1);
 
@@ -121,7 +140,7 @@ export const ShiftCell = memo(({
       // データが空の場合は削除
       onDelete(`shift-${helperId}-${date}-${rowIndex}`);
     }
-  };
+  }, [cellData, helperId, date, rowIndex, onSave, onDelete]);
 
   return (
     <td
@@ -138,7 +157,8 @@ export const ShiftCell = memo(({
         borderRight: isLastHelper ? '2px solid #000000' : '1px solid #374151',
         cursor: isDragging ? 'grabbing' : 'grab',
         opacity: isDragging ? 0.5 : 1,
-        backgroundColor
+        backgroundColor,
+        contain: 'strict' as any
       }}
       onDragStart={() => onDragStart(helperId, date, rowIndex)}
       onDragOver={(e) => e.preventDefault()}
@@ -171,11 +191,14 @@ export const ShiftCell = memo(({
     </td>
   );
 }, (prevProps, nextProps) => {
-  // カスタム比較関数：shiftが変更された場合のみ再レンダリング
+  // Deep comparison for optimal re-rendering
   return (
-    prevProps.shift === nextProps.shift &&
+    areShiftsEqual(prevProps.shift, nextProps.shift) &&
     prevProps.isDragging === nextProps.isDragging &&
-    prevProps.isLastHelper === nextProps.isLastHelper
+    prevProps.isLastHelper === nextProps.isLastHelper &&
+    prevProps.helperId === nextProps.helperId &&
+    prevProps.date === nextProps.date &&
+    prevProps.rowIndex === nextProps.rowIndex
   );
 });
 

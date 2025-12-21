@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import type { Helper } from '../types';
 
 // ランダムトークン生成関数（10文字）
@@ -17,7 +17,7 @@ interface Props {
   onClose: () => void;
 }
 
-export function HelperManager({ helpers, onUpdate, onClose }: Props) {
+export const HelperManager = memo(function HelperManager({ helpers, onUpdate, onClose }: Props) {
   // 環境変数からベースURLを取得（開発環境ではlocalhost、本番環境ではVercel URL）
   const baseUrl = import.meta.env.VITE_APP_URL || window.location.origin;
 
@@ -37,7 +37,7 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
   const [editHelperFirstName, setEditHelperFirstName] = useState('');
   const [editHelperSalaryType, setEditHelperSalaryType] = useState<'hourly' | 'fixed'>('hourly');
 
-  const handleAddHelper = () => {
+  const handleAddHelper = useCallback(() => {
     // 苗字または名前のどちらかが入力されていればOK
     const lastName = newHelperLastName.trim();
     const firstName = newHelperFirstName.trim();
@@ -82,7 +82,7 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
     setNewHelperFirstName('');
     setNewHelperSalaryType('hourly');
     setShowAddForm(false);
-  };
+  }, [localHelpers, newHelperLastName, newHelperFirstName, newHelperName, newHelperGender, newHelperSalaryType]);
 
   // クリーンアップ: スクロールインターバルをクリア
   useEffect(() => {
@@ -93,11 +93,11 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
     };
   }, []);
 
-  const handleDragStart = (index: number) => {
+  const handleDragStart = useCallback((index: number) => {
     setDraggedIndex(index);
-  };
+  }, []);
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
 
     // 自動スクロール処理
@@ -128,9 +128,9 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
         container.scrollTop += scrollSpeed;
       }, 16);
     }
-  };
+  }, []);
 
-  const handleDrop = (dropIndex: number) => {
+  const handleDrop = useCallback((dropIndex: number) => {
     // スクロールインターバルをクリア
     if (scrollIntervalRef.current) {
       clearInterval(scrollIntervalRef.current);
@@ -152,15 +152,15 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
     setLocalHelpers(reorderedHelpers);
     setHasChanges(true);
     setDraggedIndex(null);
-  };
+  }, [draggedIndex, localHelpers]);
 
-  const handleStartEdit = (helper: Helper) => {
+  const handleStartEdit = useCallback((helper: Helper) => {
     setEditingHelperId(helper.id);
     setEditHelperFirstName(helper.firstName || '');
     setEditHelperSalaryType(helper.salaryType || 'hourly');
-  };
+  }, []);
 
-  const handleSaveEdit = async () => {
+  const handleSaveEdit = useCallback(async () => {
     if (!editingHelperId) return;
 
     const helper = localHelpers.find(h => h.id === editingHelperId);
@@ -194,15 +194,15 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
       setIsSaving(false);
       setHasChanges(false);
     }
-  };
+  }, [editingHelperId, localHelpers, editHelperFirstName, editHelperSalaryType, onUpdate]);
 
-  const handleCancelEdit = () => {
+  const handleCancelEdit = useCallback(() => {
     setEditingHelperId(null);
     setEditHelperFirstName('');
     setEditHelperSalaryType('hourly');
-  };
+  }, []);
 
-  const handleDeleteHelper = (helperId: string) => {
+  const handleDeleteHelper = useCallback((helperId: string) => {
     if (!confirm('このヘルパーを削除してもよろしいですか？')) {
       return;
     }
@@ -213,9 +213,9 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
 
     setLocalHelpers(updatedHelpers);
     setHasChanges(true);
-  };
+  }, [localHelpers]);
 
-  const handleGenerateToken = (helperId: string) => {
+  const handleGenerateToken = useCallback((helperId: string) => {
     const updatedHelpers = localHelpers.map(h =>
       h.id === helperId
         ? { ...h, personalToken: generateToken() }
@@ -223,15 +223,15 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
     );
     setLocalHelpers(updatedHelpers);
     setHasChanges(true);
-  };
+  }, [localHelpers]);
 
-  const handleCopyUrl = (token: string) => {
+  const handleCopyUrl = useCallback((token: string) => {
     const url = `${baseUrl}/personal/${token}`;
     navigator.clipboard.writeText(url);
     alert('URLをコピーしました！\n\n' + url);
-  };
+  }, [baseUrl]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     setIsSaving(true);
     try {
       await onUpdate(localHelpers);
@@ -246,9 +246,9 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [localHelpers, onUpdate, onClose]);
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     if (hasChanges) {
       if (confirm('保存されていない変更があります。破棄してもよろしいですか？')) {
         onClose();
@@ -256,7 +256,7 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
     } else {
       onClose();
     }
-  };
+  }, [hasChanges, onClose]);
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
@@ -608,4 +608,4 @@ export function HelperManager({ helpers, onUpdate, onClose }: Props) {
       </div>
     </div>
   );
-}
+});

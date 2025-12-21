@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, memo } from 'react';
 
 const EXPENSE_API_URL = 'https://script.google.com/macros/s/AKfycbxpVQQVwhdYDPNwZ0kCOUVNyWUKDo6lNirKQVPDKubYfQYIP2nyHqSAWJBnIsHazqVavg/exec';
 
@@ -34,7 +34,7 @@ interface Props {
   initialMonth: number;
 }
 
-export function ExpenseModal({ isOpen, onClose, initialYear, initialMonth }: Props) {
+export const ExpenseModal = memo(function ExpenseModal({ isOpen, onClose, initialYear, initialMonth }: Props) {
   const [expenseType, setExpenseType] = useState<'kotsuhi' | 'keihi' | 'both'>('both');
   const [selectedYear, setSelectedYear] = useState(initialYear);
   const [selectedMonth, setSelectedMonth] = useState(initialMonth);
@@ -51,7 +51,7 @@ export function ExpenseModal({ isOpen, onClose, initialYear, initialMonth }: Pro
     }
   }, [isOpen, initialYear, initialMonth]);
 
-  const fetchData = async (year: number, month: number, type: string) => {
+  const fetchData = useCallback(async (year: number, month: number, type: string) => {
     setLoading(true);
     setError(null);
 
@@ -78,18 +78,18 @@ export function ExpenseModal({ isOpen, onClose, initialYear, initialMonth }: Pro
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleMonthChange = (year: number, month: number) => {
+  const handleMonthChange = useCallback((year: number, month: number) => {
     setSelectedYear(year);
     setSelectedMonth(month);
     fetchData(year, month, expenseType);
-  };
+  }, [expenseType, fetchData]);
 
-  const handleTypeChange = (type: 'kotsuhi' | 'keihi' | 'both') => {
+  const handleTypeChange = useCallback((type: 'kotsuhi' | 'keihi' | 'both') => {
     setExpenseType(type);
     fetchData(selectedYear, selectedMonth, type);
-  };
+  }, [selectedYear, selectedMonth, fetchData]);
 
   if (!isOpen) return null;
 
@@ -279,4 +279,4 @@ export function ExpenseModal({ isOpen, onClose, initialYear, initialMonth }: Pro
       </div>
     </div>
   );
-}
+});

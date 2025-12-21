@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import type { Helper, Shift } from '../types';
 import { SERVICE_CONFIG } from '../types';
 import { loadHelperByToken, subscribeToShiftsForMonth } from '../services/firestoreService';
@@ -7,7 +7,7 @@ interface Props {
   token: string;
 }
 
-export function PersonalShift({ token }: Props) {
+export const PersonalShift = memo(function PersonalShift({ token }: Props) {
   const [helper, setHelper] = useState<Helper | null>(null);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
@@ -258,23 +258,25 @@ export function PersonalShift({ token }: Props) {
     return weeks;
   }, [shifts, currentYear, currentMonth]);
 
-  const handlePreviousMonth = () => {
-    if (currentMonth === 1) {
-      setCurrentYear(prev => prev - 1);
-      setCurrentMonth(12);
-    } else {
-      setCurrentMonth(prev => prev - 1);
-    }
-  };
+  const handlePreviousMonth = useCallback(() => {
+    setCurrentMonth(prev => {
+      if (prev === 1) {
+        setCurrentYear(year => year - 1);
+        return 12;
+      }
+      return prev - 1;
+    });
+  }, []);
 
-  const handleNextMonth = () => {
-    if (currentMonth === 12) {
-      setCurrentYear(prev => prev + 1);
-      setCurrentMonth(1);
-    } else {
-      setCurrentMonth(prev => prev + 1);
-    }
-  };
+  const handleNextMonth = useCallback(() => {
+    setCurrentMonth(prev => {
+      if (prev === 12) {
+        setCurrentYear(year => year + 1);
+        return 1;
+      }
+      return prev + 1;
+    });
+  }, []);
 
   if (loading) {
     return (
@@ -300,9 +302,9 @@ export function PersonalShift({ token }: Props) {
   }
 
   // アプリ追加ガイドへの移動
-  const handleInstallClick = () => {
+  const handleInstallClick = useCallback(() => {
     window.location.href = `/?pwa=1&token=${token}`;
-  };
+  }, [token]);
 
   return (
     <div className="min-h-screen bg-gray-50 pb-8">
@@ -482,4 +484,4 @@ export function PersonalShift({ token }: Props) {
       </div>
     </div>
   );
-}
+});
