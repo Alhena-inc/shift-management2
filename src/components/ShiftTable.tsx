@@ -530,6 +530,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         if (isLastHelper) {
           tdElement.style.borderRight = '2px solid #000000';
         }
+        // 行の高さを保持（削除後も5行構造を維持）
+        tdElement.style.minHeight = '60px';
       }
       bgCells.forEach((cell) => {
         const element = cell as HTMLElement;

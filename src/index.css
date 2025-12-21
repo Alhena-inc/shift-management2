@@ -23,6 +23,7 @@ input[type="number"] {
   will-change: border-color;
   border: 1px solid transparent; /* 初期状態で透明なボーダー */
   box-sizing: border-box;
+  min-height: 60px; /* 削除時も行の高さを保持 */
   /* GPU加速を有効化 */
   transform: translateZ(0);
   backface-visibility: hidden;
