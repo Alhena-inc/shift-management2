@@ -14,6 +14,7 @@ interface ShiftCellProps {
   onDrop: (helperId: string, date: string, rowIndex: number) => void;
   onContextMenu: (e: React.MouseEvent, helperId: string, date: string, rowIndex: number) => void;
   isDragging: boolean;
+  isScrolling?: boolean; // スクロール中フラグ（軽量表示用）
 }
 
 // Deep comparison helper for shift objects
@@ -47,7 +48,8 @@ export const ShiftCell = memo(({
   onDragStart,
   onDrop,
   onContextMenu,
-  isDragging
+  isDragging,
+  isScrolling = false
 }: ShiftCellProps) => {
   // ローカルの編集状態（編集中のみ使用）
   const [isEditing, setIsEditing] = useState(false);
@@ -142,6 +144,29 @@ export const ShiftCell = memo(({
     }
   }, [cellData, helperId, date, rowIndex, onSave, onDelete]);
 
+  // スクロール中は軽量表示（背景色だけ）
+  if (isScrolling) {
+    return (
+      <td
+        ref={cellRef}
+        className="bg-white p-0"
+        style={{
+          width: '80px',
+          minWidth: '80px',
+          maxWidth: '80px',
+          height: '80px',
+          padding: '0',
+          boxSizing: 'border-box',
+          border: '1px solid #374151',
+          borderRight: isLastHelper ? '2px solid #000000' : '1px solid #374151',
+          backgroundColor,
+          contain: 'strict' as any
+        }}
+      />
+    );
+  }
+
+  // 通常表示（詳細情報あり）
   return (
     <td
       ref={cellRef}
@@ -198,7 +223,8 @@ export const ShiftCell = memo(({
     prevProps.isLastHelper === nextProps.isLastHelper &&
     prevProps.helperId === nextProps.helperId &&
     prevProps.date === nextProps.date &&
-    prevProps.rowIndex === nextProps.rowIndex
+    prevProps.rowIndex === nextProps.rowIndex &&
+    prevProps.isScrolling === nextProps.isScrolling
   );
 });
 

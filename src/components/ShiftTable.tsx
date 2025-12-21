@@ -1,5 +1,6 @@
 import { useMemo, useCallback, useEffect, memo, useState, useRef } from 'react';
 import type { Helper, Shift, ServiceType } from '../types';
+import { useScrollDetection } from '../hooks/useScrollDetection';
 import { SERVICE_CONFIG } from '../types';
 import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs } from '../services/firestoreService';
 import { calculateNightHours, calculateRegularHours, calculateTimeDuration } from '../utils/timeCalculations';
@@ -302,6 +303,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     });
     return map;
   }, [shifts]);
+
+  // スクロール検知（超高速スクロール対応）
+  const { isScrolling, containerRef } = useScrollDetection(150);
 
   // ドラッグ中のセル情報
   const [draggedCell, setDraggedCell] = useState<{ helperId: string; date: string; rowIndex: number } | null>(null);
@@ -3578,11 +3582,16 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
   return (
     <div
+      ref={containerRef}
       className="overflow-x-auto pb-4"
       style={{
         willChange: 'transform',
         WebkitOverflowScrolling: 'touch',
-        overflowAnchor: 'none'
+        overflowAnchor: 'none',
+        // スクロール中は軽量化（インタラクション無効化）
+        pointerEvents: isScrolling ? 'none' : 'auto',
+        opacity: isScrolling ? 0.95 : 1,
+        transition: 'opacity 0.1s ease-out'
       }}
     >
       {weeks.map((week) => (
@@ -3786,9 +3795,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                       onDragOver={handleDragOver}
                       onDrop={() => handleDrop(helper.id, day.date, rowIndex)}
                     >
-                      <div className="w-full h-full flex flex-col">
-                        {/* 4行に区切る - ダブルクリックで編集可能 */}
-                        {[0, 1, 2, 3].map((lineIndex) => {
+                      {/* スクロール中は軽量表示（背景色のみ） */}
+                      {isScrolling ? (
+                        <div className="w-full h-full" />
+                      ) : (
+                        <div className="w-full h-full flex flex-col">
+                          {/* 4行に区切る - ダブルクリックで編集可能 */}
+                          {[0, 1, 2, 3].map((lineIndex) => {
                           return (
                             <div
                               key={lineIndex}
@@ -4417,7 +4430,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                           </div>
                         );
                         })}
-                      </div>
+                        </div>
+                      )}
                     </td>
                   );
                 })
