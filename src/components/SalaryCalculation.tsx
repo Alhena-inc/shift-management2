@@ -262,10 +262,27 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
 
         <div className="p-6">
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
+            <table
+              className="w-full border-collapse"
+              style={{ tableLayout: 'fixed' }}
+            >
               <thead className="sticky top-0 z-20">
                 <tr className="bg-gray-200">
-                  <th className="border-2 border-gray-400 p-3 sticky left-0 bg-gray-200 z-30 font-bold text-base min-w-[120px]">ヘルパー名</th>
+                  <th
+                    className="border-2 border-gray-400 sticky left-0 bg-gray-200 z-30 font-bold"
+                    style={{
+                      width: '120px',
+                      minWidth: '120px',
+                      maxWidth: '120px',
+                      padding: '8px 4px',
+                      fontSize: '13px',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}
+                  >
+                    ヘルパー名
+                  </th>
                   {weekRanges.map((week, weekIndex) => {
                     const hasData = weekHasData[weekIndex];
                     // 6週目は常に白背景（青背景）にする
@@ -273,13 +290,37 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
                     return (
                     <th
                       key={week.weekNumber}
-                      className={`border-2 border-gray-400 p-3 font-bold text-sm min-w-[100px] ${!shouldShowAsActive ? 'bg-gray-400' : 'bg-blue-100'}`}
+                      className={`border-2 border-gray-400 font-bold ${!shouldShowAsActive ? 'bg-gray-400' : 'bg-blue-100'}`}
+                      style={{
+                        width: '100px',
+                        minWidth: '100px',
+                        maxWidth: '100px',
+                        padding: '8px 4px',
+                        fontSize: '12px',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}
                     >
                       <div>{week.weekNumber}週目</div>
                     </th>
                     );
                   })}
-                  <th className="border-2 border-gray-400 p-3 bg-yellow-200 font-bold text-base min-w-[120px] sticky right-0 z-30 shadow-lg">合計</th>
+                  <th
+                    className="border-2 border-gray-400 bg-yellow-200 font-bold sticky right-0 z-30 shadow-lg"
+                    style={{
+                      width: '120px',
+                      minWidth: '120px',
+                      maxWidth: '120px',
+                      padding: '8px 4px',
+                      fontSize: '13px',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}
+                  >
+                    合計
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -290,7 +331,19 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
 
                   return (
                     <tr key={helper.id} className="hover:bg-gray-50 border-b-2">
-                      <td className="border-2 border-gray-400 p-3 font-bold sticky left-0 bg-white text-base">
+                      <td
+                        className="border-2 border-gray-400 font-bold sticky left-0 bg-white"
+                        style={{
+                          width: '120px',
+                          minWidth: '120px',
+                          maxWidth: '120px',
+                          padding: '8px 4px',
+                          fontSize: '13px',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}
+                      >
                         {helper.name}
                       </td>
                       {weeklyData.map((data, index) => {
@@ -300,22 +353,40 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
                         return (
                         <td
                           key={index}
-                          className={`border-2 border-gray-300 p-3 text-center ${!shouldShowAsActive ? 'bg-gray-300' : ''}`}
+                          className={`border-2 border-gray-300 text-center ${!shouldShowAsActive ? 'bg-gray-300' : ''}`}
+                          style={{
+                            width: '100px',
+                            minWidth: '100px',
+                            maxWidth: '100px',
+                            padding: '6px 2px',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden'
+                          }}
                         >
                           {data.hours > 0 ? (
                             <div>
-                              <div className="font-bold text-base text-blue-700">{data.hours.toFixed(1)}h</div>
-                              <div className="text-sm text-gray-700 font-semibold mt-1">¥{Math.round(data.amount).toLocaleString()}</div>
+                              <div className="font-bold text-blue-700" style={{ fontSize: '13px' }}>{data.hours.toFixed(1)}h</div>
+                              <div className="text-gray-700 font-semibold" style={{ fontSize: '11px', marginTop: '2px' }}>¥{Math.round(data.amount).toLocaleString()}</div>
                             </div>
                           ) : (
-                            <div className={`text-lg ${!hasData ? 'text-gray-600' : 'text-gray-300'}`}>0</div>
+                            <div className={`${!hasData ? 'text-gray-600' : 'text-gray-300'}`} style={{ fontSize: '14px' }}>0</div>
                           )}
                         </td>
                         );
                       })}
-                      <td className="border-2 border-gray-400 p-3 text-center font-bold bg-yellow-50 sticky right-0 z-10 shadow-lg">
-                        <div className="text-lg text-blue-800">{totalHours.toFixed(1)}h</div>
-                        <div className="text-base text-green-700 font-bold mt-1">¥{Math.round(totalAmount).toLocaleString()}</div>
+                      <td
+                        className="border-2 border-gray-400 text-center font-bold bg-yellow-50 sticky right-0 z-10 shadow-lg"
+                        style={{
+                          width: '120px',
+                          minWidth: '120px',
+                          maxWidth: '120px',
+                          padding: '6px 2px',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden'
+                        }}
+                      >
+                        <div className="text-blue-800" style={{ fontSize: '14px' }}>{totalHours.toFixed(1)}h</div>
+                        <div className="text-green-700 font-bold" style={{ fontSize: '12px', marginTop: '2px' }}>¥{Math.round(totalAmount).toLocaleString()}</div>
                       </td>
                     </tr>
                   );
