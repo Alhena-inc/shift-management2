@@ -1416,6 +1416,18 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     return cache;
   }, [sortedHelpers, weeks, shiftMap, dayOffRequests, scheduledDayOffs]);
 
+  // キャッシュ準備完了を追跡
+  const [isCacheReady, setIsCacheReady] = useState(false);
+
+  useEffect(() => {
+    // キャッシュが構築されたら準備完了フラグを立てる
+    if (cellDisplayCache.size > 0) {
+      setIsCacheReady(true);
+    } else {
+      setIsCacheReady(false);
+    }
+  }, [cellDisplayCache]);
+
   const getCellDisplayData = useCallback((helperId: string, date: string, rowIndex: number) => {
     const key = `${helperId}-${date}-${rowIndex}`;
     return cellDisplayCache.get(key) || {
@@ -3550,6 +3562,19 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
     return summary;
   }, [sortedHelpers, weeks, shifts]);
+
+  // キャッシュが準備完了するまでローディング画面を表示
+  if (!isCacheReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-16 w-16 border-b-4 border-blue-500 mb-4"></div>
+          <p className="text-xl font-bold text-gray-700">シフト表を準備中...</p>
+          <p className="text-sm text-gray-500 mt-2">全データを読み込んでいます</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
