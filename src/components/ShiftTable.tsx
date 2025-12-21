@@ -2,7 +2,7 @@ import { useMemo, useCallback, useEffect, memo, useState, useRef } from 'react';
 import type { Helper, Shift, ServiceType } from '../types';
 import { useScrollDetection } from '../hooks/useScrollDetection';
 import { SERVICE_CONFIG } from '../types';
-import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs } from '../services/firestoreService';
+import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts, saveDisplayTexts } from '../services/firestoreService';
 import { calculateNightHours, calculateRegularHours, calculateTimeDuration } from '../utils/timeCalculations';
 import { calculateShiftPay } from '../utils/salaryCalculations';
 import { getRowIndicesFromDayOffValue } from '../utils/timeSlots';
@@ -324,6 +324,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
   // 指定休管理（キー: "helperId-date", 値: true）- その日の縦列全体が緑色になる
   const [scheduledDayOffs, setScheduledDayOffs] = useState<Map<string, boolean>>(new Map());
+
+  // 表示テキスト管理（キー: "helperId-date", 値: 表示テキスト）
+  const [displayTexts, setDisplayTexts] = useState<Map<string, string>>(new Map());
 
   // 前回選択されたセルを記録（高速クリーンアップ用）
   const lastSelectedCellRef = useRef<HTMLElement | null>(null);
@@ -972,6 +975,32 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     loadData();
   }, [year, month]);
 
+  // 表示テキストを読み込み
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        // 12月の場合は翌年1月のデータも読み込む
+        if (month === 12) {
+          const nextYear = year + 1;
+          const [textsData, nextMonthTexts] = await Promise.all([
+            loadDisplayTexts(year, month),
+            loadDisplayTexts(nextYear, 1)
+          ]);
+          const combinedTexts = new Map([...textsData, ...nextMonthTexts]);
+          setDisplayTexts(combinedTexts);
+          console.log(`📝 表示テキストを読み込みました: ${year}年${month}月 (${textsData.size}件) + ${nextYear}年1月 (${nextMonthTexts.size}件)`);
+        } else {
+          const textsData = await loadDisplayTexts(year, month);
+          setDisplayTexts(textsData);
+          console.log(`📝 表示テキストを読み込みました: ${year}年${month}月 (${textsData.size}件)`);
+        }
+      } catch (error) {
+        console.error('表示テキストの読み込みエラー:', error);
+      }
+    };
+    loadData();
+  }, [year, month]);
+
   // 休み希望を保存する関数
   const saveDayOffToFirestore = useCallback(async (requests: Map<string, string>) => {
     try {
@@ -1383,6 +1412,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               // 休み希望の該当行を判定（新形式 または 旧形式）
               const isDayOffForThisRow = isRowSpecificDayOff || isOldFormatDayOff;
 
+              // 表示テキストを取得
+              const displayText = displayTexts.get(dayOffKey);
+
               if (!shift) {
                 // 指定休が最優先、次に休み希望
                 let bgColor = '#ffffff';
@@ -1390,6 +1422,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                 if (isScheduledDayOff) {
                   bgColor = '#22c55e';  // 指定休は緑色
+                  // 指定休の表示テキスト（最初の行のみ）
+                  if (rowIndex === 0) {
+                    lines = [displayText || '指定休', '', '', ''];
+                  }
                 } else if (isDayOffForThisRow) {
                   bgColor = 'rgba(255, 182, 193, 0.5)';  // 休み希望はピンク系
 
@@ -1399,12 +1435,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     const isFirstRow = affectedRows.length > 0 && affectedRows[0] === rowIndex;
 
                     if (isFirstRow) {
-                      // 最初の行にテキストを表示
-                      if (dayOffValue === 'all') {
-                        lines = ['終日休み', '', '', ''];
-                      } else {
-                        lines = [dayOffValue, '', '', ''];
-                      }
+                      // 表示テキストを優先、なければデフォルト
+                      lines = [displayText || '休', '', '', ''];
                     }
                   }
                 }

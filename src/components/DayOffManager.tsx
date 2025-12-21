@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import type { Helper } from '../types';
-import { loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs } from '../services/firestoreService';
+import { loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts, saveDisplayTexts } from '../services/firestoreService';
 import { TIME_SLOTS } from '../utils/timeSlots';
 
 interface DayOffManagerProps {
@@ -13,10 +13,12 @@ interface DayOffManagerProps {
 // 休み希望の型: "all" (終日), "17:00-" (17時以降), "-12:00" (12時まで)
 type DayOffRequestMap = Map<string, string>;
 type ScheduledDayOffMap = Map<string, boolean>;
+type DisplayTextMap = Map<string, string>; // 表示テキストを保存
 
 export const DayOffManager = memo(function DayOffManager({ helpers, year, month, onBack }: DayOffManagerProps) {
   const [dayOffRequests, setDayOffRequests] = useState<DayOffRequestMap>(new Map());
   const [scheduledDayOffs, setScheduledDayOffs] = useState<ScheduledDayOffMap>(new Map());
+  const [displayTexts, setDisplayTexts] = useState<DisplayTextMap>(new Map()); // 表示テキストMap
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showTimeModal, setShowTimeModal] = useState(false);
@@ -24,6 +26,7 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
   const [selectedType, setSelectedType] = useState<'dayOff' | 'scheduled'>('dayOff'); // デフォルトは休み希望
   const [selectedSlots, setSelectedSlots] = useState<number[]>([]); // モーダル内で選択された行インデックス
   const [firstSelectedSlot, setFirstSelectedSlot] = useState<number | null>(null); // 範囲選択の開始位置
+  const [displayText, setDisplayText] = useState<string>(''); // 表示テキスト（自由入力）
 
   // その月の日数を取得（メモ化）
   const dates = useMemo(() => {
@@ -52,26 +55,32 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
         // 12月の場合は翌年1月のデータも読み込む
         if (month === 12) {
           const nextYear = year + 1;
-          const [requests, scheduledDays, nextMonthRequests, nextMonthScheduled] = await Promise.all([
+          const [requests, scheduledDays, texts, nextMonthRequests, nextMonthScheduled, nextMonthTexts] = await Promise.all([
             loadDayOffRequests(year, month),
             loadScheduledDayOffs(year, month),
+            loadDisplayTexts(year, month),
             loadDayOffRequests(nextYear, 1),
-            loadScheduledDayOffs(nextYear, 1)
+            loadScheduledDayOffs(nextYear, 1),
+            loadDisplayTexts(nextYear, 1)
           ]);
 
           // 12月と翌年1月のデータを統合
           const combinedRequests = new Map([...requests, ...nextMonthRequests]);
           const combinedScheduled = new Map([...scheduledDays, ...nextMonthScheduled]);
+          const combinedTexts = new Map([...texts, ...nextMonthTexts]);
 
           setDayOffRequests(combinedRequests);
           setScheduledDayOffs(combinedScheduled);
+          setDisplayTexts(combinedTexts);
         } else {
-          const [requests, scheduledDays] = await Promise.all([
+          const [requests, scheduledDays, texts] = await Promise.all([
             loadDayOffRequests(year, month),
-            loadScheduledDayOffs(year, month)
+            loadScheduledDayOffs(year, month),
+            loadDisplayTexts(year, month)
           ]);
           setDayOffRequests(requests);
           setScheduledDayOffs(scheduledDays);
+          setDisplayTexts(texts);
         }
       } catch (error) {
         console.error('データの読み込みエラー:', error);
@@ -100,12 +109,18 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
         next.delete(key);
         return next;
       });
+      setDisplayTexts(prev => {
+        const next = new Map(prev);
+        next.delete(key);
+        return next;
+      });
     } else {
       // 未設定の場合はモーダルを開く
       setSelectedCell({ helperId, date });
       setSelectedType('dayOff'); // デフォルトは休み希望
       setSelectedSlots([]); // 選択状態をリセット
       setFirstSelectedSlot(null);
+      setDisplayText(''); // 表示テキストをリセット
       setShowTimeModal(true);
     }
   }, [dayOffRequests, scheduledDayOffs]);
@@ -161,6 +176,12 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
         next.set(key, true);
         return next;
       });
+      // 表示テキストも設定（空の場合はデフォルト）
+      setDisplayTexts(prev => {
+        const next = new Map(prev);
+        next.set(key, displayText || '指定休');
+        return next;
+      });
     } else {
       // 休み希望を設定
       const timeString = generateTimeStringFromSlots(selectedSlots);
@@ -170,6 +191,12 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
           next.set(key, timeString);
           return next;
         });
+        // 表示テキストも設定（空の場合はデフォルト）
+        setDisplayTexts(prev => {
+          const next = new Map(prev);
+          next.set(key, displayText || '休');
+          return next;
+        });
       }
     }
 
@@ -177,7 +204,8 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
     setSelectedCell(null);
     setSelectedSlots([]);
     setFirstSelectedSlot(null);
-  }, [selectedCell, selectedType, selectedSlots, generateTimeStringFromSlots]);
+    setDisplayText('');
+  }, [selectedCell, selectedType, selectedSlots, displayText, generateTimeStringFromSlots]);
 
   // 終日休みを設定
   const setAllDayOff = useCallback(() => {
@@ -196,6 +224,8 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
         const nextMonthRequests = new Map<string, string>();
         const currentMonthScheduled = new Map<string, boolean>();
         const nextMonthScheduled = new Map<string, boolean>();
+        const currentMonthTexts = new Map<string, string>();
+        const nextMonthTexts = new Map<string, string>();
 
         // データを年月ごとに分類
         dayOffRequests.forEach((value, key) => {
@@ -216,17 +246,29 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
           }
         });
 
+        displayTexts.forEach((value, key) => {
+          const date = key.split('-').slice(1).join('-');
+          if (date.startsWith(`${nextYear}-01`)) {
+            nextMonthTexts.set(key, value);
+          } else {
+            currentMonthTexts.set(key, value);
+          }
+        });
+
         // 12月と翌年1月のデータを別々に保存
         await Promise.all([
           saveDayOffRequests(year, month, currentMonthRequests),
           saveScheduledDayOffs(year, month, currentMonthScheduled),
+          saveDisplayTexts(year, month, currentMonthTexts),
           saveDayOffRequests(nextYear, 1, nextMonthRequests),
-          saveScheduledDayOffs(nextYear, 1, nextMonthScheduled)
+          saveScheduledDayOffs(nextYear, 1, nextMonthScheduled),
+          saveDisplayTexts(nextYear, 1, nextMonthTexts)
         ]);
       } else {
         await Promise.all([
           saveDayOffRequests(year, month, dayOffRequests),
-          saveScheduledDayOffs(year, month, scheduledDayOffs)
+          saveScheduledDayOffs(year, month, scheduledDayOffs),
+          saveDisplayTexts(year, month, displayTexts)
         ]);
       }
 
@@ -239,7 +281,7 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
     } finally {
       setIsSaving(false);
     }
-  }, [year, month, dayOffRequests, scheduledDayOffs, onBack]);
+  }, [year, month, dayOffRequests, scheduledDayOffs, displayTexts, onBack]);
 
   // ヘルパーの全日程を一括設定/解除
   const toggleHelperAllDays = useCallback((helperId: string) => {
@@ -441,6 +483,7 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                       const key = `${helper.id}-${date}`;
                       const dayOffValue = dayOffRequests.get(key);
                       const hasScheduled = scheduledDayOffs.has(key);
+                      const displayTextValue = displayTexts.get(key);
                       const isChecked = !!dayOffValue || hasScheduled;
                       const dateObj = new Date(date);
                       const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
@@ -467,11 +510,9 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                         >
                           {isChecked ? (
                             <div className="flex flex-col items-center gap-1">
-                              {dayOffValue && (
-                                <div className="text-xs font-bold text-white">
-                                  {dayOffValue === 'all' ? '終日' : dayOffValue}
-                                </div>
-                              )}
+                              <div className="text-xs font-bold text-white">
+                                {displayTextValue || (hasScheduled ? '指定休' : '休')}
+                              </div>
                               {hasScheduled && (
                                 <div className="text-xs font-bold text-green-800">
                                   指定休
@@ -627,9 +668,8 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                                   : 'bg-white hover:bg-gray-100 text-gray-800'
                               }`}
                             >
-                              <div className="flex items-center justify-between">
-                                <span className="text-lg font-medium">{slot.label}</span>
-                                <span className="text-sm opacity-75">{slot.range}</span>
+                              <div className="flex items-center justify-center">
+                                <span className="text-lg font-medium">枠{slot.row + 1}</span>
                               </div>
                             </div>
                           );
@@ -638,6 +678,23 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                       <p className="text-xs text-gray-600 mt-2">
                         ※1つ目のセルをクリックで開始位置、2つ目のセルをクリックで範囲選択<br />
                         ※選択済みセルを再クリックで選択解除
+                      </p>
+                    </div>
+
+                    {/* 表示テキスト（任意） */}
+                    <div>
+                      <label className="block text-base font-medium text-gray-700 mb-2">
+                        表示テキスト（任意）
+                      </label>
+                      <input
+                        type="text"
+                        value={displayText}
+                        onChange={(e) => setDisplayText(e.target.value)}
+                        placeholder="入力した内容が選択範囲の一番上のセルに表示されます"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-base"
+                      />
+                      <p className="text-xs text-gray-600 mt-1">
+                        ※入力がない場合は「休」と表示されます
                       </p>
                     </div>
 
@@ -660,6 +717,7 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                     setSelectedType('dayOff'); // リセット
                     setSelectedSlots([]);
                     setFirstSelectedSlot(null);
+                    setDisplayText('');
                   }}
                   className="w-full px-6 py-3 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition-colors font-medium"
                 >

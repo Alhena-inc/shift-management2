@@ -478,6 +478,58 @@ export const loadScheduledDayOffs = async (year: number, month: number): Promise
   }
 };
 
+// 表示テキストを保存（月ごと）- Map版
+export const saveDisplayTexts = async (year: number, month: number, displayTexts: Map<string, string>): Promise<void> => {
+  try {
+    const docId = `${year}-${String(month).padStart(2, '0')}`;
+    const docRef = doc(db, 'displayTexts', docId);
+
+    // MapをArray形式に変換
+    const displayTextsArray = Array.from(displayTexts.entries()).map(([key, value]) => ({ key, value }));
+
+    await setDoc(docRef, {
+      displayTexts: displayTextsArray,
+      updatedAt: Timestamp.now()
+    });
+
+    console.log(`📝 表示テキストを保存しました: ${docId} (${displayTexts.size}件)`);
+  } catch (error) {
+    console.error('表示テキスト保存エラー:', error);
+    throw error;
+  }
+};
+
+// 表示テキストを読み込み（月ごと）- Map版
+export const loadDisplayTexts = async (year: number, month: number): Promise<Map<string, string>> => {
+  try {
+    const docId = `${year}-${String(month).padStart(2, '0')}`;
+    const docSnap = await getDocs(query(collection(db, 'displayTexts')));
+
+    const targetDoc = docSnap.docs.find(d => d.id === docId);
+    if (targetDoc && targetDoc.exists()) {
+      const data = targetDoc.data();
+      const displayTextsData = data.displayTexts || [];
+
+      // 配列からMapに変換
+      const displayTexts = new Map<string, string>();
+      if (Array.isArray(displayTextsData)) {
+        displayTextsData.forEach((item: any) => {
+          displayTexts.set(item.key, item.value);
+        });
+      }
+
+      console.log(`📝 表示テキストを読み込みました: ${docId} (${displayTexts.size}件)`);
+      return displayTexts;
+    }
+
+    console.log(`📝 表示テキストデータが見つかりません: ${docId}`);
+    return new Map();
+  } catch (error) {
+    console.error('表示テキスト読み込みエラー:', error);
+    return new Map();
+  }
+};
+
 // 休み希望のリアルタイムリスナー
 export const subscribeToDayOffRequests = (
   year: number,
