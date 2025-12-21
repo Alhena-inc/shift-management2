@@ -264,18 +264,18 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
           <div className="overflow-x-auto">
             <table
               className="w-full border-collapse"
-              style={{ tableLayout: 'fixed' }}
+              style={{ tableLayout: 'fixed', minWidth: '1200px' }}
             >
               <thead className="sticky top-0 z-20">
                 <tr className="bg-gray-200">
                   <th
                     className="border-2 border-gray-400 sticky left-0 bg-gray-200 z-30 font-bold"
                     style={{
-                      width: '120px',
-                      minWidth: '120px',
-                      maxWidth: '120px',
-                      padding: '8px 4px',
-                      fontSize: '13px',
+                      width: '150px',
+                      minWidth: '150px',
+                      maxWidth: '150px',
+                      padding: '12px 8px',
+                      fontSize: '14px',
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis'
@@ -292,11 +292,11 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
                       key={week.weekNumber}
                       className={`border-2 border-gray-400 font-bold ${!shouldShowAsActive ? 'bg-gray-400' : 'bg-blue-100'}`}
                       style={{
-                        width: '100px',
-                        minWidth: '100px',
-                        maxWidth: '100px',
-                        padding: '8px 4px',
-                        fontSize: '12px',
+                        width: '130px',
+                        minWidth: '130px',
+                        maxWidth: '130px',
+                        padding: '12px 6px',
+                        fontSize: '13px',
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis'
@@ -309,11 +309,11 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
                   <th
                     className="border-2 border-gray-400 bg-yellow-200 font-bold sticky right-0 z-30 shadow-lg"
                     style={{
-                      width: '120px',
-                      minWidth: '120px',
-                      maxWidth: '120px',
-                      padding: '8px 4px',
-                      fontSize: '13px',
+                      width: '150px',
+                      minWidth: '150px',
+                      maxWidth: '150px',
+                      padding: '12px 8px',
+                      fontSize: '14px',
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis'
@@ -334,11 +334,11 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
                       <td
                         className="border-2 border-gray-400 font-bold sticky left-0 bg-white"
                         style={{
-                          width: '120px',
-                          minWidth: '120px',
-                          maxWidth: '120px',
-                          padding: '8px 4px',
-                          fontSize: '13px',
+                          width: '150px',
+                          minWidth: '150px',
+                          maxWidth: '150px',
+                          padding: '10px 8px',
+                          fontSize: '14px',
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis'
@@ -355,21 +355,21 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
                           key={index}
                           className={`border-2 border-gray-300 text-center ${!shouldShowAsActive ? 'bg-gray-300' : ''}`}
                           style={{
-                            width: '100px',
-                            minWidth: '100px',
-                            maxWidth: '100px',
-                            padding: '6px 2px',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden'
+                            width: '130px',
+                            minWidth: '130px',
+                            maxWidth: '130px',
+                            padding: '8px 6px',
+                            whiteSpace: 'normal',
+                            overflow: 'visible'
                           }}
                         >
                           {data.hours > 0 ? (
-                            <div>
-                              <div className="font-bold text-blue-700" style={{ fontSize: '13px' }}>{data.hours.toFixed(1)}h</div>
-                              <div className="text-gray-700 font-semibold" style={{ fontSize: '11px', marginTop: '2px' }}>¥{Math.round(data.amount).toLocaleString()}</div>
+                            <div style={{ lineHeight: '1.5' }}>
+                              <div className="font-bold text-blue-700" style={{ fontSize: '14px', marginBottom: '4px' }}>{data.hours.toFixed(1)}h</div>
+                              <div className="text-gray-700 font-semibold" style={{ fontSize: '12px' }}>¥{Math.round(data.amount).toLocaleString()}</div>
                             </div>
                           ) : (
-                            <div className={`${!hasData ? 'text-gray-600' : 'text-gray-300'}`} style={{ fontSize: '14px' }}>0</div>
+                            <div className={`${!hasData ? 'text-gray-600' : 'text-gray-300'}`} style={{ fontSize: '15px' }}>0</div>
                           )}
                         </td>
                         );
@@ -377,16 +377,18 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
                       <td
                         className="border-2 border-gray-400 text-center font-bold bg-yellow-50 sticky right-0 z-10 shadow-lg"
                         style={{
-                          width: '120px',
-                          minWidth: '120px',
-                          maxWidth: '120px',
-                          padding: '6px 2px',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden'
+                          width: '150px',
+                          minWidth: '150px',
+                          maxWidth: '150px',
+                          padding: '8px 6px',
+                          whiteSpace: 'normal',
+                          overflow: 'visible'
                         }}
                       >
-                        <div className="text-blue-800" style={{ fontSize: '14px' }}>{totalHours.toFixed(1)}h</div>
-                        <div className="text-green-700 font-bold" style={{ fontSize: '12px', marginTop: '2px' }}>¥{Math.round(totalAmount).toLocaleString()}</div>
+                        <div style={{ lineHeight: '1.5' }}>
+                          <div className="text-blue-800" style={{ fontSize: '15px', marginBottom: '4px' }}>{totalHours.toFixed(1)}h</div>
+                          <div className="text-green-700 font-bold" style={{ fontSize: '13px' }}>¥{Math.round(totalAmount).toLocaleString()}</div>
+                        </div>
                       </td>
                     </tr>
                   );
