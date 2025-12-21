@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import type { Helper } from '../types';
 import { loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs } from '../services/firestoreService';
+import { TIME_SLOTS } from '../utils/timeSlots';
 
 interface DayOffManagerProps {
   helpers: Helper[];
@@ -21,6 +22,8 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
   const [showTimeModal, setShowTimeModal] = useState(false);
   const [selectedCell, setSelectedCell] = useState<{ helperId: string; date: string } | null>(null);
   const [selectedType, setSelectedType] = useState<'dayOff' | 'scheduled'>('dayOff'); // デフォルトは休み希望
+  const [selectedSlots, setSelectedSlots] = useState<number[]>([]); // モーダル内で選択された行インデックス
+  const [firstSelectedSlot, setFirstSelectedSlot] = useState<number | null>(null); // 範囲選択の開始位置
 
   // その月の日数を取得（メモ化）
   const dates = useMemo(() => {
@@ -101,18 +104,58 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
       // 未設定の場合はモーダルを開く
       setSelectedCell({ helperId, date });
       setSelectedType('dayOff'); // デフォルトは休み希望
+      setSelectedSlots([]); // 選択状態をリセット
+      setFirstSelectedSlot(null);
       setShowTimeModal(true);
     }
   }, [dayOffRequests, scheduledDayOffs]);
 
+  // モーダル内のスロットクリック処理
+  const handleSlotClick = useCallback((slotIndex: number) => {
+    if (selectedSlots.includes(slotIndex)) {
+      // 既に選択されている場合は全てクリア
+      setSelectedSlots([]);
+      setFirstSelectedSlot(null);
+    } else if (firstSelectedSlot === null) {
+      // 最初の選択
+      setSelectedSlots([slotIndex]);
+      setFirstSelectedSlot(slotIndex);
+    } else {
+      // 2つ目の選択 → 範囲選択
+      const start = Math.min(firstSelectedSlot, slotIndex);
+      const end = Math.max(firstSelectedSlot, slotIndex);
+      const range: number[] = [];
+      for (let i = start; i <= end; i++) {
+        range.push(i);
+      }
+      setSelectedSlots(range);
+    }
+  }, [selectedSlots, firstSelectedSlot]);
+
+  // 選択されたスロットから時間文字列を生成
+  const generateTimeStringFromSlots = useCallback((slots: number[]): string => {
+    if (slots.length === 0) return '';
+    if (slots.length === 5) return 'all'; // 全選択
+
+    // スロットをソート
+    const sortedSlots = [...slots].sort((a, b) => a - b);
+
+    // 最初のスロットの開始時間を取得
+    const firstSlot = TIME_SLOTS[sortedSlots[0]];
+    const startTime = `${String(firstSlot.start).padStart(2, '0')}:00`;
+
+    // 終了時間は指定しない（開始時刻以降全て）
+    return `${startTime}-`;
+  }, []);
+
   // 休み希望または指定休を設定
-  const setDayOffWithTime = useCallback((value: string, type: 'dayOff' | 'scheduled' = selectedType) => {
+  const handleSetDayOff = useCallback(() => {
     if (!selectedCell) return;
 
     const key = `${selectedCell.helperId}-${selectedCell.date}`;
 
-    if (type === 'scheduled') {
-      // 指定休を設定
+    if (selectedType === 'scheduled') {
+      // 指定休を設定（終日のみ）
       setScheduledDayOffs(prev => {
         const next = new Map(prev);
         next.set(key, true);
@@ -120,16 +163,27 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
       });
     } else {
       // 休み希望を設定
-      setDayOffRequests(prev => {
-        const next = new Map(prev);
-        next.set(key, value);
-        return next;
-      });
+      const timeString = generateTimeStringFromSlots(selectedSlots);
+      if (timeString) {
+        setDayOffRequests(prev => {
+          const next = new Map(prev);
+          next.set(key, timeString);
+          return next;
+        });
+      }
     }
 
     setShowTimeModal(false);
     setSelectedCell(null);
-  }, [selectedCell, selectedType]);
+    setSelectedSlots([]);
+    setFirstSelectedSlot(null);
+  }, [selectedCell, selectedType, selectedSlots, generateTimeStringFromSlots]);
+
+  // 終日休みを設定
+  const setAllDayOff = useCallback(() => {
+    setSelectedSlots([0, 1, 2, 3, 4]);
+    setFirstSelectedSlot(null);
+  }, []);
 
   // 保存
   const handleSave = useCallback(async () => {
@@ -488,7 +542,7 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200]">
             <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full mx-4">
               <h2 className="text-2xl font-bold mb-6 text-gray-800">
-                {selectedType === 'dayOff' ? '休み希望の設定' : '指定休の設定'}
+                休み希望の設定
               </h2>
 
               {/* タイプ選択 */}
@@ -496,7 +550,11 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                 <label className="block text-sm font-medium text-gray-700 mb-3">設定タイプを選択</label>
                 <div className="flex gap-3">
                   <button
-                    onClick={() => setSelectedType('dayOff')}
+                    onClick={() => {
+                      setSelectedType('dayOff');
+                      setSelectedSlots([]);
+                      setFirstSelectedSlot(null);
+                    }}
                     className={`flex-1 px-4 py-3 rounded-lg font-bold transition-all ${
                       selectedType === 'dayOff'
                         ? 'bg-pink-500 text-white shadow-lg'
@@ -506,7 +564,11 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                     休み希望
                   </button>
                   <button
-                    onClick={() => setSelectedType('scheduled')}
+                    onClick={() => {
+                      setSelectedType('scheduled');
+                      setSelectedSlots([0, 1, 2, 3, 4]); // 指定休は終日のみ
+                      setFirstSelectedSlot(null);
+                    }}
                     className={`flex-1 px-4 py-3 rounded-lg font-bold transition-all ${
                       selectedType === 'scheduled'
                         ? 'text-white shadow-lg'
@@ -523,23 +585,25 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                 {selectedType === 'scheduled' ? (
                   /* 指定休の場合は終日のみ */
                   <>
+                    <div className="p-4 bg-green-50 border-2 border-green-300 rounded-lg">
+                      <p className="text-sm text-gray-700 text-center">
+                        指定休は終日休みとして設定されます
+                      </p>
+                    </div>
                     <button
-                      onClick={() => setDayOffWithTime('all', 'scheduled')}
+                      onClick={handleSetDayOff}
                       className="w-full px-6 py-4 text-white rounded-lg hover:opacity-90 transition-colors text-lg font-bold"
                       style={{ backgroundColor: '#22c55e' }}
                     >
-                      指定休を設定
+                      設定
                     </button>
-                    <p className="text-sm text-gray-600 text-center">
-                      ※指定休は終日休みとして設定されます
-                    </p>
                   </>
                 ) : (
-                  /* 休み希望の場合は時間指定可能 */
+                  /* 休み希望の場合はケアセル選択 */
                   <>
                     {/* 終日ボタン */}
                     <button
-                      onClick={() => setDayOffWithTime('all', 'dayOff')}
+                      onClick={setAllDayOff}
                       className="w-full px-6 py-4 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors text-lg font-bold"
                     >
                       終日休み
@@ -547,49 +611,44 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
 
                     <div className="border-t border-gray-200 my-2"></div>
 
-                    {/* 時間指定 */}
+                    {/* 休み範囲を選択 */}
                     <div>
-                      <label className="block text-base font-medium text-gray-700 mb-3">時間指定</label>
-                      <div className="flex gap-2 items-center mb-2">
-                        <input
-                          type="time"
-                          id="custom-start-time"
-                          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-lg"
-                          defaultValue="08:00"
-                        />
-                        <span className="text-gray-500 text-lg">〜</span>
-                        <input
-                          type="time"
-                          id="custom-end-time"
-                          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-lg"
-                          placeholder="省略可"
-                        />
+                      <label className="block text-base font-medium text-gray-700 mb-3">休み範囲を選択</label>
+                      <div className="border-2 border-gray-300 rounded-lg overflow-hidden">
+                        {TIME_SLOTS.map((slot) => {
+                          const isSelected = selectedSlots.includes(slot.row);
+                          return (
+                            <div
+                              key={slot.row}
+                              onClick={() => handleSlotClick(slot.row)}
+                              className={`px-4 py-4 border-b border-gray-200 last:border-b-0 cursor-pointer transition-all ${
+                                isSelected
+                                  ? 'bg-pink-400 text-white font-bold'
+                                  : 'bg-white hover:bg-gray-100 text-gray-800'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-lg font-medium">{slot.label}</span>
+                                <span className="text-sm opacity-75">{slot.range}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                      <p className="text-sm text-gray-600 mb-3">
-                        ※終了時刻を省略すると、開始時刻以降の全てのケア枠が休み希望となります<br />
-                        ※時間範囲を指定すると、該当する時間帯の行に自動的に反映されます
+                      <p className="text-xs text-gray-600 mt-2">
+                        ※1つ目のセルをクリックで開始位置、2つ目のセルをクリックで範囲選択<br />
+                        ※選択済みセルを再クリックで選択解除
                       </p>
-                      <button
-                        onClick={() => {
-                          const startInput = document.getElementById('custom-start-time') as HTMLInputElement;
-                          const endInput = document.getElementById('custom-end-time') as HTMLInputElement;
-                          if (startInput) {
-                            const startTime = startInput.value;
-                            const endTime = endInput?.value;
-
-                            // 終了時刻が未入力の場合は「開始時刻-」形式（その行のみ）
-                            if (!endTime) {
-                              setDayOffWithTime(`${startTime}-`, 'dayOff');
-                            } else {
-                              setDayOffWithTime(`${startTime}-${endTime}`, 'dayOff');
-                            }
-                          }
-                        }}
-                        className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-lg font-medium"
-                      >
-                        設定
-                      </button>
                     </div>
+
+                    {/* 設定ボタン */}
+                    <button
+                      onClick={handleSetDayOff}
+                      disabled={selectedSlots.length === 0}
+                      className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-lg font-medium disabled:bg-gray-300 disabled:cursor-not-allowed"
+                    >
+                      設定
+                    </button>
                   </>
                 )}
 
@@ -599,6 +658,8 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                     setShowTimeModal(false);
                     setSelectedCell(null);
                     setSelectedType('dayOff'); // リセット
+                    setSelectedSlots([]);
+                    setFirstSelectedSlot(null);
                   }}
                   className="w-full px-6 py-3 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition-colors font-medium"
                 >
