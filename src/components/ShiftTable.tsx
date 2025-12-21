@@ -4684,12 +4684,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                   const helperData = serviceTypeSummary.get(helper.id);
                   let totalHours = 0;
                   if (helperData) {
-                    // 表示されている行のみを合計
-                    const displayedTypes: (ServiceType | 'shinya' | 'shinya_doko')[] = [
-                      'shintai', 'judo', 'kaji', 'tsuin', 'ido',
-                      'jimu', 'eigyo', 'doko', 'shinya', 'shinya_doko'
-                    ];
-                    displayedTypes.forEach(type => {
+                    // 身体・重度・家事・通院・移動のみを合計
+                    const serviceTypes: ServiceType[] = ['shintai', 'judo', 'kaji', 'tsuin', 'ido'];
+                    serviceTypes.forEach(type => {
                       const data = helperData.get(type);
                       if (data) {
                         totalHours += data.hours;
@@ -4710,12 +4707,12 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                   const helperData = serviceTypeSummary.get(helper.id);
                   let totalAmount = 0;
                   if (helperData) {
-                    // 表示されている行のみを合計
-                    const displayedTypes: (ServiceType | 'shinya' | 'shinya_doko')[] = [
+                    // 全てのサービスタイプを合計
+                    const allTypes: (ServiceType | 'shinya' | 'shinya_doko')[] = [
                       'shintai', 'judo', 'kaji', 'tsuin', 'ido',
                       'jimu', 'eigyo', 'doko', 'shinya', 'shinya_doko'
                     ];
-                    displayedTypes.forEach(type => {
+                    allTypes.forEach(type => {
                       const data = helperData.get(type);
                       if (data) {
                         totalAmount += data.amount;
