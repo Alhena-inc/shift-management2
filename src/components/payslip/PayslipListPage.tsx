@@ -482,8 +482,8 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose }) => 
 
       {/* 編集モーダル */}
       {showEditModal && editingPayslip && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-[95vw] max-w-[1600px] max-h-[95vh] flex flex-col">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2">
+          <div className="bg-white rounded-lg shadow-xl w-[98vw] max-w-[1900px] h-[98vh] flex flex-col">
             {/* ヘッダー */}
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-xl font-bold text-gray-800">

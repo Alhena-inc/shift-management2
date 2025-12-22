@@ -34,23 +34,22 @@ const CareListSheet: React.FC<CareListSheetProps> = ({ month, careList, onChange
   };
 
   return (
-    <div className="bg-white border border-gray-400" style={{ width: '500px' }}>
+    <div className="bg-white border border-gray-400" style={{ width: '650px' }}>
       {/* 青ヘッダー */}
-      <div className="blue-header text-sm py-2">ケア一覧表</div>
+      <div className="blue-header">ケア一覧表</div>
 
       {/* テーブル */}
-      <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
+      <div style={{ maxHeight: '800px', overflowY: 'auto' }}>
         <table className="w-full border-collapse sheet-table">
-          <thead className="sticky top-0">
+          <thead className="sticky top-0 bg-white">
             <tr className="red-header">
-              <th className="border border-gray-400 px-1 py-1" rowSpan={2} style={{ fontSize: '9px' }}>
-                日付
-              </th>
-              <th className="border border-gray-400 px-1 py-1" style={{ fontSize: '9px' }}>ケア1</th>
-              <th className="border border-gray-400 px-1 py-1" style={{ fontSize: '9px' }}>ケア2</th>
-              <th className="border border-gray-400 px-1 py-1" style={{ fontSize: '9px' }}>ケア3</th>
-              <th className="border border-gray-400 px-1 py-1" style={{ fontSize: '9px' }}>ケア4</th>
-              <th className="border border-gray-400 px-1 py-1" style={{ fontSize: '9px' }}>ケア5</th>
+              <th rowSpan={2}>日付</th>
+              <th rowSpan={2}>曜日</th>
+              <th>ケア1</th>
+              <th>ケア2</th>
+              <th>ケア3</th>
+              <th>ケア4</th>
+              <th>ケア5</th>
             </tr>
           </thead>
           <tbody>
@@ -63,22 +62,26 @@ const CareListSheet: React.FC<CareListSheetProps> = ({ month, careList, onChange
                   {/* 1行目：利用者名 */}
                   <tr className="hover:bg-gray-50">
                     <td
-                      className="border border-gray-400 px-1 py-1 text-[10px] text-center bg-gray-50"
+                      className="text-center bg-gray-50"
                       rowSpan={2}
                     >
                       {month}/{dayData.day}
-                      <br />
-                      <span className="text-[9px] text-gray-600">{weekday}</span>
+                    </td>
+                    <td
+                      className="text-center bg-gray-50"
+                      rowSpan={2}
+                    >
+                      {weekday}
                     </td>
                     {[0, 1, 2, 3, 4].map((slotIndex) => {
                       const slot = slots[slotIndex] || { slotNumber: slotIndex + 1, clientName: '', timeRange: '' };
                       return (
-                        <td key={slotIndex} className="border border-gray-400 px-1 py-1 text-[10px] editable-cell">
+                        <td key={slotIndex} className="editable-cell">
                           <input
                             type="text"
                             value={slot.clientName || ''}
                             onChange={(e) => updateCareSlot(dayIndex, slotIndex, 'clientName', e.target.value)}
-                            className="w-full text-[10px] text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-1"
+                            className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
                             placeholder=""
                           />
                         </td>
@@ -90,12 +93,12 @@ const CareListSheet: React.FC<CareListSheetProps> = ({ month, careList, onChange
                     {[0, 1, 2, 3, 4].map((slotIndex) => {
                       const slot = slots[slotIndex] || { slotNumber: slotIndex + 1, clientName: '', timeRange: '' };
                       return (
-                        <td key={slotIndex} className="border border-gray-400 px-1 py-1 text-[10px] editable-cell">
+                        <td key={slotIndex} className="editable-cell">
                           <input
                             type="text"
                             value={slot.timeRange || ''}
                             onChange={(e) => updateCareSlot(dayIndex, slotIndex, 'timeRange', e.target.value)}
-                            className="w-full text-[10px] text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-1"
+                            className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
                             placeholder=""
                           />
                         </td>

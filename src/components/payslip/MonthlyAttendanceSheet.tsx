@@ -60,130 +60,124 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
   };
 
   return (
-    <div className="bg-white border border-gray-400" style={{ width: '450px' }}>
+    <div className="bg-white border border-gray-400" style={{ width: '550px' }}>
       {/* 青ヘッダー */}
-      <div className="blue-header text-sm py-2">{month}月勤怠表</div>
+      <div className="blue-header">{month}月勤怠表</div>
 
       {/* テーブル */}
-      <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
+      <div style={{ maxHeight: '800px', overflowY: 'auto' }}>
         <table className="w-full border-collapse sheet-table">
-          <thead className="sticky top-0">
+          <thead className="sticky top-0 bg-white">
             <tr className="red-header">
-              <th className="border border-gray-400 px-1 py-1" style={{ fontSize: '9px' }}>日付</th>
-              <th className="border border-gray-400 px-1 py-1" style={{ fontSize: '9px' }}>曜日</th>
-              <th className="border border-gray-400 px-1 py-1" style={{ fontSize: '9px' }}>通常稼働</th>
-              <th className="border border-gray-400 px-1 py-1" style={{ fontSize: '9px' }}>通常(深夜)</th>
-              <th className="border border-gray-400 px-1 py-1" style={{ fontSize: '9px' }}>同行稼働</th>
-              <th className="border border-gray-400 px-1 py-1" style={{ fontSize: '9px' }}>同行(深夜)</th>
-              <th className="border border-gray-400 px-1 py-1" style={{ fontSize: '9px' }}>事務稼働</th>
-              <th className="border border-gray-400 px-1 py-1" style={{ fontSize: '9px' }}>営業稼働</th>
-              <th className="border border-gray-400 px-1 py-1" style={{ fontSize: '9px' }}>合計</th>
+              <th>日付</th>
+              <th>曜日</th>
+              <th>通常稼働</th>
+              <th>通常(深夜)</th>
+              <th>同行稼働</th>
+              <th>同行(深夜)</th>
+              <th>事務稼働</th>
+              <th>営業稼働</th>
+              <th>合計</th>
             </tr>
           </thead>
           <tbody>
             {dailyAttendance.map((day, index) => (
               <tr key={index} className="hover:bg-gray-50">
-                <td className="border border-gray-400 px-1 py-1 text-[10px] text-center">
+                <td className="text-center">
                   {month}/{day.day}
                 </td>
-                <td className="border border-gray-400 px-1 py-1 text-[10px] text-center">
+                <td className="text-center">
                   {day.weekday}
                 </td>
-                <td className="border border-gray-400 px-1 py-1 text-[10px] text-right editable-cell">
+                <td className="text-right editable-cell">
                   <input
                     type="number"
                     step="0.5"
                     min="0"
                     value={day.normalWork || ''}
                     onChange={(e) => updateCell(index, 'normalWork', Number(e.target.value) || 0)}
-                    className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-1"
-                    style={{ fontSize: '10px' }}
+                    className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
                   />
                 </td>
-                <td className="border border-gray-400 px-1 py-1 text-[10px] text-right editable-cell">
+                <td className="text-right editable-cell">
                   <input
                     type="number"
                     step="0.5"
                     min="0"
                     value={day.normalNight || ''}
                     onChange={(e) => updateCell(index, 'normalNight', Number(e.target.value) || 0)}
-                    className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-1"
-                    style={{ fontSize: '10px' }}
+                    className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
                   />
                 </td>
-                <td className="border border-gray-400 px-1 py-1 text-[10px] text-right editable-cell">
+                <td className="text-right editable-cell">
                   <input
                     type="number"
                     step="0.5"
                     min="0"
                     value={day.accompanyWork || ''}
                     onChange={(e) => updateCell(index, 'accompanyWork', Number(e.target.value) || 0)}
-                    className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-1"
-                    style={{ fontSize: '10px' }}
+                    className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
                   />
                 </td>
-                <td className="border border-gray-400 px-1 py-1 text-[10px] text-right editable-cell">
+                <td className="text-right editable-cell">
                   <input
                     type="number"
                     step="0.5"
                     min="0"
                     value={day.accompanyNight || ''}
                     onChange={(e) => updateCell(index, 'accompanyNight', Number(e.target.value) || 0)}
-                    className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-1"
-                    style={{ fontSize: '10px' }}
+                    className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
                   />
                 </td>
-                <td className="border border-gray-400 px-1 py-1 text-[10px] text-right editable-cell">
+                <td className="text-right editable-cell">
                   <input
                     type="number"
                     step="0.5"
                     min="0"
                     value={day.officeWork || ''}
                     onChange={(e) => updateCell(index, 'officeWork', Number(e.target.value) || 0)}
-                    className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-1"
-                    style={{ fontSize: '10px' }}
+                    className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
                   />
                 </td>
-                <td className="border border-gray-400 px-1 py-1 text-[10px] text-right editable-cell">
+                <td className="text-right editable-cell">
                   <input
                     type="number"
                     step="0.5"
                     min="0"
                     value={day.salesWork || ''}
                     onChange={(e) => updateCell(index, 'salesWork', Number(e.target.value) || 0)}
-                    className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-1"
-                    style={{ fontSize: '10px' }}
+                    className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
                   />
                 </td>
-                <td className="border border-gray-400 px-1 py-1 text-[10px] text-right bg-gray-50">
+                <td className="text-right bg-gray-50">
                   {formatHours(day.totalHours)}
                 </td>
               </tr>
             ))}
             {/* 合計行 */}
             <tr className="bg-yellow-100 font-bold">
-              <td className="border border-gray-400 px-1 py-1 text-[10px] text-center" colSpan={2}>
+              <td className="text-center" colSpan={2}>
                 合計
               </td>
-              <td className="border border-gray-400 px-1 py-1 text-[10px] text-right">
+              <td className="text-right">
                 {totals.normalWork}時間
               </td>
-              <td className="border border-gray-400 px-1 py-1 text-[10px] text-right">
+              <td className="text-right">
                 {totals.normalNight}時間
               </td>
-              <td className="border border-gray-400 px-1 py-1 text-[10px] text-right">
+              <td className="text-right">
                 {totals.accompanyWork}時間
               </td>
-              <td className="border border-gray-400 px-1 py-1 text-[10px] text-right">
+              <td className="text-right">
                 {totals.accompanyNight}時間
               </td>
-              <td className="border border-gray-400 px-1 py-1 text-[10px] text-right">
+              <td className="text-right">
                 {totals.officeWork}時間
               </td>
-              <td className="border border-gray-400 px-1 py-1 text-[10px] text-right">
+              <td className="text-right">
                 {totals.salesWork}時間
               </td>
-              <td className="border border-gray-400 px-1 py-1 text-[10px] text-right">
+              <td className="text-right">
                 {totals.totalHours.toFixed(1)}時間
               </td>
             </tr>

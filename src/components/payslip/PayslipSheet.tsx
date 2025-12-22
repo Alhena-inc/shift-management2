@@ -102,17 +102,19 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, onChange }) => {
   );
 
   return (
-    <div className="bg-gray-100 p-4">
+    <div className="bg-gray-100 p-2 h-full overflow-auto">
       {/* スプレッドシート風スタイルを追加 */}
       <style>
         {`
           .sheet-table {
             font-family: 'Arial', 'Hiragino Sans', 'Meiryo', sans-serif;
             border-collapse: collapse;
+            font-size: 11px;
           }
 
           .sheet-table td, .sheet-table th {
             border: 1px solid #999;
+            padding: 2px 4px;
           }
 
           .blue-header {
@@ -120,19 +122,21 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, onChange }) => {
             color: white;
             text-align: center;
             font-weight: bold;
-            padding: 8px;
+            padding: 4px;
+            font-size: 12px;
           }
 
           .red-header {
             background-color: #cc0000;
             color: white;
             text-align: center;
-            font-size: 11px;
+            font-size: 9px;
+            padding: 2px;
           }
 
           .editable-cell {
             cursor: pointer;
-            min-width: 50px;
+            min-width: 40px;
           }
 
           .editable-cell:hover {
@@ -156,14 +160,14 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, onChange }) => {
       </style>
 
       {/* 3カラムレイアウト */}
-      <div className="flex gap-4 overflow-x-auto">
+      <div className="flex gap-2">
         {/* 左カラム：賃金明細本体 */}
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0" style={{ width: '420px' }}>
           <PayslipMain payslip={payslip} onChange={handleMainChange} />
         </div>
 
         {/* 中央カラム：月勤怠表 */}
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0" style={{ width: '550px' }}>
           <MonthlyAttendanceSheet
             month={payslip.month}
             dailyAttendance={payslip.dailyAttendance}
@@ -173,7 +177,7 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, onChange }) => {
 
         {/* 右カラム：ケア一覧（時給のみ） */}
         {payslip.employmentType === 'アルバイト' && (
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0" style={{ width: '650px' }}>
             <CareListSheet
               month={payslip.month}
               careList={payslip.careList}

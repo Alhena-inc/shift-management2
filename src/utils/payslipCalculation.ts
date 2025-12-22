@@ -179,9 +179,9 @@ export function generateHourlyPayslipFromShifts(
 
   // 基本時給を設定
   // TODO: ヘルパーマスタに基本時給を追加する必要がある
-  payslip.baseHourlyRate = 2000; // 仮の値
-  payslip.treatmentAllowance = 100; // 仮の値
-  payslip.totalHourlyRate = payslip.baseHourlyRate + payslip.treatmentAllowance;
+  payslip.baseHourlyRate = 1200; // デフォルト値
+  payslip.treatmentAllowance = 800; // デフォルト値
+  payslip.totalHourlyRate = payslip.baseHourlyRate + payslip.treatmentAllowance; // 合計 2000円
 
   // シフトデータを日次に集計
   const daysInMonth = new Date(year, month, 0).getDate();
