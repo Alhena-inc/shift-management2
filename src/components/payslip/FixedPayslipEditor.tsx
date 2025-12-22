@@ -21,6 +21,24 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
   const recalculate = useCallback((updated: FixedPayslip): FixedPayslip => {
     const newPayslip = { ...updated };
 
+    // 日次勤怠から勤怠サマリーを再計算
+    let totalWorkDays = 0;
+    let totalWorkHours = 0;
+
+    newPayslip.dailyAttendance.forEach(day => {
+      // 合計勤務時間を再計算
+      day.totalHours = day.careWork + day.workHours;
+
+      // 稼働日数をカウント（workHoursが0より大きい場合）
+      if (day.workHours > 0) {
+        totalWorkDays++;
+      }
+      totalWorkHours += day.workHours;
+    });
+
+    newPayslip.attendance.totalWorkDays = totalWorkDays;
+    newPayslip.attendance.totalWorkHours = totalWorkHours;
+
     // 基本給関連の再計算
     newPayslip.totalSalary = newPayslip.baseSalary + newPayslip.treatmentAllowance;
 
@@ -126,6 +144,20 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
   const formatCurrency = (amount: number): string => {
     return `¥${amount.toLocaleString()}`;
   };
+
+  // 時間フォーマット（値がある場合「3.0時間」、0の場合は空文字）
+  const formatHours = (hours: number): string => {
+    return hours > 0 ? `${hours.toFixed(1)}時間` : '';
+  };
+
+  // 日次勤怠の更新
+  const updateDailyAttendance = useCallback((dayIndex: number, field: 'careWork' | 'workHours', value: number) => {
+    setPayslip(prev => {
+      const updated = JSON.parse(JSON.stringify(prev)); // Deep copy
+      updated.dailyAttendance[dayIndex][field] = value;
+      return recalculate(updated);
+    });
+  }, [recalculate]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -433,33 +465,69 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
                   <table className="w-full text-sm border-collapse">
                     <thead className="bg-gray-100 sticky top-0">
                       <tr>
-                        <th className="border border-gray-300 px-2 py-1 text-center w-12">日</th>
+                        <th className="border border-gray-300 px-2 py-1 text-center w-16">日付</th>
                         <th className="border border-gray-300 px-2 py-1 text-center w-12">曜日</th>
                         <th className="border border-gray-300 px-2 py-1 text-center">ケア稼働</th>
                         <th className="border border-gray-300 px-2 py-1 text-center">勤務時間</th>
-                        <th className="border border-gray-300 px-2 py-1 text-center">合計</th>
+                        <th className="border border-gray-300 px-2 py-1 text-center">合計勤務時間</th>
                       </tr>
                     </thead>
                     <tbody>
                       {payslip.dailyAttendance.map((day, index) => (
                         <tr key={index} className={day.weekday === '日' ? 'bg-red-50' : day.weekday === '土' ? 'bg-blue-50' : ''}>
                           <td className="border border-gray-300 px-2 py-1 text-center font-medium">
-                            {day.day}
+                            {payslip.month}/{day.day}
                           </td>
                           <td className="border border-gray-300 px-2 py-1 text-center">
                             {day.weekday}
                           </td>
-                          <td className="border border-gray-300 px-2 py-1 text-right">
-                            {day.careWork > 0 ? day.careWork.toFixed(1) : '-'}
+                          <td className="border border-gray-300 px-1 py-1 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <input
+                                type="number"
+                                step="0.5"
+                                min="0"
+                                value={day.careWork || ''}
+                                onChange={(e) => updateDailyAttendance(index, 'careWork', Number(e.target.value) || 0)}
+                                className="w-16 text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-1"
+                                placeholder=""
+                              />
+                              {day.careWork > 0 && <span className="text-gray-500 text-xs">時間</span>}
+                            </div>
                           </td>
-                          <td className="border border-gray-300 px-2 py-1 text-right">
-                            {day.workHours > 0 ? day.workHours.toFixed(1) : '-'}
+                          <td className="border border-gray-300 px-1 py-1 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <input
+                                type="number"
+                                step="0.5"
+                                min="0"
+                                value={day.workHours || ''}
+                                onChange={(e) => updateDailyAttendance(index, 'workHours', Number(e.target.value) || 0)}
+                                className="w-16 text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-1"
+                                placeholder=""
+                              />
+                              {day.workHours > 0 && <span className="text-gray-500 text-xs">時間</span>}
+                            </div>
                           </td>
-                          <td className="border border-gray-300 px-2 py-1 text-right font-medium">
-                            {day.totalHours > 0 ? day.totalHours.toFixed(1) : '-'}
+                          <td className="border border-gray-300 px-2 py-1 text-right font-medium bg-gray-50">
+                            {formatHours(day.totalHours)}
                           </td>
                         </tr>
                       ))}
+                      <tr className="bg-yellow-50 font-bold">
+                        <td colSpan={2} className="border border-gray-300 px-2 py-1 text-center">
+                          合計
+                        </td>
+                        <td className="border border-gray-300 px-2 py-1 text-right">
+                          {formatHours(payslip.dailyAttendance.reduce((sum, d) => sum + d.careWork, 0))}
+                        </td>
+                        <td className="border border-gray-300 px-2 py-1 text-right">
+                          {formatHours(payslip.attendance.totalWorkHours)}
+                        </td>
+                        <td className="border border-gray-300 px-2 py-1 text-right">
+                          {formatHours(payslip.dailyAttendance.reduce((sum, d) => sum + d.totalHours, 0))}
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>

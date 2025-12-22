@@ -21,6 +21,56 @@ export const HourlyPayslipEditor: React.FC<HourlyPayslipEditorProps> = ({
   const recalculate = useCallback((updated: HourlyPayslip): HourlyPayslip => {
     const newPayslip = { ...updated };
 
+    // 日次勤怠から勤怠サマリーを再計算
+    let normalHours = 0;
+    let accompanyHours = 0;
+    let nightNormalHours = 0;
+    let nightAccompanyHours = 0;
+    let officeHours = 0;
+    let salesHours = 0;
+
+    const workDaysSet = new Set<number>();
+    const accompanyDaysSet = new Set<number>();
+
+    newPayslip.dailyAttendance.forEach((day, index) => {
+      // 合計勤務時間を再計算
+      day.totalHours =
+        day.normalWork +
+        day.normalNight +
+        day.accompanyWork +
+        day.accompanyNight +
+        day.officeWork +
+        day.salesWork;
+
+      // 各項目を集計
+      normalHours += day.normalWork;
+      nightNormalHours += day.normalNight;
+      accompanyHours += day.accompanyWork;
+      nightAccompanyHours += day.accompanyNight;
+      officeHours += day.officeWork;
+      salesHours += day.salesWork;
+
+      // 稼働日数をカウント
+      if (day.normalWork > 0 || day.normalNight > 0) {
+        workDaysSet.add(index);
+      }
+      if (day.accompanyWork > 0 || day.accompanyNight > 0) {
+        accompanyDaysSet.add(index);
+      }
+    });
+
+    newPayslip.attendance.normalWorkDays = workDaysSet.size;
+    newPayslip.attendance.accompanyDays = accompanyDaysSet.size;
+    newPayslip.attendance.totalWorkDays = workDaysSet.size;
+    newPayslip.attendance.normalHours = normalHours;
+    newPayslip.attendance.accompanyHours = accompanyHours;
+    newPayslip.attendance.nightNormalHours = nightNormalHours;
+    newPayslip.attendance.nightAccompanyHours = nightAccompanyHours;
+    newPayslip.attendance.officeHours = officeHours;
+    newPayslip.attendance.salesHours = salesHours;
+    newPayslip.attendance.totalWorkHours =
+      normalHours + nightNormalHours + accompanyHours + nightAccompanyHours + officeHours + salesHours;
+
     // 時給関連の再計算
     newPayslip.totalHourlyRate = newPayslip.baseHourlyRate + newPayslip.treatmentAllowance;
 
@@ -138,6 +188,43 @@ export const HourlyPayslipEditor: React.FC<HourlyPayslipEditorProps> = ({
   const formatCurrency = (amount: number): string => {
     return `¥${amount.toLocaleString()}`;
   };
+
+  // 時間フォーマット（値がある場合「3.0時間」、0の場合は空文字）
+  const formatHours = (hours: number): string => {
+    return hours > 0 ? `${hours.toFixed(1)}時間` : '';
+  };
+
+  // 日次勤怠の更新
+  const updateDailyAttendance = useCallback((
+    dayIndex: number,
+    field: 'normalWork' | 'normalNight' | 'accompanyWork' | 'accompanyNight' | 'officeWork' | 'salesWork',
+    value: number
+  ) => {
+    setPayslip(prev => {
+      const updated = JSON.parse(JSON.stringify(prev)); // Deep copy
+      updated.dailyAttendance[dayIndex][field] = value;
+      return recalculate(updated);
+    });
+  }, [recalculate]);
+
+  // ケア一覧の更新
+  const updateCareSlot = useCallback((dayIndex: number, slotIndex: number, field: 'clientName' | 'timeRange', value: string) => {
+    setPayslip(prev => {
+      const updated = JSON.parse(JSON.stringify(prev)); // Deep copy
+
+      // スロットが存在しない場合は作成
+      if (!updated.careList[dayIndex].slots[slotIndex]) {
+        updated.careList[dayIndex].slots[slotIndex] = {
+          slotNumber: slotIndex + 1,
+          clientName: '',
+          timeRange: ''
+        };
+      }
+
+      updated.careList[dayIndex].slots[slotIndex][field] = value;
+      return updated;
+    });
+  }, []);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -475,12 +562,12 @@ export const HourlyPayslipEditor: React.FC<HourlyPayslipEditorProps> = ({
                   <table className="w-full text-xs border-collapse">
                     <thead className="bg-gray-100 sticky top-0">
                       <tr>
-                        <th className="border border-gray-300 px-1 py-1 text-center w-8">日</th>
-                        <th className="border border-gray-300 px-1 py-1 text-center w-8">曜</th>
-                        <th className="border border-gray-300 px-1 py-1 text-center">通常</th>
-                        <th className="border border-gray-300 px-1 py-1 text-center">深夜</th>
-                        <th className="border border-gray-300 px-1 py-1 text-center">同行</th>
-                        <th className="border border-gray-300 px-1 py-1 text-center">深同</th>
+                        <th className="border border-gray-300 px-1 py-1 text-center w-12">日付</th>
+                        <th className="border border-gray-300 px-1 py-1 text-center w-8">曜日</th>
+                        <th className="border border-gray-300 px-1 py-1 text-center">通常稼働</th>
+                        <th className="border border-gray-300 px-1 py-1 text-center">通常(深夜)</th>
+                        <th className="border border-gray-300 px-1 py-1 text-center">同行稼働</th>
+                        <th className="border border-gray-300 px-1 py-1 text-center">同行(深夜)</th>
                         <th className="border border-gray-300 px-1 py-1 text-center">事務</th>
                         <th className="border border-gray-300 px-1 py-1 text-center">営業</th>
                       </tr>
@@ -497,32 +584,121 @@ export const HourlyPayslipEditor: React.FC<HourlyPayslipEditorProps> = ({
                             }
                           >
                             <td className="border border-gray-300 px-1 py-1 text-center font-medium">
-                              {day.day}
+                              {payslip.month}/{day.day}
                             </td>
                             <td className="border border-gray-300 px-1 py-1 text-center">
                               {day.weekday}
                             </td>
-                            <td className="border border-gray-300 px-1 py-1 text-right">
-                              {day.normalWork > 0 ? day.normalWork.toFixed(1) : '-'}
+                            <td className="border border-gray-300 px-0.5 py-1 text-right">
+                              <div className="flex items-center justify-end gap-0.5">
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  min="0"
+                                  value={day.normalWork || ''}
+                                  onChange={(e) => updateDailyAttendance(index, 'normalWork', Number(e.target.value) || 0)}
+                                  className="w-12 text-right text-xs border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-0.5"
+                                  placeholder=""
+                                />
+                                {day.normalWork > 0 && <span className="text-gray-500 text-[10px]">時間</span>}
+                              </div>
                             </td>
-                            <td className="border border-gray-300 px-1 py-1 text-right">
-                              {day.normalNight > 0 ? day.normalNight.toFixed(1) : '-'}
+                            <td className="border border-gray-300 px-0.5 py-1 text-right">
+                              <div className="flex items-center justify-end gap-0.5">
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  min="0"
+                                  value={day.normalNight || ''}
+                                  onChange={(e) => updateDailyAttendance(index, 'normalNight', Number(e.target.value) || 0)}
+                                  className="w-12 text-right text-xs border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-0.5"
+                                  placeholder=""
+                                />
+                                {day.normalNight > 0 && <span className="text-gray-500 text-[10px]">時間</span>}
+                              </div>
                             </td>
-                            <td className="border border-gray-300 px-1 py-1 text-right">
-                              {day.accompanyWork > 0 ? day.accompanyWork.toFixed(1) : '-'}
+                            <td className="border border-gray-300 px-0.5 py-1 text-right">
+                              <div className="flex items-center justify-end gap-0.5">
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  min="0"
+                                  value={day.accompanyWork || ''}
+                                  onChange={(e) => updateDailyAttendance(index, 'accompanyWork', Number(e.target.value) || 0)}
+                                  className="w-12 text-right text-xs border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-0.5"
+                                  placeholder=""
+                                />
+                                {day.accompanyWork > 0 && <span className="text-gray-500 text-[10px]">時間</span>}
+                              </div>
                             </td>
-                            <td className="border border-gray-300 px-1 py-1 text-right">
-                              {day.accompanyNight > 0 ? day.accompanyNight.toFixed(1) : '-'}
+                            <td className="border border-gray-300 px-0.5 py-1 text-right">
+                              <div className="flex items-center justify-end gap-0.5">
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  min="0"
+                                  value={day.accompanyNight || ''}
+                                  onChange={(e) => updateDailyAttendance(index, 'accompanyNight', Number(e.target.value) || 0)}
+                                  className="w-12 text-right text-xs border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-0.5"
+                                  placeholder=""
+                                />
+                                {day.accompanyNight > 0 && <span className="text-gray-500 text-[10px]">時間</span>}
+                              </div>
                             </td>
-                            <td className="border border-gray-300 px-1 py-1 text-right">
-                              {day.officeWork > 0 ? day.officeWork.toFixed(1) : '-'}
+                            <td className="border border-gray-300 px-0.5 py-1 text-right">
+                              <div className="flex items-center justify-end gap-0.5">
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  min="0"
+                                  value={day.officeWork || ''}
+                                  onChange={(e) => updateDailyAttendance(index, 'officeWork', Number(e.target.value) || 0)}
+                                  className="w-12 text-right text-xs border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-0.5"
+                                  placeholder=""
+                                />
+                                {day.officeWork > 0 && <span className="text-gray-500 text-[10px]">時間</span>}
+                              </div>
                             </td>
-                            <td className="border border-gray-300 px-1 py-1 text-right">
-                              {day.salesWork > 0 ? day.salesWork.toFixed(1) : '-'}
+                            <td className="border border-gray-300 px-0.5 py-1 text-right">
+                              <div className="flex items-center justify-end gap-0.5">
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  min="0"
+                                  value={day.salesWork || ''}
+                                  onChange={(e) => updateDailyAttendance(index, 'salesWork', Number(e.target.value) || 0)}
+                                  className="w-12 text-right text-xs border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-0.5"
+                                  placeholder=""
+                                />
+                                {day.salesWork > 0 && <span className="text-gray-500 text-[10px]">時間</span>}
+                              </div>
                             </td>
                           </tr>
                         );
                       })}
+                      <tr className="bg-yellow-50 font-bold">
+                        <td colSpan={2} className="border border-gray-300 px-1 py-1 text-center">
+                          合計
+                        </td>
+                        <td className="border border-gray-300 px-1 py-1 text-right text-xs">
+                          {formatHours(payslip.attendance.normalHours)}
+                        </td>
+                        <td className="border border-gray-300 px-1 py-1 text-right text-xs">
+                          {formatHours(payslip.attendance.nightNormalHours)}
+                        </td>
+                        <td className="border border-gray-300 px-1 py-1 text-right text-xs">
+                          {formatHours(payslip.attendance.accompanyHours)}
+                        </td>
+                        <td className="border border-gray-300 px-1 py-1 text-right text-xs">
+                          {formatHours(payslip.attendance.nightAccompanyHours)}
+                        </td>
+                        <td className="border border-gray-300 px-1 py-1 text-right text-xs">
+                          {formatHours(payslip.attendance.officeHours)}
+                        </td>
+                        <td className="border border-gray-300 px-1 py-1 text-right text-xs">
+                          {formatHours(payslip.attendance.salesHours)}
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -532,46 +708,77 @@ export const HourlyPayslipEditor: React.FC<HourlyPayslipEditorProps> = ({
               <div className="border border-gray-200 rounded-lg p-4">
                 <h3 className="text-lg font-bold text-gray-800 mb-4">ケア一覧</h3>
                 <div className="overflow-y-auto max-h-96">
-                  <table className="w-full text-xs border-collapse">
+                  <table className="w-full text-[10px] border-collapse">
                     <thead className="bg-gray-100 sticky top-0">
                       <tr>
-                        <th className="border border-gray-300 px-1 py-1 text-center w-8">日</th>
-                        <th className="border border-gray-300 px-1 py-1 text-center w-8">①</th>
-                        <th className="border border-gray-300 px-1 py-1 text-center w-8">②</th>
-                        <th className="border border-gray-300 px-1 py-1 text-center w-8">③</th>
-                        <th className="border border-gray-300 px-1 py-1 text-center w-8">④</th>
-                        <th className="border border-gray-300 px-1 py-1 text-center w-8">⑤</th>
+                        <th className="border border-gray-300 px-1 py-1 text-center w-12">日付</th>
+                        <th className="border border-gray-300 px-1 py-1 text-center">ケア①</th>
+                        <th className="border border-gray-300 px-1 py-1 text-center">ケア②</th>
+                        <th className="border border-gray-300 px-1 py-1 text-center">ケア③</th>
+                        <th className="border border-gray-300 px-1 py-1 text-center">ケア④</th>
+                        <th className="border border-gray-300 px-1 py-1 text-center">ケア⑤</th>
                       </tr>
                     </thead>
                     <tbody>
                       {payslip.careList.map((daycare, index) => {
                         const day = payslip.dailyAttendance[index];
 
+                        // 各日付に対して2行表示（利用者名 + 時間）
                         return (
-                          <tr
-                            key={index}
-                            className={
-                              day.weekday === '日' ? 'bg-red-50' :
-                              day.weekday === '土' ? 'bg-blue-50' :
-                              ''
-                            }
-                          >
-                            <td className="border border-gray-300 px-1 py-1 text-center font-medium">
-                              {day.day}
-                            </td>
-                            {[1, 2, 3, 4, 5].map(slotNum => {
-                              const slot = daycare.slots.find(s => s.slotNumber === slotNum);
-                              return (
-                                <td key={slotNum} className="border border-gray-300 px-1 py-1 text-center text-[10px]">
-                                  {slot ? (
-                                    <div className="truncate" title={`${slot.clientName} ${slot.timeRange}`}>
-                                      {slot.clientName}
-                                    </div>
-                                  ) : '-'}
-                                </td>
-                              );
-                            })}
-                          </tr>
+                          <React.Fragment key={index}>
+                            {/* 1行目：利用者名 */}
+                            <tr
+                              className={
+                                day.weekday === '日' ? 'bg-red-50' :
+                                day.weekday === '土' ? 'bg-blue-50' :
+                                ''
+                              }
+                            >
+                              <td
+                                rowSpan={2}
+                                className="border border-gray-300 px-1 py-1 text-center font-medium align-middle"
+                              >
+                                {payslip.month}/{day.day}
+                              </td>
+                              {[0, 1, 2, 3, 4].map(slotIndex => {
+                                const slot = daycare.slots.find(s => s.slotNumber === slotIndex + 1);
+                                return (
+                                  <td key={slotIndex} className="border border-gray-300 px-0.5 py-0.5">
+                                    <input
+                                      type="text"
+                                      value={slot?.clientName || ''}
+                                      onChange={(e) => updateCareSlot(index, slotIndex, 'clientName', e.target.value)}
+                                      className="w-full text-[10px] text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-0.5"
+                                      placeholder=""
+                                    />
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                            {/* 2行目：時間 */}
+                            <tr
+                              className={
+                                day.weekday === '日' ? 'bg-red-50' :
+                                day.weekday === '土' ? 'bg-blue-50' :
+                                ''
+                              }
+                            >
+                              {[0, 1, 2, 3, 4].map(slotIndex => {
+                                const slot = daycare.slots.find(s => s.slotNumber === slotIndex + 1);
+                                return (
+                                  <td key={slotIndex} className="border border-gray-300 px-0.5 py-0.5">
+                                    <input
+                                      type="text"
+                                      value={slot?.timeRange || ''}
+                                      onChange={(e) => updateCareSlot(index, slotIndex, 'timeRange', e.target.value)}
+                                      className="w-full text-[10px] text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-0.5"
+                                      placeholder=""
+                                    />
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          </React.Fragment>
                         );
                       })}
                     </tbody>
