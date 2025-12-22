@@ -23,13 +23,13 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, onChange }) => {
   };
 
   return (
-    <div className="bg-white border border-gray-400" style={{ width: '420px' }}>
+    <div className="bg-white border border-gray-400" style={{ width: '550px', minWidth: '550px' }}>
       {/* ヘッダー */}
-      <div className="border-b border-gray-400 p-2 text-center">
-        <div className="font-bold text-sm">{COMPANY_INFO.name}</div>
-        <div className="text-[10px]">{COMPANY_INFO.officeName}</div>
-        <div className="text-[9px] text-gray-700">{COMPANY_INFO.address}</div>
-        <div className="text-[9px] text-gray-700">TEL: {COMPANY_INFO.tel}</div>
+      <div className="border-b border-gray-400 p-3 text-center">
+        <div className="font-bold text-base">{COMPANY_INFO.name}</div>
+        <div className="text-xs">{COMPANY_INFO.officeName}</div>
+        <div className="text-[10px] text-gray-700">{COMPANY_INFO.address}</div>
+        <div className="text-[10px] text-gray-700">TEL: {COMPANY_INFO.tel}</div>
       </div>
 
       {/* 基本情報テーブル */}

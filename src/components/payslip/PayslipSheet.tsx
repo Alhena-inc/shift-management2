@@ -109,12 +109,12 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, onChange }) => {
           .sheet-table {
             font-family: 'Arial', 'Hiragino Sans', 'Meiryo', sans-serif;
             border-collapse: collapse;
-            font-size: 11px;
+            font-size: 12px;
           }
 
           .sheet-table td, .sheet-table th {
             border: 1px solid #999;
-            padding: 2px 4px;
+            padding: 4px 8px;
           }
 
           .blue-header {
@@ -122,21 +122,21 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, onChange }) => {
             color: white;
             text-align: center;
             font-weight: bold;
-            padding: 4px;
-            font-size: 12px;
+            padding: 6px;
+            font-size: 13px;
           }
 
           .red-header {
             background-color: #cc0000;
             color: white;
             text-align: center;
-            font-size: 9px;
-            padding: 2px;
+            font-size: 10px;
+            padding: 3px;
           }
 
           .editable-cell {
             cursor: pointer;
-            min-width: 40px;
+            min-width: 45px;
           }
 
           .editable-cell:hover {
@@ -160,9 +160,9 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, onChange }) => {
       </style>
 
       {/* 3カラムレイアウト */}
-      <div className="flex gap-2">
+      <div className="flex gap-3">
         {/* 左カラム：賃金明細本体 */}
-        <div className="flex-shrink-0" style={{ width: '420px' }}>
+        <div className="flex-shrink-0" style={{ width: '550px', minWidth: '550px' }}>
           <PayslipMain payslip={payslip} onChange={handleMainChange} />
         </div>
 
