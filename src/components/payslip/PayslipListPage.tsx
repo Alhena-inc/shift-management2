@@ -22,6 +22,9 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, onEdi
   const [helpers, setHelpers] = useState<Helper[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState<string | null>(null);
+  const [showSalaryTypeDialog, setShowSalaryTypeDialog] = useState(false);
+  const [selectedHelper, setSelectedHelper] = useState<Helper | null>(null);
+  const [selectedSalaryType, setSelectedSalaryType] = useState<'hourly' | 'fixed'>('hourly');
 
   // 給与明細とヘルパー一覧を読み込み
   const loadData = useCallback(async () => {
@@ -45,21 +48,41 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, onEdi
     loadData();
   }, [loadData]);
 
-  // シフトから給与明細を生成
-  const generateFromShifts = useCallback(async (helper: Helper) => {
-    setGenerating(helper.id);
+  // 給与タイプ選択ダイアログを開く
+  const openSalaryTypeDialog = useCallback((helper: Helper) => {
+    setSelectedHelper(helper);
+    setSelectedSalaryType('hourly');
+    setShowSalaryTypeDialog(true);
+  }, []);
+
+  // 給与タイプ選択ダイアログを閉じる
+  const closeSalaryTypeDialog = useCallback(() => {
+    setShowSalaryTypeDialog(false);
+    setSelectedHelper(null);
+  }, []);
+
+  // シフトから給与明細を生成（給与タイプ指定）
+  const generateFromShifts = useCallback(async (salaryType: 'hourly' | 'fixed') => {
+    if (!selectedHelper) return;
+
+    setGenerating(selectedHelper.id);
+    setShowSalaryTypeDialog(false);
+
     try {
       // シフトデータを読み込み
       const shifts = await loadShiftsForMonth(selectedYear, selectedMonth);
-      const helperShifts = shifts.filter(s => s.helperId === helper.id);
+      const helperShifts = shifts.filter(s => s.helperId === selectedHelper.id);
 
       if (helperShifts.length === 0) {
-        alert(`${helper.name}さんのシフトデータが見つかりません`);
+        alert(`${selectedHelper.name}さんのシフトデータが見つかりません`);
         return;
       }
 
+      // ヘルパーの給与タイプを一時的に設定
+      const helperWithSalaryType = { ...selectedHelper, salaryType };
+
       // 給与明細を自動生成
-      const payslip = generatePayslipFromShifts(helper, helperShifts, selectedYear, selectedMonth);
+      const payslip = generatePayslipFromShifts(helperWithSalaryType, helperShifts, selectedYear, selectedMonth);
 
       // 保存
       await savePayslip(payslip);
@@ -67,14 +90,15 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, onEdi
       // 一覧を再読み込み
       await loadData();
 
-      alert(`${helper.name}さんの給与明細を生成しました`);
+      alert(`${selectedHelper.name}さんの給与明細を生成しました`);
     } catch (error) {
       console.error('給与明細生成エラー:', error);
       alert('給与明細の生成に失敗しました');
     } finally {
       setGenerating(null);
+      setSelectedHelper(null);
     }
-  }, [selectedYear, selectedMonth, loadData]);
+  }, [selectedHelper, selectedYear, selectedMonth, loadData]);
 
   // 一括生成
   const generateAllFromShifts = useCallback(async () => {
@@ -228,7 +252,6 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, onEdi
               {helpers.map(helper => {
                 const payslip = getPayslipForHelper(helper.id);
                 const isGenerating = generating === helper.id;
-                const employmentType = helper.salaryType === 'fixed' ? '契約社員' : 'アルバイト';
 
                 return (
                   <div
@@ -239,9 +262,11 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, onEdi
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
                         <h3 className="text-lg font-bold text-gray-800">{helper.name}</h3>
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${getEmploymentTypeBadge(employmentType)}`}>
-                          {employmentType}
-                        </span>
+                        {payslip && (
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${getEmploymentTypeBadge(payslip.employmentType)}`}>
+                            {payslip.employmentType}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -274,7 +299,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, onEdi
                             編集
                           </button>
                           <button
-                            onClick={() => generateFromShifts(helper)}
+                            onClick={() => openSalaryTypeDialog(helper)}
                             disabled={isGenerating}
                             className="flex-1 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-300 text-sm font-medium"
                           >
@@ -289,7 +314,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, onEdi
                         </>
                       ) : (
                         <button
-                          onClick={() => generateFromShifts(helper)}
+                          onClick={() => openSalaryTypeDialog(helper)}
                           disabled={isGenerating}
                           className="flex-1 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-300 text-sm font-medium"
                         >
@@ -319,6 +344,77 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, onEdi
           </div>
         </div>
       </div>
+
+      {/* 給与タイプ選択ダイアログ */}
+      {showSalaryTypeDialog && selectedHelper && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">
+              給与タイプを選択
+            </h3>
+            <p className="text-sm text-gray-600 mb-6">
+              {selectedHelper.name}さんの給与明細を作成します。給与タイプを選択してください。
+            </p>
+
+            <div className="space-y-3 mb-6">
+              <label
+                className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${
+                  selectedSalaryType === 'hourly' ? 'border-green-500 bg-green-50' : 'border-gray-300'
+                }`}
+                onClick={() => setSelectedSalaryType('hourly')}
+              >
+                <input
+                  type="radio"
+                  value="hourly"
+                  checked={selectedSalaryType === 'hourly'}
+                  onChange={() => setSelectedSalaryType('hourly')}
+                  className="w-5 h-5"
+                />
+                <span className="text-2xl">⏱️</span>
+                <div>
+                  <div className="text-lg font-medium">時給（アルバイト）</div>
+                  <div className="text-xs text-gray-600">通常・深夜・同行・事務・営業を時間単位で計算</div>
+                </div>
+              </label>
+
+              <label
+                className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${
+                  selectedSalaryType === 'fixed' ? 'border-blue-500 bg-blue-50' : 'border-gray-300'
+                }`}
+                onClick={() => setSelectedSalaryType('fixed')}
+              >
+                <input
+                  type="radio"
+                  value="fixed"
+                  checked={selectedSalaryType === 'fixed'}
+                  onChange={() => setSelectedSalaryType('fixed')}
+                  className="w-5 h-5"
+                />
+                <span className="text-2xl">💼</span>
+                <div>
+                  <div className="text-lg font-medium">固定給（契約社員）</div>
+                  <div className="text-xs text-gray-600">基本給+処遇改善加算の固定額</div>
+                </div>
+              </label>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={closeSalaryTypeDialog}
+                className="flex-1 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 font-medium"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={() => generateFromShifts(selectedSalaryType)}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-medium"
+              >
+                生成する
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
