@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Helper } from '../../types';
 import type { Payslip } from '../../types/payslip';
 import {
@@ -183,6 +183,17 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, onEdi
     return `¥${amount.toLocaleString()}`;
   };
 
+  // 合計計算
+  const totals = useMemo(() => {
+    const created = payslips.filter(p => p);
+    return {
+      count: created.length,
+      totalPayment: created.reduce((sum, p) => sum + p.payments.totalPayment, 0),
+      totalDeduction: created.reduce((sum, p) => sum + p.deductions.totalDeduction, 0),
+      netPayment: created.reduce((sum, p) => sum + p.totals.netPayment, 0)
+    };
+  }, [payslips]);
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col">
@@ -248,83 +259,109 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, onEdi
               ヘルパーが登録されていません
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {helpers.map(helper => {
-                const payslip = getPayslipForHelper(helper.id);
-                const isGenerating = generating === helper.id;
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border border-gray-300 px-2 py-2 text-sm font-medium">No</th>
+                    <th className="border border-gray-300 px-3 py-2 text-sm font-medium text-left">ヘルパー名</th>
+                    <th className="border border-gray-300 px-2 py-2 text-sm font-medium">給与タイプ</th>
+                    <th className="border border-gray-300 px-3 py-2 text-sm font-medium text-right">支給額</th>
+                    <th className="border border-gray-300 px-3 py-2 text-sm font-medium text-right">控除額</th>
+                    <th className="border border-gray-300 px-3 py-2 text-sm font-medium text-right">差引支給額</th>
+                    <th className="border border-gray-300 px-2 py-2 text-sm font-medium">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {helpers.map((helper, index) => {
+                    const payslip = getPayslipForHelper(helper.id);
+                    const isGenerating = generating === helper.id;
 
-                return (
-                  <div
-                    key={helper.id}
-                    className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-                  >
-                    {/* ヘルパー名と給与タイプ */}
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-lg font-bold text-gray-800">{helper.name}</h3>
-                        {payslip && (
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${getEmploymentTypeBadge(payslip.employmentType)}`}>
-                            {payslip.employmentType}
-                          </span>
+                    return (
+                      <tr key={helper.id} className="hover:bg-gray-50">
+                        <td className="border border-gray-300 px-2 py-2 text-sm text-center">
+                          {index + 1}
+                        </td>
+                        <td className="border border-gray-300 px-3 py-2 text-sm">
+                          {helper.name}
+                        </td>
+                        <td className="border border-gray-300 px-2 py-2 text-sm text-center">
+                          {payslip ? (
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${getEmploymentTypeBadge(payslip.employmentType)}`}>
+                              {payslip.employmentType}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">-</span>
+                          )}
+                        </td>
+                        {payslip ? (
+                          <>
+                            <td className="border border-gray-300 px-3 py-2 text-sm text-right">
+                              {formatCurrency(payslip.payments.totalPayment)}
+                            </td>
+                            <td className="border border-gray-300 px-3 py-2 text-sm text-right">
+                              {formatCurrency(payslip.deductions.totalDeduction)}
+                            </td>
+                            <td className="border border-gray-300 px-3 py-2 text-sm text-right font-medium text-blue-600">
+                              {formatCurrency(payslip.totals.netPayment)}
+                            </td>
+                            <td className="border border-gray-300 px-2 py-2 text-sm text-center">
+                              <div className="flex gap-1 justify-center">
+                                <button
+                                  onClick={() => handleEdit(payslip)}
+                                  className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                                  title="編集"
+                                >
+                                  編集
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(payslip)}
+                                  className="px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700"
+                                  title="削除"
+                                >
+                                  削除
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="border border-gray-300 px-3 py-2 text-sm text-center text-gray-400">未作成</td>
+                            <td className="border border-gray-300 px-3 py-2 text-sm text-center text-gray-400">-</td>
+                            <td className="border border-gray-300 px-3 py-2 text-sm text-center text-gray-400">-</td>
+                            <td className="border border-gray-300 px-2 py-2 text-sm text-center">
+                              <button
+                                onClick={() => openSalaryTypeDialog(helper)}
+                                disabled={isGenerating}
+                                className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 disabled:bg-gray-300"
+                              >
+                                {isGenerating ? '生成中...' : '生成'}
+                              </button>
+                            </td>
+                          </>
                         )}
-                      </div>
-                    </div>
-
-                    {/* 給与情報 */}
-                    {payslip ? (
-                      <div className="mb-3">
-                        <div className="text-sm text-gray-600 mb-1">差引支給額</div>
-                        <div className="text-2xl font-bold text-blue-600">
-                          {formatCurrency(payslip.totals.netPayment)}
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          支給: {formatCurrency(payslip.payments.totalPayment)} -
-                          控除: {formatCurrency(payslip.deductions.totalDeduction)}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="mb-3 text-gray-500 italic">
-                        給与明細が未作成です
-                      </div>
-                    )}
-
-                    {/* アクションボタン */}
-                    <div className="flex gap-2">
-                      {payslip ? (
-                        <>
-                          <button
-                            onClick={() => handleEdit(payslip)}
-                            className="flex-1 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
-                          >
-                            編集
-                          </button>
-                          <button
-                            onClick={() => openSalaryTypeDialog(helper)}
-                            disabled={isGenerating}
-                            className="flex-1 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-300 text-sm font-medium"
-                          >
-                            {isGenerating ? '生成中...' : '再生成'}
-                          </button>
-                          <button
-                            onClick={() => handleDelete(payslip)}
-                            className="px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm font-medium"
-                          >
-                            削除
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => openSalaryTypeDialog(helper)}
-                          disabled={isGenerating}
-                          className="flex-1 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-300 text-sm font-medium"
-                        >
-                          {isGenerating ? '生成中...' : 'シフトから生成'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-yellow-50 font-medium">
+                    <td colSpan={3} className="border border-gray-300 px-3 py-2 text-sm">
+                      合計（作成済み {totals.count}件）
+                    </td>
+                    <td className="border border-gray-300 px-3 py-2 text-sm text-right">
+                      {formatCurrency(totals.totalPayment)}
+                    </td>
+                    <td className="border border-gray-300 px-3 py-2 text-sm text-right">
+                      {formatCurrency(totals.totalDeduction)}
+                    </td>
+                    <td className="border border-gray-300 px-3 py-2 text-sm text-right font-bold text-blue-600">
+                      {formatCurrency(totals.netPayment)}
+                    </td>
+                    <td className="border border-gray-300 px-2 py-2"></td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           )}
         </div>
