@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Helper } from '../../types';
-import type { Payslip } from '../../types/payslip';
+import type { Payslip, HourlyPayslip } from '../../types/payslip';
+import { isHourlyPayslip } from '../../types/payslip';
 import {
   loadPayslipsByMonth,
   savePayslip,
@@ -8,13 +9,13 @@ import {
 } from '../../services/payslipService';
 import { loadHelpers, loadShiftsForMonth } from '../../services/firestoreService';
 import { generatePayslipFromShifts } from '../../utils/payslipCalculation';
+import PayslipSheet from './PayslipSheet';
 
 interface PayslipListPageProps {
   onClose: () => void;
-  onEditPayslip?: (payslip: Payslip) => void;
 }
 
-export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, onEditPayslip }) => {
+export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose }) => {
   const currentDate = new Date();
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1);
@@ -25,6 +26,8 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, onEdi
   const [showSalaryTypeDialog, setShowSalaryTypeDialog] = useState(false);
   const [selectedHelper, setSelectedHelper] = useState<Helper | null>(null);
   const [selectedSalaryType, setSelectedSalaryType] = useState<'hourly' | 'fixed'>('hourly');
+  const [editingPayslip, setEditingPayslip] = useState<HourlyPayslip | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   // 給与明細とヘルパー一覧を読み込み
   const loadData = useCallback(async () => {
@@ -160,10 +163,34 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, onEdi
 
   // 編集ボタンハンドラ
   const handleEdit = useCallback((payslip: Payslip) => {
-    if (onEditPayslip) {
-      onEditPayslip(payslip);
+    // 時給のみスプレッドシート風UIで編集可能
+    if (isHourlyPayslip(payslip)) {
+      setEditingPayslip(payslip);
+      setShowEditModal(true);
+    } else {
+      alert('固定給の編集UIは未実装です');
     }
-  }, [onEditPayslip]);
+  }, []);
+
+  // 編集を保存
+  const handleSaveEdit = useCallback(async (updatedPayslip: HourlyPayslip) => {
+    try {
+      await savePayslip(updatedPayslip);
+      await loadData();
+      setShowEditModal(false);
+      setEditingPayslip(null);
+      alert('保存しました');
+    } catch (error) {
+      console.error('保存エラー:', error);
+      alert('保存に失敗しました');
+    }
+  }, [loadData]);
+
+  // 編集をキャンセル
+  const handleCancelEdit = useCallback(() => {
+    setShowEditModal(false);
+    setEditingPayslip(null);
+  }, []);
 
   // ヘルパーごとの給与明細を取得
   const getPayslipForHelper = (helperId: string): Payslip | undefined => {
@@ -447,6 +474,50 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, onEdi
                 className="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-medium"
               >
                 生成する
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 編集モーダル */}
+      {showEditModal && editingPayslip && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-[95vw] max-w-[1600px] max-h-[95vh] flex flex-col">
+            {/* ヘッダー */}
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-xl font-bold text-gray-800">
+                給与明細編集 - {editingPayslip.helperName}（{editingPayslip.year}年{editingPayslip.month}月）
+              </h3>
+              <button
+                onClick={handleCancelEdit}
+                className="text-gray-500 hover:text-gray-700 text-2xl font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* コンテンツ */}
+            <div className="flex-1 overflow-auto">
+              <PayslipSheet
+                payslip={editingPayslip}
+                onChange={setEditingPayslip}
+              />
+            </div>
+
+            {/* フッター */}
+            <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+              <button
+                onClick={handleCancelEdit}
+                className="px-6 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 font-medium"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={() => handleSaveEdit(editingPayslip)}
+                className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+              >
+                保存
               </button>
             </div>
           </div>

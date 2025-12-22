@@ -1,11 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import type { Helper, Shift } from '../types';
 import { SERVICE_CONFIG } from '../types';
-import type { Payslip } from '../types/payslip';
-import { isFixedPayslip, isHourlyPayslip } from '../types/payslip';
 import { PayslipListPage } from './payslip/PayslipListPage';
-import { FixedPayslipEditor } from './payslip/FixedPayslipEditor';
-import { HourlyPayslipEditor } from './payslip/HourlyPayslipEditor';
 
 interface Props {
   helpers: Helper[];
@@ -72,7 +68,6 @@ function calculateRegularHours(timeRange: string): number {
 
 export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Props) {
   const [showPayslipList, setShowPayslipList] = useState(false);
-  const [editingPayslip, setEditingPayslip] = useState<Payslip | null>(null);
 
   const sortedHelpers = useMemo(() => [...helpers].sort((a, b) => a.order - b.order), [helpers]);
 
@@ -84,24 +79,6 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
   // 給与明細一覧を閉じる
   const handleClosePayslipList = useCallback(() => {
     setShowPayslipList(false);
-  }, []);
-
-  // 給与明細の編集を開始
-  const handleEditPayslip = useCallback((payslip: Payslip) => {
-    setEditingPayslip(payslip);
-    setShowPayslipList(false);
-  }, []);
-
-  // 給与明細編集を閉じる
-  const handleClosePayslipEditor = useCallback(() => {
-    setEditingPayslip(null);
-    setShowPayslipList(true);
-  }, []);
-
-  // 給与明細保存後
-  const handlePayslipSaved = useCallback(() => {
-    setEditingPayslip(null);
-    setShowPayslipList(true);
   }, []);
 
   // 週の範囲を計算（日付ベース: 1-7日、8-14日、15-21日、22-28日、29日〜、6週目は常に0）
@@ -465,25 +442,6 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
     {showPayslipList && (
       <PayslipListPage
         onClose={handleClosePayslipList}
-        onEditPayslip={handleEditPayslip}
-      />
-    )}
-
-    {/* 給与明細編集モーダル（固定給） */}
-    {editingPayslip && isFixedPayslip(editingPayslip) && (
-      <FixedPayslipEditor
-        payslip={editingPayslip}
-        onClose={handleClosePayslipEditor}
-        onSaved={handlePayslipSaved}
-      />
-    )}
-
-    {/* 給与明細編集モーダル（時給） */}
-    {editingPayslip && isHourlyPayslip(editingPayslip) && (
-      <HourlyPayslipEditor
-        payslip={editingPayslip}
-        onClose={handleClosePayslipEditor}
-        onSaved={handlePayslipSaved}
       />
     )}
     </>
