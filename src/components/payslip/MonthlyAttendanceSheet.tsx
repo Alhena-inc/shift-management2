@@ -60,7 +60,7 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
   };
 
   return (
-    <div className="bg-white border border-gray-400" style={{ width: '550px' }}>
+    <div className="bg-white border border-gray-400" style={{ width: '450px', minWidth: '450px' }}>
       {/* 青ヘッダー */}
       <div className="blue-header">{month}月勤怠表</div>
 
@@ -90,64 +90,82 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                   {day.weekday}
                 </td>
                 <td className="text-right editable-cell">
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    value={day.normalWork || ''}
-                    onChange={(e) => updateCell(index, 'normalWork', Number(e.target.value) || 0)}
-                    className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
-                  />
+                  <div className="flex items-center justify-end gap-1">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      value={day.normalWork || ''}
+                      onChange={(e) => updateCell(index, 'normalWork', Number(e.target.value) || 0)}
+                      className="w-12 text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
+                    />
+                    {day.normalWork > 0 && <span className="text-gray-600">時間</span>}
+                  </div>
                 </td>
                 <td className="text-right editable-cell">
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    value={day.normalNight || ''}
-                    onChange={(e) => updateCell(index, 'normalNight', Number(e.target.value) || 0)}
-                    className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
-                  />
+                  <div className="flex items-center justify-end gap-1">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      value={day.normalNight || ''}
+                      onChange={(e) => updateCell(index, 'normalNight', Number(e.target.value) || 0)}
+                      className="w-12 text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
+                    />
+                    {day.normalNight > 0 && <span className="text-gray-600">時間</span>}
+                  </div>
                 </td>
                 <td className="text-right editable-cell">
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    value={day.accompanyWork || ''}
-                    onChange={(e) => updateCell(index, 'accompanyWork', Number(e.target.value) || 0)}
-                    className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
-                  />
+                  <div className="flex items-center justify-end gap-1">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      value={day.accompanyWork || ''}
+                      onChange={(e) => updateCell(index, 'accompanyWork', Number(e.target.value) || 0)}
+                      className="w-12 text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
+                    />
+                    {day.accompanyWork > 0 && <span className="text-gray-600">時間</span>}
+                  </div>
                 </td>
                 <td className="text-right editable-cell">
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    value={day.accompanyNight || ''}
-                    onChange={(e) => updateCell(index, 'accompanyNight', Number(e.target.value) || 0)}
-                    className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
-                  />
+                  <div className="flex items-center justify-end gap-1">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      value={day.accompanyNight || ''}
+                      onChange={(e) => updateCell(index, 'accompanyNight', Number(e.target.value) || 0)}
+                      className="w-12 text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
+                    />
+                    {day.accompanyNight > 0 && <span className="text-gray-600">時間</span>}
+                  </div>
                 </td>
                 <td className="text-right editable-cell">
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    value={day.officeWork || ''}
-                    onChange={(e) => updateCell(index, 'officeWork', Number(e.target.value) || 0)}
-                    className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
-                  />
+                  <div className="flex items-center justify-end gap-1">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      value={day.officeWork || ''}
+                      onChange={(e) => updateCell(index, 'officeWork', Number(e.target.value) || 0)}
+                      className="w-12 text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
+                    />
+                    {day.officeWork > 0 && <span className="text-gray-600">時間</span>}
+                  </div>
                 </td>
                 <td className="text-right editable-cell">
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    value={day.salesWork || ''}
-                    onChange={(e) => updateCell(index, 'salesWork', Number(e.target.value) || 0)}
-                    className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
-                  />
+                  <div className="flex items-center justify-end gap-1">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      value={day.salesWork || ''}
+                      onChange={(e) => updateCell(index, 'salesWork', Number(e.target.value) || 0)}
+                      className="w-12 text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
+                    />
+                    {day.salesWork > 0 && <span className="text-gray-600">時間</span>}
+                  </div>
                 </td>
                 <td className="text-right bg-gray-50">
                   {formatHours(day.totalHours)}

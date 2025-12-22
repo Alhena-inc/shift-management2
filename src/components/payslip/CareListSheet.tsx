@@ -8,25 +8,6 @@ interface CareListSheetProps {
 }
 
 const CareListSheet: React.FC<CareListSheetProps> = ({ month, careList, onChange }) => {
-  const updateCareSlot = (
-    dayIndex: number,
-    slotIndex: number,
-    field: 'clientName' | 'timeRange',
-    value: string
-  ) => {
-    const updated = [...careList];
-    const slots = [...updated[dayIndex].slots];
-
-    // スロットが存在しない場合は作成
-    while (slots.length <= slotIndex) {
-      slots.push({ slotNumber: slots.length + 1, clientName: '', timeRange: '' });
-    }
-
-    slots[slotIndex] = { ...slots[slotIndex], [field]: value };
-    updated[dayIndex] = { ...updated[dayIndex], slots };
-    onChange(updated);
-  };
-
   const getWeekday = (day: number): string => {
     const date = new Date(2024, month - 1, day);
     const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
@@ -57,6 +38,14 @@ const CareListSheet: React.FC<CareListSheetProps> = ({ month, careList, onChange
               const weekday = getWeekday(dayData.day);
               const slots = dayData.slots || [];
 
+              // スロットを slotNumber でマッピング（1-5）
+              const slotMap: { [key: number]: typeof slots[0] } = {};
+              slots.forEach(slot => {
+                if (slot.slotNumber >= 1 && slot.slotNumber <= 5) {
+                  slotMap[slot.slotNumber] = slot;
+                }
+              });
+
               return (
                 <React.Fragment key={dayIndex}>
                   {/* 1行目：利用者名 */}
@@ -73,14 +62,26 @@ const CareListSheet: React.FC<CareListSheetProps> = ({ month, careList, onChange
                     >
                       {weekday}
                     </td>
-                    {[0, 1, 2, 3, 4].map((slotIndex) => {
-                      const slot = slots[slotIndex] || { slotNumber: slotIndex + 1, clientName: '', timeRange: '' };
+                    {[1, 2, 3, 4, 5].map((slotNumber) => {
+                      const slot = slotMap[slotNumber] || { slotNumber, clientName: '', timeRange: '' };
+                      const slotIndex = slots.findIndex(s => s.slotNumber === slotNumber);
+
                       return (
-                        <td key={slotIndex} className="editable-cell">
+                        <td key={slotNumber} className="editable-cell">
                           <input
                             type="text"
                             value={slot.clientName || ''}
-                            onChange={(e) => updateCareSlot(dayIndex, slotIndex, 'clientName', e.target.value)}
+                            onChange={(e) => {
+                              const updated = [...slots];
+                              if (slotIndex >= 0) {
+                                updated[slotIndex] = { ...updated[slotIndex], clientName: e.target.value };
+                              } else {
+                                updated.push({ slotNumber, clientName: e.target.value, timeRange: '' });
+                              }
+                              const newCareList = [...careList];
+                              newCareList[dayIndex] = { ...newCareList[dayIndex], slots: updated };
+                              onChange(newCareList);
+                            }}
                             className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
                             placeholder=""
                           />
@@ -90,14 +91,26 @@ const CareListSheet: React.FC<CareListSheetProps> = ({ month, careList, onChange
                   </tr>
                   {/* 2行目：時間範囲 */}
                   <tr className="hover:bg-gray-50">
-                    {[0, 1, 2, 3, 4].map((slotIndex) => {
-                      const slot = slots[slotIndex] || { slotNumber: slotIndex + 1, clientName: '', timeRange: '' };
+                    {[1, 2, 3, 4, 5].map((slotNumber) => {
+                      const slot = slotMap[slotNumber] || { slotNumber, clientName: '', timeRange: '' };
+                      const slotIndex = slots.findIndex(s => s.slotNumber === slotNumber);
+
                       return (
-                        <td key={slotIndex} className="editable-cell">
+                        <td key={slotNumber} className="editable-cell">
                           <input
                             type="text"
                             value={slot.timeRange || ''}
-                            onChange={(e) => updateCareSlot(dayIndex, slotIndex, 'timeRange', e.target.value)}
+                            onChange={(e) => {
+                              const updated = [...slots];
+                              if (slotIndex >= 0) {
+                                updated[slotIndex] = { ...updated[slotIndex], timeRange: e.target.value };
+                              } else {
+                                updated.push({ slotNumber, clientName: '', timeRange: e.target.value });
+                              }
+                              const newCareList = [...careList];
+                              newCareList[dayIndex] = { ...newCareList[dayIndex], slots: updated };
+                              onChange(newCareList);
+                            }}
                             className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
                             placeholder=""
                           />

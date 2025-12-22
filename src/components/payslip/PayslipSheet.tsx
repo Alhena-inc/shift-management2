@@ -167,7 +167,7 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, onChange }) => {
         </div>
 
         {/* 中央カラム：月勤怠表 */}
-        <div className="flex-shrink-0" style={{ width: '550px' }}>
+        <div className="flex-shrink-0" style={{ width: '450px', minWidth: '450px' }}>
           <MonthlyAttendanceSheet
             month={payslip.month}
             dailyAttendance={payslip.dailyAttendance}
