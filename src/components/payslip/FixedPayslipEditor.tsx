@@ -2,6 +2,8 @@ import React, { useState, useCallback } from 'react';
 import type { FixedPayslip } from '../../types/payslip';
 import { COMPANY_INFO } from '../../types/payslip';
 import { savePayslip } from '../../services/payslipService';
+import { calculateWithholdingTax } from '../../utils/taxCalculator';
+import { calculateInsurance } from '../../utils/insuranceCalculator';
 
 interface FixedPayslipEditorProps {
   payslip: FixedPayslip;
@@ -52,15 +54,118 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
       newPayslip.payments.nightAllowance +
       newPayslip.payments.otherAllowances.reduce((sum, item) => sum + item.amount, 0);
 
-    // 控除合計の計算
-    newPayslip.deductions.totalDeduction = newPayslip.deductions.items.reduce(
-      (sum, item) => sum + item.amount,
-      0
+    // 控除項目の計算
+    console.log('💰 控除項目計算開始（固定給）');
+    console.log('総支給額:', newPayslip.payments.totalPayment);
+    console.log('年齢:', newPayslip.age);
+    console.log('扶養人数:', newPayslip.dependents);
+    console.log('保険加入状況:', newPayslip.insuranceTypes);
+
+    // 社会保険料を自動計算（契約社員は全ての社会保険を計算）
+    const insuranceTypes = newPayslip.insuranceTypes || ['health', 'pension', 'employment'];
+    // 40歳以上の場合は介護保険も追加
+    if ((newPayslip.age || 0) >= 40 && !insuranceTypes.includes('care')) {
+      insuranceTypes.push('care');
+    }
+
+    // 標準報酬月額（設定されていない場合は総支給額を使用）
+    const standardRemuneration = newPayslip.standardRemuneration || newPayslip.payments.totalPayment;
+
+    console.log('保険種類:', insuranceTypes);
+    console.log('標準報酬月額:', standardRemuneration);
+    const insurance = calculateInsurance(
+      standardRemuneration,              // 標準報酬月額
+      newPayslip.payments.totalPayment,  // 月給合計
+      newPayslip.age || 0,               // 年齢
+      insuranceTypes                     // 保険種類
     );
+    console.log('保険計算結果:', insurance);
+
+    newPayslip.deductions.healthInsurance = insurance.healthInsurance;
+    newPayslip.deductions.careInsurance = insurance.careInsurance;
+    newPayslip.deductions.pensionInsurance = insurance.pensionInsurance;
+    newPayslip.deductions.employmentInsurance = insurance.employmentInsurance;
+
+    // 社会保険計
+    newPayslip.deductions.socialInsuranceTotal =
+      (newPayslip.deductions.healthInsurance || 0) +
+      (newPayslip.deductions.careInsurance || 0) +
+      (newPayslip.deductions.pensionInsurance || 0) +
+      (newPayslip.deductions.pensionFund || 0) +
+      (newPayslip.deductions.employmentInsurance || 0);
+
+    // 課税対象の月給を計算（基本給 + 処遇改善手当 + その他支給(課税のみ)）
+    // ※経費精算・交通費立替などの非課税手当は含めない
+    const taxableOtherAllowances = newPayslip.payments.otherAllowances
+      .filter(item => {
+        // taxExemptフィールドがない場合は課税として扱う（デフォルト）
+        const taxExempt = (item as any).taxExempt === true;
+        return !taxExempt;
+      })
+      .reduce((sum, item) => sum + item.amount, 0);
+
+    const taxableMonthlySalary =
+      newPayslip.baseSalary +
+      newPayslip.treatmentAllowance +
+      taxableOtherAllowances;
+
+    console.log('💰 源泉所得税計算:');
+    console.log('  基本給:', newPayslip.baseSalary);
+    console.log('  処遇改善手当:', newPayslip.treatmentAllowance);
+    console.log('  課税その他手当:', taxableOtherAllowances);
+    console.log('  課税対象の月給:', taxableMonthlySalary);
+    console.log('  社会保険料計:', newPayslip.deductions.socialInsuranceTotal);
+
+    // 課税対象額 = 課税対象の月給 - 社会保険料計
+    newPayslip.deductions.taxableAmount =
+      taxableMonthlySalary -
+      newPayslip.deductions.socialInsuranceTotal;
+
+    console.log('  社会保険料控除後:', newPayslip.deductions.taxableAmount);
+
+    // 源泉所得税を計算
+    const dependents = newPayslip.dependents || 0;
+
+    // ★源泉徴収フラグがfalseの場合は0円
+    if (helper?.hasWithholdingTax === false) {
+      console.log('  源泉徴収なし: 0円');
+      newPayslip.deductions.incomeTax = 0;
+    } else {
+      newPayslip.deductions.incomeTax = calculateWithholdingTax(
+        newPayslip.deductions.taxableAmount,
+        dependents
+      );
+    }
+
+    console.log('  扶養人数:', dependents);
+    console.log('  源泉徴収フラグ:', helper?.hasWithholdingTax !== false ? 'あり' : 'なし');
+    console.log('  源泉所得税:', newPayslip.deductions.incomeTax);
+
+    // 控除計
+    newPayslip.deductions.deductionTotal =
+      (newPayslip.deductions.incomeTax || 0) +
+      (newPayslip.deductions.residentTax || 0) +
+      (newPayslip.deductions.reimbursement || 0) +
+      (newPayslip.deductions.advancePayment || 0) +
+      (newPayslip.deductions.yearEndAdjustment || 0);
+
+    // 控除合計 = 社会保険計 + 控除計
+    newPayslip.deductions.totalDeduction =
+      newPayslip.deductions.socialInsuranceTotal +
+      newPayslip.deductions.deductionTotal;
 
     // 差引支給額の計算
     newPayslip.totals.netPayment =
       newPayslip.payments.totalPayment - newPayslip.deductions.totalDeduction;
+
+    // 振込支給額・現金支給額の計算
+    newPayslip.totals.cashPayment = newPayslip.totals.cashPayment || 0;
+    newPayslip.totals.bankTransfer = newPayslip.totals.netPayment - newPayslip.totals.cashPayment;
+
+    console.log('💰 支給額計算:');
+    console.log('  差引支給額:', newPayslip.totals.netPayment);
+    console.log('  現金支給額:', newPayslip.totals.cashPayment);
+    console.log('  振込支給額:', newPayslip.totals.bankTransfer);
 
     return newPayslip;
   }, []);
@@ -476,7 +581,7 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
                       {payslip.dailyAttendance.map((day, index) => (
                         <tr key={index} className={day.weekday === '日' ? 'bg-red-50' : day.weekday === '土' ? 'bg-blue-50' : ''}>
                           <td className="border border-gray-300 px-2 py-1 text-center font-medium">
-                            {payslip.month}/{day.day}
+                            {day.month || payslip.month}/{day.day}
                           </td>
                           <td className="border border-gray-300 px-2 py-1 text-center">
                             {day.weekday}

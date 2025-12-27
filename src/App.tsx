@@ -5,6 +5,11 @@ import { SalaryCalculation } from './components/SalaryCalculation';
 import { PersonalShift } from './components/PersonalShift';
 import { ExpenseModal } from './components/ExpenseModal';
 import { DayOffManager } from './components/DayOffManager';
+import { PayslipListPage } from './components/payslip/PayslipListPage';
+import HomePage from './pages/HomePage';
+import HelperManagementPage from './pages/HelperManagementPage';
+import HelperDetailPage from './pages/HelperDetailPage';
+import PayslipDemo from './pages/PayslipDemo';
 import { helpers as initialHelpers } from './data/mockData';
 import { SERVICE_CONFIG } from './types';
 import type { Helper, Shift } from './types';
@@ -79,6 +84,35 @@ function App() {
     const token = personalMatch[1];
     return <PersonalShift token={token} />;
   }
+
+  // / の形式の場合（ホームページ）
+  if (path === '/' || path === '') {
+    return <HomePage />;
+  }
+
+  // /payslip-demo の形式の場合（給与明細デモ）
+  if (path === '/payslip-demo' || path === '/payslip-demo/') {
+    return <PayslipDemo />;
+  }
+
+  // /payslip の形式の場合（給与明細一覧）
+  if (path === '/payslip' || path === '/payslip/') {
+    return <PayslipListPage onClose={() => window.location.href = '/'} />;
+  }
+
+  // /helpers/:id の形式の場合（ヘルパー詳細・編集）
+  const helperDetailMatch = path.match(/^\/helpers\/(.+)$/);
+  if (helperDetailMatch) {
+    return <HelperDetailPage />;
+  }
+
+  // /helpers の形式の場合（ヘルパー管理一覧）
+  if (path === '/helpers' || path === '/helpers/') {
+    return <HelperManagementPage />;
+  }
+
+  // /shift の形式の場合（シフト管理画面）
+  // デフォルトで表示される
   const [helpers, setHelpers] = useState<Helper[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [currentYear, setCurrentYear] = useState(2025);
@@ -308,6 +342,13 @@ function App() {
       <div className="flex justify-between items-start mb-4">
         <div>
           <div className="flex items-center gap-4 mb-2">
+            <button
+              onClick={() => window.location.href = '/'}
+              className="px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm"
+              title="ホームに戻る"
+            >
+              🏠 ホーム
+            </button>
             <button
               onClick={handlePreviousMonth}
               className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-lg font-bold transition-colors"

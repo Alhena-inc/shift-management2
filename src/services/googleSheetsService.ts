@@ -306,6 +306,50 @@ export async function duplicateSheet(
 }
 
 /**
+ * 新しいシートを作成
+ */
+export async function createNewSheet(
+  spreadsheetId: string,
+  sheetName: string
+): Promise<number> {
+  if (!gapiInitialized) {
+    throw new Error('gapiが初期化されていません');
+  }
+
+  if (!currentAccessToken) {
+    throw new Error('認証されていません。先にsignInWithGoogleを呼び出してください');
+  }
+
+  try {
+    const response = await gapi.client.sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      resource: {
+        requests: [
+          {
+            addSheet: {
+              properties: {
+                title: sheetName,
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    const newSheetId = response.result.replies?.[0]?.addSheet?.properties?.sheetId;
+    if (newSheetId === undefined) {
+      throw new Error('新しいシートIDの取得に失敗しました');
+    }
+
+    console.log(`✅ 新しいシート作成成功: ${sheetName} (ID: ${newSheetId})`);
+    return newSheetId;
+  } catch (error) {
+    console.error('シート作成エラー:', error);
+    throw new Error('シートの作成に失敗しました');
+  }
+}
+
+/**
  * シート情報を取得
  */
 export async function getSheetInfo(
@@ -349,5 +393,75 @@ export async function getSheetInfo(
     }
 
     throw new Error(`シート情報の取得に失敗しました (status: ${error.status})`);
+  }
+}
+
+/**
+ * 特定の範囲のセル値を取得
+ */
+export async function getCellValues(
+  spreadsheetId: string,
+  range: string
+): Promise<any[][]> {
+  if (!gapiInitialized) {
+    throw new Error('gapiが初期化されていません');
+  }
+
+  if (!currentAccessToken) {
+    throw new Error('認証されていません。先にsignInWithGoogleを呼び出してください');
+  }
+
+  try {
+    const response = await gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range,
+    });
+
+    return response.result.values || [];
+  } catch (error) {
+    console.error('セル値取得エラー:', error);
+    throw new Error('セル値の取得に失敗しました');
+  }
+}
+
+/**
+ * スプレッドシートのデータとフォーマット情報を取得（セル結合、背景色、罫線など）
+ */
+export async function getSheetDataWithFormat(
+  spreadsheetId: string,
+  sheetName?: string,
+  range?: string
+): Promise<gapi.client.sheets.Spreadsheet> {
+  console.log('📊 フォーマット付きデータ取得開始:', spreadsheetId);
+
+  if (!gapiInitialized) {
+    throw new Error('gapiが初期化されていません');
+  }
+
+  if (!currentAccessToken) {
+    throw new Error('認証されていません。先にsignInWithGoogleを呼び出してください');
+  }
+
+  try {
+    const params: any = {
+      spreadsheetId,
+      includeGridData: true, // セルの値とフォーマット情報を含める
+    };
+
+    // 特定の範囲を指定する場合
+    if (range) {
+      params.ranges = [range];
+    }
+
+    console.log('🔍 フォーマット付きデータ取得中...');
+    const response = await gapi.client.sheets.spreadsheets.get(params);
+
+    console.log('✅ フォーマット付きデータ取得成功');
+    console.log('📋 シート数:', response.result.sheets?.length);
+
+    return response.result;
+  } catch (error: any) {
+    console.error('❌ フォーマット付きデータ取得エラー:', error);
+    throw new Error(`フォーマット付きデータの取得に失敗しました (status: ${error.status})`);
   }
 }

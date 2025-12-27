@@ -528,12 +528,7 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                               />
                             </div>
                           ) : (
-                            <input
-                              type="checkbox"
-                              checked={false}
-                              readOnly
-                              className="w-5 h-5 cursor-pointer pointer-events-none"
-                            />
+                            <div className="w-8 h-8 mx-auto bg-white border-2 border-gray-300 rounded"></div>
                           )}
                         </td>
                       );

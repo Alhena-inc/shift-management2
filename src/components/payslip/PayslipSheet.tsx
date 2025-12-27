@@ -1,17 +1,19 @@
 import React, { useCallback } from 'react';
-import type { HourlyPayslip, HourlyDailyAttendance, DailyCareList } from '../../types/payslip';
+import type { Payslip, HourlyPayslip, FixedPayslip, HourlyDailyAttendance, DailyCareList, isHourlyPayslip } from '../../types/payslip';
+import type { Helper } from '../../types';
 import PayslipMain from './PayslipMain';
 import MonthlyAttendanceSheet from './MonthlyAttendanceSheet';
 import CareListSheet from './CareListSheet';
 
 interface PayslipSheetProps {
-  payslip: HourlyPayslip;
-  onChange: (payslip: HourlyPayslip) => void;
+  payslip: Payslip;
+  helper?: Helper;
+  onChange: (payslip: Payslip) => void;
 }
 
-const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, onChange }) => {
-  // 勤怠データ更新時の再計算
-  const recalculate = useCallback((updated: HourlyPayslip): HourlyPayslip => {
+const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, helper, onChange }) => {
+  // 時給制の場合のみ勤怠データから給与を再計算
+  const recalculateHourly = useCallback((updated: HourlyPayslip): HourlyPayslip => {
     const newPayslip = { ...updated };
 
     // 日次勤怠から合計を計算
@@ -42,7 +44,7 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, onChange }) => {
     newPayslip.attendance.salesHours = salesHours;
     newPayslip.attendance.totalWorkHours = totalWorkHours;
 
-    // 支給額を再計算
+    // 支給額を再計算（時給制のみ）
     const rate = newPayslip.totalHourlyRate;
     const nightRate = rate * 1.25;
 
@@ -79,7 +81,7 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, onChange }) => {
   }, []);
 
   const handleMainChange = useCallback(
-    (updated: HourlyPayslip) => {
+    (updated: Payslip) => {
       onChange(updated);
     },
     [onChange]
@@ -87,16 +89,27 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, onChange }) => {
 
   const handleAttendanceChange = useCallback(
     (dailyAttendance: HourlyDailyAttendance[]) => {
-      const updated = { ...payslip, dailyAttendance };
-      onChange(recalculate(updated));
+      if (payslip.employmentType === 'アルバイト') {
+        // 時給制の場合のみ再計算
+        const hourlyPayslip = payslip as HourlyPayslip;
+        const updated = { ...hourlyPayslip, dailyAttendance };
+        onChange(recalculateHourly(updated));
+      } else {
+        // 固定給の場合は勤怠のみ更新（給与計算はしない）
+        const updated = { ...payslip, dailyAttendance } as Payslip;
+        onChange(updated);
+      }
     },
-    [payslip, onChange, recalculate]
+    [payslip, onChange, recalculateHourly]
   );
 
   const handleCareListChange = useCallback(
     (careList: DailyCareList[]) => {
-      const updated = { ...payslip, careList };
-      onChange(updated);
+      if (payslip.employmentType === 'アルバイト') {
+        const hourlyPayslip = payslip as HourlyPayslip;
+        const updated = { ...hourlyPayslip, careList };
+        onChange(updated);
+      }
     },
     [payslip, onChange]
   );
@@ -160,14 +173,14 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, onChange }) => {
       </style>
 
       {/* 3カラムレイアウト */}
-      <div className="flex gap-3">
+      <div className="flex gap-4 justify-start">
         {/* 左カラム：賃金明細本体 */}
-        <div className="flex-shrink-0" style={{ width: '550px', minWidth: '550px' }}>
-          <PayslipMain payslip={payslip} onChange={handleMainChange} />
+        <div className="flex-1" style={{ maxWidth: '800px' }}>
+          <PayslipMain payslip={payslip} helper={helper} onChange={handleMainChange} />
         </div>
 
         {/* 中央カラム：月勤怠表 */}
-        <div className="flex-shrink-0" style={{ width: '450px', minWidth: '450px' }}>
+        <div className="flex-shrink-0" style={{ width: '600px', minWidth: '600px', marginLeft: '0px' }}>
           <MonthlyAttendanceSheet
             month={payslip.month}
             dailyAttendance={payslip.dailyAttendance}
@@ -176,11 +189,11 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, onChange }) => {
         </div>
 
         {/* 右カラム：ケア一覧（時給のみ） */}
-        {payslip.employmentType === 'アルバイト' && (
-          <div className="flex-shrink-0" style={{ width: '650px' }}>
+        {payslip.employmentType === 'アルバイト' && 'careList' in payslip && (
+          <div className="flex-shrink-0" style={{ width: '450px' }}>
             <CareListSheet
               month={payslip.month}
-              careList={payslip.careList}
+              careList={(payslip as HourlyPayslip).careList}
               onChange={handleCareListChange}
             />
           </div>

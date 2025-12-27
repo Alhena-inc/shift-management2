@@ -32,10 +32,19 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
     // 新しいヘルパーリストを保存
     helpers.forEach(helper => {
       const helperRef = doc(db, HELPERS_COLLECTION, helper.id);
-      batch.set(helperRef, {
+      const dataToSave = {
         ...helper,
+        // insurancesが未定義の場合は空配列にする（Firestoreに確実に保存）
+        insurances: helper.insurances || [],
+        // standardRemunerationとstandardMonthlyRemunerationの両方に対応
+        standardRemuneration: helper.standardRemuneration || (helper as any).standardMonthlyRemuneration || 0,
+        standardMonthlyRemuneration: (helper as any).standardMonthlyRemuneration || helper.standardRemuneration || 0,
         updatedAt: Timestamp.now()
-      });
+      };
+      console.log(`💾 Firestoreに保存するデータ (ID: ${helper.id}):`, dataToSave);
+      console.log(`📋 insurancesフィールド:`, dataToSave.insurances);
+      console.log(`💰 標準報酬月額:`, dataToSave.standardRemuneration);
+      batch.set(helperRef, dataToSave);
     });
 
     // 削除されたヘルパーをFirestoreからも削除
@@ -118,10 +127,15 @@ export const loadHelpers = async (): Promise<Helper[]> => {
   try {
     const querySnapshot = await getDocs(collection(db, HELPERS_COLLECTION));
     const helpers = querySnapshot.docs
-      .map(doc => ({
-        ...doc.data(),
-        id: doc.id
-      } as Helper))
+      .map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          id: doc.id,
+          // insurancesが未定義の場合は空配列にする
+          insurances: data.insurances || []
+        } as Helper;
+      })
       // orderフィールドでソート
       .sort((a, b) => a.order - b.order);
     return helpers;
@@ -132,12 +146,18 @@ export const loadHelpers = async (): Promise<Helper[]> => {
 };
 
 // 月のシフトを読み込み（論理削除されたものを除外）
+// 12月のみ翌年1/4までのデータも含める
 export const loadShiftsForMonth = async (year: number, month: number): Promise<Shift[]> => {
   try {
     // その月の開始日と終了日を作成
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
     const lastDay = new Date(year, month, 0).getDate();
-    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    let endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    // 12月の場合は翌年1/4までのデータも取得
+    if (month === 12) {
+      endDate = `${year + 1}-01-04`;
+    }
 
     // その月のシフトをクエリ
     const shiftsQuery = query(
@@ -154,6 +174,10 @@ export const loadShiftsForMonth = async (year: number, month: number): Promise<S
       } as Shift))
       // 論理削除されていないデータのみフィルタリング（deletedフィールドがないものも含む）
       .filter(shift => !shift.deleted);
+
+    if (month === 12) {
+      console.log(`✅ 12月のシフトデータ読み込み: ${shifts.length}件 (${startDate} 〜 ${endDate})`);
+    }
 
     return shifts;
   } catch (error) {

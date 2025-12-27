@@ -42,16 +42,119 @@ export const SERVICE_CONFIG: Record<ServiceType, {
   other:        { label: '', color: '#7c3aed', bgColor: '#c4b5fd', hourlyRate: 0 },  // 紫（給与算出なし）
 };
 
+// 扶養者情報
+export interface Dependent {
+  name: string;
+  nameKana: string;
+  relationship: string;
+  myNumber: string;
+  birthDate: string;
+  postalCode: string;
+  address: string;
+  income: number;
+  status: string[];
+  socialInsurance: boolean;
+}
+
 export interface Helper {
   id: string;
   name: string;           // 苗字（シフト表表示用）
   lastName?: string;      // 苗字（詳細）
   firstName?: string;     // 名前
+  nameKana?: string;      // フリガナ
   gender: 'male' | 'female';
   order: number;
   personalToken?: string;  // 個人シフト表用のユニークトークン
   cashPayment?: boolean;   // 手渡し支払いフラグ
   salaryType?: 'hourly' | 'fixed';  // 給与タイプ（時給 or 固定給）デフォルトは時給
+
+  // 基本情報
+  birthDate?: string;      // 生年月日
+  postalCode?: string;     // 郵便番号
+  address?: string;        // 住所
+  phone?: string;          // 電話番号
+  email?: string;          // メールアドレス
+
+  // 資格・スキル
+  qualifications?: string[];   // 資格
+  serviceTypes?: string[];     // サービスタイプ
+  commuteMethods?: string[];   // 通勤方法
+
+  // 雇用形態
+  employmentType?: 'fulltime' | 'parttime' | 'contract' | 'temporary' | 'outsourced';
+  // fulltime=正社員, parttime=パート, contract=契約社員, temporary=派遣, outsourced=業務委託
+
+  // 勤務情報
+  hireDate?: string;       // 雇用日
+  status?: string;         // ステータス（在職中、退職など）
+  department?: string;     // 部署
+
+  // 時給制（パート・派遣・業務委託用）
+  hourlyRate?: number;                    // 基本時給（デフォルト2000円）
+  baseHourlyRate?: number;                // 基本時給（旧フィールド名、hourlyRateと同じ）
+  treatmentImprovementPerHour?: number;   // 処遇改善加算/時（デフォルト0円）
+  officeHourlyRate?: number;              // 事務作業時給（デフォルト1000円）
+
+  // 固定給制（正社員・契約社員用）
+  baseSalary?: number;                    // 基本給
+  treatmentAllowance?: number;            // 処遇改善手当
+  otherAllowances?: Array<{name: string; amount: number; taxExempt: boolean}>;  // その他手当
+
+  // 税務情報（正社員・契約社員用）
+  dependents?: number;                    // 扶養人数（0〜7人）
+  residentialTax?: number;                // 住民税
+  age?: number;                           // 年齢（介護保険判定用）
+  standardRemuneration?: number;          // 標準報酬月額（社会保険料計算用）
+  standardMonthlyRemuneration?: number;   // 標準報酬月額（別名、互換性のため）
+  hasWithholdingTax?: boolean;            // 源泉徴収する（true=する、false=しない）
+
+  // 保険加入
+  insurances?: string[];                  // ['health', 'care', 'pension', 'employment']
+  // health=健康保険, care=介護保険, pension=厚生年金, employment=雇用保険
+
+  // 保険加入（旧フィールド名、互換性のため）
+  hasSocialInsurance?: boolean;           // 社会保険（健康保険・厚生年金）
+  hasNursingInsurance?: boolean;          // 介護保険
+  hasEmploymentInsurance?: boolean;       // 雇用保険
+  socialInsurance?: boolean;              // 社会保険（別名）
+  nursingInsurance?: boolean;             // 介護保険（別名）
+  employmentInsurance?: boolean;          // 雇用保険（別名）
+  workersCompensation?: boolean;          // 労災保険
+
+  // 雇用・マイナンバー
+  myNumber?: string;                      // マイナンバー
+  employmentInsuranceNumber?: string;     // 雇用保険番号
+  previousCompany?: string;               // 前職
+  previousEmploymentPeriod?: string;      // 前職期間
+  isStudent?: boolean;                    // 学生かどうか
+  hasDisabilityCard?: boolean;            // 障害者手帳の有無
+  widowDeduction?: string;                // 寡婦控除
+  isMainJob?: boolean;                    // 主たる給与かどうか
+
+  // 配偶者情報
+  spouseExists?: boolean;                 // 配偶者の有無
+  spouseName?: string;                    // 配偶者名
+  spouseNameKana?: string;                // 配偶者名（カナ）
+  spouseRelationship?: string;            // 配偶者続柄
+  spouseMyNumber?: string;                // 配偶者マイナンバー
+  spouseBirthDate?: string;               // 配偶者生年月日
+  spouseSameAddress?: boolean;            // 配偶者同一住所
+  spousePostalCode?: string;              // 配偶者郵便番号
+  spouseAddress?: string;                 // 配偶者住所
+  spouseIncome?: number;                  // 配偶者所得
+  spouseStatus?: string[];                // 配偶者ステータス
+
+  // 扶養者情報
+  dependentsExist?: boolean;              // 扶養親族の有無
+  dependentsList?: Dependent[];           // 扶養者リスト
+
+  // 銀行口座情報
+  bankName?: string;                      // 銀行名
+  branchName?: string;                    // 支店名
+  accountType?: string;                   // 口座種別
+  accountHolder?: string;                 // 口座名義
+  accountNumber?: string;                 // 口座番号
+
   // 月別の給与関連データ（キー: "YYYY-MM"）
   monthlyPayments?: Record<string, {
     transportationAllowance?: number;  // 交通費

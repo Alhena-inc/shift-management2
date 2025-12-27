@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import type { Helper } from '../../types';
+import type { Helper, Shift } from '../../types';
 import type { Payslip, HourlyPayslip } from '../../types/payslip';
 import { isHourlyPayslip } from '../../types/payslip';
 import {
@@ -8,142 +8,50 @@ import {
   deletePayslip
 } from '../../services/payslipService';
 import { loadHelpers, loadShiftsForMonth } from '../../services/firestoreService';
+import { sendPayslipToSheets } from '../../services/payrollSheetsService';
 import { generatePayslipFromShifts } from '../../utils/payslipCalculation';
 import PayslipSheet from './PayslipSheet';
 
 interface PayslipListPageProps {
   onClose: () => void;
+  shifts?: Shift[];  // シフトデータ（オプション、外部から渡される場合）
 }
 
-export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose }) => {
+export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shifts: externalShifts }) => {
   const currentDate = new Date();
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1);
   const [payslips, setPayslips] = useState<Payslip[]>([]);
   const [helpers, setHelpers] = useState<Helper[]>([]);
+  const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(false);
-  const [generating, setGenerating] = useState<string | null>(null);
-  const [showSalaryTypeDialog, setShowSalaryTypeDialog] = useState(false);
-  const [selectedHelper, setSelectedHelper] = useState<Helper | null>(null);
-  const [selectedSalaryType, setSelectedSalaryType] = useState<'hourly' | 'fixed'>('hourly');
-  const [editingPayslip, setEditingPayslip] = useState<HourlyPayslip | null>(null);
+  const [editingPayslip, setEditingPayslip] = useState<Payslip | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   // 給与明細とヘルパー一覧を読み込み
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [loadedPayslips, loadedHelpers] = await Promise.all([
+      const [loadedPayslips, loadedHelpers, loadedShifts] = await Promise.all([
         loadPayslipsByMonth(selectedYear, selectedMonth),
-        loadHelpers()
+        loadHelpers(),
+        externalShifts ? Promise.resolve(externalShifts) : loadShiftsForMonth(selectedYear, selectedMonth)
       ]);
       setPayslips(loadedPayslips);
       setHelpers(loadedHelpers);
+      setShifts(loadedShifts);
     } catch (error) {
       console.error('データ読み込みエラー:', error);
       alert('データの読み込みに失敗しました');
     } finally {
       setLoading(false);
     }
-  }, [selectedYear, selectedMonth]);
+  }, [selectedYear, selectedMonth, externalShifts]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  // 給与タイプ選択ダイアログを開く
-  const openSalaryTypeDialog = useCallback((helper: Helper) => {
-    setSelectedHelper(helper);
-    setSelectedSalaryType('hourly');
-    setShowSalaryTypeDialog(true);
-  }, []);
-
-  // 給与タイプ選択ダイアログを閉じる
-  const closeSalaryTypeDialog = useCallback(() => {
-    setShowSalaryTypeDialog(false);
-    setSelectedHelper(null);
-  }, []);
-
-  // シフトから給与明細を生成（給与タイプ指定）
-  const generateFromShifts = useCallback(async (salaryType: 'hourly' | 'fixed') => {
-    if (!selectedHelper) return;
-
-    setGenerating(selectedHelper.id);
-    setShowSalaryTypeDialog(false);
-
-    try {
-      // シフトデータを読み込み
-      const shifts = await loadShiftsForMonth(selectedYear, selectedMonth);
-      const helperShifts = shifts.filter(s => s.helperId === selectedHelper.id);
-
-      if (helperShifts.length === 0) {
-        alert(`${selectedHelper.name}さんのシフトデータが見つかりません`);
-        return;
-      }
-
-      // ヘルパーの給与タイプを一時的に設定
-      const helperWithSalaryType = { ...selectedHelper, salaryType };
-
-      // 給与明細を自動生成
-      const payslip = generatePayslipFromShifts(helperWithSalaryType, helperShifts, selectedYear, selectedMonth);
-
-      // 保存
-      await savePayslip(payslip);
-
-      // 一覧を再読み込み
-      await loadData();
-
-      alert(`${selectedHelper.name}さんの給与明細を生成しました`);
-    } catch (error) {
-      console.error('給与明細生成エラー:', error);
-      alert('給与明細の生成に失敗しました');
-    } finally {
-      setGenerating(null);
-      setSelectedHelper(null);
-    }
-  }, [selectedHelper, selectedYear, selectedMonth, loadData]);
-
-  // 一括生成
-  const generateAllFromShifts = useCallback(async () => {
-    if (!confirm('全ヘルパーの給与明細を一括生成しますか？\n既存の明細は上書きされます。')) {
-      return;
-    }
-
-    setLoading(true);
-    try {
-      // シフトデータを読み込み
-      const shifts = await loadShiftsForMonth(selectedYear, selectedMonth);
-
-      let successCount = 0;
-      let failCount = 0;
-
-      for (const helper of helpers) {
-        try {
-          const helperShifts = shifts.filter(s => s.helperId === helper.id);
-
-          if (helperShifts.length === 0) {
-            console.log(`スキップ: ${helper.name}さんのシフトなし`);
-            continue;
-          }
-
-          const payslip = generatePayslipFromShifts(helper, helperShifts, selectedYear, selectedMonth);
-          await savePayslip(payslip);
-          successCount++;
-        } catch (error) {
-          console.error(`${helper.name}の生成エラー:`, error);
-          failCount++;
-        }
-      }
-
-      await loadData();
-      alert(`一括生成完了\n成功: ${successCount}件\n失敗: ${failCount}件`);
-    } catch (error) {
-      console.error('一括生成エラー:', error);
-      alert('一括生成に失敗しました');
-    } finally {
-      setLoading(false);
-    }
-  }, [helpers, selectedYear, selectedMonth, loadData]);
 
   // 給与明細を削除
   const handleDelete = useCallback(async (payslip: Payslip) => {
@@ -163,17 +71,13 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose }) => 
 
   // 編集ボタンハンドラ
   const handleEdit = useCallback((payslip: Payslip) => {
-    // 時給のみスプレッドシート風UIで編集可能
-    if (isHourlyPayslip(payslip)) {
-      setEditingPayslip(payslip);
-      setShowEditModal(true);
-    } else {
-      alert('固定給の編集UIは未実装です');
-    }
+    // 固定給も時給も同じUIで編集可能
+    setEditingPayslip(payslip);
+    setShowEditModal(true);
   }, []);
 
   // 編集を保存
-  const handleSaveEdit = useCallback(async (updatedPayslip: HourlyPayslip) => {
+  const handleSaveEdit = useCallback(async (updatedPayslip: Payslip) => {
     try {
       await savePayslip(updatedPayslip);
       await loadData();
@@ -190,6 +94,194 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose }) => 
   const handleCancelEdit = useCallback(() => {
     setShowEditModal(false);
     setEditingPayslip(null);
+  }, []);
+
+  // 給与明細を作成
+  const handleCreatePayslip = useCallback(async (helper: Helper) => {
+    if (!confirm(`${helper.name}さんの給与明細を作成しますか？\n${selectedYear}年${selectedMonth}月のシフトデータから自動生成します。`)) {
+      return;
+    }
+
+    setCreating(true);
+    try {
+      // シフトデータから給与明細を生成
+      // 12月のみ翌年1/4までのデータも含める
+      const helperShifts = shifts.filter(s => {
+        if (s.helperId !== helper.id) return false;
+
+        const shiftDate = new Date(s.date);
+        const periodStart = new Date(selectedYear, selectedMonth - 1, 1);
+        let periodEnd: Date;
+
+        if (selectedMonth === 12) {
+          // 12月: 翌年1/4まで
+          periodEnd = new Date(selectedYear + 1, 0, 4, 23, 59, 59);
+        } else {
+          // それ以外: 月末まで
+          periodEnd = new Date(selectedYear, selectedMonth, 0, 23, 59, 59);
+        }
+
+        return shiftDate >= periodStart && shiftDate <= periodEnd;
+      });
+
+      const payslip = generatePayslipFromShifts(helper, helperShifts, selectedYear, selectedMonth);
+
+      // Firestoreに保存
+      await savePayslip(payslip);
+
+      // データを再読み込み
+      await loadData();
+
+      alert(`${helper.name}さんの給与明細を作成しました`);
+    } catch (error) {
+      console.error('給与明細作成エラー:', error);
+      alert('給与明細の作成に失敗しました');
+    } finally {
+      setCreating(false);
+    }
+  }, [shifts, selectedYear, selectedMonth, loadData]);
+
+  // 給与明細を一括作成
+  const handleBulkCreatePayslips = useCallback(async () => {
+    // 未作成のヘルパーを抽出
+    const helpersWithoutPayslip = helpers.filter(helper =>
+      !payslips.some(p => p.helperId === helper.id)
+    );
+
+    if (helpersWithoutPayslip.length === 0) {
+      alert('すべてのヘルパーの給与明細が既に作成されています');
+      return;
+    }
+
+    if (!confirm(`${helpersWithoutPayslip.length}人分の給与明細を一括作成しますか？\n${selectedYear}年${selectedMonth}月のシフトデータから自動生成します。`)) {
+      return;
+    }
+
+    setCreating(true);
+    let successCount = 0;
+    let errorCount = 0;
+    const errors: string[] = [];
+
+    try {
+      for (const helper of helpersWithoutPayslip) {
+        try {
+          // シフトデータから給与明細を生成
+          const helperShifts = shifts.filter(s => {
+            if (s.helperId !== helper.id) return false;
+
+            const shiftDate = new Date(s.date);
+            const periodStart = new Date(selectedYear, selectedMonth - 1, 1);
+            let periodEnd: Date;
+
+            if (selectedMonth === 12) {
+              periodEnd = new Date(selectedYear + 1, 0, 4, 23, 59, 59);
+            } else {
+              periodEnd = new Date(selectedYear, selectedMonth, 0, 23, 59, 59);
+            }
+
+            return shiftDate >= periodStart && shiftDate <= periodEnd;
+          });
+
+          const payslip = generatePayslipFromShifts(helper, helperShifts, selectedYear, selectedMonth);
+
+          // Firestoreに保存
+          await savePayslip(payslip);
+          successCount++;
+        } catch (error) {
+          console.error(`${helper.name}の給与明細作成エラー:`, error);
+          errorCount++;
+          errors.push(helper.name);
+        }
+      }
+
+      // データを再読み込み
+      await loadData();
+
+      // 結果を表示
+      if (errorCount === 0) {
+        alert(`${successCount}人分の給与明細を作成しました`);
+      } else {
+        alert(`成功: ${successCount}人\n失敗: ${errorCount}人\n\n失敗したヘルパー:\n${errors.join(', ')}`);
+      }
+    } catch (error) {
+      console.error('一括作成エラー:', error);
+      alert('一括作成に失敗しました');
+    } finally {
+      setCreating(false);
+    }
+  }, [helpers, payslips, shifts, selectedYear, selectedMonth, loadData]);
+
+  // 給与明細を再計算
+  const handleRecalculatePayslip = useCallback(async (helper: Helper, existingPayslip: Payslip) => {
+    if (!confirm(`${helper.name}さんの給与明細を再計算しますか？\n最新のシフトデータから勤怠項目を再集計します。`)) {
+      return;
+    }
+
+    setCreating(true);
+    try {
+      // 最新のシフトデータを取得
+      // 12月のみ翌年1/4までのデータも含める
+      const helperShifts = shifts.filter(s => {
+        if (s.helperId !== helper.id) return false;
+
+        const shiftDate = new Date(s.date);
+        const periodStart = new Date(selectedYear, selectedMonth - 1, 1);
+        let periodEnd: Date;
+
+        if (selectedMonth === 12) {
+          // 12月: 翌年1/4まで
+          periodEnd = new Date(selectedYear + 1, 0, 4, 23, 59, 59);
+        } else {
+          // それ以外: 月末まで
+          periodEnd = new Date(selectedYear, selectedMonth, 0, 23, 59, 59);
+        }
+
+        return shiftDate >= periodStart && shiftDate <= periodEnd;
+      });
+
+      // シフトデータから給与明細を再生成
+      const newPayslip = generatePayslipFromShifts(helper, helperShifts, selectedYear, selectedMonth);
+
+      // 既存の給与明細IDを保持（上書き保存）
+      newPayslip.id = existingPayslip.id;
+
+      // Firestoreに保存
+      await savePayslip(newPayslip);
+
+      // データを再読み込み
+      await loadData();
+
+      alert(`${helper.name}さんの給与明細を再計算しました`);
+    } catch (error) {
+      console.error('給与明細再計算エラー:', error);
+      alert('給与明細の再計算に失敗しました');
+    } finally {
+      setCreating(false);
+    }
+  }, [shifts, selectedYear, selectedMonth, loadData]);
+
+  // スプレッドシートにエクスポート
+  const handleExportToSheets = useCallback(async (payslip: Payslip) => {
+    if (!confirm(`${payslip.helperName}さんの給与明細をスプレッドシートにエクスポートしますか？`)) {
+      return;
+    }
+
+    try {
+      // 固定給もHourlyPayslipとして扱う
+      const hourlyPayslip = isHourlyPayslip(payslip) ? payslip : payslip as HourlyPayslip;
+      const result = await sendPayslipToSheets(hourlyPayslip);
+
+      if (result.success && result.sheetUrl) {
+        alert(`スプレッドシートにエクスポートしました\nシート名: ${result.sheetName}`);
+        // スプレッドシートを新しいタブで開く
+        window.open(result.sheetUrl, '_blank');
+      } else {
+        alert(`エクスポートに失敗しました\nエラー: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('エクスポートエラー:', error);
+      alert('エクスポートに失敗しました');
+    }
   }, []);
 
   // ヘルパーごとの給与明細を取得
@@ -243,7 +335,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose }) => 
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(Number(e.target.value))}
-                className="border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="bg-white border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 {Array.from({ length: 5 }, (_, i) => currentDate.getFullYear() - 2 + i).map(year => (
                   <option key={year} value={year}>{year}年</option>
@@ -256,7 +348,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose }) => 
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                className="border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="bg-white border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 {Array.from({ length: 12 }, (_, i) => i + 1).map(month => (
                   <option key={month} value={month}>{month}月</option>
@@ -264,12 +356,16 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose }) => 
               </select>
             </div>
 
+            {/* 一括作成ボタン */}
             <button
-              onClick={generateAllFromShifts}
-              disabled={loading || helpers.length === 0}
-              className="ml-auto px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-medium"
+              onClick={handleBulkCreatePayslips}
+              disabled={creating || loading}
+              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              一括生成
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              一括作成
             </button>
           </div>
         </div>
@@ -302,7 +398,6 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose }) => 
                 <tbody>
                   {helpers.map((helper, index) => {
                     const payslip = getPayslipForHelper(helper.id);
-                    const isGenerating = generating === helper.id;
 
                     return (
                       <tr key={helper.id} className="hover:bg-gray-50">
@@ -333,13 +428,28 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose }) => 
                               {formatCurrency(payslip.totals.netPayment)}
                             </td>
                             <td className="border border-gray-300 px-2 py-2 text-sm text-center">
-                              <div className="flex gap-1 justify-center">
+                              <div className="flex gap-1 justify-center flex-wrap">
                                 <button
                                   onClick={() => handleEdit(payslip)}
                                   className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
                                   title="編集"
                                 >
                                   編集
+                                </button>
+                                <button
+                                  onClick={() => handleRecalculatePayslip(helper, payslip)}
+                                  disabled={creating}
+                                  className="px-2 py-1 bg-orange-600 text-white rounded text-xs hover:bg-orange-700 disabled:bg-gray-400"
+                                  title="シフトデータから再計算"
+                                >
+                                  再計算
+                                </button>
+                                <button
+                                  onClick={() => handleExportToSheets(payslip)}
+                                  className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700"
+                                  title="スプレッドシートにエクスポート"
+                                >
+                                  シート出力
                                 </button>
                                 <button
                                   onClick={() => handleDelete(payslip)}
@@ -358,11 +468,12 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose }) => 
                             <td className="border border-gray-300 px-3 py-2 text-sm text-center text-gray-400">-</td>
                             <td className="border border-gray-300 px-2 py-2 text-sm text-center">
                               <button
-                                onClick={() => openSalaryTypeDialog(helper)}
-                                disabled={isGenerating}
-                                className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 disabled:bg-gray-300"
+                                onClick={() => handleCreatePayslip(helper)}
+                                disabled={creating}
+                                className="px-2 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700 disabled:bg-gray-400"
+                                title="給与明細を作成"
                               >
-                                {isGenerating ? '生成中...' : '生成'}
+                                {creating ? '作成中...' : '作成'}
                               </button>
                             </td>
                           </>
@@ -409,81 +520,10 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose }) => 
         </div>
       </div>
 
-      {/* 給与タイプ選択ダイアログ */}
-      {showSalaryTypeDialog && selectedHelper && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">
-              給与タイプを選択
-            </h3>
-            <p className="text-sm text-gray-600 mb-6">
-              {selectedHelper.name}さんの給与明細を作成します。給与タイプを選択してください。
-            </p>
-
-            <div className="space-y-3 mb-6">
-              <label
-                className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${
-                  selectedSalaryType === 'hourly' ? 'border-green-500 bg-green-50' : 'border-gray-300'
-                }`}
-                onClick={() => setSelectedSalaryType('hourly')}
-              >
-                <input
-                  type="radio"
-                  value="hourly"
-                  checked={selectedSalaryType === 'hourly'}
-                  onChange={() => setSelectedSalaryType('hourly')}
-                  className="w-5 h-5"
-                />
-                <span className="text-2xl">⏱️</span>
-                <div>
-                  <div className="text-lg font-medium">時給（アルバイト）</div>
-                  <div className="text-xs text-gray-600">通常・深夜・同行・事務・営業を時間単位で計算</div>
-                </div>
-              </label>
-
-              <label
-                className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${
-                  selectedSalaryType === 'fixed' ? 'border-blue-500 bg-blue-50' : 'border-gray-300'
-                }`}
-                onClick={() => setSelectedSalaryType('fixed')}
-              >
-                <input
-                  type="radio"
-                  value="fixed"
-                  checked={selectedSalaryType === 'fixed'}
-                  onChange={() => setSelectedSalaryType('fixed')}
-                  className="w-5 h-5"
-                />
-                <span className="text-2xl">💼</span>
-                <div>
-                  <div className="text-lg font-medium">固定給（契約社員）</div>
-                  <div className="text-xs text-gray-600">基本給+処遇改善加算の固定額</div>
-                </div>
-              </label>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={closeSalaryTypeDialog}
-                className="flex-1 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 font-medium"
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={() => generateFromShifts(selectedSalaryType)}
-                className="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-medium"
-              >
-                生成する
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 編集モーダル */}
       {showEditModal && editingPayslip && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2">
-          <div className="bg-white rounded-lg shadow-xl w-[98vw] max-w-[1900px] h-[98vh] flex flex-col">
+          <div className="bg-white rounded-lg shadow-xl w-[98vw] h-[98vh] flex flex-col">
             {/* ヘッダー */}
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-xl font-bold text-gray-800">
@@ -501,6 +541,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose }) => 
             <div className="flex-1 overflow-auto">
               <PayslipSheet
                 payslip={editingPayslip}
+                helper={helpers.find(h => h.id === editingPayslip.helperId)}
                 onChange={setEditingPayslip}
               />
             </div>

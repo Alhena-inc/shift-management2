@@ -1,9 +1,27 @@
-/* Performance Optimizations */
-@import './styles/performance-optimizations.css';
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(0, 0, 0, 0.87);
+  background-color: #ffffff;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
 
 /* number input のスピナーボタンを非表示 */
 input[type="number"]::-webkit-inner-spin-button,
@@ -20,21 +38,52 @@ input[type="number"] {
 /* シフトセルのスタイル - GPU最適化 */
 .editable-cell {
   outline: none;
-  will-change: border-color;
-  border: 1px solid transparent; /* 初期状態で透明なボーダー */
   box-sizing: border-box;
-  min-height: 60px; /* 削除時も行の高さを保持 */
+  min-height: 15px; /* 各ラインの最小高さ（60px ÷ 4行） */
+  height: 15px;
+  padding: 1px 2px;
+  font-size: 11px;
+  line-height: 13px;
+  /* 4行区切りの境界線 */
+  border-bottom: 1px solid #e5e7eb;
+  /* 再描画範囲を限定（高速化） */
+  contain: layout style paint;
+  /* 変更予定プロパティを全て事前通知（高速化） */
+  will-change: border-color, box-shadow, outline;
   /* GPU加速を有効化 */
   transform: translateZ(0);
   backface-visibility: hidden;
+  /* モバイルのタップハイライト無効（高速化） */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 最後のライン（line-3）は下線なし */
+.editable-cell[data-line="3"] {
+  border-bottom: none;
+}
+
+/* 空のセルでも境界線を表示 */
+.editable-cell:empty {
+  min-height: 15px;
+  height: 15px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.editable-cell[data-line="3"]:empty {
+  border-bottom: none;
 }
 
 /* 選択状態のスタイル（JavaScriptで管理） - レイアウト再計算なし */
 .editable-cell.cell-selected {
-  border: 2px solid #1a73e8 !important;
   box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.3) !important;
-  outline: 1px solid #1a73e8 !important;
-  outline-offset: -1px !important;
+  outline: 2px solid #1a73e8 !important;
+  outline-offset: -2px !important;
+  /* 下線は維持（4行区切りを保持） */
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.editable-cell.cell-selected[data-line="3"] {
+  border-bottom: none;
 }
 
 /* 複数選択状態のスタイル - GPU最適化 */
@@ -45,4 +94,27 @@ input[type="number"] {
   /* GPU加速を有効化 */
   transform: translateZ(0);
   backface-visibility: hidden;
+}
+
+/* テーブル行の高さを固定（ケア削除時も行が消えないようにする） */
+table {
+  border-collapse: collapse;
+}
+
+table tbody tr {
+  height: 60px;
+  min-height: 60px;
+}
+
+table tbody td {
+  height: 60px;
+  min-height: 60px;
+  vertical-align: top;
+  box-sizing: border-box;
+}
+
+/* 空のセルも高さを保持 */
+table tbody td:empty {
+  height: 60px;
+  min-height: 60px;
 }

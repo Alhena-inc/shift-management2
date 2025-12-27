@@ -442,6 +442,7 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
     {showPayslipList && (
       <PayslipListPage
         onClose={handleClosePayslipList}
+        shifts={shifts}
       />
     )}
     </>

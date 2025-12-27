@@ -208,27 +208,39 @@ export const HourlyPayslipEditor: React.FC<HourlyPayslipEditorProps> = ({
   }, [recalculate]);
 
   // ケア一覧の更新
-  const updateCareSlot = useCallback((dayIndex: number, slotIndex: number, field: 'clientName' | 'timeRange', value: string) => {
+  const updateCareSlot = useCallback((dayIndex: number, slotNumber: number, field: 'clientName' | 'timeRange', value: string) => {
     setPayslip(prev => {
       const updated = JSON.parse(JSON.stringify(prev)); // Deep copy
 
-      // スロットが存在しない場合は作成
-      if (!updated.careList[dayIndex].slots[slotIndex]) {
-        updated.careList[dayIndex].slots[slotIndex] = {
-          slotNumber: slotIndex + 1,
-          clientName: '',
-          timeRange: ''
-        };
+      // slotNumber でスロットを探す
+      const slotIndex = updated.careList[dayIndex].slots.findIndex((s: any) => s.slotNumber === slotNumber);
+
+      if (slotIndex >= 0) {
+        // スロットが存在する場合は更新
+        updated.careList[dayIndex].slots[slotIndex][field] = value;
+      } else {
+        // スロットが存在しない場合は新規作成
+        updated.careList[dayIndex].slots.push({
+          slotNumber: slotNumber,
+          clientName: field === 'clientName' ? value : '',
+          timeRange: field === 'timeRange' ? value : ''
+        });
+        // slotNumber でソート
+        updated.careList[dayIndex].slots.sort((a: any, b: any) => a.slotNumber - b.slotNumber);
       }
 
-      updated.careList[dayIndex].slots[slotIndex][field] = value;
       return updated;
     });
   }, []);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-[98vw] max-h-[95vh] flex flex-col">
+    <div className="fixed inset-0 bg-white z-50 overflow-auto">
+      <div
+        className="flex flex-col w-full min-h-screen"
+        style={{
+          padding: '16px 24px'
+        }}
+      >
         {/* ヘッダー */}
         <div className="p-6 border-b border-gray-200 bg-gray-50">
           <div className="flex items-center justify-between">
@@ -584,7 +596,7 @@ export const HourlyPayslipEditor: React.FC<HourlyPayslipEditorProps> = ({
                             }
                           >
                             <td className="border border-gray-300 px-1 py-1 text-center font-medium">
-                              {payslip.month}/{day.day}
+                              {day.month || payslip.month}/{day.day}
                             </td>
                             <td className="border border-gray-300 px-1 py-1 text-center">
                               {day.weekday}
@@ -747,7 +759,7 @@ export const HourlyPayslipEditor: React.FC<HourlyPayslipEditorProps> = ({
                                     <input
                                       type="text"
                                       value={slot?.clientName || ''}
-                                      onChange={(e) => updateCareSlot(index, slotIndex, 'clientName', e.target.value)}
+                                      onChange={(e) => updateCareSlot(index, slotIndex + 1, 'clientName', e.target.value)}
                                       className="w-full text-[10px] text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-0.5"
                                       placeholder=""
                                     />
@@ -770,7 +782,7 @@ export const HourlyPayslipEditor: React.FC<HourlyPayslipEditorProps> = ({
                                     <input
                                       type="text"
                                       value={slot?.timeRange || ''}
-                                      onChange={(e) => updateCareSlot(index, slotIndex, 'timeRange', e.target.value)}
+                                      onChange={(e) => updateCareSlot(index, slotIndex + 1, 'timeRange', e.target.value)}
                                       className="w-full text-[10px] text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded px-0.5"
                                       placeholder=""
                                     />

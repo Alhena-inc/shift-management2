@@ -1,5 +1,6 @@
 import type { Helper, Shift } from '../types';
 import { SERVICE_CONFIG } from '../types';
+import type { HourlyPayslip } from '../types/payslip';
 
 // 深夜時間帯（22時～翌朝8時）の時間数を計算する関数
 function calculateNightHours(timeRange: string): number {
@@ -261,7 +262,180 @@ export function convertToPayrollData(
 }
 
 /**
+ * 時間範囲から時間数を計算
+ * @param timeRange "HH:mm-HH:mm" 形式の時間範囲、または "X時間" 形式
+ * @returns 時間数
+ */
+function parseTimeRange(timeRange: string): number {
+  // "X時間" または "Xh" 形式の場合
+  const hoursMatch = timeRange.match(/(\d+(?:\.\d+)?)\s*(?:時間|h)/);
+  if (hoursMatch) {
+    return parseFloat(hoursMatch[1]);
+  }
+
+  // "HH:mm-HH:mm" 形式の場合
+  const rangeMatch = timeRange.match(/(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})/);
+  if (rangeMatch) {
+    const [, startHour, startMin, endHour, endMin] = rangeMatch;
+    let start = parseInt(startHour) * 60 + parseInt(startMin);
+    let end = parseInt(endHour) * 60 + parseInt(endMin);
+
+    // 日跨ぎ対応
+    if (end <= start) {
+      end += 24 * 60;
+    }
+
+    return (end - start) / 60;
+  }
+
+  // 数値のみの場合
+  const numMatch = timeRange.match(/(\d+(?:\.\d+)?)/);
+  if (numMatch) {
+    return parseFloat(numMatch[1]);
+  }
+
+  return 0;
+}
+
+/**
+ * HourlyPayslipからスプレッドシート用データに変換
+ */
+export function convertPayslipToSheetData(payslip: HourlyPayslip) {
+  const { helperName, month, year, attendance, dailyAttendance, careList, payments } = payslip;
+
+  // 基本情報
+  const basicInfo = {
+    helperName,
+    regularDays: attendance.normalWorkDays,
+    dokoDays: attendance.accompanyDays,
+    expenses: payments.expenseReimbursement || 0,
+    transportation: payments.transportAllowance || 0,
+  };
+
+  // 時間データ
+  const timeData = {
+    regularHours: attendance.normalHours,
+    nightHours: attendance.nightNormalHours,
+    dokoHours: attendance.accompanyHours,
+    nightDokoHours: attendance.nightAccompanyHours,
+    officeHours: attendance.officeHours,
+    salesHours: attendance.salesHours,
+    totalHours: attendance.totalWorkHours,
+  };
+
+  // 日次データ
+  const dailyData = dailyAttendance.map((day) => ({
+    date: `${month}/${day.day}`,
+    dayOfWeek: day.weekday,
+    regularHours: day.normalWork,
+    nightHours: day.normalNight,
+    dokoHours: day.accompanyWork,
+    nightDokoHours: day.accompanyNight,
+    officeHours: day.officeWork,
+    salesHours: day.salesWork,
+    totalHours: day.totalHours,
+  }));
+
+  // ケア一覧データ
+  const careListData = careList.map((day) => ({
+    date: `${month}/${day.day}`,
+    cares: day.slots.map((slot) => ({
+      clientName: slot.clientName,
+      hours: parseTimeRange(slot.timeRange),
+    })),
+  }));
+
+  return {
+    helperName,
+    month,
+    salaryType: 'hourly' as const,
+    basicInfo,
+    timeData,
+    dailyData,
+    careList: careListData,
+  };
+}
+
+/**
+ * HourlyPayslipをGoogle スプレッドシートに送信
+ */
+export async function sendPayslipToSheets(
+  payslip: HourlyPayslip
+): Promise<{ success: boolean; sheetName?: string; sheetUrl?: string; error?: string }> {
+  const {
+    batchUpdateCells,
+    duplicateSheet,
+    getSheetInfo,
+    getCurrentAccessToken,
+    createNewSheet
+  } = await import('./googleSheetsService');
+
+  const spreadsheetId = import.meta.env.VITE_GOOGLE_SHEETS_PAYROLL_ID;
+
+  if (!spreadsheetId) {
+    throw new Error('VITE_GOOGLE_SHEETS_PAYROLL_ID が設定されていません');
+  }
+
+  if (!getCurrentAccessToken()) {
+    throw new Error('Google認証が必要です。先にsignInWithGoogleを呼び出してください');
+  }
+
+  try {
+    // スプレッドシート情報を取得
+    const sheetInfo = await getSheetInfo(spreadsheetId);
+
+    // 新しいシート名を生成
+    const newSheetName = `${payslip.helperName}_${payslip.year}年${payslip.month}月`;
+
+    // テンプレートシートを探す（あれば複製、なければ新規作成）
+    const templateSheetName = '賃金明細(時給)';
+    const templateSheet = sheetInfo.sheets?.find(
+      sheet => sheet.properties?.title === templateSheetName
+    );
+
+    let newSheetId: number;
+
+    if (templateSheet && templateSheet.properties?.sheetId) {
+      // テンプレートを複製
+      newSheetId = await duplicateSheet(
+        spreadsheetId,
+        templateSheet.properties.sheetId,
+        newSheetName
+      );
+    } else {
+      // 新規シートを作成
+      newSheetId = await createNewSheet(spreadsheetId, newSheetName);
+    }
+
+    // HourlyPayslipをスプレッドシート用データに変換
+    const payrollData = convertPayslipToSheetData(payslip);
+
+    // データを準備
+    const updates = prepareSheetUpdates(payrollData, newSheetName);
+
+    // 一括更新
+    await batchUpdateCells(spreadsheetId, updates);
+
+    const sheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${newSheetId}`;
+
+    return {
+      success: true,
+      sheetName: newSheetName,
+      sheetUrl,
+    };
+
+  } catch (error) {
+    console.error('スプレッドシート送信エラー:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '不明なエラー',
+    };
+  }
+}
+
+/**
  * 給与データをGoogle スプレッドシートに送信（Sheets API使用）
+ * @deprecated sendPayslipToSheetsを使用してください
  */
 export async function sendPayrollToSheets(
   payrollData: ReturnType<typeof convertToPayrollData>
@@ -335,109 +509,225 @@ export async function sendPayrollToSheets(
 }
 
 /**
- * スプレッドシート更新データを準備
+ * スプレッドシート更新データを準備（仕様書ベース）
  */
 function prepareSheetUpdates(
   payrollData: ReturnType<typeof convertToPayrollData>,
   sheetName: string
 ): Array<{ range: string; values: any[][] }> {
   const updates: Array<{ range: string; values: any[][] }> = [];
-  const { basicInfo, timeData, dailyData, careList, month, salaryType } = payrollData;
+  const { basicInfo, timeData, dailyData, careList, month, salaryType, helperName } = payrollData;
 
-  // 基本情報
+  // ===== セクション1: 給与明細本体（列A〜N） =====
+
+  // ヘッダー（B2:N2）
+  updates.push({
+    range: `${sheetName}!B2`,
+    values: [[`賃金明細 ${new Date().getFullYear()}年 ${month}月分(支払通知書）`]]
+  });
+
+  // 会社名（I8）
+  updates.push({
+    range: `${sheetName}!I8`,
+    values: [['Athena合同会社']]
+  });
+
+  // 事業所名（I9）
+  updates.push({
+    range: `${sheetName}!I9`,
+    values: [['訪問介護事業所のあ']]
+  });
+
+  // 住所（I11）
+  updates.push({
+    range: `${sheetName}!I11`,
+    values: [['大阪府大阪市大正区三軒家東４丁目１５ー４']]
+  });
+
+  // 基本情報欄（行18〜20）
+  // D19: 時間単価, D20: ヘルパー名
   updates.push(
-    { range: `${sheetName}!D20`, values: [[basicInfo.helperName]] },
-    { range: `${sheetName}!C23`, values: [[basicInfo.regularDays]] },
-    { range: `${sheetName}!E23`, values: [[basicInfo.dokoDays]] },
+    { range: `${sheetName}!D19`, values: [[2000]] }, // デフォルト時給
+    { range: `${sheetName}!D20`, values: [[helperName]] }
+  );
+
+  // 勤怠項目（行22〜25）
+  // C22:D22（通常稼働日数）, E22:F22（同行稼働日数）, G22:H22（欠勤）, I22:J22（遅刻早退）, K22:L22（合計日数）
+  updates.push(
+    { range: `${sheetName}!C22`, values: [[basicInfo.regularDays]] },
+    { range: `${sheetName}!E22`, values: [[basicInfo.dokoDays]] },
+    { range: `${sheetName}!G22`, values: [[0]] }, // 欠勤
+    { range: `${sheetName}!I22`, values: [[0]] }, // 遅刻早退
+    { range: `${sheetName}!K22`, values: [[`=C22+E22`]] } // 合計日数（計算式）
+  );
+
+  // 時間集計（行23〜25）
+  // C23: 通常時間, E23: 同行時間, G23: 深夜通常, I23: 深夜同行, K23: 事務営業, M23: 合計
+  updates.push(
+    { range: `${sheetName}!C23`, values: [[timeData.regularHours]] },
+    { range: `${sheetName}!E23`, values: [[timeData.dokoHours]] },
+    { range: `${sheetName}!G23`, values: [[timeData.nightHours]] },
+    { range: `${sheetName}!I23`, values: [[timeData.nightDokoHours]] },
+    { range: `${sheetName}!K23`, values: [[timeData.officeHours + timeData.salesHours]] },
+    { range: `${sheetName}!M23`, values: [[`=C23+E23+G23+I23+K23`]] } // 合計時間（計算式）
+  );
+
+  // 支給項目（行28〜29）
+  // C28: 通常報酬, E28: 同行報酬, G28: 深夜通常, I28: 深夜同行, K28: 事務営業
+  updates.push(
+    { range: `${sheetName}!C28`, values: [[`=C23*$D$19`]] }, // 通常報酬（計算式）
+    { range: `${sheetName}!E28`, values: [[`=E23*$D$19`]] }, // 同行報酬
+    { range: `${sheetName}!G28`, values: [[`=G23*$D$19*1.25`]] }, // 深夜通常（1.25倍）
+    { range: `${sheetName}!I28`, values: [[`=I23*$D$19*1.25`]] }, // 深夜同行
+    { range: `${sheetName}!K28`, values: [[`=K23*1000`]] } // 事務営業（1000円/h）
+  );
+
+  // 経費・交通費（C30, E30）
+  updates.push(
     { range: `${sheetName}!C30`, values: [[basicInfo.expenses]] },
     { range: `${sheetName}!E30`, values: [[basicInfo.transportation]] }
   );
 
-  // 時間集計（25行目）
-  updates.push(
-    { range: `${sheetName}!C25`, values: [[timeData.regularHours]] },
-    { range: `${sheetName}!E25`, values: [[timeData.nightHours]] },
-    { range: `${sheetName}!G25`, values: [[timeData.nightDokoHours]] },
-    { range: `${sheetName}!I25`, values: [[timeData.officeHours + timeData.salesHours]] },
-    { range: `${sheetName}!K25`, values: [[timeData.totalHours]] }
-  );
-
-  // 月勤怠表ヘッダー
+  // 支給額合計（M29）
   updates.push({
-    range: `${sheetName}!Q2`,
-    values: [[`${month}月勤怠表`]]
+    range: `${sheetName}!M29`,
+    values: [[`=C28+E28+G28+I28+K28+C30+E30`]]
   });
 
-  // 日次データ（4行目〜34行目、最大31日分）
-  if (salaryType === 'hourly') {
-    // 時給の場合：8列 + ケア一覧
-    const dailyValues = dailyData.map((day, index) => {
-      const row = [
-        day.date,           // Q列: 日付
-        day.dayOfWeek,      // R列: 曜日
-        day.regularHours || '',   // S列: 通常時間
-        day.nightHours || '',     // T列: 通常深夜時間
-        day.dokoHours || '',      // U列: 同行時間
-        day.nightDokoHours || '', // V列: 深夜同行時間
-        day.officeHours || '',    // W列: 事務時間
-        day.salesHours || '',     // X列: 営業時間
-        day.totalHours || '',     // Y列: 合計時間
-      ];
+  // 控除額合計（M35）
+  updates.push({
+    range: `${sheetName}!M35`,
+    values: [[0]] // デフォルト0
+  });
 
-      // ケア一覧（Z列以降、最大5件）
-      const cares = careList[index]?.cares || [];
-      for (let i = 0; i < 5; i++) {
-        if (cares[i]) {
-          row.push(`${cares[i].clientName}(${cares[i].hours}h)`);
-        } else {
-          row.push('');
-        }
-      }
+  // 振込支給額（G37）
+  updates.push({
+    range: `${sheetName}!G37`,
+    values: [[`=M29-M35`]]
+  });
 
-      return row;
-    });
+  // 現金支給額（K37）
+  updates.push({
+    range: `${sheetName}!K37`,
+    values: [[0]]
+  });
 
-    updates.push({
-      range: `${sheetName}!Q4:AE34`,  // 最大31日分
-      values: dailyValues
-    });
+  // 差引支給額（O37）
+  updates.push({
+    range: `${sheetName}!O37`,
+    values: [[`=G37+K37`]]
+  });
 
-    // 35行目に合計行を追加
-    const totalRow = [
-      '合計', // Q列
-      '', // R列
-      timeData.regularHours || '',
-      timeData.nightHours || '',
-      timeData.dokoHours || '',
-      timeData.nightDokoHours || '',
-      timeData.officeHours || '',
-      timeData.salesHours || '',
-      timeData.totalHours || '',
-    ];
-    updates.push({
-      range: `${sheetName}!Q35:Y35`,
-      values: [totalRow]
-    });
+  // ===== セクション2: 月勤務表（列Q〜Z） =====
 
-  } else {
-    // 固定給の場合：3列（日付、曜日、合計時間）
-    const dailyValues = dailyData.map(day => [
-      day.date,        // Q列: 日付
-      day.dayOfWeek,   // R列: 曜日
-      day.totalHours || '',  // S列: 合計時間
-    ]);
+  // ヘッダー（Q2）
+  updates.push({
+    range: `${sheetName}!Q2`,
+    values: [[`${month}月勤務表`]]
+  });
 
-    updates.push({
-      range: `${sheetName}!Q4:S34`,  // 最大31日分
-      values: dailyValues
-    });
+  // 日次データ（Q4〜Y34、最大31日分）
+  const dailyValues = dailyData.map((day) => [
+    day.date,           // Q列: 日付
+    day.dayOfWeek,      // R列: 曜日
+    day.regularHours || 0,   // S列: 通常稼働
+    day.nightHours || 0,     // T列: 通常(深夜)
+    day.dokoHours || 0,      // U列: 同行稼働
+    day.nightDokoHours || 0, // V列: 同行(深夜)
+    day.officeHours || 0,    // W列: 事務稼働
+    day.salesHours || 0,     // X列: 営業稼働
+    day.totalHours || 0,     // Y列: 合計勤務時間
+  ]);
 
-    // 35行目に合計行を追加
-    updates.push({
-      range: `${sheetName}!Q35:S35`,
-      values: [['合計', '', timeData.totalHours || '']]
-    });
+  // 31日分に満たない場合は空行で埋める
+  while (dailyValues.length < 31) {
+    dailyValues.push(['', '', 0, 0, 0, 0, 0, 0, 0]);
   }
+
+  updates.push({
+    range: `${sheetName}!Q4:Y34`,
+    values: dailyValues
+  });
+
+  // 合計行（Q35:Y35）
+  updates.push({
+    range: `${sheetName}!Q35:Y35`,
+    values: [[
+      '合計',
+      '',
+      timeData.regularHours || 0,
+      timeData.nightHours || 0,
+      timeData.dokoHours || 0,
+      timeData.nightDokoHours || 0,
+      timeData.officeHours || 0,
+      timeData.salesHours || 0,
+      timeData.totalHours || 0,
+    ]]
+  });
+
+  // ===== セクション3: ケアー覧表（列AA〜AH） =====
+
+  // ヘッダー（AA2）
+  updates.push({
+    range: `${sheetName}!AA2`,
+    values: [['ケアー覧表']]
+  });
+
+  // ケア一覧データ（AA4〜AH66、最大63行）
+  // 1日あたり最大5件のケア項目を表示
+  const careValues: any[][] = [];
+
+  for (let i = 0; i < Math.min(dailyData.length, 31); i++) {
+    const day = dailyData[i];
+    const cares = careList[i]?.cares || [];
+
+    // 日付列（AA列）
+    const dateCell = day.date;
+
+    // 最大5件のケア項目（AB〜AF列）
+    const careRow = [dateCell];
+    for (let j = 0; j < 5; j++) {
+      if (cares[j]) {
+        careRow.push(`${cares[j].clientName}(${cares[j].hours}h)`);
+      } else {
+        careRow.push('');
+      }
+    }
+
+    // 合計時間（AG列）
+    const totalCareHours = cares.reduce((sum, care) => sum + care.hours, 0);
+    careRow.push(totalCareHours > 0 ? `${totalCareHours.toFixed(1)}時間` : '');
+
+    careValues.push(careRow);
+  }
+
+  // 63行に満たない場合は空行で埋める
+  while (careValues.length < 63) {
+    careValues.push(['', '', '', '', '', '', '']);
+  }
+
+  updates.push({
+    range: `${sheetName}!AA4:AG66`,
+    values: careValues
+  });
+
+  // 合計行（AA67:AG67）
+  const totalCareHours = careList.reduce((sum, day) => {
+    return sum + day.cares.reduce((daySum, care) => daySum + care.hours, 0);
+  }, 0);
+
+  updates.push({
+    range: `${sheetName}!AA67:AG67`,
+    values: [[
+      '合計',
+      '',
+      '',
+      '',
+      '',
+      '',
+      totalCareHours > 0 ? `${totalCareHours.toFixed(1)}時間` : '0.0時間'
+    ]]
+  });
 
   return updates;
 }
