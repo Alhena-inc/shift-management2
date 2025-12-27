@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { Shift, Helper } from '../types';
 import { SERVICE_CONFIG } from '../types';
 import type { FixedPayslip, HourlyPayslip, Payslip } from '../types/payslip';

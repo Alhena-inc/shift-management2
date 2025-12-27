@@ -1,4 +1,4 @@
-import { EmployeeFormData } from '../../types/employeeForm';
+import type { EmployeeFormData } from '../../types/employeeForm';
 
 interface ConfirmationSectionProps {
   data: EmployeeFormData['confirmations'];

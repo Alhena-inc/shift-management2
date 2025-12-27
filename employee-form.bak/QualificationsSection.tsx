@@ -1,4 +1,4 @@
-import { EmployeeFormData, QUALIFICATION_OPTIONS } from '../../types/employeeForm';
+import type { EmployeeFormData, QUALIFICATION_OPTIONS } from '../../types/employeeForm';
 import { FileUploadField } from './FileUploadField';
 
 interface QualificationsSectionProps {

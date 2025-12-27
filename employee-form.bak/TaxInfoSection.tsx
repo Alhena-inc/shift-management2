@@ -1,4 +1,4 @@
-import { EmployeeFormData, WIDOW_DEDUCTION_OPTIONS } from '../../types/employeeForm';
+import type { EmployeeFormData, WIDOW_DEDUCTION_OPTIONS } from '../../types/employeeForm';
 
 interface TaxInfoSectionProps {
   data: EmployeeFormData['taxInfo'];

@@ -1,4 +1,4 @@
-import { EmployeeFormData, DEPENDENT_CONDITIONS } from '../../types/employeeForm';
+import type { EmployeeFormData, DEPENDENT_CONDITIONS } from '../../types/employeeForm';
 
 interface DependentsSectionProps {
   data: EmployeeFormData['dependents'];

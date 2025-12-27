@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import type { FixedPayslip } from '../../types/payslip';
+import type { Helper } from '../../types';
 import { COMPANY_INFO } from '../../types/payslip';
 import { savePayslip } from '../../services/payslipService';
 import { calculateWithholdingTax } from '../../utils/taxCalculator';
@@ -7,12 +8,14 @@ import { calculateInsurance } from '../../utils/insuranceCalculator';
 
 interface FixedPayslipEditorProps {
   payslip: FixedPayslip;
+  helper?: Helper;
   onClose: () => void;
   onSaved?: () => void;
 }
 
 export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
   payslip: initialPayslip,
+  helper,
   onClose,
   onSaved
 }) => {

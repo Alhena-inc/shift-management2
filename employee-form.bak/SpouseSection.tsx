@@ -1,4 +1,4 @@
-import { EmployeeFormData } from '../../types/employeeForm';
+import type { EmployeeFormData } from '../../types/employeeForm';
 
 interface SpouseSectionProps {
   data: EmployeeFormData['spouse'];

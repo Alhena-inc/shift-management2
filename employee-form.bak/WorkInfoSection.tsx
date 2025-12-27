@@ -1,4 +1,4 @@
-import { EmployeeFormData, TRANSPORT_METHODS } from '../../types/employeeForm';
+import type { EmployeeFormData, TRANSPORT_METHODS } from '../../types/employeeForm';
 
 interface WorkInfoSectionProps {
   data: EmployeeFormData['work'];
