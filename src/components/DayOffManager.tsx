@@ -686,7 +686,7 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                         value={displayText}
                         onChange={(e) => setDisplayText(e.target.value)}
                         placeholder="入力した内容が選択範囲の一番上のセルに表示されます"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-base"
+                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-base"
                       />
                       <p className="text-xs text-gray-600 mt-1">
                         ※入力がない場合は「休」と表示されます

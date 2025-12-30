@@ -19,6 +19,55 @@ import type { Helper, Shift } from '../types';
 const HELPERS_COLLECTION = 'helpers';
 const SHIFTS_COLLECTION = 'shifts';
 
+/**
+ * Firestore用にデータをサニタイズ（undefinedを除去）
+ * Firestoreはundefined値を保存できないため、再帰的に除去する
+ */
+function sanitizeForFirestore(obj: any): any {
+  // undefinedやnullは除外（呼び出し元で処理）
+  if (obj === undefined || obj === null) {
+    return null;
+  }
+
+  // Timestampオブジェクトはそのまま返す
+  if (obj instanceof Timestamp || obj instanceof Date) {
+    return obj;
+  }
+
+  // 配列の場合
+  if (Array.isArray(obj)) {
+    return obj
+      .map(item => sanitizeForFirestore(item))
+      .filter(item => item !== null && item !== undefined);
+  }
+
+  // オブジェクトの場合
+  if (typeof obj === 'object' && obj !== null) {
+    const sanitized: Record<string, any> = {};
+
+    for (const [key, value] of Object.entries(obj)) {
+      // undefinedは完全に除外
+      if (value === undefined) {
+        console.log(`  🗑️ undefinedフィールドを除外: ${key}`);
+        continue;
+      }
+
+      // 再帰的にサニタイズ
+      const sanitizedValue = sanitizeForFirestore(value);
+
+      // サニタイズ後もundefinedの場合は除外
+      if (sanitizedValue !== undefined) {
+        sanitized[key] = sanitizedValue;
+      }
+    }
+
+    return sanitized;
+  }
+
+  // プリミティブ値はそのまま返す
+  return obj;
+}
+
 // ヘルパーを保存
 export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
   try {
@@ -32,6 +81,8 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
     // 新しいヘルパーリストを保存
     helpers.forEach(helper => {
       const helperRef = doc(db, HELPERS_COLLECTION, helper.id);
+
+      // データを準備
       const dataToSave = {
         ...helper,
         // insurancesが未定義の場合は空配列にする（Firestoreに確実に保存）
@@ -41,10 +92,22 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
         standardMonthlyRemuneration: (helper as any).standardMonthlyRemuneration || helper.standardRemuneration || 0,
         updatedAt: Timestamp.now()
       };
-      console.log(`💾 Firestoreに保存するデータ (ID: ${helper.id}):`, dataToSave);
-      console.log(`📋 insurancesフィールド:`, dataToSave.insurances);
-      console.log(`💰 標準報酬月額:`, dataToSave.standardRemuneration);
-      batch.set(helperRef, dataToSave);
+
+      // Firestore用にサニタイズ（undefinedを再帰的に除去）
+      const sanitizedData = sanitizeForFirestore(dataToSave);
+
+      // デバッグ: サニタイズ後にundefinedが残っていないか確認
+      const hasUndefined = Object.entries(sanitizedData).some(([key, value]) => value === undefined);
+      if (hasUndefined) {
+        console.error(`⚠️ サニタイズ後もundefinedが残っています (ID: ${helper.id}):`, sanitizedData);
+        console.error('問題のあるフィールド:', Object.entries(sanitizedData).filter(([_, v]) => v === undefined));
+      }
+
+      console.log(`💾 Firestoreに保存するデータ (ID: ${helper.id}):`, sanitizedData);
+      console.log(`📋 insurancesフィールド:`, sanitizedData.insurances);
+      console.log(`💰 標準報酬月額:`, sanitizedData.standardRemuneration);
+
+      batch.set(helperRef, sanitizedData);
     });
 
     // 削除されたヘルパーをFirestoreからも削除
@@ -71,30 +134,47 @@ export const saveShiftsForMonth = async (_year: number, _month: number, shifts: 
     shifts.forEach(shift => {
       const shiftRef = doc(db, SHIFTS_COLLECTION, shift.id);
 
-      // undefinedのフィールドを除外
-      const shiftData: Record<string, any> = {
+      // データを準備
+      const shiftData = {
         ...shift,
         updatedAt: Timestamp.now()
       };
 
-      // undefinedのフィールドを削除またはdeleteField()に置き換え
-      Object.keys(shiftData).forEach(key => {
-        if (shiftData[key] === undefined) {
-          // cancelStatusが明示的にundefinedの場合は、Firestoreから削除
-          if (key === 'cancelStatus') {
-            shiftData[key] = deleteField();
-          } else {
-            delete shiftData[key];
-          }
-        }
+      // Firestore用にサニタイズ（undefinedのフィールドは自動的に除去される）
+      const sanitizedData = sanitizeForFirestore(shiftData);
+
+      // デバッグ: 保存するデータをログ出力
+      console.log('💾 シフト保存（完全上書き）:', {
+        collection: SHIFTS_COLLECTION,
+        id: shift.id,
+        helperId: shift.helperId,
+        helperIdType: typeof shift.helperId,
+        date: shift.date,
+        clientName: shift.clientName,
+        serviceType: shift.serviceType,
+        startTime: shift.startTime,
+        endTime: shift.endTime,
+        duration: shift.duration,
+        area: shift.area,
+        rowIndex: shift.rowIndex,
+        cancelStatus: shift.cancelStatus,
+        canceledAt: shift.canceledAt,
+        deleted: shift.deleted,
+        hasUndefinedFields: Object.entries(shift).filter(([k, v]) => v === undefined).map(([k]) => k)
       });
 
-      batch.set(shiftRef, shiftData, { merge: true });
+      console.log('📦 サニタイズ後のデータ:', sanitizedData);
+
+      // 完全上書き（merge: trueを削除）
+      // これにより、undefinedのフィールドは保存されず、古いフィールドも完全に削除される
+      batch.set(shiftRef, sanitizedData);
     });
 
     await batch.commit();
+    console.log(`✅ Firestore batch.commit()完了 - ${shifts.length}件のシフトを保存しました`);
   } catch (error) {
-    console.error('シフト保存エラー:', error);
+    console.error('❌ シフト保存エラー:', error);
+    throw error;
   }
 };
 
@@ -103,20 +183,16 @@ export const saveShift = async (shift: Shift): Promise<void> => {
   try {
     const shiftRef = doc(db, SHIFTS_COLLECTION, shift.id);
 
-    // undefinedのフィールドを除外
-    const shiftData: Record<string, any> = {
+    // データを準備
+    const shiftData = {
       ...shift,
       updatedAt: Timestamp.now()
     };
 
-    // undefinedのフィールドを削除
-    Object.keys(shiftData).forEach(key => {
-      if (shiftData[key] === undefined) {
-        delete shiftData[key];
-      }
-    });
+    // Firestore用にサニタイズ
+    const sanitizedData = sanitizeForFirestore(shiftData);
 
-    await setDoc(shiftRef, shiftData);
+    await setDoc(shiftRef, sanitizedData);
   } catch (error) {
     console.error('シフト保存エラー:', error);
   }
@@ -186,6 +262,51 @@ export const loadShiftsForMonth = async (year: number, month: number): Promise<S
   }
 };
 
+// 3ヶ月分のシフトを一括取得（前月・当月・翌月）
+export const loadShiftsForThreeMonths = async (
+  year: number,
+  month: number,
+  helperId?: string
+): Promise<Shift[]> => {
+  try {
+    console.log(`📥 3ヶ月分のシフトを取得開始: ${year}年${month}月を中心に`);
+
+    // 前月・当月・翌月を計算
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+
+    // 3ヶ月分のシフトを並行取得
+    const [prevShifts, currentShifts, nextShifts] = await Promise.all([
+      loadShiftsForMonth(prevYear, prevMonth),
+      loadShiftsForMonth(year, month),
+      loadShiftsForMonth(nextYear, nextMonth)
+    ]);
+
+    // 統合
+    let allShifts = [...prevShifts, ...currentShifts, ...nextShifts];
+
+    // ヘルパーIDでフィルタ（指定がある場合）
+    if (helperId) {
+      allShifts = allShifts.filter(shift => shift.helperId === helperId);
+    }
+
+    console.log(`✅ 3ヶ月分のシフト取得完了:`, {
+      前月: prevShifts.length,
+      当月: currentShifts.length,
+      翌月: nextShifts.length,
+      合計: allShifts.length,
+      フィルタ適用: helperId ? 'あり' : 'なし'
+    });
+
+    return allShifts;
+  } catch (error) {
+    console.error('3ヶ月分のシフト取得エラー:', error);
+    return [];
+  }
+};
+
 // リアルタイムリスナー：月のシフトを監視
 export const subscribeToShiftsForMonth = (
   year: number,
@@ -209,15 +330,47 @@ export const subscribeToShiftsForMonth = (
     const unsubscribe = onSnapshot(
       shiftsQuery,
       (querySnapshot) => {
-        const shifts = querySnapshot.docs
-          .map(doc => ({
-            ...doc.data(),
+        console.log(`=== Firestore受信データ（${year}年${month}月） ===`);
+        console.log('受信ドキュメント数:', querySnapshot.docs.length);
+
+        const allDocs = querySnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            ...data,
             id: doc.id
-          } as Shift))
+          } as Shift;
+        });
+
+        // 最初の3件を詳細表示
+        allDocs.slice(0, 3).forEach((shift, index) => {
+          console.log(`[${index + 1}] ID: ${shift.id}`);
+          console.log(`    date: ${shift.date}`);
+          console.log(`    helperId: ${shift.helperId}`);
+          console.log(`    clientName: ${shift.clientName}`);
+          console.log(`    cancelStatus: ${shift.cancelStatus}`);
+          console.log(`    deleted: ${shift.deleted}`);
+        });
+
+        const shifts = allDocs
           // 論理削除されていないデータのみフィルタリング
           .filter(shift => !shift.deleted);
 
-        console.log(`🔄 リアルタイム更新: ${shifts.length}件のシフトを取得`);
+        console.log(`🔄 リアルタイム更新: ${year}年${month}月`, {
+          collection: SHIFTS_COLLECTION,
+          totalDocs: allDocs.length,
+          activeShifts: shifts.length,
+          deletedCount: allDocs.length - shifts.length,
+          cancelledCount: shifts.filter(s => s.cancelStatus).length,
+          sampleData: shifts.slice(0, 2).map(s => ({
+            id: s.id,
+            helperId: s.helperId,
+            date: s.date,
+            clientName: s.clientName,
+            cancelStatus: s.cancelStatus,
+            deleted: s.deleted
+          }))
+        });
+
         onUpdate(shifts);
       },
       (error) => {
@@ -236,10 +389,18 @@ export const subscribeToShiftsForMonth = (
 export const deleteShift = async (shiftId: string): Promise<void> => {
   try {
     const shiftRef = doc(db, SHIFTS_COLLECTION, shiftId);
+
+    console.log(`🗑️ 削除対象のドキュメント: ${shiftId}`);
+    console.log(`📁 コレクション: ${SHIFTS_COLLECTION}`);
+    console.log(`🔗 ドキュメントパス: ${shiftRef.path}`);
+
     await deleteDoc(shiftRef);
-    console.log(`シフトを完全削除しました: ${shiftId}`);
+    console.log(`✅ Firestoreからドキュメントを削除しました: ${shiftId}`);
+    console.log(`✅ この削除は永続的です - ページをリロードしても復活しません`);
   } catch (error) {
-    console.error('シフト削除エラー:', error);
+    console.error('❌ シフト削除エラー:', error);
+    console.error('❌ 削除対象ID:', shiftId);
+    console.error('❌ エラー詳細:', error);
     throw error;
   }
 };

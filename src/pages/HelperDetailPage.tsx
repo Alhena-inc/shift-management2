@@ -305,6 +305,39 @@ const HelperDetailPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* 個人シフト設定 */}
+              <div>
+                <h2 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">個人シフト設定</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      個人トークン
+                    </label>
+                    <input
+                      type="text"
+                      value={helper.personalToken || ''}
+                      onChange={(e) => handleChange('personalToken', e.target.value)}
+                      className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                      placeholder="ユニークなトークン"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">個人シフト表URLに使用されます</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      スプレッドシートID（gid）
+                    </label>
+                    <input
+                      type="text"
+                      value={helper.spreadsheetGid || ''}
+                      onChange={(e) => handleChange('spreadsheetGid', e.target.value)}
+                      className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                      placeholder="503376053"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">個人用スプレッドシートのシートID</p>
+                  </div>
+                </div>
+              </div>
+
               {/* 住所情報 */}
               <div>
                 <h2 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">住所情報</h2>

@@ -65,6 +65,7 @@ export interface Helper {
   gender: 'male' | 'female';
   order: number;
   personalToken?: string;  // 個人シフト表用のユニークトークン
+  spreadsheetGid?: string; // Googleスプレッドシートの個人シートID（gid）
   cashPayment?: boolean;   // 手渡し支払いフラグ
   salaryType?: 'hourly' | 'fixed';  // 給与タイプ（時給 or 固定給）デフォルトは時給
 

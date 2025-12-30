@@ -62,7 +62,13 @@ const HomePage: React.FC = () => {
   });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div
+      className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100"
+      style={{
+        overscrollBehaviorX: 'none',
+        touchAction: 'pan-y pinch-zoom'
+      }}
+    >
       {/* ヘッダー */}
       <header className="bg-white shadow-sm">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">

@@ -13,7 +13,8 @@
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icon-192.png" />
 
-    <!-- Apple PWA対応 -->
+    <!-- PWA対応 -->
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="シフト管理" />
@@ -23,6 +24,20 @@
 
     <!-- Description -->
     <meta name="description" content="介護シフト管理システム" />
+
+    <!-- Cross-Origin Policy -->
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin-allow-popups" />
+
+    <!-- Content Security Policy - 開発環境用（Googleスプレッドシート埋め込みとVite HMR対応） -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;
+      script-src * 'unsafe-inline' 'unsafe-eval';
+      style-src * 'unsafe-inline';
+      img-src * data: blob:;
+      font-src * data:;
+      frame-src *;
+      connect-src *;
+    ">
   </head>
   <body>
     <div id="root"></div>

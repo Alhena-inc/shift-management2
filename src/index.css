@@ -21,6 +21,17 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  /* ブラウザの戻る/進むジェスチャーを無効化 */
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: auto;
+  /* タッチアクションを制御（縦スクロールのみ許可） */
+  touch-action: pan-y pinch-zoom;
+}
+
+#root {
+  /* ルート要素でもジェスチャーを無効化 */
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: auto;
 }
 
 /* number input のスピナーボタンを非表示 */

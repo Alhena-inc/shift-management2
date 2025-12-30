@@ -25,6 +25,10 @@ export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 // Sheets APIへのアクセス権限を追加
 googleProvider.addScope('https://www.googleapis.com/auth/spreadsheets');
+// 毎回同意画面を表示（スコープが正しく要求されるようにする）
+googleProvider.setCustomParameters({
+  prompt: 'consent'
+});
 
 // 接続テスト関数
 export const testFirebaseConnection = async () => {

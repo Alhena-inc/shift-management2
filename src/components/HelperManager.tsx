@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import type { Helper } from '../types';
+import { getGoogleAccessToken } from '../services/googleAuthService';
+import { addHelperColumn } from '../services/googleSheetsApi';
 
 // ランダムトークン生成関数（10文字）
 const generateToken = (): string => {
@@ -18,8 +20,9 @@ interface Props {
 }
 
 export const HelperManager = memo(function HelperManager({ helpers, onUpdate, onClose }: Props) {
-  // 環境変数からベースURLを取得（開発環境ではlocalhost、本番環境ではVercel URL）
-  const baseUrl = import.meta.env.VITE_APP_URL || window.location.origin;
+  // 開発環境では常に現在のURLを使用（本番環境では環境変数を優先）
+  const isDevelopment = import.meta.env.DEV;
+  const baseUrl = isDevelopment ? window.location.origin : (import.meta.env.VITE_APP_URL || window.location.origin);
 
   const [newHelperName, setNewHelperName] = useState('');
   const [newHelperLastName, setNewHelperLastName] = useState('');
@@ -35,7 +38,7 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
   const [editingHelperId, setEditingHelperId] = useState<string | null>(null);
   const [editHelperFirstName, setEditHelperFirstName] = useState('');
 
-  const handleAddHelper = useCallback(() => {
+  const handleAddHelper = useCallback(async () => {
     // 苗字または名前のどちらかが入力されていればOK
     const lastName = newHelperLastName.trim();
     const firstName = newHelperFirstName.trim();
@@ -55,8 +58,8 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
     const newHelper: Helper = {
       id: String(maxId + 1),
       name: displayName,
-      lastName: lastName || undefined,
-      firstName: firstName || undefined,
+      ...(lastName && { lastName }), // lastNameが空でない場合のみ追加
+      ...(firstName && { firstName }), // firstNameが空でない場合のみ追加
       gender: newHelperGender,
       order: 0, // 仮の値
     };
@@ -72,13 +75,77 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
     // orderを再設定
     updatedHelpers = updatedHelpers.map((h, idx) => ({ ...h, order: idx + 1 }));
 
-    setLocalHelpers(updatedHelpers);
-    setHasChanges(true);
-    setNewHelperName('');
-    setNewHelperLastName('');
-    setNewHelperFirstName('');
-    setShowAddForm(false);
-  }, [localHelpers, newHelperLastName, newHelperFirstName, newHelperName, newHelperGender]);
+    // 即座にFirebaseに保存
+    setIsSaving(true);
+    try {
+      console.log(`💾 ${displayName}さんをFirebaseに保存中...`);
+
+      await onUpdate(updatedHelpers);
+
+      console.log(`✅ ${displayName}さんをFirebaseに保存しました`);
+
+      // Firestoreの書き込み完了を確実に待つ（500msに延長）
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Google Sheetsに列を追加
+      try {
+        console.log(`📊 Googleスプレッドシートに${displayName}さんの列を追加中...`);
+
+        // Google OAuth認証（初回のみポップアップ表示）
+        const accessToken = await getGoogleAccessToken();
+
+        // スプレッドシートに列を追加
+        await addHelperColumn(displayName, accessToken);
+
+        console.log(`✅ Googleスプレッドシートに${displayName}さんの列を追加しました`);
+      } catch (error) {
+        console.error('❌ スプレッドシートへの列追加に失敗:', error);
+        // スプレッドシートの更新に失敗してもヘルパー登録は成功とする
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        // 403エラーの場合は、スプレッドシート共有設定の案内を表示
+        if (errorMessage.includes('403') || errorMessage.includes('アクセスできません')) {
+          alert(
+            `⚠️ ${displayName}さんは登録されましたが、スプレッドシートへの列追加に失敗しました。\n\n` +
+            `【原因】\n` +
+            `スプレッドシートへのアクセス権限がありません。\n\n` +
+            `【対処方法】\n` +
+            `1. Googleスプレッドシートを開く:\n` +
+            `   https://docs.google.com/spreadsheets/d/1hrNbQ3X9bkFqNe3zoZgs3vQF54K2rmFxXNJm_0Xg5m0/edit\n\n` +
+            `2. 右上の「共有」ボタンをクリック\n\n` +
+            `3. 認証したGoogleアカウントを「編集者」として追加\n` +
+            `   または「リンクを知っている全員」を「編集者」に変更\n\n` +
+            `4. もう一度ヘルパー追加をお試しください`
+          );
+        } else {
+          alert(
+            `⚠️ ${displayName}さんは登録されましたが、スプレッドシートへの列追加に失敗しました:\n\n` +
+            `${errorMessage}\n\n` +
+            `手動でスプレッドシートに列を追加してください。`
+          );
+        }
+      }
+
+      setLocalHelpers(updatedHelpers);
+      setHasChanges(false);
+      setNewHelperName('');
+      setNewHelperLastName('');
+      setNewHelperFirstName('');
+      setNewHelperGender('male');
+      setShowAddForm(false);
+
+      // 保存成功メッセージを表示（シフト表に戻らない）
+      alert(`✅ ${displayName}さんを保存しました`);
+    } catch (error) {
+      console.error('❌ ヘルパーの追加に失敗しました:', error);
+      alert(`❌ ${displayName}さんの追加に失敗しました。\n\nエラー: ${error instanceof Error ? error.message : '不明なエラー'}\n\nもう一度お試しください。`);
+
+      // エラー時はローカルステートも元に戻す
+      setLocalHelpers(localHelpers);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [localHelpers, newHelperLastName, newHelperFirstName, newHelperName, newHelperGender, onUpdate]);
 
   // クリーンアップ: スクロールインターバルをクリア
   useEffect(() => {
@@ -126,7 +193,7 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
     }
   }, []);
 
-  const handleDrop = useCallback((dropIndex: number) => {
+  const handleDrop = useCallback(async (dropIndex: number) => {
     // スクロールインターバルをクリア
     if (scrollIntervalRef.current) {
       clearInterval(scrollIntervalRef.current);
@@ -146,9 +213,30 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
     const reorderedHelpers = updatedHelpers.map((h, idx) => ({ ...h, order: idx + 1 }));
 
     setLocalHelpers(reorderedHelpers);
-    setHasChanges(true);
     setDraggedIndex(null);
-  }, [draggedIndex, localHelpers]);
+
+    // 即座にFirebaseに保存
+    setIsSaving(true);
+    try {
+      console.log('💾 ヘルパーの順番を保存中...');
+
+      await onUpdate(reorderedHelpers);
+
+      setHasChanges(false);
+      console.log('✅ ヘルパーの順番を保存しました');
+
+      // 小さな成功フィードバック（アラートなし）
+      // アラートは出さずにコンソールログのみ
+    } catch (error) {
+      console.error('❌ ヘルパーの順番保存に失敗しました:', error);
+      alert('❌ 順番の保存に失敗しました。もう一度お試しください。');
+
+      // エラー時は元の順番に戻す
+      setLocalHelpers(localHelpers);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [draggedIndex, localHelpers, onUpdate]);
 
   const handleStartEdit = useCallback((helper: Helper) => {
     setEditingHelperId(helper.id);
@@ -161,15 +249,17 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
     const helper = localHelpers.find(h => h.id === editingHelperId);
     if (!helper) return;
 
-    const updatedHelpers = localHelpers.map(h =>
-      h.id === editingHelperId
-        ? {
-            ...h,
-            lastName: h.name, // 現在のnameを苗字として設定
-            firstName: editHelperFirstName.trim() || undefined
-          }
-        : h
-    );
+    const updatedHelpers = localHelpers.map(h => {
+      if (h.id === editingHelperId) {
+        const trimmedFirstName = editHelperFirstName.trim();
+        return {
+          ...h,
+          lastName: h.name, // 現在のnameを苗字として設定
+          ...(trimmedFirstName && { firstName: trimmedFirstName }) // firstNameが空でない場合のみ追加
+        };
+      }
+      return h;
+    });
 
     setLocalHelpers(updatedHelpers);
     setEditingHelperId(null);
@@ -178,10 +268,12 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
     // 即座にFirestoreに保存
     setIsSaving(true);
     try {
+      console.log('💾 名前の編集を保存中...');
       await onUpdate(updatedHelpers);
+      console.log('✅ 名前の編集を保存しました');
       alert('✅ 保存しました');
     } catch (error) {
-      console.error('保存エラー:', error);
+      console.error('❌ 保存エラー:', error);
       alert('❌ 保存に失敗しました');
     } finally {
       setIsSaving(false);
@@ -194,8 +286,10 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
     setEditHelperFirstName('');
   }, []);
 
-  const handleDeleteHelper = useCallback((helperId: string) => {
-    if (!confirm('このヘルパーを削除してもよろしいですか？')) {
+  const handleDeleteHelper = useCallback(async (helperId: string) => {
+    const helperName = localHelpers.find(h => h.id === helperId)?.name || '';
+
+    if (!confirm(`${helperName}さんを削除してもよろしいですか？`)) {
       return;
     }
 
@@ -204,18 +298,57 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
       .map((h, idx) => ({ ...h, order: idx + 1 }));
 
     setLocalHelpers(updatedHelpers);
-    setHasChanges(true);
-  }, [localHelpers]);
 
-  const handleGenerateToken = useCallback((helperId: string) => {
+    // 即座にFirebaseに保存
+    setIsSaving(true);
+    try {
+      console.log(`💾 ${helperName}さんを削除中...`);
+
+      await onUpdate(updatedHelpers);
+
+      setHasChanges(false);
+      console.log(`✅ ${helperName}さんを削除しました`);
+
+      // 削除成功メッセージ
+      alert(`✅ ${helperName}さんを削除しました`);
+    } catch (error) {
+      console.error('❌ ヘルパーの削除に失敗しました:', error);
+      alert(`❌ ${helperName}さんの削除に失敗しました。\n\nエラー: ${error instanceof Error ? error.message : '不明なエラー'}\n\nもう一度お試しください。`);
+
+      // 失敗した場合は元に戻す
+      setLocalHelpers(localHelpers);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [localHelpers, onUpdate]);
+
+  const handleGenerateToken = useCallback(async (helperId: string) => {
     const updatedHelpers = localHelpers.map(h =>
       h.id === helperId
         ? { ...h, personalToken: generateToken() }
         : h
     );
     setLocalHelpers(updatedHelpers);
-    setHasChanges(true);
-  }, [localHelpers]);
+
+    // 即座にFirebaseに保存
+    setIsSaving(true);
+    try {
+      console.log('💾 URLを生成中...');
+
+      await onUpdate(updatedHelpers);
+
+      setHasChanges(false);
+      console.log('✅ URLを生成して保存しました');
+    } catch (error) {
+      console.error('❌ URL生成の保存に失敗しました:', error);
+      alert(`URL生成の保存に失敗しました。\n\nエラー: ${error instanceof Error ? error.message : '不明なエラー'}\n\nもう一度お試しください。`);
+
+      // 失敗した場合は元に戻す
+      setLocalHelpers(localHelpers);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [localHelpers, onUpdate]);
 
   const handleCopyUrl = useCallback((token: string) => {
     const url = `${baseUrl}/personal/${token}`;
@@ -442,8 +575,7 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
                   value={newHelperName}
                   onChange={(e) => setNewHelperName(e.target.value)}
                   placeholder="例: 田中"
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddHelper()}
+                  className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   autoFocus
                 />
               </div>
@@ -456,8 +588,7 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
                     value={newHelperLastName}
                     onChange={(e) => setNewHelperLastName(e.target.value)}
                     placeholder="例: 田中"
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddHelper()}
+                    className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
                 <div>
@@ -467,8 +598,7 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
                     value={newHelperFirstName}
                     onChange={(e) => setNewHelperFirstName(e.target.value)}
                     placeholder="例: 太郎"
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddHelper()}
+                    className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
               </div>

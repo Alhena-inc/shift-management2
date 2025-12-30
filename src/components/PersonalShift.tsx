@@ -1,13 +1,15 @@
-import { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Helper, Shift } from '../types';
 import { SERVICE_CONFIG } from '../types';
-import { loadHelperByToken, subscribeToShiftsForMonth } from '../services/firestoreService';
+import { loadHelperByToken } from '../services/firestoreService';
+import { db } from '../lib/firebase';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
 interface Props {
   token: string;
 }
 
-export const PersonalShift = memo(function PersonalShift({ token }: Props) {
+export function PersonalShift({ token }: Props) {
   const [helper, setHelper] = useState<Helper | null>(null);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,6 +84,8 @@ export const PersonalShift = memo(function PersonalShift({ token }: Props) {
       console.log('🔍 トークン:', token);
       const helperData = await loadHelperByToken(token);
       console.log('👤 取得したヘルパー:', helperData);
+      console.log('👤 ヘルパーID:', helperData?.id, '(型:', typeof helperData?.id, ')');
+      console.log('👤 ヘルパー名:', helperData?.name);
       if (!helperData) {
         console.error('❌ ヘルパーが見つかりませんでした');
         setLoading(false);
@@ -94,88 +98,89 @@ export const PersonalShift = memo(function PersonalShift({ token }: Props) {
     loadData();
   }, [token]);
 
-  // リアルタイムリスナー：マスターシフトデータを監視
+  // Firestoreからデータを取得（リアルタイム）
   useEffect(() => {
-    if (!helper) return;
-
-    console.log(`🔄 リアルタイムリスナーを設定: ${currentYear}年${currentMonth}月`);
-
-    // 現在の月のリアルタイムリスナー
-    const unsubscribeCurrentMonth = subscribeToShiftsForMonth(
-      currentYear,
-      currentMonth,
-      (allShifts) => {
-        let filteredShifts = allShifts.filter(s => s.helperId === helper.id);
-
-        // 12月の場合、1月1-4日のシフトも取得
-        if (currentMonth === 12) {
-          // 1月のリスナーは別途設定
-          setShifts(filteredShifts);
-        } else {
-          setShifts(filteredShifts);
-        }
-
-        setLastUpdate(new Date());
-        console.log(`✅ ${helper.name}さんのシフト更新:`, filteredShifts.length, '件');
-        console.log('キャンセルステータス:', filteredShifts.map(s => ({
-          client: s.clientName,
-          date: s.date,
-          cancelStatus: s.cancelStatus
-        })));
-      }
-    );
-
-    // 12月の場合、1月1-4日も監視
-    let unsubscribeJanuary: (() => void) | null = null;
-    if (currentMonth === 12) {
-      const nextYear = currentYear + 1;
-      unsubscribeJanuary = subscribeToShiftsForMonth(
-        nextYear,
-        1,
-        (januaryShifts) => {
-          const filteredJanuaryShifts = januaryShifts.filter(shift => {
-            const day = parseInt(shift.date.split('-')[2]);
-            return day >= 1 && day <= 4 && shift.helperId === helper.id;
-          });
-
-          // 現在の月のシフトと結合
-          setShifts(prevShifts => {
-            // 現在の月のシフトのみを保持
-            const currentMonthShifts = prevShifts.filter(s =>
-              s.date.startsWith(`${currentYear}-${String(currentMonth).padStart(2, '0')}`)
-            );
-            return [...currentMonthShifts, ...filteredJanuaryShifts];
-          });
-
-          setLastUpdate(new Date());
-          console.log(`✅ 1月1-4日のシフト更新:`, filteredJanuaryShifts.length, '件');
-        }
-      );
+    if (!helper?.id) {
+      setLoading(false);
+      return;
     }
 
-    // クリーンアップ
-    return () => {
-      console.log('🔌 リアルタイムリスナーを解除');
-      unsubscribeCurrentMonth();
-      if (unsubscribeJanuary) {
-        unsubscribeJanuary();
-      }
-    };
-  }, [helper, currentYear, currentMonth]);
+    console.log('📥 Firestoreからデータ取得開始:', helper.name, `(helperId: ${helper.id}, 型: ${typeof helper.id})`);
 
-  // ページフォーカス時にも再読み込み（タブ切り替え対応）
-  useEffect(() => {
-    const handleFocus = () => {
-      console.log('🔄 ページがフォーカスされました - データは自動更新されます');
+    // Firestoreからシフトを取得（リアルタイム監視）
+    const shiftsRef = collection(db, 'shifts');
+    const q = query(
+      shiftsRef,
+      where('helperId', '==', helper.id)
+      // deleted条件を削除（古いデータにdeletedフィールドがない可能性があるため）
+    );
+
+    console.log('🔍 クエリ条件:', {
+      helperId: helper.id,
+      helperIdType: typeof helper.id
+    });
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const allShifts = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Shift[];
+
+      // deletedがtrueのものを除外（deletedがundefinedの場合は含める）
+      const fetchedShifts = allShifts.filter(s => s.deleted !== true);
+
+      console.log('✅ Firestoreからデータ取得成功:', fetchedShifts.length, '件');
+      console.log('🔍 取得したシフト（最初の3件・詳細）:', fetchedShifts.slice(0, 3).map(s => ({
+        id: s.id,
+        helperId: s.helperId,
+        helperIdType: typeof s.helperId,
+        date: s.date,
+        clientName: s.clientName,
+        serviceType: s.serviceType,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        duration: s.duration,
+        area: s.area,
+        rowIndex: s.rowIndex,
+        cancelStatus: s.cancelStatus,
+        deleted: s.deleted
+      })));
+
+      console.log('📊 全フィールドサンプル（1件目）:', fetchedShifts[0]);
+
+      setShifts(fetchedShifts);
       setLastUpdate(new Date());
-    };
+      setLoading(false);
+    }, (error) => {
+      console.error('❌ Firestore取得エラー:', error);
+      setLoading(false);
+    });
 
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, []);
+    return () => {
+      console.log('🔌 Firestore監視を解除');
+      unsubscribe();
+    };
+  }, [helper?.id, helper?.name]);
 
   // 週ごとにシフトをグループ化（月曜始まり、日曜日まで7日単位、常に7列表示）
   const weeks = useMemo(() => {
+    console.log(`📅 週ごとのシフト再計算: ${shifts.length}件のシフト (${currentYear}年${currentMonth}月)`);
+    console.log('🔍 キャンセル状態のシフト:', shifts.filter(s => s.cancelStatus).map(s => ({
+      id: s.id,
+      date: s.date,
+      rowIndex: s.rowIndex,
+      cancelStatus: s.cancelStatus,
+      client: s.clientName,
+      startTime: s.startTime,
+      endTime: s.endTime
+    })));
+    console.log('📋 全シフト（最初の5件）:', shifts.slice(0, 5).map(s => ({
+      id: s.id,
+      date: s.date,
+      cancelStatus: s.cancelStatus,
+      client: s.clientName
+    })));
+
     const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
 
     const weeks: Array<{
@@ -278,6 +283,11 @@ export const PersonalShift = memo(function PersonalShift({ token }: Props) {
     });
   }, []);
 
+  // アプリ追加ガイドへの移動
+  const handleInstallClick = useCallback(() => {
+    window.location.href = `/?pwa=1&token=${token}`;
+  }, [token]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -301,13 +311,14 @@ export const PersonalShift = memo(function PersonalShift({ token }: Props) {
     );
   }
 
-  // アプリ追加ガイドへの移動
-  const handleInstallClick = useCallback(() => {
-    window.location.href = `/?pwa=1&token=${token}`;
-  }, [token]);
-
   return (
-    <div className="min-h-screen bg-gray-50 pb-8">
+    <div
+      className="min-h-screen bg-gray-50 pb-8"
+      style={{
+        overscrollBehaviorX: 'none',
+        touchAction: 'pan-y pinch-zoom'
+      }}
+    >
       {/* PWAモードでない場合、インストールガイドを表示 */}
       {!isStandalone && (
         <div className="bg-blue-600 text-white p-3 flex justify-between items-center shadow-md">
@@ -328,7 +339,7 @@ export const PersonalShift = memo(function PersonalShift({ token }: Props) {
         <div className="text-center text-2xl font-bold mb-2">
           {currentMonth}月
         </div>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-2">
           <button
             onClick={handlePreviousMonth}
             className="px-3 py-1 bg-red-500 hover:bg-red-700 rounded font-bold"
@@ -343,6 +354,18 @@ export const PersonalShift = memo(function PersonalShift({ token }: Props) {
             className="px-3 py-1 bg-red-500 hover:bg-red-700 rounded font-bold"
           >
             ▶
+          </button>
+        </div>
+        <div className="text-center">
+          <button
+            onClick={() => {
+              console.log('🔄 5秒ごとにポーリング中 - 最終更新:', lastUpdate.toLocaleTimeString());
+              alert(`5秒ごとに自動更新中です\n最終更新: ${lastUpdate.toLocaleTimeString()}`);
+            }}
+            disabled={loading}
+            className="px-4 py-1 bg-white text-red-600 hover:bg-red-50 rounded font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? '読み込み中...' : '🔄 5秒更新'}
           </button>
         </div>
       </div>
@@ -427,24 +450,56 @@ export const PersonalShift = memo(function PersonalShift({ token }: Props) {
                             }}
                           >
                             {!day.isEmpty && shift && config ? (
-                              <div
-                                className="rounded h-full w-full flex flex-col justify-center items-center text-center text-[6px] p-0.5"
-                                style={{
-                                  backgroundColor: shift.cancelStatus === 'keep_time' || shift.cancelStatus === 'remove_time'
-                                    ? '#f87171' // 赤背景（キャンセル）
-                                    : config.bgColor,
-                                  borderLeft: shift.cancelStatus === 'keep_time' || shift.cancelStatus === 'remove_time'
-                                    ? '2px solid #ef4444' // 赤ボーダー（キャンセル）
-                                    : `2px solid ${config.color}`,
-                                }}
-                              >
-                                <div className="font-bold text-[7px] leading-tight">{shift.startTime}-{shift.endTime}</div>
-                                <div className="font-bold leading-tight">{shift.clientName}({config.label})</div>
-                                <div className="font-semibold leading-tight">
-                                  {shift.cancelStatus === 'remove_time' ? '' : shift.duration}
-                                </div>
-                                <div className="leading-tight">{shift.area}</div>
-                              </div>
+                              (() => {
+                                // デバッグ：キャンセル状態を詳細に確認
+                                const cancelStatus = shift.cancelStatus?.toString().trim() || null;
+                                const isCancelled = cancelStatus === 'keep_time' || cancelStatus === 'remove_time';
+                                const bgColor = isCancelled ? '#ef4444' : config.bgColor;
+
+                                // キャンセル状態のシフトのみログ出力
+                                if (cancelStatus) {
+                                  console.log('🎨 レンダリング:', {
+                                    id: shift.id,
+                                    client: shift.clientName,
+                                    cancelStatus: `"${shift.cancelStatus}"`,
+                                    cancelStatusType: typeof shift.cancelStatus,
+                                    trimmed: `"${cancelStatus}"`,
+                                    isCancelled,
+                                    bgColor,
+                                    configBgColor: config.bgColor
+                                  });
+                                }
+
+                                return (
+                                  <div
+                                    className="rounded h-full w-full flex flex-col justify-center items-center text-center text-[6px] p-0.5"
+                                    style={{
+                                      backgroundColor: bgColor,
+                                      borderLeft: isCancelled
+                                        ? '3px solid #b91c1c' // 濃い赤ボーダー（キャンセル）
+                                        : `2px solid ${config.color}`,
+                                      color: isCancelled
+                                        ? '#ffffff' // 白文字（キャンセル時）
+                                        : 'inherit',
+                                    }}
+                                    title={`${shift.startTime}-${shift.endTime} ${shift.clientName} ${shift.duration} ${shift.area} ${cancelStatus ? `[${cancelStatus === 'keep_time' ? 'キャンセル(時間残)' : 'キャンセル(時間削除)'}]` : ''}`}
+                                  >
+
+                                    <div className="font-bold text-[7px] leading-tight">{shift.startTime}-{shift.endTime}</div>
+                                    <div className="font-bold leading-tight">{shift.clientName || '利用者名なし'}({config.label})</div>
+                                    <div className="font-semibold leading-tight">
+                                      {cancelStatus === 'remove_time' ? '' : (shift.duration || '時間なし')}
+                                    </div>
+                                    <div className="leading-tight">{shift.area || 'エリアなし'}</div>
+                                    {cancelStatus && (
+                                      <div className="text-[5px] font-bold text-white bg-black bg-opacity-50 px-1 rounded mt-0.5">
+                                        {cancelStatus === 'keep_time' ? 'キャンセル(時間残)' : 'キャンセル(時間削除)'}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()
+
                             ) : !day.isEmpty ? (
                               <div className="h-full w-full">&nbsp;</div>
                             ) : (
@@ -470,12 +525,15 @@ export const PersonalShift = memo(function PersonalShift({ token }: Props) {
         )}
       </div>
 
-      {/* リアルタイム更新インジケーター */}
+      {/* ポーリング更新インジケーター */}
       <div className="fixed bottom-4 right-4 bg-green-500 text-white px-3 py-2 rounded-lg text-xs shadow-lg">
         <div className="flex items-center gap-2">
           <div className="animate-pulse">🔄</div>
           <div>
-            <div className="font-bold">リアルタイム同期中</div>
+            <div className="font-bold">5秒ごとに更新中</div>
+            <div className="text-[10px] opacity-90">
+              シフト: {shifts.length}件
+            </div>
             <div className="text-[10px] opacity-90">
               最終更新: {lastUpdate.toLocaleTimeString('ja-JP')}
             </div>
@@ -484,4 +542,4 @@ export const PersonalShift = memo(function PersonalShift({ token }: Props) {
       </div>
     </div>
   );
-});
+}
