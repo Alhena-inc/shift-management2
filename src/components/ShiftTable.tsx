@@ -1706,8 +1706,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     // 集計を更新
     updateTotalsForHelperAndDate(helperId, date);
 
-    // Firestoreに保存
-    setTimeout(() => {
+    // Firestoreに保存（即座に実行）
+    const saveData = async () => {
       const lines = copyBufferRef.data;
       if (lines.some(line => line.trim() !== '')) {
         const [timeRange, clientInfo, durationStr, area] = lines;
@@ -1743,12 +1743,17 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           rowIndex,
           // コピー元のcancelStatusとcanceledAtを引き継ぐ
           cancelStatus: copyBufferRef.cancelStatus,
-          canceledAt: copyBufferRef.canceledAt
+          canceledAt: copyBufferRef.canceledAt,
+          deleted: false  // 削除フラグを明示的にfalseに設定
         };
 
-        saveShiftWithCorrectYearMonth(shift);
+        await saveShiftWithCorrectYearMonth(shift);
+
+        console.log('✅ ペースト保存完了:', shift);
       }
-    }, 100);
+    };
+
+    saveData();
 
     console.log('📌 セルにペーストしました');
   }, [copyBufferRef, updateTotalsForHelperAndDate, year, month]);
@@ -1963,7 +1968,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                       nightHours: payCalculation.nightHours,
                       regularPay: payCalculation.regularPay,
                       nightPay: payCalculation.nightPay,
-                      totalPay: payCalculation.totalPay
+                      totalPay: payCalculation.totalPay,
+                      deleted: false  // 削除フラグを明示的にfalseに設定
                     };
 
                     shiftsToSave.push(shift);
@@ -2124,7 +2130,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                       nightHours: payCalculation.nightHours,
                       regularPay: payCalculation.regularPay,
                       nightPay: payCalculation.nightPay,
-                      totalPay: payCalculation.totalPay
+                      totalPay: payCalculation.totalPay,
+                      deleted: false  // 削除フラグを明示的にfalseに設定
                     };
 
                     shiftsToSave.push(shift);
@@ -2755,7 +2762,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             area,
             rowIndex: rowIdx,
             cancelStatus: 'keep_time',
-            canceledAt: new Date()
+            canceledAt: new Date(),
+            deleted: false  // 削除フラグを明示的にfalseに設定
           };
 
           try {
@@ -2929,7 +2937,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             area,
             rowIndex: rowIdx,
             cancelStatus: 'remove_time',
-            canceledAt: new Date()
+            canceledAt: new Date(),
+            deleted: false  // 削除フラグを明示的にfalseに設定
           };
 
           try {
@@ -3479,7 +3488,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           rowIndex: targetRowIndex,
           // 元のシフトのcancelStatusとcanceledAtを引き継ぐ
           cancelStatus: sourceShift?.cancelStatus,
-          canceledAt: sourceShift?.canceledAt
+          canceledAt: sourceShift?.canceledAt,
+          deleted: false  // 削除フラグを明示的にfalseに設定
         };
         saveShiftWithCorrectYearMonth(shift);
       }
@@ -4356,7 +4366,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                   nightHours: payCalculation.nightHours,
                                   regularPay: payCalculation.regularPay,
                                   nightPay: payCalculation.nightPay,
-                                  totalPay: payCalculation.totalPay
+                                  totalPay: payCalculation.totalPay,
+                                  deleted: false  // 削除フラグを明示的にfalseに設定
                                 };
 
                                 try {
@@ -4464,7 +4475,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                         nightHours: payCalculation.nightHours,
                                         regularPay: payCalculation.regularPay,
                                         nightPay: payCalculation.nightPay,
-                                        totalPay: payCalculation.totalPay
+                                        totalPay: payCalculation.totalPay,
+                                        deleted: false  // 削除フラグを明示的にfalseに設定
                                       };
 
                                       // Firestoreに保存（正しい年月に - 1月分も自動的に正しく保存される）
@@ -4474,6 +4486,33 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                       const updatedShifts = shifts.filter(s => s.id !== shift.id);
                                       updatedShifts.push(shift);
                                       onUpdateShifts(updatedShifts);
+                                    } else {
+                                      // 全行が空の場合：背景色をリセット
+                                      const bgCellSelector = `.editable-cell[data-row="${currentRow}"][data-helper="${helperId}"][data-date="${date}"]`;
+                                      const bgCells = document.querySelectorAll(bgCellSelector);
+
+                                      if (bgCells.length > 0) {
+                                        // 親td要素の背景色を白にリセット
+                                        const parentTd = bgCells[0].closest('td') as HTMLElement;
+                                        if (parentTd) {
+                                          parentTd.style.backgroundColor = '#ffffff';
+                                        }
+
+                                        // 各セルの背景色もリセット
+                                        bgCells.forEach((cell) => {
+                                          const element = cell as HTMLElement;
+                                          element.style.removeProperty('background-color');
+                                        });
+                                      }
+
+                                      // Firestoreからシフトを削除
+                                      const shiftId = `shift-${helperId}-${date}-${currentRow}`;
+                                      try {
+                                        await deleteShift(shiftId);
+                                        console.log('✅ 空のシフトを削除しました:', shiftId);
+                                      } catch (error) {
+                                        console.error('❌ シフト削除エラー:', error);
+                                      }
                                     }
 
                                     // タイマーをマップから削除
