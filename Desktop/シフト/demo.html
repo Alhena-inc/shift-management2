@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>給与明細テンプレート デモ</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Sans', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .demo-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 28px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .iframe-wrapper {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+            height: 80vh;
+        }
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+        .features {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 30px;
+            flex-wrap: wrap;
+        }
+        .feature {
+            background: white;
+            padding: 15px 25px;
+            border-radius: 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            color: #333;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .feature-icon {
+            font-size: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <h1>時給制給与明細テンプレート</h1>
+        <div class="iframe-wrapper">
+            <iframe src="payslip-template.html"></iframe>
+        </div>
+        <div class="features">
+            <div class="feature">
+                <span class="feature-icon">📊</span>
+                3セクション横並び表示
+            </div>
+            <div class="feature">
+                <span class="feature-icon">💰</span>
+                自動計算機能
+            </div>
+            <div class="feature">
+                <span class="feature-icon">🖨️</span>
+                A4印刷対応
+            </div>
+            <div class="feature">
+                <span class="feature-icon">📱</span>
+                レスポンシブデザイン
+            </div>
+        </div>
+    </div>
+</body>
+</html>
