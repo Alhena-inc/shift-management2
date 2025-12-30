@@ -3,7 +3,7 @@
  * 大元シフト（管理者用）⇔ 個人シフト（ヘルパー用）の同期を管理
  */
 
-import { collection, onSnapshot, query, where, Unsubscribe } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, type Unsubscribe } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { saveShiftsForMonth } from './firestoreService';
 import type { Shift } from '../types';

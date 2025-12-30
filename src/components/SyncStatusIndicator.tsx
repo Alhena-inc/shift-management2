@@ -46,7 +46,7 @@ export const SyncStatusIndicator = memo(({ status, lastUpdate, shiftsCount }: Pr
 
   return (
     <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg ${config.bgColor}`}>
-      <span className={config.animate ? 'animate-spin' : ''}>
+      <span className={'animate' in config && config.animate ? 'animate-spin' : ''}>
         {config.icon}
       </span>
       <div className="flex flex-col">
