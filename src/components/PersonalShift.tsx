@@ -127,10 +127,9 @@ export function PersonalShift({ token }: Props) {
       })) as Shift[];
 
       // deletedがtrueのものを除外（deletedがundefinedの場合は含める）
-      // キャンセル済みシフト（cancelStatusが設定されている）も除外
+      // キャンセル済みシフトも含める（cancelStatusがあっても表示）
       const fetchedShifts = allShifts.filter(s =>
-        s.deleted !== true &&
-        !s.cancelStatus
+        s.deleted !== true
       );
 
       console.log('✅ Firestoreからデータ取得成功:', fetchedShifts.length, '件');
@@ -529,12 +528,12 @@ export function PersonalShift({ token }: Props) {
         )}
       </div>
 
-      {/* ポーリング更新インジケーター */}
+      {/* リアルタイム更新インジケーター */}
       <div className="fixed bottom-4 right-4 bg-green-500 text-white px-3 py-2 rounded-lg text-xs shadow-lg">
         <div className="flex items-center gap-2">
           <div className="animate-pulse">🔄</div>
           <div>
-            <div className="font-bold">5秒ごとに更新中</div>
+            <div className="font-bold">リアルタイム更新中</div>
             <div className="text-[10px] opacity-90">
               シフト: {shifts.length}件
             </div>
