@@ -4,10 +4,12 @@ import { useScrollDetection } from '../hooks/useScrollDetection';
 import { SERVICE_CONFIG } from '../types';
 import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts } from '../services/firestoreService';
 import { Timestamp } from 'firebase/firestore';
+import { auth } from '../lib/firebase';
 import { calculateNightHours, calculateRegularHours, calculateTimeDuration } from '../utils/timeCalculations';
 import { calculateShiftPay } from '../utils/salaryCalculations';
 import { getRowIndicesFromDayOffValue } from '../utils/timeSlots';
 import { devLog } from '../utils/logger';
+import { updateCancelStatus, removeCancelFields } from '../utils/cancelUtils';
 
 // 最適化された入力セルコンポーネント（週払い管理表用）
 interface OptimizedInputCellProps {
@@ -2897,7 +2899,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           // 集計を更新
           updateTotalsForHelperAndDate(hId, dt);
 
-          // Firestoreに保存
+          // Firestoreに保存（2段階の処理）
           try {
             console.log(`🔄 復元シフトを保存中:`, {
               id: restoredShift.id,
@@ -2909,25 +2911,29 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               hasCanceledAt: 'canceledAt' in restoredShift
             });
 
+            // Step 1: まず通常のシフトデータを保存
             await saveShiftWithCorrectYearMonth(restoredShift);
+            console.log(`✅ Step 1: シフトデータを保存しました: ${restoredShift.id}`);
 
-            // さらに確実にするため、updateDocで明示的にフィールドを削除
-            try {
-              const { doc: docRef, updateDoc, deleteField: deleteFieldImport } = await import('firebase/firestore');
-              const { db } = await import('../lib/firebase');
-              const shiftDocRef = docRef(db, 'shifts', restoredShift.id);
+            // Step 2: 新しいユーティリティ関数でキャンセル状態を確実に削除
+            const cancelResult = await updateCancelStatus(restoredShift.id, 'none');
 
-              // updateDocで明示的にフィールドを削除
-              await updateDoc(shiftDocRef, {
-                cancelStatus: deleteFieldImport(),
-                canceledAt: deleteFieldImport(),
-                updatedAt: Timestamp.now()
-              });
-              console.log(`🗑️ updateDocでcancelStatusとcanceledAtを明示的に削除: ${restoredShift.id}`);
-            } catch (updateError) {
-              console.warn('updateDocでのフィールド削除に失敗（新規ドキュメントの可能性）:', updateError);
+            if (!cancelResult.success) {
+              console.error(`❌ Step 2失敗: キャンセル状態の削除に失敗しました:`, cancelResult.error);
+
+              // エラーの種類に応じた詳細なメッセージ
+              if (cancelResult.error === 'PERMISSION_DENIED') {
+                throw new Error('アクセス権限がありません');
+              } else if (cancelResult.error === 'DOCUMENT_NOT_FOUND') {
+                throw new Error('ドキュメントが見つかりません');
+              } else if (cancelResult.error === 'NETWORK_ERROR') {
+                throw new Error('ネットワークエラーが発生しました');
+              } else {
+                throw new Error('キャンセル状態の削除に失敗しました');
+              }
             }
 
+            console.log(`✅ Step 2: キャンセル状態を削除しました: ${restoredShift.id}`);
             restoredShifts.push(restoredShift);
             console.log(`✅ Firestoreに保存完了: ${key}`, restoredShift);
 
@@ -2949,9 +2955,33 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 }
               }, 1000);
             }
-          } catch (error) {
+          } catch (error: any) {
+            console.error('=== キャンセル取り消しエラー詳細 ===');
             console.error('❌ キャンセル取り消し情報の保存に失敗しました:', error);
-            alert('キャンセル取り消しの保存に失敗しました。もう一度お試しください。');
+            console.error('エラー詳細:', JSON.stringify(error, null, 2));
+            console.error('エラーコード:', error?.code);
+            console.error('エラーメッセージ:', error?.message);
+            console.error('shiftId:', restoredShift.id);
+            console.error('現在のユーザー:', auth.currentUser?.uid);
+            console.error('復元しようとしたデータ:', {
+              id: restoredShift.id,
+              clientName: restoredShift.clientName,
+              date: restoredShift.date,
+              cancelStatus: restoredShift.cancelStatus,
+              canceledAt: restoredShift.canceledAt
+            });
+
+            // エラー種別に応じたメッセージ
+            let errorMessage = 'キャンセル取り消しの保存に失敗しました。';
+            if (error?.code === 'permission-denied') {
+              errorMessage += 'アクセス権限がありません。ログインし直してください。';
+            } else if (error?.code === 'not-found') {
+              errorMessage += 'ドキュメントが見つかりません。';
+            } else {
+              errorMessage += 'もう一度お試しください。';
+            }
+
+            alert(errorMessage);
             // 保存に失敗した場合は復元しない
             return;
           }
@@ -3142,11 +3172,25 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               cancelStatus: shift.cancelStatus
             });
 
+            // Step 1: まず通常のシフトデータを保存
             await saveShiftWithCorrectYearMonth(shift);
+
+            // Step 2: 新しいユーティリティ関数でキャンセル状態を設定
+            const cancelResult = await updateCancelStatus(
+              shift.id,
+              duration === 0 ? 'canceled_without_time' : 'canceled_with_time'
+            );
+
+            if (!cancelResult.success) {
+              console.error(`❌ キャンセル状態の設定に失敗しました:`, cancelResult.error);
+              throw new Error(`キャンセル処理失敗: ${cancelResult.error}`);
+            }
+
             canceledShifts.push(shift);
             console.log(`✅ Firestore保存完了: ${key}`, shift);
           } catch (error) {
             console.error('❌ キャンセル情報の保存に失敗:', error);
+            alert('キャンセルの保存に失敗しました。もう一度お試しください。');
           }
         } else {
           console.log(`⚠️ セルが空のためスキップ: ${key}`);
@@ -3343,11 +3387,22 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               duration: shift.duration
             });
 
+            // Step 1: まず通常のシフトデータを保存
             await saveShiftWithCorrectYearMonth(shift);
+
+            // Step 2: 新しいユーティリティ関数でキャンセル状態を設定
+            const cancelResult = await updateCancelStatus(shift.id, 'canceled_without_time');
+
+            if (!cancelResult.success) {
+              console.error(`❌ キャンセル状態の設定に失敗しました:`, cancelResult.error);
+              throw new Error(`キャンセル処理失敗: ${cancelResult.error}`);
+            }
+
             canceledShifts.push(shift);
             console.log(`✅ Firestore保存完了（時間削除）: ${key}`, shift);
           } catch (error) {
             console.error('❌ キャンセル情報の保存に失敗:', error);
+            alert('キャンセルの保存に失敗しました。もう一度お試しください。');
           }
         } else {
           console.log(`⚠️ セルが空のためスキップ（時間削除）: ${key}`);

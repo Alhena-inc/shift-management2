@@ -149,17 +149,25 @@ export function PersonalShift({ token }: Props) {
 
         const allShifts = snapshot.docs.map(doc => {
           const data = doc.data() as Shift;
-          // キャンセルフィールドの状態をデバッグ
-          if (data.cancelStatus !== undefined || data.canceledAt !== undefined) {
-            console.log('⚠️ キャンセルフィールドが残っているシフト:', {
-              id: doc.id,
-              clientName: data.clientName,
-              date: data.date,
-              cancelStatus: data.cancelStatus,
-              canceledAt: data.canceledAt,
-              hasCancelStatus: 'cancelStatus' in data,
-              hasCanceledAt: 'canceledAt' in data
-            });
+
+          // キャンセル状態の詳細なデバッグ
+          const hasCancel = data.cancelStatus !== undefined || data.canceledAt !== undefined;
+          const cancelDebugInfo = {
+            id: doc.id,
+            clientName: data.clientName,
+            date: data.date,
+            cancelStatus: data.cancelStatus,
+            canceledAt: data.canceledAt,
+            hasUndefinedCancelStatus: data.cancelStatus === undefined,
+            hasNullCancelStatus: data.cancelStatus === null,
+            cancelStatusType: typeof data.cancelStatus,
+            cancelStatusValue: data.cancelStatus
+          };
+
+          if (hasCancel) {
+            console.log('⚠️ キャンセルフィールドが残っているシフト:', cancelDebugInfo);
+          } else if (doc.metadata.hasPendingWrites) {
+            console.log('📝 保留中の書き込みがあるシフト:', cancelDebugInfo);
           }
           return {
             ...data,
