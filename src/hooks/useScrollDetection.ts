@@ -7,7 +7,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
  * @param delay - スクロール停止と判定するまでの遅延時間（ミリ秒）
  * @returns {isScrolling, containerRef} - スクロール中フラグとコンテナ参照
  */
-export function useScrollDetection(delay: number = 150) {
+export function useScrollDetection(delay: number = 100) {
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -15,20 +15,23 @@ export function useScrollDetection(delay: number = 150) {
 
   // スクロール検知ハンドラー（最適化版）
   const handleScroll = useCallback(() => {
-    // 既にスクロール中の場合は、stateを更新しない（パフォーマンス向上）
-    if (!isScrollingRef.current) {
-      isScrollingRef.current = true;
-      setIsScrolling(true);
-    }
+    // requestAnimationFrameで処理を最適化
+    requestAnimationFrame(() => {
+      // 既にスクロール中の場合は、stateを更新しない（パフォーマンス向上）
+      if (!isScrollingRef.current) {
+        isScrollingRef.current = true;
+        setIsScrolling(true);
+      }
 
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
-    }
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
 
-    scrollTimeoutRef.current = setTimeout(() => {
-      isScrollingRef.current = false;
-      setIsScrolling(false);
-    }, delay);
+      scrollTimeoutRef.current = setTimeout(() => {
+        isScrollingRef.current = false;
+        setIsScrolling(false);
+      }, delay);
+    });
   }, [delay]);
 
   // スクロールイベントリスナー設定

@@ -109,55 +109,75 @@ export function PersonalShift({ token }: Props) {
 
     // Firestoreからシフトを取得（リアルタイム監視）
     const shiftsRef = collection(db, 'shifts');
+
+    // helperIdを文字列に正規化（数値の場合は文字列に変換）
+    const normalizedHelperId = String(helper.id);
+
     const q = query(
       shiftsRef,
-      where('helperId', '==', helper.id)
+      where('helperId', '==', normalizedHelperId)
       // deleted条件を削除（古いデータにdeletedフィールドがない可能性があるため）
     );
 
     console.log('🔍 クエリ条件:', {
-      helperId: helper.id,
-      helperIdType: typeof helper.id
+      originalHelperId: helper.id,
+      originalHelperIdType: typeof helper.id,
+      normalizedHelperId: normalizedHelperId,
+      normalizedHelperIdType: typeof normalizedHelperId
     });
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const allShifts = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Shift[];
+    const unsubscribe = onSnapshot(
+      q,
+      {
+        // メタデータ変更も監視（保留中の書き込みも検知）
+        includeMetadataChanges: true
+      },
+      (snapshot) => {
+        // メタデータ変更の詳細をログ
+        const hasPendingWrites = snapshot.metadata.hasPendingWrites;
+        const isFromCache = snapshot.metadata.fromCache;
 
-      // deletedがtrueのものを除外（deletedがundefinedの場合は含める）
-      // キャンセル済みシフトも含める（cancelStatusがあっても表示）
-      const fetchedShifts = allShifts.filter(s =>
-        s.deleted !== true
-      );
+        console.log('🔄 Firestore更新検知:', {
+          hasPendingWrites,
+          isFromCache,
+          changes: snapshot.docChanges().map(change => ({
+            type: change.type, // 'added', 'modified', 'removed'
+            id: change.doc.id,
+            data: change.doc.data()
+          }))
+        });
 
-      console.log('✅ Firestoreからデータ取得成功:', fetchedShifts.length, '件');
-      console.log('🔍 取得したシフト（最初の3件・詳細）:', fetchedShifts.slice(0, 3).map(s => ({
-        id: s.id,
-        helperId: s.helperId,
-        helperIdType: typeof s.helperId,
-        date: s.date,
-        clientName: s.clientName,
-        serviceType: s.serviceType,
-        startTime: s.startTime,
-        endTime: s.endTime,
-        duration: s.duration,
-        area: s.area,
-        rowIndex: s.rowIndex,
-        cancelStatus: s.cancelStatus,
-        deleted: s.deleted
-      })));
+        const allShifts = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Shift[];
 
-      console.log('📊 全フィールドサンプル（1件目）:', fetchedShifts[0]);
+        // deletedがtrueのものを除外（deletedがundefinedの場合は含める）
+        // キャンセル済みシフトも含める（cancelStatusがあっても表示）
+        const fetchedShifts = allShifts.filter(s =>
+          s.deleted !== true
+        );
 
-      setShifts(fetchedShifts);
-      setLastUpdate(new Date());
-      setLoading(false);
-    }, (error) => {
-      console.error('❌ Firestore取得エラー:', error);
-      setLoading(false);
-    });
+        console.log('✅ Firestoreからデータ取得成功:', fetchedShifts.length, '件');
+
+        // 変更があった場合のみ詳細ログ
+        if (snapshot.docChanges().length > 0) {
+          console.log('📝 変更検出:', snapshot.docChanges().length, '件の変更');
+          snapshot.docChanges().forEach(change => {
+            const shift = change.doc.data() as Shift;
+            console.log(`  ${change.type}: ${shift.clientName} (${shift.date} ${shift.startTime}-${shift.endTime})`);
+          });
+        }
+
+        setShifts(fetchedShifts);
+        setLastUpdate(new Date());
+        setLoading(false);
+      },
+      (error) => {
+        console.error('❌ Firestore取得エラー:', error);
+        setLoading(false);
+      }
+    );
 
     return () => {
       console.log('🔌 Firestore監視を解除');
