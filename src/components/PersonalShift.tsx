@@ -133,13 +133,23 @@ export function PersonalShift({ token }: Props) {
         includeMetadataChanges: true
       },
       (snapshot) => {
+        console.log('📡 === onSnapshot発火 ===');
+        console.log('📊 取得件数:', snapshot.docs.length, '件');
+        console.log('🔍 最初の5件のID:');
+        snapshot.docs.slice(0, 5).forEach((doc, index) => {
+          const data = doc.data();
+          console.log(`  ${index + 1}. ${doc.id} - ${data.clientName} (${data.date}) - cancelStatus: ${data.cancelStatus}`);
+        });
+
         // メタデータ変更の詳細をログ
         const hasPendingWrites = snapshot.metadata.hasPendingWrites;
         const isFromCache = snapshot.metadata.fromCache;
 
         console.log('🔄 Firestore更新検知:', {
+          totalDocs: snapshot.docs.length,
           hasPendingWrites,
           isFromCache,
+          changesCount: snapshot.docChanges().length,
           changes: snapshot.docChanges().map(change => ({
             type: change.type, // 'added', 'modified', 'removed'
             id: change.doc.id,
@@ -147,11 +157,12 @@ export function PersonalShift({ token }: Props) {
           }))
         });
 
-        const allShifts = snapshot.docs.map(doc => {
+        const allShifts = snapshot.docs.map((doc, index) => {
           const data = doc.data() as Shift;
 
           // キャンセル状態の詳細なデバッグ
-          const hasCancel = data.cancelStatus !== undefined || data.canceledAt !== undefined;
+          const hasCancel = (data.cancelStatus !== undefined && data.cancelStatus !== null) ||
+                          (data.canceledAt !== undefined && data.canceledAt !== null);
           const cancelDebugInfo = {
             id: doc.id,
             clientName: data.clientName,
@@ -163,6 +174,15 @@ export function PersonalShift({ token }: Props) {
             cancelStatusType: typeof data.cancelStatus,
             cancelStatusValue: data.cancelStatus
           };
+
+          // 全シフトのcancelStatus状態を確認（最初の3件のみ）
+          if (index < 3) {
+            console.log(`📋 シフト${index + 1}: ${doc.id}`, {
+              cancelStatus: data.cancelStatus,
+              hasCancel: hasCancel,
+              clientName: data.clientName
+            });
+          }
 
           if (hasCancel) {
             console.log('⚠️ キャンセルフィールドが残っているシフト:', cancelDebugInfo);
@@ -197,7 +217,14 @@ export function PersonalShift({ token }: Props) {
         setLoading(false);
       },
       (error) => {
-        console.error('❌ Firestore取得エラー:', error);
+        console.error('❌ === Firestore onSnapshotエラー ===');
+        console.error('エラー詳細:', error);
+        console.error('エラーコード:', error?.code);
+        console.error('エラーメッセージ:', error?.message);
+        console.error('クエリ条件:', {
+          helperId: normalizedHelperId,
+          collection: 'shifts'
+        });
         setLoading(false);
       }
     );

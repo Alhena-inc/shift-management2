@@ -146,13 +146,16 @@ export const saveShiftsForMonth = async (_year: number, _month: number, shifts: 
     shifts.forEach(shift => {
       const shiftRef = doc(db, SHIFTS_COLLECTION, shift.id);
 
-      console.log('📦 シフト保存準備:', {
-        id: shift.id,
-        cancelStatusExists: 'cancelStatus' in shift,
-        cancelStatusValue: shift.cancelStatus,
-        canceledAtExists: 'canceledAt' in shift,
-        canceledAtValue: shift.canceledAt
-      });
+      // キャンセル関連フィールドがある場合のみログ
+      if ('cancelStatus' in shift || 'canceledAt' in shift) {
+        console.log('📦 シフト保存準備（キャンセル関連）:', {
+          id: shift.id,
+          cancelStatusExists: 'cancelStatus' in shift,
+          cancelStatusValue: shift.cancelStatus,
+          canceledAtExists: 'canceledAt' in shift,
+          canceledAtValue: shift.canceledAt
+        });
+      }
 
       // データを準備（cancelStatusとcanceledAtがない場合は明示的に削除）
       const shiftData: any = {
@@ -174,27 +177,17 @@ export const saveShiftsForMonth = async (_year: number, _month: number, shifts: 
         console.log('🗑️ canceledAtフィールドを削除:', shift.id);
       }
 
-      // デバッグ: 保存するデータをログ出力
-      console.log('💾 シフト保存（完全上書き）:', {
-        collection: SHIFTS_COLLECTION,
-        id: shift.id,
-        helperId: shift.helperId,
-        helperIdType: typeof shift.helperId,
-        date: shift.date,
-        clientName: shift.clientName,
-        serviceType: shift.serviceType,
-        startTime: shift.startTime,
-        endTime: shift.endTime,
-        duration: shift.duration,
-        area: shift.area,
-        rowIndex: shift.rowIndex,
-        cancelStatus: shift.cancelStatus,
-        canceledAt: shift.canceledAt,
-        deleted: shift.deleted,
-        hasUndefinedFields: Object.entries(shift).filter(([k, v]) => v === undefined).map(([k]) => k)
-      });
-
-      console.log('📦 サニタイズ後のデータ:', sanitizedData);
+      // デバッグ: キャンセル関連の保存時のみログ
+      if (shift.cancelStatus !== undefined || shift.canceledAt !== undefined ||
+          !('cancelStatus' in shift) || !('canceledAt' in shift)) {
+        console.log('💾 シフト保存（キャンセル関連）:', {
+          id: shift.id,
+          clientName: shift.clientName,
+          cancelStatus: shift.cancelStatus,
+          canceledAt: shift.canceledAt,
+          deleted: shift.deleted
+        });
+      }
 
       // 完全上書き（merge: trueを削除）
       // これにより、undefinedのフィールドは保存されず、古いフィールドも完全に削除される
