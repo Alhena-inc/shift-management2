@@ -7,6 +7,7 @@ import { Timestamp } from 'firebase/firestore';
 import { calculateNightHours, calculateRegularHours, calculateTimeDuration } from '../utils/timeCalculations';
 import { calculateShiftPay } from '../utils/salaryCalculations';
 import { getRowIndicesFromDayOffValue } from '../utils/timeSlots';
+import { devLog } from '../utils/logger';
 
 // 最適化された入力セルコンポーネント（週払い管理表用）
 interface OptimizedInputCellProps {
@@ -2909,6 +2910,24 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             });
 
             await saveShiftWithCorrectYearMonth(restoredShift);
+
+            // さらに確実にするため、updateDocで明示的にフィールドを削除
+            try {
+              const { doc: docRef, updateDoc, deleteField: deleteFieldImport } = await import('firebase/firestore');
+              const { db } = await import('../lib/firebase');
+              const shiftDocRef = docRef(db, 'shifts', restoredShift.id);
+
+              // updateDocで明示的にフィールドを削除
+              await updateDoc(shiftDocRef, {
+                cancelStatus: deleteFieldImport(),
+                canceledAt: deleteFieldImport(),
+                updatedAt: Timestamp.now()
+              });
+              console.log(`🗑️ updateDocでcancelStatusとcanceledAtを明示的に削除: ${restoredShift.id}`);
+            } catch (updateError) {
+              console.warn('updateDocでのフィールド削除に失敗（新規ドキュメントの可能性）:', updateError);
+            }
+
             restoredShifts.push(restoredShift);
             console.log(`✅ Firestoreに保存完了: ${key}`, restoredShift);
 

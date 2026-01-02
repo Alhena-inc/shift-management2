@@ -146,16 +146,19 @@ export const saveShiftsForMonth = async (_year: number, _month: number, shifts: 
         updatedAt: Timestamp.now()
       };
 
-      // cancelStatusとcanceledAtがundefinedまたは削除されている場合、deleteFieldを使用
-      if (!('cancelStatus' in shift) || shift.cancelStatus === undefined) {
-        shiftData.cancelStatus = deleteField();
-      }
-      if (!('canceledAt' in shift) || shift.canceledAt === undefined) {
-        shiftData.canceledAt = deleteField();
-      }
-
       // Firestore用にサニタイズ（undefinedのフィールドは自動的に除去される）
       const sanitizedData = sanitizeForFirestore(shiftData);
+
+      // cancelStatusとcanceledAtがundefinedまたは削除されている場合、deleteFieldを使用
+      // 注意: sanitizeの後でdeleteField()を設定する（sanitizeで削除されないように）
+      if (!('cancelStatus' in shift) || shift.cancelStatus === undefined) {
+        sanitizedData.cancelStatus = deleteField();
+        console.log('🗑️ cancelStatusフィールドを削除');
+      }
+      if (!('canceledAt' in shift) || shift.canceledAt === undefined) {
+        sanitizedData.canceledAt = deleteField();
+        console.log('🗑️ canceledAtフィールドを削除');
+      }
 
       // デバッグ: 保存するデータをログ出力
       console.log('💾 シフト保存（完全上書き）:', {

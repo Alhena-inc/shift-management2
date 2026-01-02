@@ -147,10 +147,25 @@ export function PersonalShift({ token }: Props) {
           }))
         });
 
-        const allShifts = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Shift[];
+        const allShifts = snapshot.docs.map(doc => {
+          const data = doc.data() as Shift;
+          // キャンセルフィールドの状態をデバッグ
+          if (data.cancelStatus !== undefined || data.canceledAt !== undefined) {
+            console.log('⚠️ キャンセルフィールドが残っているシフト:', {
+              id: doc.id,
+              clientName: data.clientName,
+              date: data.date,
+              cancelStatus: data.cancelStatus,
+              canceledAt: data.canceledAt,
+              hasCancelStatus: 'cancelStatus' in data,
+              hasCanceledAt: 'canceledAt' in data
+            });
+          }
+          return {
+            ...data,
+            id: doc.id
+          };
+        }) as Shift[];
 
         // deletedがtrueのものを除外（deletedがundefinedの場合は含める）
         // キャンセル済みシフトも含める（cancelStatusがあっても表示）
