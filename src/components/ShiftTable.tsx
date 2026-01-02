@@ -1773,7 +1773,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         const shift: Shift = {
           id: `shift-${helperId}-${date}-${rowIndex}`,
           date,
-          helperId,
+          helperId: String(helperId), // helperIdを文字列に統一
           clientName,
           serviceType,
           startTime,
@@ -1844,7 +1844,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             const newShift: Shift = {
               ...copiedCare.data,
               id: `shift-${targetCell.helperId}-${targetCell.date}-${targetCell.rowIndex + index}`,
-              helperId: targetCell.helperId,
+              helperId: String(targetCell.helperId), // helperIdを文字列に統一
               date: targetCell.date,
               rowIndex: targetCell.rowIndex + index
             };
@@ -1996,7 +1996,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     const shift: Shift = {
                       id: shiftId,
                       date: startDate,
-                      helperId: targetHelper.id,
+                      helperId: String(targetHelper.id), // helperIdを文字列に統一
                       clientName,
                       serviceType,
                       startTime,
@@ -2159,7 +2159,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     const shift: Shift = {
                       id: shiftId,
                       date,
-                      helperId,
+                      helperId: String(helperId), // helperIdを文字列に統一
                       clientName,
                       serviceType,
                       startTime,
@@ -3161,7 +3161,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           const shift: Shift = {
             id: shiftId,
             date: dt,
-            helperId: hId,
+            helperId: String(hId), // helperIdを文字列に統一
             clientName,
             serviceType,
             startTime,
@@ -3375,7 +3375,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           const shift: Shift = {
             id: shiftId,
             date: dt,
-            helperId: hId,
+            helperId: String(hId), // helperIdを文字列に統一
             clientName,
             serviceType,
             startTime,
@@ -3689,7 +3689,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         const shift: Shift = {
           id: `shift-${targetHelperId}-${targetDate}-${targetRowIndex}`,
           date: targetDate,
-          helperId: targetHelperId,
+          helperId: String(targetHelperId), // helperIdを文字列に統一
           clientName,
           serviceType,
           startTime,
@@ -4561,7 +4561,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                 const shift: Shift = {
                                   id: shiftId,
                                   date,
-                                  helperId,
+                                  helperId: String(helperId), // helperIdを文字列に統一
                                   clientName,
                                   serviceType,
                                   startTime,
@@ -4671,7 +4671,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                       const shift: Shift = {
                                         id: shiftId,
                                         date,
-                                        helperId,
+                                        helperId: String(helperId), // helperIdを文字列に統一
                                         clientName,
                                         serviceType,
                                         startTime,

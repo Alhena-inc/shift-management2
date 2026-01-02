@@ -129,6 +129,10 @@ export function PersonalShift({ token }: Props) {
 
     const unsubscribe = onSnapshot(
       q,
+      {
+        // メタデータ変更も監視してリアルタイム性を向上
+        includeMetadataChanges: true
+      },
       (snapshot) => {
         console.log('📡 === onSnapshot発火 ===');
         console.log('📊 取得件数:', snapshot.docs.length, '件');
