@@ -166,20 +166,8 @@ export const saveShiftsForMonth = async (_year: number, _month: number, shifts: 
       // Firestore用にサニタイズ（undefinedのフィールドは自動的に除去される）
       const sanitizedData = sanitizeForFirestore(shiftData);
 
-      // cancelStatusとcanceledAtがundefinedまたは削除されている場合、deleteFieldを使用
-      // 注意: sanitizeの後でdeleteField()を設定する（sanitizeで削除されないように）
-      if (!('cancelStatus' in shift) || shift.cancelStatus === undefined) {
-        sanitizedData.cancelStatus = deleteField();
-        console.log('🗑️ cancelStatusフィールドを削除:', shift.id);
-      }
-      if (!('canceledAt' in shift) || shift.canceledAt === undefined) {
-        sanitizedData.canceledAt = deleteField();
-        console.log('🗑️ canceledAtフィールドを削除:', shift.id);
-      }
-
-      // デバッグ: キャンセル関連の保存時のみログ
-      if (shift.cancelStatus !== undefined || shift.canceledAt !== undefined ||
-          !('cancelStatus' in shift) || !('canceledAt' in shift)) {
+      // キャンセル関連フィールドがある場合のみログ
+      if ('cancelStatus' in shift || 'canceledAt' in shift) {
         console.log('💾 シフト保存（キャンセル関連）:', {
           id: shift.id,
           clientName: shift.clientName,
@@ -189,9 +177,17 @@ export const saveShiftsForMonth = async (_year: number, _month: number, shifts: 
         });
       }
 
-      // 完全上書き（merge: trueを削除）
-      // これにより、undefinedのフィールドは保存されず、古いフィールドも完全に削除される
-      batch.set(shiftRef, sanitizedData);
+      // cancelStatusとcanceledAtがundefinedの場合は保存しない
+      if (sanitizedData.cancelStatus === undefined) {
+        delete sanitizedData.cancelStatus;
+      }
+      if (sanitizedData.canceledAt === undefined) {
+        delete sanitizedData.canceledAt;
+      }
+
+      // merge: trueで既存フィールドを保持しながら更新
+      // キャンセルフィールドの削除は別途updateCancelStatusで行う
+      batch.set(shiftRef, sanitizedData, { merge: true });
     });
 
     await batch.commit();
