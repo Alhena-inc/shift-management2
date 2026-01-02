@@ -113,19 +113,12 @@ export function PersonalShift({ token }: Props) {
     // helperIdを文字列に正規化（数値の場合は文字列に変換）
     const normalizedHelperId = String(helper.id);
 
-    // 日付範囲を追加（現在の月のデータのみ取得）
-    const startDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
-    const endDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-31`;
-
+    // シンプルなクエリに戻す（日付範囲なし）
     const q = query(
       shiftsRef,
-      where('helperId', '==', normalizedHelperId),
-      where('date', '>=', startDate),
-      where('date', '<=', endDate)
+      where('helperId', '==', normalizedHelperId)
       // deleted条件を削除（古いデータにdeletedフィールドがない可能性があるため）
     );
-
-    console.log('📅 日付範囲:', { startDate, endDate });
 
     console.log('🔍 クエリ条件:', {
       originalHelperId: helper.id,
@@ -136,10 +129,6 @@ export function PersonalShift({ token }: Props) {
 
     const unsubscribe = onSnapshot(
       q,
-      // メタデータ変更の監視を一時的に無効化（パフォーマンス確認）
-      // {
-      //   includeMetadataChanges: true
-      // },
       (snapshot) => {
         console.log('📡 === onSnapshot発火 ===');
         console.log('📊 取得件数:', snapshot.docs.length, '件');
@@ -148,7 +137,7 @@ export function PersonalShift({ token }: Props) {
           console.warn('⚠️ データが0件です。以下を確認してください：');
           console.warn('  1. Firestoreにデータが存在するか');
           console.warn('  2. helperIdが正しいか:', normalizedHelperId);
-          console.warn('  3. 日付範囲が正しいか:', { startDate, endDate });
+          console.warn('  3. 現在の年月:', `${currentYear}年${currentMonth}月`);
         } else {
           console.log('🔍 最初の5件のID:');
           snapshot.docs.slice(0, 5).forEach((doc, index) => {
@@ -211,14 +200,23 @@ export function PersonalShift({ token }: Props) {
           };
         }) as Shift[];
 
-        // deletedがtrueのものを除外（deletedがundefinedの場合は含める）
-        // キャンセル済みシフトも含める（cancelStatusがあっても表示）
+        // 現在の月のデータのみフィルタリング
+        const currentYearMonth = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+
+        // deletedがtrueのものを除外 & 現在の月のデータのみ
         const fetchedShifts = allShifts.filter(s => {
-          const include = s.deleted !== true;
-          if (!include && s.deleted === true) {
+          // 削除フラグチェック
+          if (s.deleted === true) {
             console.log('🚫 削除済みシフトを除外:', s.id, s.clientName, s.date);
+            return false;
           }
-          return include;
+
+          // 日付が現在の年月と一致するかチェック
+          if (s.date && s.date.startsWith(currentYearMonth)) {
+            return true;
+          }
+
+          return false;
         });
 
         console.log('✅ Firestore取得結果:', {
@@ -257,7 +255,7 @@ export function PersonalShift({ token }: Props) {
       console.log('🔌 Firestore監視を解除');
       unsubscribe();
     };
-  }, [helper?.id, helper?.name, currentYear, currentMonth]);
+  }, [helper?.id, helper?.name]);
 
   // 週ごとにシフトをグループ化（月曜始まり、日曜日まで7日単位、常に7列表示）
   const weeks = useMemo(() => {
