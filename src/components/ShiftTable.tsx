@@ -2840,11 +2840,12 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
           // 既存のシフトデータをベースに、cancelStatusとcanceledAtを削除したオブジェクトを作成
           const restoredShift: Shift = {
-            ...existingShift,
-            // cancelStatusとcanceledAtを明示的にundefinedに設定（Firestoreから削除される）
-            cancelStatus: undefined,
-            canceledAt: undefined
+            ...existingShift
           };
+
+          // cancelStatusとcanceledAtフィールドを削除
+          delete restoredShift.cancelStatus;
+          delete restoredShift.canceledAt;
 
           // remove_timeの場合、時間情報を復元
           if (existingShift.cancelStatus === 'remove_time') {
@@ -2897,11 +2898,43 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
           // Firestoreに保存
           try {
+            console.log(`🔄 復元シフトを保存中:`, {
+              id: restoredShift.id,
+              clientName: restoredShift.clientName,
+              date: restoredShift.date,
+              cancelStatus: restoredShift.cancelStatus,
+              canceledAt: restoredShift.canceledAt,
+              hasCancelStatus: 'cancelStatus' in restoredShift,
+              hasCanceledAt: 'canceledAt' in restoredShift
+            });
+
             await saveShiftWithCorrectYearMonth(restoredShift);
             restoredShifts.push(restoredShift);
             console.log(`✅ Firestoreに保存完了: ${key}`, restoredShift);
+
+            // 保存成功後、すぐにFirestoreから確認読み込み（デバッグ用）
+            if (import.meta.env.DEV) {
+              setTimeout(async () => {
+                const { doc: docRef, getDoc } = await import('firebase/firestore');
+                const { db } = await import('../lib/firebase');
+                const checkDoc = await getDoc(docRef(db, 'shifts', restoredShift.id));
+                if (checkDoc.exists()) {
+                  const data = checkDoc.data();
+                  console.log(`🔍 保存後の確認:`, {
+                    id: restoredShift.id,
+                    cancelStatus: data.cancelStatus,
+                    canceledAt: data.canceledAt,
+                    hasCancelStatus: 'cancelStatus' in data,
+                    hasCanceledAt: 'canceledAt' in data
+                  });
+                }
+              }, 1000);
+            }
           } catch (error) {
-            console.error('キャンセル取り消し情報の保存に失敗しました:', error);
+            console.error('❌ キャンセル取り消し情報の保存に失敗しました:', error);
+            alert('キャンセル取り消しの保存に失敗しました。もう一度お試しください。');
+            // 保存に失敗した場合は復元しない
+            return;
           }
         }));
 

@@ -1,5 +1,6 @@
 import React, { memo, useCallback, useMemo } from 'react';
-import { VariableSizeList as List } from 'react-window';
+// @ts-ignore - react-window型定義の問題を一時的に回避
+import { VariableSizeList } from 'react-window';
 import type { Helper, Shift } from '../types';
 
 interface Props {
@@ -54,7 +55,7 @@ export const VirtualizedShiftTable = memo(({
 
   return (
     <div className="virtualized-shift-table">
-      <List
+      <VariableSizeList
         height={600} // ビューポートの高さ
         itemCount={itemCount}
         itemSize={getItemSize}
@@ -62,7 +63,7 @@ export const VirtualizedShiftTable = memo(({
         overscanCount={3} // 表示領域外に先読みする行数
       >
         {Row}
-      </List>
+      </VariableSizeList>
     </div>
   );
 });

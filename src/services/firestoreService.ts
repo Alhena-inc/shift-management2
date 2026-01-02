@@ -34,6 +34,12 @@ function sanitizeForFirestore(obj: any): any {
     return obj;
   }
 
+  // deleteField()センチネル値はそのまま返す
+  // Firebaseの内部オブジェクトをチェック
+  if (obj && typeof obj === 'object' && obj._methodName === 'FieldValue.delete') {
+    return obj;
+  }
+
   // 配列の場合
   if (Array.isArray(obj)) {
     return obj
@@ -134,11 +140,19 @@ export const saveShiftsForMonth = async (_year: number, _month: number, shifts: 
     shifts.forEach(shift => {
       const shiftRef = doc(db, SHIFTS_COLLECTION, shift.id);
 
-      // データを準備
-      const shiftData = {
+      // データを準備（cancelStatusとcanceledAtがない場合は明示的に削除）
+      const shiftData: any = {
         ...shift,
         updatedAt: Timestamp.now()
       };
+
+      // cancelStatusとcanceledAtがundefinedまたは削除されている場合、deleteFieldを使用
+      if (!('cancelStatus' in shift) || shift.cancelStatus === undefined) {
+        shiftData.cancelStatus = deleteField();
+      }
+      if (!('canceledAt' in shift) || shift.canceledAt === undefined) {
+        shiftData.canceledAt = deleteField();
+      }
 
       // Firestore用にサニタイズ（undefinedのフィールドは自動的に除去される）
       const sanitizedData = sanitizeForFirestore(shiftData);
