@@ -2920,6 +2920,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
             if (!cancelResult.success) {
               console.error(`❌ Step 2失敗: キャンセル状態の削除に失敗しました:`, cancelResult.error);
+              console.error('失敗したシフトID:', restoredShift.id);
+              console.error('失敗したキャンセル処理:', {
+                shiftId: restoredShift.id,
+                cancelResult: cancelResult,
+                errorType: cancelResult.error,
+                shift: restoredShift
+              });
 
               // エラーの種類に応じた詳細なメッセージ
               if (cancelResult.error === 'PERMISSION_DENIED') {
@@ -2928,8 +2935,12 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 throw new Error('ドキュメントが見つかりません');
               } else if (cancelResult.error === 'NETWORK_ERROR') {
                 throw new Error('ネットワークエラーが発生しました');
+              } else if (cancelResult.error === 'FAILED_PRECONDITION') {
+                throw new Error('前提条件が満たされていません');
+              } else if (cancelResult.error === 'INVALID_ARGUMENT') {
+                throw new Error('無効な引数が指定されました');
               } else {
-                throw new Error('キャンセル状態の削除に失敗しました');
+                throw new Error(`キャンセル状態の削除に失敗しました: ${cancelResult.error}`);
               }
             }
 

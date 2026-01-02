@@ -135,10 +135,24 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
 // シフトを保存（月ごと）
 export const saveShiftsForMonth = async (_year: number, _month: number, shifts: Shift[]): Promise<void> => {
   try {
+    console.log('📝 saveShiftsForMonth開始:', {
+      shiftsCount: shifts.length,
+      shiftIds: shifts.map(s => s.id),
+      firstShift: shifts[0]
+    });
+
     const batch = writeBatch(db);
 
     shifts.forEach(shift => {
       const shiftRef = doc(db, SHIFTS_COLLECTION, shift.id);
+
+      console.log('📦 シフト保存準備:', {
+        id: shift.id,
+        cancelStatusExists: 'cancelStatus' in shift,
+        cancelStatusValue: shift.cancelStatus,
+        canceledAtExists: 'canceledAt' in shift,
+        canceledAtValue: shift.canceledAt
+      });
 
       // データを準備（cancelStatusとcanceledAtがない場合は明示的に削除）
       const shiftData: any = {
@@ -153,11 +167,11 @@ export const saveShiftsForMonth = async (_year: number, _month: number, shifts: 
       // 注意: sanitizeの後でdeleteField()を設定する（sanitizeで削除されないように）
       if (!('cancelStatus' in shift) || shift.cancelStatus === undefined) {
         sanitizedData.cancelStatus = deleteField();
-        console.log('🗑️ cancelStatusフィールドを削除');
+        console.log('🗑️ cancelStatusフィールドを削除:', shift.id);
       }
       if (!('canceledAt' in shift) || shift.canceledAt === undefined) {
         sanitizedData.canceledAt = deleteField();
-        console.log('🗑️ canceledAtフィールドを削除');
+        console.log('🗑️ canceledAtフィールドを削除:', shift.id);
       }
 
       // デバッグ: 保存するデータをログ出力
