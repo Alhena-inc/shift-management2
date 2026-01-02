@@ -113,11 +113,19 @@ export function PersonalShift({ token }: Props) {
     // helperIdを文字列に正規化（数値の場合は文字列に変換）
     const normalizedHelperId = String(helper.id);
 
+    // 日付範囲を追加（現在の月のデータのみ取得）
+    const startDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+    const endDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-31`;
+
     const q = query(
       shiftsRef,
-      where('helperId', '==', normalizedHelperId)
+      where('helperId', '==', normalizedHelperId),
+      where('date', '>=', startDate),
+      where('date', '<=', endDate)
       // deleted条件を削除（古いデータにdeletedフィールドがない可能性があるため）
     );
+
+    console.log('📅 日付範囲:', { startDate, endDate });
 
     console.log('🔍 クエリ条件:', {
       originalHelperId: helper.id,
@@ -128,18 +136,26 @@ export function PersonalShift({ token }: Props) {
 
     const unsubscribe = onSnapshot(
       q,
-      {
-        // メタデータ変更も監視（保留中の書き込みも検知）
-        includeMetadataChanges: true
-      },
+      // メタデータ変更の監視を一時的に無効化（パフォーマンス確認）
+      // {
+      //   includeMetadataChanges: true
+      // },
       (snapshot) => {
         console.log('📡 === onSnapshot発火 ===');
         console.log('📊 取得件数:', snapshot.docs.length, '件');
-        console.log('🔍 最初の5件のID:');
-        snapshot.docs.slice(0, 5).forEach((doc, index) => {
-          const data = doc.data();
-          console.log(`  ${index + 1}. ${doc.id} - ${data.clientName} (${data.date}) - cancelStatus: ${data.cancelStatus}`);
-        });
+
+        if (snapshot.docs.length === 0) {
+          console.warn('⚠️ データが0件です。以下を確認してください：');
+          console.warn('  1. Firestoreにデータが存在するか');
+          console.warn('  2. helperIdが正しいか:', normalizedHelperId);
+          console.warn('  3. 日付範囲が正しいか:', { startDate, endDate });
+        } else {
+          console.log('🔍 最初の5件のID:');
+          snapshot.docs.slice(0, 5).forEach((doc, index) => {
+            const data = doc.data();
+            console.log(`  ${index + 1}. ${doc.id} - ${data.clientName} (${data.date}) - cancelStatus: ${data.cancelStatus}`);
+          });
+        }
 
         // メタデータ変更の詳細をログ
         const hasPendingWrites = snapshot.metadata.hasPendingWrites;
@@ -197,11 +213,19 @@ export function PersonalShift({ token }: Props) {
 
         // deletedがtrueのものを除外（deletedがundefinedの場合は含める）
         // キャンセル済みシフトも含める（cancelStatusがあっても表示）
-        const fetchedShifts = allShifts.filter(s =>
-          s.deleted !== true
-        );
+        const fetchedShifts = allShifts.filter(s => {
+          const include = s.deleted !== true;
+          if (!include && s.deleted === true) {
+            console.log('🚫 削除済みシフトを除外:', s.id, s.clientName, s.date);
+          }
+          return include;
+        });
 
-        console.log('✅ Firestoreからデータ取得成功:', fetchedShifts.length, '件');
+        console.log('✅ Firestore取得結果:', {
+          全データ数: allShifts.length,
+          フィルタ後: fetchedShifts.length,
+          削除数: allShifts.length - fetchedShifts.length
+        });
 
         // 変更があった場合のみ詳細ログ
         if (snapshot.docChanges().length > 0) {
@@ -233,7 +257,7 @@ export function PersonalShift({ token }: Props) {
       console.log('🔌 Firestore監視を解除');
       unsubscribe();
     };
-  }, [helper?.id, helper?.name]);
+  }, [helper?.id, helper?.name, currentYear, currentMonth]);
 
   // 週ごとにシフトをグループ化（月曜始まり、日曜日まで7日単位、常に7列表示）
   const weeks = useMemo(() => {
