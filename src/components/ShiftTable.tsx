@@ -4689,7 +4689,17 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                       };
 
                                       // Firestoreに保存（正しい年月に - 1月分も自動的に正しく保存される）
+                                      console.log('💾 === セル編集保存開始 ===');
+                                      console.log('保存するシフト:', {
+                                        id: shift.id,
+                                        helperId: shift.helperId,
+                                        date: shift.date,
+                                        clientName: shift.clientName,
+                                        time: `${shift.startTime}-${shift.endTime}`
+                                      });
+
                                       await saveShiftWithCorrectYearMonth(shift);
+                                      console.log('✅ セル編集保存完了:', shift.id);
 
                                       // ローカルのshifts配列を更新（画面の再レンダリング用）
                                       const updatedShifts = shifts.filter(s => s.id !== shift.id);

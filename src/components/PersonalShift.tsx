@@ -202,6 +202,7 @@ export function PersonalShift({ token }: Props) {
 
         // 現在の月のデータのみフィルタリング
         const currentYearMonth = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+        console.log('🗓️ フィルタリング対象年月:', currentYearMonth);
 
         // deletedがtrueのものを除外 & 現在の月のデータのみ
         const fetchedShifts = allShifts.filter(s => {
@@ -216,6 +217,11 @@ export function PersonalShift({ token }: Props) {
             return true;
           }
 
+          // 日付が一致しない場合
+          if (s.date && !s.date.startsWith(currentYearMonth)) {
+            console.log('📅 別月のシフトを除外:', s.id, s.date, '(表示対象:', currentYearMonth, ')');
+          }
+
           return false;
         });
 
@@ -227,11 +233,21 @@ export function PersonalShift({ token }: Props) {
 
         // 変更があった場合のみ詳細ログ
         if (snapshot.docChanges().length > 0) {
-          console.log('📝 変更検出:', snapshot.docChanges().length, '件の変更');
+          console.log('🔔 === 変更検出 ===');
+          console.log('📝 変更数:', snapshot.docChanges().length, '件');
           snapshot.docChanges().forEach(change => {
             const shift = change.doc.data() as Shift;
-            console.log(`  ${change.type}: ${shift.clientName} (${shift.date} ${shift.startTime}-${shift.endTime})`);
+            console.log(`  ${change.type}:`, {
+              id: change.doc.id,
+              clientName: shift.clientName,
+              date: shift.date,
+              time: `${shift.startTime}-${shift.endTime}`,
+              helperId: shift.helperId
+            });
           });
+          console.log('==================');
+        } else {
+          console.log('⚡ データ取得完了（変更なし）');
         }
 
         setShifts(fetchedShifts);

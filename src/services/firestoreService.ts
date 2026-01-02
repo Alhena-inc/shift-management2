@@ -196,6 +196,7 @@ export const saveShiftsForMonth = async (_year: number, _month: number, shifts: 
 
     await batch.commit();
     console.log(`✅ Firestore batch.commit()完了 - ${shifts.length}件のシフトを保存しました`);
+    console.log('保存したシフトID:', shifts.map(s => s.id).join(', '));
   } catch (error) {
     console.error('❌ シフト保存エラー:', error);
     throw error;
