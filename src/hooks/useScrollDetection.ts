@@ -11,16 +11,22 @@ export function useScrollDetection(delay: number = 150) {
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const isScrollingRef = useRef(false);
 
-  // スクロール検知ハンドラー
+  // スクロール検知ハンドラー（最適化版）
   const handleScroll = useCallback(() => {
-    setIsScrolling(true);
+    // 既にスクロール中の場合は、stateを更新しない（パフォーマンス向上）
+    if (!isScrollingRef.current) {
+      isScrollingRef.current = true;
+      setIsScrolling(true);
+    }
 
     if (scrollTimeoutRef.current) {
       clearTimeout(scrollTimeoutRef.current);
     }
 
     scrollTimeoutRef.current = setTimeout(() => {
+      isScrollingRef.current = false;
       setIsScrolling(false);
     }, delay);
   }, [delay]);

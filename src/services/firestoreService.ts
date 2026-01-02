@@ -244,15 +244,42 @@ export const loadShiftsForMonth = async (year: number, month: number): Promise<S
 
     const querySnapshot = await getDocs(shiftsQuery);
     const shifts = querySnapshot.docs
-      .map(doc => ({
-        ...doc.data(),
-        id: doc.id
-      } as Shift))
+      .map(doc => {
+        const data = doc.data();
+        const shift = {
+          ...data,
+          id: doc.id,
+          // キャンセル状態フィールドを明示的に含める
+          cancelStatus: data.cancelStatus || undefined,
+          canceledAt: data.canceledAt || undefined
+        } as Shift;
+
+        // キャンセル状態のシフトをログ出力
+        if (shift.cancelStatus) {
+          console.log('🔴 キャンセル済みシフトを読み込み:', {
+            id: shift.id,
+            date: shift.date,
+            helperId: shift.helperId,
+            clientName: shift.clientName,
+            cancelStatus: shift.cancelStatus,
+            canceledAt: shift.canceledAt,
+            rowIndex: shift.rowIndex
+          });
+        }
+
+        return shift;
+      })
       // 論理削除されていないデータのみフィルタリング（deletedフィールドがないものも含む）
       .filter(shift => !shift.deleted);
 
     if (month === 12) {
       console.log(`✅ 12月のシフトデータ読み込み: ${shifts.length}件 (${startDate} 〜 ${endDate})`);
+    }
+
+    // キャンセル状態のシフト数をログ出力
+    const canceledCount = shifts.filter(s => s.cancelStatus).length;
+    if (canceledCount > 0) {
+      console.log(`🔴 キャンセル済みシフト: ${canceledCount}件を含む`);
     }
 
     return shifts;

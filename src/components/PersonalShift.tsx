@@ -127,7 +127,11 @@ export function PersonalShift({ token }: Props) {
       })) as Shift[];
 
       // deletedがtrueのものを除外（deletedがundefinedの場合は含める）
-      const fetchedShifts = allShifts.filter(s => s.deleted !== true);
+      // キャンセル済みシフト（cancelStatusが設定されている）も除外
+      const fetchedShifts = allShifts.filter(s =>
+        s.deleted !== true &&
+        !s.cancelStatus
+      );
 
       console.log('✅ Firestoreからデータ取得成功:', fetchedShifts.length, '件');
       console.log('🔍 取得したシフト（最初の3件・詳細）:', fetchedShifts.slice(0, 3).map(s => ({

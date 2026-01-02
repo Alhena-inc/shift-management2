@@ -5,6 +5,7 @@ import { SalaryCalculation } from './components/SalaryCalculation';
 import { PersonalShift } from './components/PersonalShift';
 import { ExpenseModal } from './components/ExpenseModal';
 import { DayOffManager } from './components/DayOffManager';
+import { CareContentDeleter } from './components/CareContentDeleter';
 import { PayslipListPage } from './components/payslip/PayslipListPage';
 import HomePage from './pages/HomePage';
 import HelperManagementPage from './pages/HelperManagementPage';
@@ -120,6 +121,7 @@ function App() {
   const [currentView, setCurrentView] = useState<'shift' | 'addHelper' | 'salary' | 'dayOff'>('shift');
   const [isInitialized, setIsInitialized] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [isCareContentDeleterOpen, setIsCareContentDeleterOpen] = useState(false);
 
   // Firebase接続テスト（初回のみ）
   useEffect(() => {
@@ -161,6 +163,22 @@ function App() {
       }
 
       const allShifts = [...loadedShifts, ...januaryShifts];
+
+      // キャンセル済みシフトのログ
+      const canceledShifts = allShifts.filter(s => s.cancelStatus);
+      if (canceledShifts.length > 0) {
+        console.log(`🔴 App.tsx: キャンセル済みシフト ${canceledShifts.length}件を設定:`,
+          canceledShifts.map(s => ({
+            id: s.id,
+            date: s.date,
+            helperId: s.helperId,
+            clientName: s.clientName,
+            cancelStatus: s.cancelStatus,
+            rowIndex: s.rowIndex
+          }))
+        );
+      }
+
       setShifts(allShifts);
     };
     fetchShifts();
@@ -243,6 +261,7 @@ function App() {
   const handleOpenHelperManager = useCallback(() => setCurrentView('addHelper'), []);
   const handleOpenExpenseModal = useCallback(() => setIsExpenseModalOpen(true), []);
   const handleOpenDayOffManager = useCallback(() => setCurrentView('dayOff'), []);
+  const handleOpenCareContentDeleter = useCallback(() => setIsCareContentDeleterOpen(true), []);
 
   // SERVICE_CONFIGの表示をメモ化
   const serviceConfigDisplay = useMemo(() => {
@@ -367,7 +386,7 @@ function App() {
             {serviceConfigDisplay}
           </div>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
           <button
             onClick={handleOpenSalaryCalculation}
             className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
@@ -392,6 +411,12 @@ function App() {
           >
             🏖️ 休み希望
           </button>
+          <button
+            onClick={handleOpenCareContentDeleter}
+            className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+          >
+            🗑️ シフトデータ削除
+          </button>
         </div>
       </div>
 
@@ -415,6 +440,34 @@ function App() {
         initialYear={currentYear}
         initialMonth={currentMonth}
       />
+
+      {isCareContentDeleterOpen && (
+        <CareContentDeleter
+          onClose={() => setIsCareContentDeleterOpen(false)}
+          currentYear={currentYear}
+          currentMonth={currentMonth}
+          onDeleteComplete={async () => {
+            // 削除完了後、シフトデータを再読み込み
+            const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth);
+
+            // 12月の場合は翌年1月のシフトも読み込む
+            let januaryShifts: Shift[] = [];
+            if (currentMonth === 12) {
+              const nextYear = currentYear + 1;
+              const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1);
+
+              // 1月1日〜4日のみをフィルター
+              januaryShifts = allJanuaryShifts.filter(shift => {
+                const day = parseInt(shift.date.split('-')[2]);
+                return day >= 1 && day <= 4;
+              });
+            }
+
+            const allShifts = [...loadedShifts, ...januaryShifts];
+            setShifts(allShifts);
+          }}
+        />
+      )}
     </div>
   );
 }

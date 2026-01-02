@@ -134,7 +134,12 @@ export const ShiftCell = memo(({
         nightHours: 0,
         regularPay: 0,
         nightPay: 0,
-        totalPay: 0
+        totalPay: 0,
+        // 既存のキャンセル状態を保持
+        ...(shift?.cancelStatus ? {
+          cancelStatus: shift.cancelStatus,
+          canceledAt: shift.canceledAt
+        } : {})
       };
 
       onSave(newShift);
