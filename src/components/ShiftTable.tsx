@@ -4627,7 +4627,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                         );
                         })}
                         </div>
-                      )}
                     </td>
                   );
                 })
