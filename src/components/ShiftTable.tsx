@@ -1730,17 +1730,30 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       }
     }
 
-    // 背景色を設定
+    // 背景色を設定（休み希望を考慮）
     const bgCellSelector = `.editable-cell[data-row="${rowIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
     const bgCells = document.querySelectorAll(bgCellSelector);
     if (bgCells.length > 0) {
       const parentTd = bgCells[0].closest('td') as HTMLElement;
       if (parentTd) {
-        parentTd.style.backgroundColor = copyBufferRef.backgroundColor;
+        // 休み希望のチェック
+        const isDayOffForThisRow = dayOffRequests.some(request =>
+          request.helperId === helperId &&
+          request.dates.includes(date) &&
+          request.rowIndex === rowIndex
+        );
+
+        // 休み希望がある場合はピンク系の背景色を維持、ない場合はコピー元の背景色を使用
+        const backgroundColor = isDayOffForThisRow
+          ? 'rgba(255, 182, 193, 0.5)' // 休み希望のピンク系
+          : copyBufferRef.backgroundColor;
+
+        parentTd.style.backgroundColor = backgroundColor;
+
+        bgCells.forEach((cell) => {
+          (cell as HTMLElement).style.backgroundColor = backgroundColor;
+        });
       }
-      bgCells.forEach((cell) => {
-        (cell as HTMLElement).style.backgroundColor = copyBufferRef.backgroundColor;
-      });
     }
 
     // 集計を更新
@@ -1796,7 +1809,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     saveData();
 
     console.log('📌 セルにペーストしました');
-  }, [copyBufferRef, updateTotalsForHelperAndDate, year, month]);
+  }, [copyBufferRef, updateTotalsForHelperAndDate, year, month, dayOffRequests]);
 
   // キーボードイベント（Cmd+C / Cmd+V / Cmd+Z / Cmd+Shift+Z / 直接入力）のリスナー
   useEffect(() => {
@@ -1946,15 +1959,27 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                             if (serviceEntry) {
                               const [_, config] = serviceEntry;
 
+                              // 休み希望のチェック
+                              const isDayOffForThisRow = dayOffRequests.some(request =>
+                                request.helperId === targetHelper.id &&
+                                request.dates.includes(startDate) &&
+                                request.rowIndex === currentRowIndex
+                              );
+
+                              // 休み希望がある場合はピンク系、ない場合はサービス種別の色
+                              const bgColor = isDayOffForThisRow
+                                ? 'rgba(255, 182, 193, 0.5)'
+                                : config.bgColor;
+
                               const parentTd = targetCell.closest('td');
                               if (parentTd) {
-                                (parentTd as HTMLElement).style.backgroundColor = config.bgColor;
+                                (parentTd as HTMLElement).style.backgroundColor = bgColor;
                               }
 
                               const cellSelector = `[data-row="${currentRowIndex}"][data-helper="${targetHelper.id}"][data-date="${startDate}"].editable-cell`;
                               const cellElements = document.querySelectorAll(cellSelector);
                               cellElements.forEach((cell) => {
-                                (cell as HTMLElement).style.backgroundColor = config.bgColor;
+                                (cell as HTMLElement).style.backgroundColor = bgColor;
                               });
                             }
                           }
@@ -2108,15 +2133,27 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                           if (serviceEntry) {
                             const [_, config] = serviceEntry;
 
+                            // 休み希望のチェック
+                            const isDayOffForThisRow = dayOffRequests.some(request =>
+                              request.helperId === helperId &&
+                              request.dates.includes(date) &&
+                              request.rowIndex === parseInt(currentRow)
+                            );
+
+                            // 休み希望がある場合はピンク系、ない場合はサービス種別の色
+                            const bgColor = isDayOffForThisRow
+                              ? 'rgba(255, 182, 193, 0.5)'
+                              : config.bgColor;
+
                             const parentTd = targetCell.closest('td');
                             if (parentTd) {
-                              (parentTd as HTMLElement).style.backgroundColor = config.bgColor;
+                              (parentTd as HTMLElement).style.backgroundColor = bgColor;
                             }
 
                             const cellSelector = `[data-row="${currentRow}"][data-helper="${helperId}"][data-date="${date}"].editable-cell`;
                             const cellElements = document.querySelectorAll(cellSelector);
                             cellElements.forEach((cell) => {
-                              (cell as HTMLElement).style.backgroundColor = config.bgColor;
+                              (cell as HTMLElement).style.backgroundColor = bgColor;
                             });
                           }
                         }
