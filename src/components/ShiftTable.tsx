@@ -2160,7 +2160,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     // 給与を計算（会議とその他は計算しない）
                     const payCalculation = (serviceType === 'kaigi' || serviceType === 'other')
                       ? { regularHours: 0, nightHours: 0, regularPay: 0, nightPay: 0, totalPay: 0 }
-                      : calculateShiftPay(serviceType, timeRange, startDate);
+                      : calculateShiftPay(serviceType, timeRange, date);
 
                     const shift: Shift = {
                       id: shiftId,
@@ -4777,7 +4777,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                       }
 
                                       // 新しいタイマーをセット
-                                      const timer = setTimeout(async () => {
+                                      const timer = window.setTimeout(async () => {
                                         try {
                                           // 全4ラインのデータを取得（安全に）
                                           const lines: string[] = [];
