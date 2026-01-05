@@ -646,7 +646,7 @@ export function PersonalShift({ token }: Props) {
                         key={day.isEmpty ? `empty-header-${idx}` : day.date}
                         className={`border border-gray-400 p-0.5 font-bold text-[7px] ${day.isEmpty ? 'bg-gray-300' : day.isWeekend ? 'bg-red-100' : 'bg-yellow-100'
                           }`}
-                        style={{ height: '18px', width: '50px', minWidth: '50px', maxWidth: '50px' }}
+                        style={{ height: '20px', width: '13.5vw', minWidth: '13.5vw', maxWidth: '13.5vw' }}
                       >
                         {!day.isEmpty ? (
                           <div className={day.isWeekend ? 'text-red-600' : 'text-gray-800'}>
@@ -665,7 +665,7 @@ export function PersonalShift({ token }: Props) {
                         key={day.isEmpty ? `empty-name-${idx}` : `name-${day.date}`}
                         className={`border border-gray-400 p-0.5 text-center font-medium text-[7px] ${day.isEmpty ? 'bg-gray-200' : day.isWeekend ? 'bg-blue-100' : 'bg-blue-50'
                           }`}
-                        style={{ height: '14px', width: '50px', minWidth: '50px', maxWidth: '50px' }}
+                        style={{ height: '16px', width: '13.5vw', minWidth: '13.5vw', maxWidth: '13.5vw' }}
                       >
                         {!day.isEmpty ? helper.name : '\u00A0'}
                       </td>
@@ -685,7 +685,7 @@ export function PersonalShift({ token }: Props) {
                         const isDayOff = !day.isEmpty && checkIsDayOffRow(helper.id, day.date, rowIndex);
 
                         // セルサイズを小さく固定（50px × 50px）
-                        const cellSize = '50px';
+                        const cellSize = '13.5vw';
 
                         // 背景色の決定
                         let backgroundColor = 'transparent';
@@ -743,28 +743,31 @@ export function PersonalShift({ token }: Props) {
 
                                 return (
                                   <div
-                                    className="rounded h-full w-full flex flex-col justify-center items-center text-center text-[6px] p-0.5"
+                                    className="rounded h-full w-full flex flex-col justify-center items-center text-center p-0.5 overflow-hidden"
                                     style={{
                                       backgroundColor: bgColor,
                                       borderLeft: isCancelled
-                                        ? '3px solid #b91c1c' // 濃い赤ボーダー（キャンセル）
+                                        ? '3px solid #b91c1c'
                                         : `2px solid ${config.color}`,
-                                      color: isCancelled
-                                        ? '#ffffff' // 白文字（キャンセル時）
-                                        : 'inherit',
+                                      color: isCancelled ? '#ffffff' : '#111827',
+                                      lineHeight: '1.2',
                                     }}
-                                    title={`${shift.startTime}-${shift.endTime} ${shift.clientName} ${shift.duration} ${shift.area} ${cancelStatus ? `[${cancelStatus === 'keep_time' ? 'キャンセル(時間残)' : 'キャンセル(時間削除)'}]` : ''}`}
+                                    title={`${shift.startTime}-${shift.endTime} ${shift.clientName} ${shift.duration} ${shift.area}`}
                                   >
-
-                                    <div className="font-bold text-[7px] leading-tight">{shift.startTime}-{shift.endTime}</div>
-                                    <div className="font-bold leading-tight">{shift.clientName || '利用者名なし'}({config.label})</div>
-                                    <div className="font-semibold leading-tight">
-                                      {cancelStatus === 'remove_time' ? '' : (shift.duration || '時間なし')}
+                                    {/* 時間（横並び1行で全て表示） */}
+                                    <div className="font-extrabold text-[7px] w-full whitespace-nowrap">{shift.startTime}-{shift.endTime}</div>
+                                    {/* 利用者名(サービス) */}
+                                    <div className="font-extrabold text-[8px] w-full truncate">{shift.clientName || '-'}({config.label})</div>
+                                    {/* 時間数（濃く） */}
+                                    <div className="font-bold text-[8px] w-full truncate" style={{ color: isCancelled ? '#ffffff' : '#1f2937' }}>
+                                      {cancelStatus === 'remove_time' ? '' : (shift.duration || '')}
                                     </div>
-                                    <div className="leading-tight">{shift.area || 'エリアなし'}</div>
+                                    {/* 地名（濃く） */}
+                                    <div className="font-bold text-[7px] w-full truncate" style={{ color: isCancelled ? '#ffffff' : '#374151' }}>{shift.area || ''}</div>
+                                    {/* キャンセル表示 */}
                                     {cancelStatus && (
-                                      <div className="text-[5px] font-bold text-white bg-black bg-opacity-50 px-1 rounded mt-0.5">
-                                        {cancelStatus === 'keep_time' ? 'キャンセル(時間残)' : 'キャンセル(時間削除)'}
+                                      <div className="text-[6px] font-bold text-white bg-black bg-opacity-60 px-1 rounded w-full truncate">
+                                        キャンセル
                                       </div>
                                     )}
                                   </div>

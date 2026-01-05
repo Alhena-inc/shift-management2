@@ -24,22 +24,22 @@ export const SERVICE_CONFIG: Record<ServiceType, {
   bgColor: string;
   hourlyRate: number;  // 時給（円）
 }> = {
-  kaji:         { label: '家事', color: '#9a3412', bgColor: '#fdba74', hourlyRate: 2000 },  // 薄いオレンジ
-  judo:         { label: '重度', color: '#7c2d12', bgColor: '#fb923c', hourlyRate: 2000 },  // オレンジ赤
-  shintai:      { label: '身体', color: '#854d0e', bgColor: '#fde047', hourlyRate: 2000 },  // 黄色
-  yasumi_kibou: { label: '休み希望', color: '#7c3aed', bgColor: '#c4b5fd', hourlyRate: 0 },  // 紫
-  doko:         { label: '同行', color: '#166534', bgColor: '#86efac', hourlyRate: 1200 },  // 明るい緑
-  shitei_kyuu:  { label: '指定休', color: '#7c3aed', bgColor: '#c4b5fd', hourlyRate: 0 },  // 紫
-  yotei:        { label: '予定', color: '#7c3aed', bgColor: '#c4b5fd', hourlyRate: 0 },  // 紫
-  kodo_engo:    { label: '行動', color: '#374151', bgColor: '#9ca3af', hourlyRate: 2000 },  // グレー
-  shinya:       { label: '深夜', color: '#1e3a8a', bgColor: '#93c5fd', hourlyRate: 2000 },  // 濃い青
-  shinya_doko:  { label: '深夜(同行)', color: '#581c87', bgColor: '#d8b4fe', hourlyRate: 1200 },  // 濃い紫
-  tsuin:        { label: '通院', color: '#0369a1', bgColor: '#7dd3fc', hourlyRate: 2000 },  // 青
-  ido:          { label: '移動', color: '#065f46', bgColor: '#6ee7b7', hourlyRate: 2000 },  // 緑
-  jimu:         { label: '事務', color: '#4338ca', bgColor: '#a5b4fc', hourlyRate: 1200 },  // インディゴ
-  eigyo:        { label: '営業', color: '#7c3aed', bgColor: '#c4b5fd', hourlyRate: 1200 },  // バイオレット
-  kaigi:        { label: '会議', color: '#7c3aed', bgColor: '#c4b5fd', hourlyRate: 0 },  // 紫（給与算出なし）
-  other:        { label: '', color: '#7c3aed', bgColor: '#c4b5fd', hourlyRate: 0 },  // 紫（給与算出なし）
+  kaji: { label: '家事', color: '#9a3412', bgColor: '#fdba74', hourlyRate: 2000 },  // 薄いオレンジ
+  judo: { label: '重度', color: '#7c2d12', bgColor: '#fb923c', hourlyRate: 2000 },  // オレンジ赤
+  shintai: { label: '身体', color: '#854d0e', bgColor: '#fde047', hourlyRate: 2000 },  // 黄色
+  yasumi_kibou: { label: '休み希望', color: '#7c3aed', bgColor: '#ffcccc', hourlyRate: 0 },  // ピンク
+  doko: { label: '同行', color: '#166534', bgColor: '#86efac', hourlyRate: 1200 },  // 明るい緑
+  shitei_kyuu: { label: '指定休', color: '#166534', bgColor: '#22c55e', hourlyRate: 0 },   // 緑
+  yotei: { label: '予定', color: '#7c3aed', bgColor: '#c4b5fd', hourlyRate: 0 },  // 紫
+  kodo_engo: { label: '行動', color: '#374151', bgColor: '#9ca3af', hourlyRate: 2000 },  // グレー
+  shinya: { label: '深夜', color: '#1e3a8a', bgColor: '#93c5fd', hourlyRate: 2000 },  // 濃い青
+  shinya_doko: { label: '深夜(同行)', color: '#581c87', bgColor: '#d8b4fe', hourlyRate: 1200 },  // 濃い紫
+  tsuin: { label: '通院', color: '#0369a1', bgColor: '#7dd3fc', hourlyRate: 2000 },  // 青
+  ido: { label: '移動', color: '#065f46', bgColor: '#6ee7b7', hourlyRate: 2000 },  // 緑
+  jimu: { label: '事務', color: '#4338ca', bgColor: '#a5b4fc', hourlyRate: 1200 },  // インディゴ
+  eigyo: { label: '営業', color: '#7c3aed', bgColor: '#c4b5fd', hourlyRate: 1200 },  // バイオレット
+  kaigi: { label: '会議', color: '#7c3aed', bgColor: '#c4b5fd', hourlyRate: 0 },  // 紫（給与算出なし）
+  other: { label: '', color: '#7c3aed', bgColor: '#c4b5fd', hourlyRate: 0 },  // 紫（給与算出なし）
 };
 
 // 扶養者情報
@@ -99,7 +99,7 @@ export interface Helper {
   // 固定給制（正社員・契約社員用）
   baseSalary?: number;                    // 基本給
   treatmentAllowance?: number;            // 処遇改善手当
-  otherAllowances?: Array<{name: string; amount: number; taxExempt: boolean}>;  // その他手当
+  otherAllowances?: Array<{ name: string; amount: number; taxExempt: boolean }>;  // その他手当
 
   // 税務情報（正社員・契約社員用）
   dependents?: number;                    // 扶養人数（0〜7人）
