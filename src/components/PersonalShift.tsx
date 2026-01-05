@@ -171,7 +171,7 @@ export function PersonalShift({ token }: Props) {
 
           // キャンセル状態の詳細なデバッグ
           const hasCancel = (data.cancelStatus !== undefined && data.cancelStatus !== null) ||
-                          (data.canceledAt !== undefined && data.canceledAt !== null);
+            (data.canceledAt !== undefined && data.canceledAt !== null);
           const cancelDebugInfo = {
             id: doc.id,
             clientName: data.clientName,
@@ -327,6 +327,21 @@ export function PersonalShift({ token }: Props) {
       const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][dayOfWeekIndex];
       const dayShifts = shifts.filter(s => s.date === date).sort((a, b) => a.startTime.localeCompare(b.startTime));
       const isWeekend = dayOfWeekIndex === 0 || dayOfWeekIndex === 6;
+
+      // 1週目の開始が月曜日でない場合、空白セルを追加
+      if (day === 1) {
+        const startOffset = dayOfWeekIndex === 0 ? 6 : dayOfWeekIndex - 1;
+        for (let i = 0; i < startOffset; i++) {
+          currentWeek.push({
+            date: '',
+            dayNumber: 0,
+            dayOfWeek: '',
+            shifts: [],
+            isWeekend: false,
+            isEmpty: true
+          });
+        }
+      }
 
       currentWeek.push({ date, dayNumber: day, dayOfWeek, shifts: dayShifts, isWeekend, isEmpty: false });
 
@@ -504,9 +519,8 @@ export function PersonalShift({ token }: Props) {
                     {week.days.map((day, idx) => (
                       <th
                         key={day.isEmpty ? `empty-header-${idx}` : day.date}
-                        className={`border border-gray-400 p-0.5 font-bold text-[7px] ${
-                          day.isEmpty ? 'bg-gray-300' : day.isWeekend ? 'bg-red-100' : 'bg-yellow-100'
-                        }`}
+                        className={`border border-gray-400 p-0.5 font-bold text-[7px] ${day.isEmpty ? 'bg-gray-300' : day.isWeekend ? 'bg-red-100' : 'bg-yellow-100'
+                          }`}
                         style={{ height: '18px', width: '50px', minWidth: '50px', maxWidth: '50px' }}
                       >
                         {!day.isEmpty ? (
@@ -524,9 +538,8 @@ export function PersonalShift({ token }: Props) {
                     {week.days.map((day, idx) => (
                       <td
                         key={day.isEmpty ? `empty-name-${idx}` : `name-${day.date}`}
-                        className={`border border-gray-400 p-0.5 text-center font-medium text-[7px] ${
-                          day.isEmpty ? 'bg-gray-200' : day.isWeekend ? 'bg-blue-100' : 'bg-blue-50'
-                        }`}
+                        className={`border border-gray-400 p-0.5 text-center font-medium text-[7px] ${day.isEmpty ? 'bg-gray-200' : day.isWeekend ? 'bg-blue-100' : 'bg-blue-50'
+                          }`}
                         style={{ height: '14px', width: '50px', minWidth: '50px', maxWidth: '50px' }}
                       >
                         {!day.isEmpty ? helper.name : '\u00A0'}
@@ -549,9 +562,8 @@ export function PersonalShift({ token }: Props) {
                         return (
                           <td
                             key={day.isEmpty ? `empty-${idx}-${rowIndex}` : `shift-${day.date}-${rowIndex}`}
-                            className={`border border-gray-400 p-0 align-top ${
-                              day.isEmpty ? 'bg-gray-200' : day.isWeekend ? 'bg-blue-50' : 'bg-white'
-                            }`}
+                            className={`border border-gray-400 p-0 align-top ${day.isEmpty ? 'bg-gray-200' : day.isWeekend ? 'bg-blue-50' : 'bg-white'
+                              }`}
                             style={{
                               width: cellSize,
                               height: cellSize,
