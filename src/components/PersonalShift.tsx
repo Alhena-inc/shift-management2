@@ -14,6 +14,7 @@ export function PersonalShift({ token }: Props) {
   const [helper, setHelper] = useState<Helper | null>(null);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
+  const [helperLoadComplete, setHelperLoadComplete] = useState(false); // ヘルパー取得完了フラグ
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
@@ -82,6 +83,7 @@ export function PersonalShift({ token }: Props) {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
+      setHelperLoadComplete(false);
 
       // トークンからヘルパーを取得
       console.log('🔍 トークン:', token);
@@ -91,10 +93,12 @@ export function PersonalShift({ token }: Props) {
       console.log('👤 ヘルパー名:', helperData?.name);
       if (!helperData) {
         console.error('❌ ヘルパーが見つかりませんでした');
+        setHelperLoadComplete(true); // 取得完了（見つからなかった）
         setLoading(false);
         return;
       }
       setHelper(helperData);
+      setHelperLoadComplete(true); // 取得完了（見つかった）
       setLoading(false);
     };
 
@@ -543,8 +547,8 @@ export function PersonalShift({ token }: Props) {
     window.location.href = `/?pwa=1&token=${token}`;
   }, [token]);
 
-  // 読み込み中の場合はローディング表示
-  if (loading) {
+  // 読み込み中またはヘルパー取得完了前はローディング表示
+  if (loading || !helperLoadComplete) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -556,7 +560,7 @@ export function PersonalShift({ token }: Props) {
     );
   }
 
-  // ヘルパーが見つからない場合
+  // ヘルパー取得完了後、見つからなかった場合のみエラー表示
   if (!helper) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
