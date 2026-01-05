@@ -796,7 +796,7 @@ export function PersonalShift({ token }: Props) {
 
                                     if (isSpecificText) {
                                       return (
-                                        <div className="text-[10px] font-bold text-gray-700 leading-tight break-all">
+                                        <div className="text-[7px] font-bold text-gray-700 leading-none">
                                           {rawDisplayText}
                                         </div>
                                       );
