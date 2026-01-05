@@ -631,12 +631,10 @@ export function PersonalShift({ token }: Props) {
                                 // デバッグ：キャンセル状態を詳細に確認
                                 const cancelStatus = shift.cancelStatus?.toString().trim() || null;
                                 const isCancelled = cancelStatus === 'keep_time' || cancelStatus === 'remove_time';
-                                // 背景色：キャンセル(赤) > 休み希望(ピンク) > 通常(config.bgColor)
+                                // 背景色：キャンセル(赤) > 通常(config.bgColor)
                                 let bgColor = config.bgColor;
                                 if (isCancelled) {
                                   bgColor = '#ef4444';
-                                } else if (isDayOff) {
-                                  bgColor = '#ffcccc';
                                 }
 
                                 // キャンセル状態のシフトのみログ出力
@@ -685,11 +683,6 @@ export function PersonalShift({ token }: Props) {
 
                             ) : !day.isEmpty ? (
                               <div className="h-full w-full flex items-center justify-center text-center p-0.5">
-                                {isDayOff && (
-                                  <span className="text-[7px] font-bold text-red-600 leading-tight">
-                                    休み希望
-                                  </span>
-                                )}
                               </div>
                             ) : (
                               <div className="h-full w-full bg-gray-200">&nbsp;</div>
