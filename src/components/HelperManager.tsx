@@ -62,6 +62,7 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
       ...(firstName && { firstName }), // firstNameが空でない場合のみ追加
       gender: newHelperGender,
       order: 0, // 仮の値
+      personalToken: generateToken(), // 新規作成時にURLトークンを自動生成
     };
 
     // 性別に応じて最後に追加
@@ -323,6 +324,13 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
   }, [localHelpers, onUpdate]);
 
   const handleGenerateToken = useCallback(async (helperId: string) => {
+    const helper = localHelpers.find(h => h.id === helperId);
+    if (helper?.personalToken) {
+      if (!confirm('URLを再生成すると、これまでのURLは使えなくなります。本当によろしいですか？')) {
+        return;
+      }
+    }
+
     const updatedHelpers = localHelpers.map(h =>
       h.id === helperId
         ? { ...h, personalToken: generateToken() }
@@ -394,11 +402,10 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
               <button
                 onClick={handleSave}
                 disabled={!hasChanges || isSaving}
-                className={`px-6 py-3 rounded-lg font-bold text-lg ${
-                  hasChanges && !isSaving
-                    ? 'bg-green-500 text-white hover:bg-green-600'
-                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                }`}
+                className={`px-6 py-3 rounded-lg font-bold text-lg ${hasChanges && !isSaving
+                  ? 'bg-green-500 text-white hover:bg-green-600'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
               >
                 {isSaving ? '保存中...' : hasChanges ? '💾 保存する' : '保存済み'}
               </button>
@@ -448,9 +455,8 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
                     onDragStart={() => handleDragStart(index)}
                     onDragOver={handleDragOver}
                     onDrop={() => handleDrop(index)}
-                    className={`flex items-center justify-between p-4 ${editingHelperId !== helper.id ? 'cursor-move' : ''} ${bgColor} ${
-                      draggedIndex === index ? 'opacity-50' : ''
-                    }`}
+                    className={`flex items-center justify-between p-4 ${editingHelperId !== helper.id ? 'cursor-move' : ''} ${bgColor} ${draggedIndex === index ? 'opacity-50' : ''
+                      }`}
                   >
                     <div className="flex items-center gap-4 flex-1">
                       {editingHelperId !== helper.id && <span className="text-2xl">☰</span>}

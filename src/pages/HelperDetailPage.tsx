@@ -171,11 +171,10 @@ const HelperDetailPage: React.FC = () => {
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 ${
-              isSaving
+            className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 ${isSaving
                 ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 : 'bg-blue-600 text-white hover:bg-blue-700'
-            }`}
+              }`}
           >
             {isSaving ? '保存中...' : '💾 保存'}
           </button>
@@ -188,11 +187,10 @@ const HelperDetailPage: React.FC = () => {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-6 py-3 font-medium transition-colors whitespace-nowrap ${
-                  activeTab === tab.id
+                className={`px-6 py-3 font-medium transition-colors whitespace-nowrap ${activeTab === tab.id
                     ? 'text-blue-600 border-b-2 border-blue-600'
                     : 'text-gray-500 hover:text-gray-700'
-                }`}
+                  }`}
               >
                 {tab.label}
               </button>
@@ -313,14 +311,21 @@ const HelperDetailPage: React.FC = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       個人トークン
                     </label>
-                    <input
-                      type="text"
-                      value={helper.personalToken || ''}
-                      onChange={(e) => handleChange('personalToken', e.target.value)}
-                      className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
-                      placeholder="ユニークなトークン"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">個人シフト表URLに使用されます</p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={helper.personalToken || ''}
+                        onChange={(e) => {
+                          if (helper.personalToken && !confirm('トークンを直接編集すると既存のURLが使えなくなります。よろしいですか？')) {
+                            return;
+                          }
+                          handleChange('personalToken', e.target.value);
+                        }}
+                        className="flex-1 px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                        placeholder="ユニークなトークン"
+                      />
+                    </div>
+                    <p className="text-xs text-red-500 mt-1">※ 編集すると既存の個人シフトURLが無効になります</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
