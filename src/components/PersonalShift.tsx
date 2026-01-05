@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Helper, Shift } from '../types';
 import { SERVICE_CONFIG } from '../types';
-import { loadHelperByToken } from '../services/firestoreService';
+import { loadHelperByToken, loadDayOffRequests } from '../services/firestoreService';
 import { db } from '../lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
@@ -17,6 +17,7 @@ export function PersonalShift({ token }: Props) {
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [isStandalone, setIsStandalone] = useState(false);
+  const [dayOffRequests, setDayOffRequests] = useState<Map<string, string>>(new Map());
 
   // PWAモードかチェック
   useEffect(() => {
@@ -97,6 +98,22 @@ export function PersonalShift({ token }: Props) {
 
     loadData();
   }, [token]);
+
+  // 休み希望を読み込み
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const requests = await loadDayOffRequests(currentYear, currentMonth);
+        setDayOffRequests(requests);
+        console.log(`🏖️ 休み希望を読み込みました: ${currentYear}年${currentMonth}月 (${requests.size}件)`);
+      } catch (error) {
+        console.error('休み希望の読み込みエラー:', error);
+      }
+    };
+    if (helper) {
+      loadData();
+    }
+  }, [currentYear, currentMonth, helper]);
 
   // Firestoreからデータを取得（リアルタイム）
   useEffect(() => {
@@ -556,14 +573,29 @@ export function PersonalShift({ token }: Props) {
                         const shift = !day.isEmpty && day.shifts.find(s => s.rowIndex === rowIndex);
                         const config = shift ? SERVICE_CONFIG[shift.serviceType] : null;
 
+                        // 休み希望セルかチェック
+                        const dayOffKey = `${helper.id}-${day.date}-${rowIndex}`;
+                        const isDayOff = !day.isEmpty && dayOffRequests.has(dayOffKey);
+
                         // セルサイズを小さく固定（50px × 50px）
                         const cellSize = '50px';
+
+                        // 背景色の決定
+                        let backgroundColor = 'transparent';
+                        if (day.isEmpty) {
+                          backgroundColor = '#e5e7eb'; // bg-gray-200
+                        } else if (isDayOff) {
+                          backgroundColor = '#ffcccc'; // 休み希望のピンク背景
+                        } else if (day.isWeekend) {
+                          backgroundColor = '#eff6ff'; // bg-blue-50
+                        } else {
+                          backgroundColor = '#ffffff';
+                        }
 
                         return (
                           <td
                             key={day.isEmpty ? `empty-${idx}-${rowIndex}` : `shift-${day.date}-${rowIndex}`}
-                            className={`border border-gray-400 p-0 align-top ${day.isEmpty ? 'bg-gray-200' : day.isWeekend ? 'bg-blue-50' : 'bg-white'
-                              }`}
+                            className="border border-gray-400 p-0 align-top"
                             style={{
                               width: cellSize,
                               height: cellSize,
@@ -573,7 +605,8 @@ export function PersonalShift({ token }: Props) {
                               maxHeight: cellSize,
                               verticalAlign: 'top',
                               overflow: 'hidden',
-                              padding: '1px'
+                              padding: '1px',
+                              backgroundColor: backgroundColor
                             }}
                           >
                             {!day.isEmpty && shift && config ? (
