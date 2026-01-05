@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Helper, Shift } from '../types';
 import { SERVICE_CONFIG } from '../types';
 import { loadHelperByToken, loadDayOffRequests } from '../services/firestoreService';
+import { getRowIndicesFromDayOffValue } from '../utils/timeSlots';
 import { db } from '../lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
@@ -114,6 +115,23 @@ export function PersonalShift({ token }: Props) {
       loadData();
     }
   }, [currentYear, currentMonth, helper]);
+
+  /**
+   * 特定の行が休み希望かどうかを判定する共通関数（新旧両方の形式に対応）
+   */
+  const checkIsDayOffRow = useCallback((helperId: string, date: string, rowIndex: number): boolean => {
+    // 1. 新形式（行ごと）をチェック
+    const rowSpecificKey = `${helperId}-${date}-${rowIndex}`;
+    if (dayOffRequests.has(rowSpecificKey)) return true;
+
+    // 2. 旧形式（日付全体）をチェック
+    const dayOffKey = `${helperId}-${date}`;
+    const dayOffValue = dayOffRequests.get(dayOffKey);
+    if (!dayOffValue) return false;
+
+    // 旧形式の値から該当行を判定
+    return getRowIndicesFromDayOffValue(dayOffValue).includes(rowIndex);
+  }, [dayOffRequests]);
 
   // Firestoreからデータを取得（リアルタイム）
   useEffect(() => {
@@ -574,8 +592,7 @@ export function PersonalShift({ token }: Props) {
                         const config = shift ? SERVICE_CONFIG[shift.serviceType] : null;
 
                         // 休み希望セルかチェック
-                        const dayOffKey = `${helper.id}-${day.date}-${rowIndex}`;
-                        const isDayOff = !day.isEmpty && dayOffRequests.has(dayOffKey);
+                        const isDayOff = !day.isEmpty && checkIsDayOffRow(helper.id, day.date, rowIndex);
 
                         // セルサイズを小さく固定（50px × 50px）
                         const cellSize = '50px';
@@ -614,7 +631,13 @@ export function PersonalShift({ token }: Props) {
                                 // デバッグ：キャンセル状態を詳細に確認
                                 const cancelStatus = shift.cancelStatus?.toString().trim() || null;
                                 const isCancelled = cancelStatus === 'keep_time' || cancelStatus === 'remove_time';
-                                const bgColor = isCancelled ? '#ef4444' : config.bgColor;
+                                // 背景色：キャンセル(赤) > 休み希望(ピンク) > 通常(config.bgColor)
+                                let bgColor = config.bgColor;
+                                if (isCancelled) {
+                                  bgColor = '#ef4444';
+                                } else if (isDayOff) {
+                                  bgColor = '#ffcccc';
+                                }
 
                                 // キャンセル状態のシフトのみログ出力
                                 if (cancelStatus) {
@@ -661,7 +684,13 @@ export function PersonalShift({ token }: Props) {
                               })()
 
                             ) : !day.isEmpty ? (
-                              <div className="h-full w-full">&nbsp;</div>
+                              <div className="h-full w-full flex items-center justify-center text-center p-0.5">
+                                {isDayOff && (
+                                  <span className="text-[7px] font-bold text-red-600 leading-tight">
+                                    休み希望
+                                  </span>
+                                )}
+                              </div>
                             ) : (
                               <div className="h-full w-full bg-gray-200">&nbsp;</div>
                             )}
