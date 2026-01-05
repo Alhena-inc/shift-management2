@@ -2626,8 +2626,20 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               (cell as HTMLElement).setAttribute('data-dayoff', 'true');
 
               // 1行目の文言を更新、他をクリア
+              // 重複防止：その日の休み希望の中で最初の行のみに表示
               const lineIdx = (cell as HTMLElement).getAttribute('data-line');
-              if (lineIdx === '0') {
+              const cellRow = parseInt((cell as HTMLElement).getAttribute('data-row') || '0');
+
+              let hasDayOffBefore = false;
+              for (let i = 0; i < cellRow; i++) {
+                if (checkIsDayOffRow(helperId, date, i)) {
+                  hasDayOffBefore = true;
+                  break;
+                }
+              }
+              const isFirstRowOfBlock = !hasDayOffBefore;
+
+              if (lineIdx === '0' && isFirstRowOfBlock) {
                 (cell as HTMLElement).textContent = '休み希望';
               } else {
                 (cell as HTMLElement).textContent = '';
@@ -5054,7 +5066,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                             (cell as HTMLElement).style.backgroundColor = currentTd.style.backgroundColor;
                                           });
 
-                                          // 文言の復元（重複防止：この日の休み希望の中で最初の行のみに表示）
+                                          // 文言の復元（重複防止：この日の休み希望の中で最初の行のみ、かつ1段目のみに表示）
                                           if (!hasShiftContent) {
                                             let hasDayOffBefore = false;
                                             const rowTarget = parseInt(rowIndex || '0');
@@ -5067,12 +5079,12 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                                             const isFirstRowOfBlock = !hasDayOffBefore;
 
-                                            if (isFirstRowOfBlock) {
-                                              if (!currentCell.textContent?.trim()) {
+                                            if (isFirstRowOfBlock && lineIndex === 0) {
+                                              if (!currentCell.textContent?.trim() || currentCell.textContent?.trim() === '休み希望') {
                                                 currentCell.textContent = '休み希望';
                                               }
                                             } else {
-                                              // 先頭行でない場合は文言をクリア（重複防止）
+                                              // 先頭行でない場合、または2段目以降の場合は文言をクリア
                                               if (currentCell.textContent?.trim() === '休み希望') {
                                                 currentCell.textContent = '';
                                               }
