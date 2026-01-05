@@ -519,7 +519,16 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         }
         // スタイルをクリア（border-bottomは削除しない：4行区切りを保持）
         if (cell.style) {
-          cell.style.removeProperty('background-color');
+          // 休み希望セルかチェック（dayOffRequests Mapを使う）
+          const cellHelper = cell.getAttribute('data-helper') || helperId;
+          const cellDate = cell.getAttribute('data-date') || date;
+          const cellRow = cell.getAttribute('data-row') || String(rowIndex);
+          const dayOffKey = `${cellHelper}-${cellDate}-${cellRow}`;
+          const isDayOff = dayOffRequests.has(dayOffKey);
+
+          if (!isDayOff) {
+            cell.style.removeProperty('background-color');
+          }
           cell.style.removeProperty('box-shadow');
           cell.style.removeProperty('outline');
           cell.style.removeProperty('outline-offset');
@@ -532,7 +541,24 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       const parentTd = bgCells[0].closest('td');
       if (parentTd) {
         const tdElement = parentTd as HTMLElement;
-        tdElement.style.backgroundColor = '#ffffff';
+
+        // 休み希望セルかチェック
+        const cellKey = tdElement.dataset.cellKey;
+        if (cellKey) {
+          const [helperId, date, rowIndex] = cellKey.split('-');
+          const dayOffKey = `${helperId}-${date}-${rowIndex}`;
+          const isDayOff = dayOffRequests.has(dayOffKey);
+
+          // 休み希望セルの場合はピンク背景を維持
+          if (isDayOff) {
+            tdElement.style.backgroundColor = '#ffcccc';
+          } else {
+            tdElement.style.backgroundColor = '#ffffff';
+          }
+        } else {
+          tdElement.style.backgroundColor = '#ffffff';
+        }
+
         // 警告の枠線を削除して通常の枠線に戻す
         tdElement.style.border = '1px solid #374151';
         // 右端のヘルパーの場合は右側の枠線を太くする
@@ -545,8 +571,19 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       }
       bgCells.forEach((cell) => {
         const element = cell as HTMLElement;
-        // すべての不要なスタイルをクリア
-        element.style.removeProperty('background-color');
+        // すべての不要なスタイルをクリア（休み希望は維持）
+        const cellHelper = element.getAttribute('data-helper') || helperId;
+        const cellDate = element.getAttribute('data-date') || date;
+        const cellRow = element.getAttribute('data-row') || String(rowIndex);
+        const dayOffKey = `${cellHelper}-${cellDate}-${cellRow}`;
+        const isDayOff = dayOffRequests.has(dayOffKey);
+
+        if (!isDayOff) {
+          element.style.removeProperty('background-color');
+        } else {
+          // 休み希望セルの背景色を維持
+          element.style.backgroundColor = '#ffcccc';
+        }
         element.classList.remove('cell-selected');
       });
 
@@ -1390,6 +1427,23 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     paymentSaveTimersRef.current.set(timerKey, newTimer);
   }, [helpers, year, month]);
 
+  /**
+   * 特定の行が休み希望かどうかを判定する共通関数（新旧両方の形式に対応）
+   */
+  const checkIsDayOffRow = useCallback((helperId: string, date: string, rowIndex: number): boolean => {
+    // 1. 新形式（行ごと）をチェック
+    const rowSpecificKey = `${helperId}-${date}-${rowIndex}`;
+    if (dayOffRequests.has(rowSpecificKey)) return true;
+
+    // 2. 旧形式（日付全体）をチェック
+    const dayOffKey = `${helperId}-${date}`;
+    const dayOffValue = dayOffRequests.get(dayOffKey);
+    if (!dayOffValue) return false;
+
+    // 旧形式の値から該当行を判定
+    return getRowIndicesFromDayOffValue(dayOffValue).includes(rowIndex);
+  }, [dayOffRequests]);
+
   // セルのデータと背景色を取得する関数（レンダリング時に使用）
   // 全セルの表示データを事前に計算してキャッシュ（パフォーマンス最適化）
   const cellDisplayCache = useMemo(() => {
@@ -1419,8 +1473,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               // 休み希望の該当行を判定（新形式 または 旧形式）
               const isDayOffForThisRow = isRowSpecificDayOff || isOldFormatDayOff;
 
-              // 表示テキストを取得
-              const displayText = displayTexts.get(dayOffKey);
+              // 表示テキストを取得し正規化
+              let rawDisplayText = displayTexts.get(dayOffKey);
+              const displayText = (rawDisplayText === '休' || rawDisplayText === '終日' || !rawDisplayText)
+                ? '休み希望'
+                : rawDisplayText;
 
               if (!shift) {
                 // 指定休が最優先、次に休み希望
@@ -1434,23 +1491,25 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     lines = [displayText || '終日', '', '', ''];
                   }
                 } else if (isDayOffForThisRow) {
-                  bgColor = 'rgba(255, 182, 193, 0.5)';  // 休み希望はピンク系
+                  bgColor = '#ffcccc';  // 休み希望はピンク系
 
-                  // 休み希望の時間テキストを表示（最初の行のみ）
-                  if (dayOffValue) {
-                    const affectedRows = getRowIndicesFromDayOffValue(dayOffValue);
-                    const isFirstRow = affectedRows.length > 0 && affectedRows[0] === rowIndex;
-
-                    if (isFirstRow) {
-                      // 表示テキストを優先、なければ終日判定
-                      if (displayText) {
-                        lines = [displayText, '', '', ''];
-                      } else if (dayOffValue === 'all') {
-                        lines = ['終日', '', '', ''];
-                      } else {
-                        lines = ['休', '', '', ''];
+                  // もっと厳密な先頭行判定（この日の中で最初の休み希望行か判定）
+                  let isFirstRowOfBlock = false;
+                  if (rowIndex === 0) {
+                    isFirstRowOfBlock = true;
+                  } else {
+                    let hasDayOffBefore = false;
+                    for (let i = 0; i < rowIndex; i++) {
+                      if (checkIsDayOffRow(helper.id, day.date, i)) {
+                        hasDayOffBefore = true;
+                        break;
                       }
                     }
+                    isFirstRowOfBlock = !hasDayOffBefore;
+                  }
+
+                  if (isFirstRowOfBlock) {
+                    lines = [displayText, '', '', ''];
                   }
                 }
 
@@ -1486,17 +1545,27 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 // 警告が必要かチェック
                 const hasWarning = shouldShowWarning(startTime, endTime, serviceType);
 
-                // 背景色を設定（優先度：キャンセル > 指定休 > serviceType > 休み希望 > デフォルト）
+                // 背景色を設定（優先度：キャンセル > 指定休 > 休み希望 > serviceType > デフォルト）
                 let bgColor = '#ffffff';
+                const isHolidayActive = isRowSpecificDayOff || isOldFormatDayOff;
+
                 if (cancelStatus === 'keep_time' || cancelStatus === 'remove_time') {
                   bgColor = '#f87171';  // キャンセル状態は赤
-                  console.log(`🔴 背景色を赤に設定: ${key}, cancelStatus=${cancelStatus}`);
-                } else if (isScheduledDayOff) {
-                  bgColor = '#22c55e';  // 指定休は緑色（縦列全体）
-                } else if (serviceType && SERVICE_CONFIG[serviceType]) {
+                } else if (isScheduledDayOff || (serviceType as string) === 'shitei_kyuu') {
+                  bgColor = '#22c55e';  // 指定休は緑色
+                } else if (isHolidayActive || (serviceType as string) === 'yasumi_kibou') {
+                  bgColor = '#ffcccc';  // 休み希望は常にピンクを優先
+                } else if (serviceType && SERVICE_CONFIG[serviceType] && (serviceType as string) !== 'yasumi_kibou' && (serviceType as string) !== 'shitei_kyuu') {
                   bgColor = SERVICE_CONFIG[serviceType].bgColor;  // サービスタイプの背景色
-                } else if (isDayOffForThisRow) {
-                  bgColor = 'rgba(255, 182, 193, 0.5)';  // 該当行の休み希望はピンク系
+                }
+
+                // 休み希望が有効だがケア（Shift）がある場合は、ケア内容を表示
+                // ケアがない場合のみ「休み希望」を表示（上の `if (!shift)` 側で処理されるはずだが念のため）
+                if (isHolidayActive && !shift) {
+                  lines[0] = '休み希望';
+                  lines[1] = '';
+                  lines[2] = '';
+                  lines[3] = '';
                 }
 
                 cache.set(key, { lines, bgColor, hasWarning });
@@ -1508,7 +1577,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     });
 
     return cache;
-  }, [sortedHelpers, weeks, shiftMap, dayOffRequests, scheduledDayOffs]);
+  }, [sortedHelpers, weeks, shiftMap, dayOffRequests, scheduledDayOffs, displayTexts]);
 
   // キャッシュ準備完了を追跡
   const [isCacheReady, setIsCacheReady] = useState(false);
@@ -1530,6 +1599,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       hasWarning: false
     };
   }, [cellDisplayCache]);
+
 
   // refからstateへ同期（描画用）
   const syncSelection = useCallback(() => {
@@ -1720,7 +1790,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
         // 休み希望がある場合はピンク系の背景色を維持、ない場合はコピー元の背景色を使用
         const backgroundColor = isDayOffForThisRow
-          ? 'rgba(255, 182, 193, 0.5)' // 休み希望のピンク系
+          ? '#ffcccc' // 休み希望のピンク系
           : copyBufferRef.backgroundColor;
 
         parentTd.style.backgroundColor = backgroundColor;
@@ -1940,7 +2010,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                               // 休み希望がある場合はピンク系、ない場合はサービス種別の色
                               const bgColor = isDayOffForThisRow
-                                ? 'rgba(255, 182, 193, 0.5)'
+                                ? '#ffcccc'
                                 : config.bgColor;
 
                               const parentTd = targetCell.closest('td');
@@ -2111,7 +2181,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                             // 休み希望がある場合はピンク系、ない場合はサービス種別の色
                             const bgColor = isDayOffForThisRow
-                              ? 'rgba(255, 182, 193, 0.5)'
+                              ? '#ffcccc'
                               : config.bgColor;
 
                             const parentTd = targetCell.closest('td');
@@ -2528,6 +2598,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             const cells = td.querySelectorAll('.editable-cell');
             cells.forEach(cell => {
               (cell as HTMLElement).style.backgroundColor = '';
+              // data-dayoff属性も更新
+              (cell as HTMLElement).setAttribute('data-dayoff', 'false');
             });
           }
         } else {
@@ -2535,15 +2607,31 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           next.set(key, 'dayoff');
           console.log(`🏖️ 休み希望を設定: ${key}`);
 
-          // DOM直接操作で即座にピンク背景を適用
+          // 日付全体（旧形式）の設定が入っている場合は削除（行別設定を優先し浸食を防ぐ）
+          const dayOffKey = `${helperId}-${date}`;
+          if (next.has(dayOffKey)) {
+            next.delete(dayOffKey);
+            console.log(`🩹 行別設定に伴い日付全体の設定を解除: ${dayOffKey}`);
+          }
+
+          // DOM直接操作で即座にピンク背景を適用（ただし現場が入っていない場合のみ、または行別設定の場合は強制適用）
           const cellKey = `${helperId}-${date}-${row}`;
           const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
           if (td) {
+            // 新しい優先順位: 行別設定は常にピンクを優先
             td.style.backgroundColor = '#ffcccc';
-            // 内部のeditable-cellも更新
             const cells = td.querySelectorAll('.editable-cell');
             cells.forEach(cell => {
               (cell as HTMLElement).style.backgroundColor = '#ffcccc';
+              (cell as HTMLElement).setAttribute('data-dayoff', 'true');
+
+              // 1行目の文言を更新、他をクリア
+              const lineIdx = (cell as HTMLElement).getAttribute('data-line');
+              if (lineIdx === '0') {
+                (cell as HTMLElement).textContent = '休み希望';
+              } else {
+                (cell as HTMLElement).textContent = '';
+              }
             });
           }
         }
@@ -3756,13 +3844,52 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     if (sourceCells.length > 0) {
       const parentTd = sourceCells[0].closest('td') as HTMLElement;
       if (parentTd) {
-        parentTd.style.backgroundColor = '#ffffff';
+        // 休み希望セルかチェック
+        const cellKey = parentTd.dataset.cellKey;
+        if (cellKey) {
+          const [helperId, date, rowIndex] = cellKey.split('-');
+          const dayOffKey = `${helperId}-${date}-${rowIndex}`;
+          const isDayOff = dayOffRequests.has(dayOffKey);
+
+          // 休み希望セルの場合はピンク背景を維持
+          if (isDayOff) {
+            parentTd.style.backgroundColor = '#ffcccc';
+          } else {
+            parentTd.style.backgroundColor = '#ffffff';
+          }
+        } else {
+          parentTd.style.backgroundColor = '#ffffff';
+        }
       }
       sourceCells.forEach((cell) => {
         const element = cell as HTMLElement;
+        // dayOffRequests Mapを使って判定（data-dayoff属性は使わない）
+        const cellHelper = element.getAttribute('data-helper') || '';
+        const cellDate = element.getAttribute('data-date') || '';
+        const cellRow = element.getAttribute('data-row') || '';
+        const dayOffKey = `${cellHelper}-${cellDate}-${cellRow}`;
+        const isDayOff = dayOffRequests.has(dayOffKey);
+
         // 現在のoutline状態を保持
         const currentOutline = element.style.outline;
-        element.style.backgroundColor = '';
+        // 休み希望セルの場合はピンク背景を維持（ただし既に文字が入っている場合はシフト優先）
+        // 全ての行（4行分）に文字が入っていないかチェック
+        const parentTd = element.closest('td');
+        let hasShiftContent = false;
+        if (parentTd) {
+          const allLineCells = parentTd.querySelectorAll('.editable-cell');
+          allLineCells.forEach(c => {
+            const text = c.textContent?.trim();
+            if (text && text !== '' && text !== '休み希望') {
+              hasShiftContent = true;
+            }
+          });
+        }
+
+        element.style.backgroundColor = (isDayOff && !hasShiftContent) ? '#ffcccc' : '';
+        if (parentTd && isDayOff && !hasShiftContent) {
+          parentTd.style.backgroundColor = '#ffcccc';
+        }
         // outlineを保持（消えないように）
         if (currentOutline) {
           element.style.outline = currentOutline;
@@ -4156,7 +4283,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                               ? 'grabbing'
                               : 'grab',
                             opacity: draggedCell && draggedCell.helperId === helper.id && draggedCell.date === day.date && draggedCell.rowIndex === rowIndex ? 0.5 : 1,
-                            backgroundColor: isSelectedRow ? 'rgba(33, 150, 243, 0.05)' : cellDisplayData.bgColor
+                            backgroundColor: isSelectedRow
+                              ? 'rgba(33, 150, 243, 0.05)'
+                              : cellDisplayData.bgColor
                           }}
                           title={cellDisplayData.hasWarning ? '⚠️ 終了時刻が入力されていません' : undefined}
                           onPointerDown={(e) => {
@@ -4246,6 +4375,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                   data-helper-index={helperIndex}
                                   data-helper={helper.id}
                                   data-date={day.date}
+                                  data-dayoff={cellDisplayData.bgColor === '#ffcccc' ? 'true' : 'false'}
                                   className="editable-cell select-none"
                                   onDragStart={(e) => e.preventDefault()}
                                   onKeyDown={(e) => {
@@ -4260,6 +4390,17 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                                       // 編集モードでない場合は、編集モードに入る（1回目のEnter）
                                       if (!isEditable) {
+                                        // 休み希望のセルかチェック（dayOffRequests Mapを使う）
+                                        const cellHelper = currentElement.getAttribute('data-helper') || '';
+                                        const cellDate = currentElement.getAttribute('data-date') || '';
+                                        const cellRow = currentElement.getAttribute('data-row') || '';
+                                        const dayOffKey = `${cellHelper}-${cellDate}-${cellRow}`;
+                                        const isDayOff = dayOffRequests.has(dayOffKey);
+                                        if (isDayOff) {
+                                          console.log('🏖️ 休み希望セルなので編集モードに入りません');
+                                          return;
+                                        }
+
                                         currentElement.setAttribute('contenteditable', 'true');
                                         currentElement.style.userSelect = 'text';
                                         currentElement.style.webkitUserSelect = 'text';
@@ -4347,6 +4488,41 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                       return;
                                     }
 
+                                    // 休み希望のセルかチェック（共通関数を使用）
+                                    const isDayOff = checkIsDayOffRow(helper.id, day.date, rowIndex);
+
+                                    console.log(`🔍 休み希望チェック: helper=${helper.id}, date=${day.date}, row=${rowIndex}, isDayOff=${isDayOff}`);
+
+                                    if (isDayOff) {
+                                      // 現場（シフト）が入っている場合でも、編集可能にする
+                                      const hasShift = cellDisplayData.lines.some(line => line !== '' && line !== '休み希望');
+
+                                      if (hasShift) {
+                                        console.log('⚡ 現場ありの休み希望セル: 編集可能な通常のセルとして処理');
+                                      } else {
+                                        console.log('🏖️ 空セルの休み希望: 編集モードに入らず背景色維持');
+                                        // 青枠の処理のみ行う
+                                        document.querySelectorAll('.cell-selected').forEach(el => {
+                                          el.classList.remove('cell-selected');
+                                        });
+                                        currentCell.classList.add('cell-selected');
+                                        lastSelectedCellRef.current = currentCell;
+
+                                        // 背景色を維持（キャッシュされた色を使用：基本はピンク）
+                                        const parentTd = currentCell.closest('td');
+                                        if (parentTd) {
+                                          const bgColor = cellDisplayData.bgColor || '#ffcccc';
+                                          (parentTd as HTMLElement).style.backgroundColor = bgColor;
+                                          const cellElements = parentTd.querySelectorAll('.editable-cell');
+                                          cellElements.forEach((cell) => {
+                                            (cell as HTMLElement).style.backgroundColor = bgColor;
+                                          });
+                                        }
+                                        console.timeEnd('⚡ 青枠表示');
+                                        return;
+                                      }
+                                    }
+
                                     // ★★★ 最優先: 青枠のDOM操作のみ（querySelectorAll使わない） ★★★
 
                                     // 全ての青枠を削除（常に1つだけ表示されるようにする）
@@ -4365,6 +4541,19 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                       console.time('🔧 その他処理');
                                       e.stopPropagation();
 
+                                      // 休み希望のセルかチェック
+                                      const isDayOffInTimeout = checkIsDayOffRow(helper.id, day.date, rowIndex);
+
+                                      // 現場（シフト）が入っているかチェック
+                                      const hasShiftInTimeout = cellDisplayData.lines.some(line => line !== '' && line !== '休み希望');
+
+                                      // 休み希望のセルで、かつ現場がない場合のみ、以降の処理をスキップ
+                                      if (isDayOffInTimeout && !hasShiftInTimeout) {
+                                        console.log('🏖️ setTimeout内: 現場なし休み希望セルなので処理をスキップ');
+                                        console.timeEnd('🔧 その他処理');
+                                        return;
+                                      }
+
                                       // 複数選択行の青枠をクリア
                                       if (lastSelectedRowTdsRef.current.length > 0) {
                                         lastSelectedRowTdsRef.current.forEach(td => {
@@ -4378,6 +4567,15 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                       currentCell.dataset.clickCount = clickCount.toString();
 
                                       if (clickCount >= 2) {
+                                        // 休み希望のセルかチェック（dayOffRequests Mapを使う）
+                                        const dayOffKey2nd = `${helper.id}-${day.date}-${rowIndex}`;
+                                        const isDayOff = dayOffRequests.has(dayOffKey2nd);
+                                        if (isDayOff) {
+                                          console.log('🏖️ 2回目クリック: 休み希望セルなので編集モードに入りません');
+                                          currentCell.dataset.clickCount = '0';
+                                          return;
+                                        }
+
                                         // 2回目のクリック：編集モードに入る
                                         currentCell.setAttribute('contenteditable', 'true');
                                         currentCell.style.userSelect = 'text';
@@ -4465,8 +4663,20 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                       existingMenu.remove();
                                     }
 
-                                    // 編集モードに入る
                                     const currentCell = e.currentTarget as HTMLElement;
+
+                                    // 休み希望のセルかチェック（dayOffRequests Mapを使う）
+                                    const cellHelper = currentCell.getAttribute('data-helper') || '';
+                                    const cellDate = currentCell.getAttribute('data-date') || '';
+                                    const cellRow = currentCell.getAttribute('data-row') || '';
+                                    const dayOffKeyDbl = `${cellHelper}-${cellDate}-${cellRow}`;
+                                    const isDayOff = dayOffRequests.has(dayOffKeyDbl);
+                                    if (isDayOff) {
+                                      console.log('🏖️ ダブルクリック: 休み希望セルなので編集モードに入りません');
+                                      return;
+                                    }
+
+                                    // 編集モードに入る
                                     currentCell.setAttribute('contenteditable', 'true');
                                     currentCell.style.userSelect = 'text';
                                     currentCell.style.webkitUserSelect = 'text';
@@ -4534,34 +4744,61 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                         if (serviceEntry) {
                                           const [_, config] = serviceEntry;
 
-                                          // 親のtd要素を取得して背景色を設定
-                                          const parentTd = e.currentTarget.closest('td');
-                                          if (parentTd) {
-                                            (parentTd as HTMLElement).style.backgroundColor = config.bgColor;
-                                            // 親要素から直接子セルを取得（高速化）
-                                            const cellElements = parentTd.querySelectorAll('.editable-cell');
-                                            cellElements.forEach((cell) => {
-                                              (cell as HTMLElement).style.backgroundColor = config.bgColor;
-                                            });
+                                          // 休み希望のセルかチェック（dayOffRequests Mapを参照）
+                                          const currentHelper = e.currentTarget.getAttribute('data-helper') || '';
+                                          const currentDate = e.currentTarget.getAttribute('data-date') || '';
+                                          const currentRowIdx = e.currentTarget.getAttribute('data-row') || '';
+                                          const dayOffKey = `${currentHelper}-${currentDate}-${currentRowIdx}`;
+                                          const isDayOff = dayOffRequests.has(dayOffKey);
+
+                                          if (!isDayOff) {
+                                            // 休み希望でない場合のみ背景色を変更
+                                            // 親のtd要素を取得して背景色を設定
+                                            const parentTd = e.currentTarget.closest('td');
+                                            if (parentTd) {
+                                              (parentTd as HTMLElement).style.backgroundColor = config.bgColor;
+                                              // 親要素から直接子セルを取得（高速化）
+                                              const cellElements = parentTd.querySelectorAll('.editable-cell');
+                                              cellElements.forEach((cell) => {
+                                                (cell as HTMLElement).style.backgroundColor = config.bgColor;
+                                              });
+                                            }
                                           }
                                         }
                                       } else {
-                                        // ()がない場合は背景色をリセット
+                                        // ()がない場合は背景色をリセット（ただし休み希望の場合は維持）
                                         const parentTd = e.currentTarget.closest('td');
                                         if (parentTd) {
-                                          (parentTd as HTMLElement).style.backgroundColor = '#ffffff';
-                                          // 親要素から直接子セルを取得（高速化）
-                                          const cellElements = parentTd.querySelectorAll('.editable-cell');
-                                          cellElements.forEach((cell) => {
-                                            const element = cell as HTMLElement;
-                                            // 現在のoutline状態を保持
-                                            const currentOutline = element.style.outline;
-                                            element.style.backgroundColor = '';
-                                            // outlineを保持（消えないように）
-                                            if (currentOutline) {
-                                              element.style.outline = currentOutline;
-                                            }
-                                          });
+                                          // 休み希望のセルかチェック（dayOffRequests Mapを参照）
+                                          const currentHelper = e.currentTarget.getAttribute('data-helper') || '';
+                                          const currentDate = e.currentTarget.getAttribute('data-date') || '';
+                                          const currentRowIdx = e.currentTarget.getAttribute('data-row') || '';
+                                          const dayOffKey = `${currentHelper}-${currentDate}-${currentRowIdx}`;
+                                          const isDayOff = dayOffRequests.has(dayOffKey);
+
+                                          if (!isDayOff) {
+                                            // 休み希望でない場合のみ背景色をリセット
+                                            (parentTd as HTMLElement).style.backgroundColor = '#ffffff';
+                                            // 親要素から直接子セルを取得（高速化）
+                                            const cellElements = parentTd.querySelectorAll('.editable-cell');
+                                            cellElements.forEach((cell) => {
+                                              const element = cell as HTMLElement;
+                                              // 現在のoutline状態を保持
+                                              const currentOutline = element.style.outline;
+                                              element.style.backgroundColor = '';
+                                              // outlineを保持（消えないように）
+                                              if (currentOutline) {
+                                                element.style.outline = currentOutline;
+                                              }
+                                            });
+                                          } else {
+                                            // 休み希望セルの場合は背景色を維持
+                                            (parentTd as HTMLElement).style.backgroundColor = '#ffcccc';
+                                            const cellElements = parentTd.querySelectorAll('.editable-cell');
+                                            cellElements.forEach((cell) => {
+                                              (cell as HTMLElement).style.backgroundColor = '#ffcccc';
+                                            });
+                                          }
                                         }
                                       }
                                     }
@@ -4574,6 +4811,35 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                     const date = e.currentTarget.dataset.date || '';
                                     const cellKey = `${helperId}-${date}-${currentRow}-${currentLine}`;
                                     enterCountRef.set(cellKey, 0);
+
+                                    // 休み希望のセルの場合は背景色を維持（dayOffRequests Mapを参照）
+                                    const currentCell = e.currentTarget as HTMLElement;
+                                    const dayOffKey = `${helperId}-${date}-${currentRow}`;
+                                    const isDayOff = dayOffRequests.has(dayOffKey);
+                                    if (isDayOff) {
+                                      const parentTd = currentCell.closest('td');
+                                      if (parentTd) {
+                                        // 既に現場（シフト）の背景色が入っている可能性をチェック
+                                        // 全行をチェックして、一つでも文字が入っていたらシフトありと判定
+                                        const allLineCells = parentTd.querySelectorAll('.editable-cell');
+                                        let hasShiftContent = false;
+                                        allLineCells.forEach(cell => {
+                                          const text = cell.textContent?.trim();
+                                          if (text && text !== '' && text !== '休み希望') {
+                                            hasShiftContent = true;
+                                          }
+                                        });
+
+                                        if (!hasShiftContent) {
+                                          (parentTd as HTMLElement).style.backgroundColor = '#ffcccc';
+                                          // 親要素から直接子セルを取得
+                                          const cellElements = parentTd.querySelectorAll('.editable-cell');
+                                          cellElements.forEach((cell) => {
+                                            (cell as HTMLElement).style.backgroundColor = '#ffcccc';
+                                          });
+                                        }
+                                      }
+                                    }
                                   }}
                                   onPaste={async (e) => {
                                     e.preventDefault();
@@ -4756,6 +5022,65 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                       if (currentCell.dataset) {
                                         currentCell.dataset.clickCount = '0';
                                       }
+
+                                      // 休み希望のセルの場合は背景色と文言を復元
+                                      const helperId = currentCell.getAttribute('data-helper') || '';
+                                      const date = currentCell.getAttribute('data-date') || '';
+                                      const rowIndex = currentCell.getAttribute('data-row') || '';
+                                      const isDayOffRow = checkIsDayOffRow(helperId, date, parseInt(rowIndex || '0'));
+
+                                      if (isDayOffRow) {
+                                        const currentTd = currentCell.closest('td') as HTMLElement;
+                                        if (currentTd) {
+                                          // 現場（予定）があるかチェック
+                                          let hasShiftContent = false;
+                                          const allLineCells = currentTd.querySelectorAll('.editable-cell');
+                                          allLineCells.forEach(cell => {
+                                            const text = cell.textContent?.trim();
+                                            if (text && text !== '' && text !== '休み希望') {
+                                              hasShiftContent = true;
+                                            }
+                                          });
+
+                                          // 背景色の決定（休み希望を常に優先：ピンク）
+                                          const isScheduled = scheduledDayOffs.has(`${helperId}-${date}`);
+                                          if (isScheduled) {
+                                            currentTd.style.backgroundColor = '#22c55e'; // 指定休
+                                          } else {
+                                            currentTd.style.backgroundColor = '#ffcccc'; // 休み希望ピンク（現場があってもピンク統一）
+                                          }
+
+                                          allLineCells.forEach((cell) => {
+                                            (cell as HTMLElement).style.backgroundColor = currentTd.style.backgroundColor;
+                                          });
+
+                                          // 文言の復元（重複防止：この日の休み希望の中で最初の行のみに表示）
+                                          if (!hasShiftContent) {
+                                            let hasDayOffBefore = false;
+                                            const rowTarget = parseInt(rowIndex || '0');
+                                            for (let i = 0; i < rowTarget; i++) {
+                                              if (checkIsDayOffRow(helperId, date, i)) {
+                                                hasDayOffBefore = true;
+                                                break;
+                                              }
+                                            }
+
+                                            const isFirstRowOfBlock = !hasDayOffBefore;
+
+                                            if (isFirstRowOfBlock) {
+                                              if (!currentCell.textContent?.trim()) {
+                                                currentCell.textContent = '休み希望';
+                                              }
+                                            } else {
+                                              // 先頭行でない場合は文言をクリア（重複防止）
+                                              if (currentCell.textContent?.trim() === '休み希望') {
+                                                currentCell.textContent = '';
+                                              }
+                                            }
+                                          }
+                                        }
+                                        return;
+                                      }
                                     }
 
                                     // 1段目（時間入力）、2段目（利用者名）、3段目（時間数）、4段目（地域）の場合、フォーカスが外れた時に集計行を更新
@@ -4861,31 +5186,64 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                             updatedShifts.push(shift);
                                             onUpdateShifts(updatedShifts);
                                           } else {
-                                            // 全行が空の場合：背景色をリセット
+                                            // 全行が空の場合：背景色をリセット（ただし休み希望の場合は維持）
                                             const bgCellSelector = `.editable-cell[data-row="${currentRow}"][data-helper="${helperId}"][data-date="${date}"]`;
                                             const bgCells = document.querySelectorAll(bgCellSelector);
 
                                             if (bgCells.length > 0) {
-                                              // 親td要素の背景色を白にリセット
-                                              const parentTd = bgCells[0].closest('td') as HTMLElement;
-                                              if (parentTd) {
-                                                parentTd.style.backgroundColor = '#ffffff';
-                                              }
+                                              // 休み希望のセルかチェック（dayOffRequests Mapを使う）
+                                              const firstCell = bgCells[0] as HTMLElement;
+                                              const cellHelper = firstCell.getAttribute('data-helper') || String(helperId);
+                                              const cellDate = firstCell.getAttribute('data-date') || date;
+                                              const cellRow = firstCell.getAttribute('data-row') || currentRow;
+                                              const dayOffKey = `${cellHelper}-${cellDate}-${cellRow}`;
+                                              const isDayOff = checkIsDayOffRow(cellHelper, cellDate, parseInt(cellRow));
 
-                                              // 各セルの背景色もリセット
-                                              bgCells.forEach((cell) => {
-                                                const element = cell as HTMLElement;
-                                                element.style.removeProperty('background-color');
-                                              });
+                                              if (!isDayOff) {
+                                                // 休み希望でない場合のみ背景色をリセット
+                                                // 親td要素の背景色をリセット（休み希望は維持）
+                                                const parentTd = bgCells[0].closest('td') as HTMLElement;
+                                                if (parentTd) {
+                                                  // 休み希望セルかチェック
+                                                  const cellKey = parentTd.dataset.cellKey;
+                                                  if (cellKey) {
+                                                    const [helperId, date, rowIndex] = cellKey.split('-');
+                                                    const dayOffKey = `${helperId}-${date}-${rowIndex}`;
+                                                    const isDayOff = dayOffRequests.has(dayOffKey);
+
+                                                    // 休み希望セルの場合はピンク背景を維持
+                                                    if (isDayOff) {
+                                                      parentTd.style.backgroundColor = '#ffcccc';
+                                                    } else {
+                                                      parentTd.style.backgroundColor = '#ffffff';
+                                                    }
+                                                  } else {
+                                                    parentTd.style.backgroundColor = '#ffffff';
+                                                  }
+                                                }
+
+                                                // 各セルの背景色もリセット（休み希望は維持）
+                                                bgCells.forEach((cell) => {
+                                                  const element = cell as HTMLElement;
+                                                  element.style.removeProperty('background-color');
+                                                });
+                                              }
                                             }
 
-                                            // Firestoreからシフトを削除
-                                            const shiftId = `shift-${helperId}-${date}-${currentRow}`;
-                                            try {
-                                              await deleteShift(shiftId);
-                                              console.log('✅ 空のシフトを削除しました:', shiftId);
-                                            } catch (error) {
-                                              console.error('❌ シフト削除エラー:', error);
+                                            // 休み希望がない場合のみ、Firestoreからシフトを削除
+                                            const dayOffKey = `${helperId}-${date}-${currentRow}`;
+                                            const hasHolidayRequest = dayOffRequests.has(dayOffKey);
+
+                                            if (!hasHolidayRequest) {
+                                              const shiftId = `shift-${helperId}-${date}-${currentRow}`;
+                                              try {
+                                                await deleteShift(shiftId);
+                                                console.log('✅ 空のシフトを削除しました:', shiftId);
+                                              } catch (error) {
+                                                console.error('❌ シフト削除エラー:', error);
+                                              }
+                                            } else {
+                                              console.log('🏖️ 休み希望があるため削除をスキップ:', dayOffKey);
                                             }
                                           }
 

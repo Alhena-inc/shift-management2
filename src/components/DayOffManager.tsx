@@ -159,8 +159,11 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
     const firstSlot = TIME_SLOTS[sortedSlots[0]];
     const startTime = `${String(firstSlot.start).padStart(2, '0')}:00`;
 
-    // 終了時間は指定しない（開始時刻以降全て）
-    return `${startTime}-`;
+    // 最後のスロットの終了時間を取得
+    const lastSlot = TIME_SLOTS[sortedSlots[sortedSlots.length - 1]];
+    const endTime = `${String(lastSlot.end).padStart(2, '0')}:00`;
+
+    return `${startTime}-${endTime}`;
   }, []);
 
   // 休み希望または指定休を設定
@@ -411,9 +414,8 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                   return (
                     <th
                       key={date}
-                      className={`px-3 py-3 text-center border-r border-blue-400 min-w-[60px] ${
-                        isWeekend ? 'bg-red-600' : 'bg-gradient-to-b from-blue-600 to-blue-500'
-                      }`}
+                      className={`px-3 py-3 text-center border-r border-blue-400 min-w-[60px] ${isWeekend ? 'bg-red-600' : 'bg-gradient-to-b from-blue-600 to-blue-500'
+                        }`}
                     >
                       <div className="flex flex-col items-center gap-1">
                         <span className="text-2xl font-bold text-white">
@@ -441,9 +443,8 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                   return (
                     <th
                       key={date}
-                      className={`px-3 py-3 text-center border-r border-yellow-200 ${
-                        isWeekend ? 'bg-red-100' : 'bg-yellow-50'
-                      }`}
+                      className={`px-3 py-3 text-center border-r border-yellow-200 ${isWeekend ? 'bg-red-100' : 'bg-yellow-50'
+                        }`}
                     >
                       <input
                         type="checkbox"
@@ -464,9 +465,8 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                 return (
                   <tr
                     key={helper.id}
-                    className={`border-b border-gray-200 hover:bg-blue-50 ${
-                      helperIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                    }`}
+                    className={`border-b border-gray-200 hover:bg-blue-50 ${helperIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                      }`}
                   >
                     <td style={{ position: 'sticky', left: 0, zIndex: 10 }} className="px-4 py-4 font-bold text-lg border-r-2 border-gray-300 bg-inherit">
                       {helper.name}
@@ -502,9 +502,8 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                       return (
                         <td
                           key={date}
-                          className={`px-2 py-2 text-center border-r border-gray-200 cursor-pointer transition-colors ${
-                            isWeekend && !isChecked ? 'bg-red-50' : ''
-                          } ${bgColor} ${hoverColor}`}
+                          className={`px-2 py-2 text-center border-r border-gray-200 cursor-pointer transition-colors ${isWeekend && !isChecked ? 'bg-red-50' : ''
+                            } ${bgColor} ${hoverColor}`}
                           style={hasScheduled ? { backgroundColor: '#22c55e' } : undefined}
                           onClick={() => handleCellClick(helper.id, date)}
                         >
@@ -522,9 +521,8 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                                 type="checkbox"
                                 checked={true}
                                 readOnly
-                                className={`w-4 h-4 cursor-pointer pointer-events-none ${
-                                  hasScheduled ? 'accent-green-600' : 'accent-pink-600'
-                                }`}
+                                className={`w-4 h-4 cursor-pointer pointer-events-none ${hasScheduled ? 'accent-green-600' : 'accent-pink-600'
+                                  }`}
                               />
                             </div>
                           ) : (
@@ -591,11 +589,10 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                       setSelectedSlots([]);
                       setFirstSelectedSlot(null);
                     }}
-                    className={`flex-1 px-4 py-3 rounded-lg font-bold transition-all ${
-                      selectedType === 'dayOff'
+                    className={`flex-1 px-4 py-3 rounded-lg font-bold transition-all ${selectedType === 'dayOff'
                         ? 'bg-pink-500 text-white shadow-lg'
                         : 'bg-white text-gray-700 border-2 border-gray-300 hover:border-pink-300'
-                    }`}
+                      }`}
                   >
                     休み希望
                   </button>
@@ -605,11 +602,10 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                       setSelectedSlots([0, 1, 2, 3, 4]); // 指定休は終日のみ
                       setFirstSelectedSlot(null);
                     }}
-                    className={`flex-1 px-4 py-3 rounded-lg font-bold transition-all ${
-                      selectedType === 'scheduled'
+                    className={`flex-1 px-4 py-3 rounded-lg font-bold transition-all ${selectedType === 'scheduled'
                         ? 'text-white shadow-lg'
                         : 'bg-white text-gray-700 border-2 border-gray-300 hover:border-green-300'
-                    }`}
+                      }`}
                     style={selectedType === 'scheduled' ? { backgroundColor: '#22c55e' } : undefined}
                   >
                     指定休
@@ -657,11 +653,10 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                             <div
                               key={slot.row}
                               onClick={() => handleSlotClick(slot.row)}
-                              className={`px-4 py-4 border-b border-gray-200 last:border-b-0 cursor-pointer transition-all ${
-                                isSelected
+                              className={`px-4 py-4 border-b border-gray-200 last:border-b-0 cursor-pointer transition-all ${isSelected
                                   ? 'bg-pink-400 text-white font-bold'
                                   : 'bg-white hover:bg-gray-100 text-gray-800'
-                              }`}
+                                }`}
                             >
                               <div className="flex items-center justify-center">
                                 <span className="text-lg font-medium">枠{slot.row + 1}</span>

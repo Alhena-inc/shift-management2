@@ -66,7 +66,8 @@ table {
 .editable-cell {
   outline: none;
   box-sizing: border-box;
-  min-height: 15px; /* 各ラインの最小高さ（60px ÷ 4行） */
+  min-height: 15px;
+  /* 各ラインの最小高さ（60px ÷ 4行） */
   height: 15px;
   padding: 1px 2px;
   font-size: 11px;
@@ -104,6 +105,16 @@ table {
 
 .editable-cell.cell-selected[data-line="3"] {
   border-bottom: none;
+}
+
+/* 休み希望セル用のスタイル（背景色を確実に維持） */
+.editable-cell[data-dayoff="true"] {
+  background-color: #ffcccc !important;
+}
+
+/* 親要素がクリックされても休み希望の背景色を維持 */
+td[data-cell-key] .editable-cell[data-dayoff="true"] {
+  background-color: #ffcccc !important;
 }
 
 /* 複数選択状態のスタイル - GPU最適化 */
