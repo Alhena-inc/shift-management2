@@ -691,8 +691,8 @@ export function PersonalShift({ token }: Props) {
                         let backgroundColor = 'transparent';
                         if (day.isEmpty) {
                           backgroundColor = '#e5e7eb'; // bg-gray-200
-                        } else if (isDayOff) {
-                          backgroundColor = '#ffcccc'; // 休み希望のピンク背景
+                        } else if (isDayOff && !shift) {
+                          backgroundColor = '#ffcccc'; // 休み希望のピンク背景（シフトがない場合のみ）
                         } else if (day.isWeekend) {
                           backgroundColor = '#eff6ff'; // bg-blue-50
                         } else {
