@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Helper, Shift } from '../types';
 import { SERVICE_CONFIG } from '../types';
-import { loadHelperByToken, loadDayOffRequests } from '../services/firestoreService';
+import { loadHelperByToken, subscribeToDayOffRequestsMap } from '../services/firestoreService';
 import { getRowIndicesFromDayOffValue } from '../utils/timeSlots';
 import { db } from '../lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -100,34 +100,82 @@ export function PersonalShift({ token }: Props) {
     loadData();
   }, [token]);
 
-  // 休み希望を読み込み
+  // 休み希望を読み込み（リアルタイム）
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const requests = await loadDayOffRequests(currentYear, currentMonth);
-        setDayOffRequests(requests);
-        console.log(`🏖️ 休み希望を読み込みました: ${currentYear}年${currentMonth}月 (${requests.size}件)`);
-      } catch (error) {
-        console.error('休み希望の読み込みエラー:', error);
-      }
+    if (!helper) return;
+
+    let unsubscribeCurrent = () => { };
+    let unsubscribeNext = () => { };
+
+    const handleUpdate = (requests: Map<string, string>, isNextMonth: boolean) => {
+      setDayOffRequests(prev => {
+        const newMap = new Map(prev);
+        // 現在の月のデータを一度クリアするか、単にマージするか。
+        // ここでは、特定の月のデータだけを更新したいので、プレフィックスで判別して入れ替える
+        const monthPrefix = isNextMonth
+          ? `${currentMonth === 12 ? currentYear + 1 : currentYear}-${String(currentMonth === 12 ? 1 : currentMonth + 1).padStart(2, '0')}`
+          : `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+
+        // 古い同一月のデータを削除
+        for (const [key] of newMap.entries()) {
+          if (key.includes(monthPrefix)) {
+            newMap.delete(key);
+          }
+        }
+
+        // 新しいデータを追加
+        for (const [key, value] of requests.entries()) {
+          newMap.set(key, value);
+        }
+        return newMap;
+      });
     };
-    if (helper) {
-      loadData();
+
+    console.log(`📡 休み希望のリアルタイム監視を開始: ${currentYear}年${currentMonth}月`);
+    unsubscribeCurrent = subscribeToDayOffRequestsMap(currentYear, currentMonth, (reqs) => handleUpdate(reqs, false));
+
+    // 12月の場合は1月も監視
+    if (currentMonth === 12) {
+      console.log(`📡 休み希望のリアルタイム監視を開始（翌月分）: ${currentYear + 1}年1月`);
+      unsubscribeNext = subscribeToDayOffRequestsMap(currentYear + 1, 1, (reqs) => handleUpdate(reqs, true));
     }
+
+    return () => {
+      unsubscribeCurrent();
+      unsubscribeNext();
+    };
   }, [currentYear, currentMonth, helper]);
 
   /**
    * 特定の行が休み希望かどうかを判定する共通関数（新旧両方の形式に対応）
    */
   const checkIsDayOffRow = useCallback((helperId: string, date: string, rowIndex: number): boolean => {
-    // 1. 新形式（行ごと）をチェック
-    const rowSpecificKey = `${helperId}-${date}-${rowIndex}`;
-    if (dayOffRequests.has(rowSpecificKey)) return true;
+    if (!helperId || !date) return false;
 
-    // 2. 旧形式（日付全体）をチェック
-    const dayOffKey = `${helperId}-${date}`;
+    // 助手IDを文字列として扱う（Firestoreのキー形式に合わせる）
+    const hId = String(helperId);
+
+    // 1. 新形式（行ごと）をチェック: helperId-date-rowIndex
+    const rowSpecificKey = `${hId}-${date}-${rowIndex}`;
+    if (dayOffRequests.has(rowSpecificKey)) {
+      return true;
+    }
+
+    // 2. 旧形式（日付全体または時間範囲）をチェック: helperId-date
+    const dayOffKey = `${hId}-${date}`;
     const dayOffValue = dayOffRequests.get(dayOffKey);
-    if (!dayOffValue) return false;
+    if (!dayOffValue) {
+      return false;
+    }
+
+    // デバッグ用: 特定の日付で「全行ピンク」になる問題を調査
+    if (rowIndex === 0) {
+      console.log(`🔍 休み希望判定 [${date}]:`, {
+        dayOffKey,
+        dayOffValue,
+        getRowIndices: getRowIndicesFromDayOffValue(dayOffValue)
+      });
+    }
 
     // 旧形式の値から該当行を判定
     return getRowIndicesFromDayOffValue(dayOffValue).includes(rowIndex);

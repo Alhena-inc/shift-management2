@@ -424,7 +424,7 @@ export const subscribeToShiftsForMonth = (
     return unsubscribe;
   } catch (error) {
     console.error('リアルタイムリスナー設定エラー:', error);
-    return () => {};
+    return () => { };
   }
 };
 
@@ -758,11 +758,11 @@ export const loadDisplayTexts = async (year: number, month: number): Promise<Map
   }
 };
 
-// 休み希望のリアルタイムリスナー
-export const subscribeToDayOffRequests = (
+// 休み希望のリアルタイムリスナー（Map版）
+export const subscribeToDayOffRequestsMap = (
   year: number,
   month: number,
-  onUpdate: (requests: Set<string>) => void
+  onUpdate: (requests: Map<string, string>) => void
 ): (() => void) => {
   try {
     const docId = `${year}-${String(month).padStart(2, '0')}`;
@@ -771,15 +771,27 @@ export const subscribeToDayOffRequests = (
     const unsubscribe = onSnapshot(
       docRef,
       (snapshot) => {
+        const requests = new Map<string, string>();
         if (snapshot.exists()) {
           const data = snapshot.data();
-          const requests = new Set<string>(data.requests || []);
+          const requestsData = data.requests || [];
+
+          if (Array.isArray(requestsData)) {
+            if (requestsData.length > 0 && typeof requestsData[0] === 'object' && 'key' in requestsData[0]) {
+              requestsData.forEach((item: any) => {
+                requests.set(item.key, item.value);
+              });
+            } else {
+              requestsData.forEach((key: string) => {
+                requests.set(key, 'all');
+              });
+            }
+          }
           console.log(`🏖️ リアルタイム更新: 休み希望 ${docId} (${requests.size}件)`);
-          onUpdate(requests);
         } else {
           console.log(`🏖️ リアルタイム更新: 休み希望データなし ${docId}`);
-          onUpdate(new Set());
         }
+        onUpdate(requests);
       },
       (error) => {
         console.error('休み希望リアルタイムリスナーエラー:', error);
@@ -789,6 +801,6 @@ export const subscribeToDayOffRequests = (
     return unsubscribe;
   } catch (error) {
     console.error('休み希望リアルタイムリスナー設定エラー:', error);
-    return () => {};
+    return () => { };
   }
 };
