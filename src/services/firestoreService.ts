@@ -804,3 +804,43 @@ export const subscribeToDayOffRequestsMap = (
     return () => { };
   }
 };
+// 表示テキストのリアルタイムリスナー（Map版）
+export const subscribeToDisplayTextsMap = (
+  year: number,
+  month: number,
+  onUpdate: (texts: Map<string, string>) => void
+): (() => void) => {
+  try {
+    const docId = `${year}-${String(month).padStart(2, '0')}`;
+    const docRef = doc(db, 'displayTexts', docId);
+
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snapshot) => {
+        const texts = new Map<string, string>();
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          const textsData = data.displayTexts || [];
+
+          if (Array.isArray(textsData)) {
+            textsData.forEach((item: any) => {
+              texts.set(item.key, item.value);
+            });
+          }
+          console.log(`📝 リアルタイム更新: 表示テキスト ${docId} (${texts.size}件)`);
+        } else {
+          console.log(`📝 リアルタイム更新: 表示テキストデータなし ${docId}`);
+        }
+        onUpdate(texts);
+      },
+      (error) => {
+        console.error('表示テキストリアルタイムリスナーエラー:', error);
+      }
+    );
+
+    return unsubscribe;
+  } catch (error) {
+    console.error('表示テキストリアルタイムリスナー設定エラー:', error);
+    return () => { };
+  }
+};

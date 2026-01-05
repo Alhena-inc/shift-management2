@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Helper, Shift } from '../types';
 import { SERVICE_CONFIG } from '../types';
-import { loadHelperByToken, subscribeToDayOffRequestsMap } from '../services/firestoreService';
+import { loadHelperByToken, subscribeToDayOffRequestsMap, subscribeToDisplayTextsMap } from '../services/firestoreService';
 import { getRowIndicesFromDayOffValue } from '../utils/timeSlots';
 import { db } from '../lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -19,6 +19,7 @@ export function PersonalShift({ token }: Props) {
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [isStandalone, setIsStandalone] = useState(false);
   const [dayOffRequests, setDayOffRequests] = useState<Map<string, string>>(new Map());
+  const [displayTexts, setDisplayTexts] = useState<Map<string, string>>(new Map());
 
   // PWAモードかチェック
   useEffect(() => {
@@ -138,6 +139,47 @@ export function PersonalShift({ token }: Props) {
     if (currentMonth === 12) {
       console.log(`📡 休み希望のリアルタイム監視を開始（翌月分）: ${currentYear + 1}年1月`);
       unsubscribeNext = subscribeToDayOffRequestsMap(currentYear + 1, 1, (reqs) => handleUpdate(reqs, true));
+    }
+
+    return () => {
+      unsubscribeCurrent();
+      unsubscribeNext();
+    };
+  }, [currentYear, currentMonth, helper]);
+
+  // 表示テキストを読み込み（リアルタイム）
+  useEffect(() => {
+    if (!helper) return;
+
+    let unsubscribeCurrent = () => { };
+    let unsubscribeNext = () => { };
+
+    const handleUpdate = (texts: Map<string, string>, isNextMonth: boolean) => {
+      setDisplayTexts(prev => {
+        const newMap = new Map(prev);
+        const monthPrefix = isNextMonth
+          ? `${currentMonth === 12 ? currentYear + 1 : currentYear}-${String(currentMonth === 12 ? 1 : currentMonth + 1).padStart(2, '0')}`
+          : `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+
+        for (const [key] of newMap.entries()) {
+          if (key.includes(monthPrefix)) {
+            newMap.delete(key);
+          }
+        }
+
+        for (const [key, value] of texts.entries()) {
+          newMap.set(key, value);
+        }
+        return newMap;
+      });
+    };
+
+    console.log(`📡 表示テキストのリアルタイム監視を開始: ${currentYear}年${currentMonth}月`);
+    unsubscribeCurrent = subscribeToDisplayTextsMap(currentYear, currentMonth, (texts) => handleUpdate(texts, false));
+
+    if (currentMonth === 12) {
+      console.log(`📡 表示テキストのリアルタイム監視を開始（翌月分）: ${currentYear + 1}年1月`);
+      unsubscribeNext = subscribeToDisplayTextsMap(currentYear + 1, 1, (texts) => handleUpdate(texts, true));
     }
 
     return () => {
@@ -731,6 +773,37 @@ export function PersonalShift({ token }: Props) {
 
                             ) : !day.isEmpty ? (
                               <div className="h-full w-full flex items-center justify-center text-center p-0.5">
+                                {isDayOff && (() => {
+                                  // 重複防止：その日の休み希望の中で最初の行のみに表示
+                                  let hasDayOffBefore = false;
+                                  for (let i = 0; i < rowIndex; i++) {
+                                    if (checkIsDayOffRow(helper!.id, day.date, i)) {
+                                      hasDayOffBefore = true;
+                                      break;
+                                    }
+                                  }
+
+                                  if (!hasDayOffBefore) {
+                                    const dayOffKey = `${helper!.id}-${day.date}`;
+                                    const rawDisplayText = displayTexts.get(dayOffKey);
+
+                                    // 「終日」やデフォルトの「休み希望」などの文言は出さない（特定時間のみ表示）
+                                    const isSpecificText = rawDisplayText &&
+                                      rawDisplayText !== '休み希望' &&
+                                      rawDisplayText !== '終日' &&
+                                      rawDisplayText !== '休' &&
+                                      rawDisplayText.trim() !== '';
+
+                                    if (isSpecificText) {
+                                      return (
+                                        <div className="text-[10px] font-bold text-gray-700 leading-tight break-all">
+                                          {rawDisplayText}
+                                        </div>
+                                      );
+                                    }
+                                  }
+                                  return null;
+                                })()}
                               </div>
                             ) : (
                               <div className="h-full w-full bg-gray-200">&nbsp;</div>
