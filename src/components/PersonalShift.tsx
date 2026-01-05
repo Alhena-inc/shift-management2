@@ -275,7 +275,7 @@ export function PersonalShift({ token }: Props) {
       console.log('🔌 Firestore監視を解除');
       unsubscribe();
     };
-  }, [helper?.id, helper?.name]);
+  }, [helper?.id, helper?.name, currentYear, currentMonth]);
 
   // 週ごとにシフトをグループ化（月曜始まり、日曜日まで7日単位、常に7列表示）
   const weeks = useMemo(() => {
