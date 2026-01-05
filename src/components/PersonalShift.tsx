@@ -543,17 +543,20 @@ export function PersonalShift({ token }: Props) {
     window.location.href = `/?pwa=1&token=${token}`;
   }, [token]);
 
+  // 読み込み中の場合はローディング表示
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="text-2xl mb-2">⏳</div>
-          <div className="text-gray-600">読み込み中...</div>
+          <div className="text-4xl mb-4 animate-pulse">📅</div>
+          <div className="text-xl font-bold text-gray-700">読み込み中...</div>
+          <div className="text-sm text-gray-500 mt-2">シフトデータを取得しています</div>
         </div>
       </div>
     );
   }
 
+  // ヘルパーが見つからない場合
   if (!helper) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
@@ -755,7 +758,7 @@ export function PersonalShift({ token }: Props) {
                                     title={`${shift.startTime}-${shift.endTime} ${shift.clientName} ${shift.duration} ${shift.area}`}
                                   >
                                     {/* 時間（横並び1行で全て表示） */}
-                                    <div className="font-extrabold text-[7px] w-full whitespace-nowrap">{shift.startTime}-{shift.endTime}</div>
+                                    <div className="font-extrabold text-[6.5px] w-full whitespace-nowrap">{shift.startTime}-{shift.endTime}</div>
                                     {/* 利用者名(サービス) */}
                                     <div className="font-extrabold text-[8px] w-full truncate">{shift.clientName || '-'}({config.label})</div>
                                     {/* 時間数（濃く） */}
