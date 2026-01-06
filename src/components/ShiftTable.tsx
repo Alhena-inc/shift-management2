@@ -1545,25 +1545,29 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 // 警告が必要かチェック
                 const hasWarning = shouldShowWarning(startTime, endTime, serviceType);
 
-                // 背景色を設定（優先度：キャンセル > 指定休 > 休み希望 > serviceType > デフォルト）
+                // 背景色を設定（優先度：キャンセル > 指定休 > ケア内容 > 部分休み希望 > デフォルト）
                 let bgColor = '#ffffff';
-                const isHolidayActive = isRowSpecificDayOff || isOldFormatDayOff;
+                const hasActualCare = serviceType && SERVICE_CONFIG[serviceType] &&
+                  (serviceType as string) !== 'yasumi_kibou' &&
+                  (serviceType as string) !== 'shitei_kyuu' &&
+                  (serviceType as string) !== 'other' &&
+                  (clientName || startTime || endTime);
 
                 if (cancelStatus === 'keep_time' || cancelStatus === 'remove_time') {
                   bgColor = '#f87171';  // キャンセル状態は赤
                 } else if (isScheduledDayOff || (serviceType as string) === 'shitei_kyuu') {
                   bgColor = '#22c55e';  // 指定休は緑色
-                } else if (isHolidayActive || (serviceType as string) === 'yasumi_kibou') {
-                  bgColor = '#ffcccc';  // 休み希望のピンク背景（文言入力されていても維持）
-                } else if (serviceType && SERVICE_CONFIG[serviceType] &&
-                  (serviceType as string) !== 'yasumi_kibou' &&
-                  (serviceType as string) !== 'shitei_kyuu' &&
-                  (serviceType as string) !== 'other' &&
-                  (clientName || startTime || endTime)) {
-                  // 内容があるケア（Shift）がある場合は、ケアの背景色を優先（otherは除く）
+                } else if (hasActualCare) {
+                  // ケア内容がある場合はケアの背景色を優先（終日休み希望でもケアがあればケア色）
                   bgColor = SERVICE_CONFIG[serviceType].bgColor;
+                } else if (isRowSpecificDayOff || (serviceType as string) === 'yasumi_kibou') {
+                  // 部分（行ごと）の休み希望の場合のみピンク背景
+                  bgColor = '#ffcccc';
+                } else if (isOldFormatDayOff) {
+                  // 終日休み希望でケアがない場合もピンク
+                  bgColor = '#ffcccc';
                 } else if (serviceType && SERVICE_CONFIG[serviceType] && (serviceType as string) !== 'other') {
-                  // 内容がない場合などはサービスのデフォルト色
+                  // その他のサービスタイプの色
                   bgColor = SERVICE_CONFIG[serviceType].bgColor;
                 }
 
