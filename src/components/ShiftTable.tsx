@@ -1647,13 +1647,12 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     if (!selectedRowsRef.current.has(cellKey)) {
       selectedRowsRef.current.add(cellKey);
 
-      // DOM直接操作で即座に青枠表示（太くて目立つスタイル）
+      // DOM直接操作で即座に青枠表示（背景色は変更しない）
       const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
       if (td) {
         td.style.setProperty('outline', '3px solid #2563eb', 'important');
         td.style.setProperty('outline-offset', '-3px', 'important');
         td.style.setProperty('z-index', '10', 'important');
-        td.style.setProperty('background-color', 'rgba(59, 130, 246, 0.1)', 'important');
         lastSelectedRowTdsRef.current.push(td);
       }
     }
@@ -4337,7 +4336,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                               justStartedDraggingRef.current = false;
                               lastProcessedCellRef.current = cellKey;
                               
-                              // 最初のセルを選択
+                              // 最初のセルを選択（枠線のみ、背景色は変更しない）
                               if (!selectedRowsRef.current.has(cellKey)) {
                                 selectedRowsRef.current.add(cellKey);
                                 const td = e.currentTarget as HTMLElement;
