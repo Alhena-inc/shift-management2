@@ -4316,11 +4316,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                               e.currentTarget.draggable = true;
                             }
 
-                            // Shift+ドラッグの場合は即座に処理して終了（他の処理をスキップ）
-                            if (e.shiftKey) {
-                              handleCellPointerDown(e, helper.id, day.date, rowIndex);
-                              return;
-                            }
+                            // Shift+ドラッグの複数選択機能は無効化
 
                             // 右クリックは無視
                             if (e.button === 2) return;
@@ -4610,47 +4606,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                           sel.addRange(range);
                                         }
                                         currentCell.dataset.clickCount = '0';
-                                      }
-
-                                      const rowKey = `${helper.id}-${day.date}-${rowIndex}`;
-                                      const isShiftKey = e.shiftKey;
-
-                                      // Shiftキー押しながらのクリック：複数選択（Refのみ更新・再レンダリングなし）
-                                      if (isShiftKey) {
-                                        if (justStartedDraggingRef.current) {
-                                          justStartedDraggingRef.current = false;
-                                          return;
-                                        }
-
-                                        const willBeSelected = !selectedRowsRef.current.has(rowKey);
-                                        const parentTd = currentCell.closest('td') as HTMLElement;
-
-                                        if (parentTd) {
-                                          if (willBeSelected) {
-                                            parentTd.classList.add('shift-cell-multi-selected');
-                                            lastSelectedRowTdsRef.current.push(parentTd);
-                                          } else {
-                                            parentTd.classList.remove('shift-cell-multi-selected');
-                                            const index = lastSelectedRowTdsRef.current.indexOf(parentTd);
-                                            if (index > -1) {
-                                              lastSelectedRowTdsRef.current.splice(index, 1);
-                                            }
-                                          }
-                                        }
-
-                                        // 単一選択の青枠をクリア
-                                        if (lastSelectedCellRef.current) {
-                                          lastSelectedCellRef.current.classList.remove('cell-selected');
-                                          lastSelectedCellRef.current = null;
-                                        }
-
-                                        // Refのみ更新（setSelectedRows削除：React再レンダリングを防止）
-                                        if (willBeSelected) {
-                                          selectedRowsRef.current.add(rowKey);
-                                        } else {
-                                          selectedRowsRef.current.delete(rowKey);
-                                        }
-                                        return;
                                       }
 
                                       // コピー&ペースト用に現在選択されているセルを記録
