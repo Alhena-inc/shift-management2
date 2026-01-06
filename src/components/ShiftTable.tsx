@@ -2123,8 +2123,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 }
               }
             } else {
-              // タブ区切りがない場合：従来の1列ペースト処理
-              const lines = clipboardText.split(/\r?\n/).filter(line => line.trim() !== '');
+              // タブ区切りがない場合：従来の1列ペースト処理（空行も位置として保持）
+              const lines = clipboardText.split(/\r?\n/);
+
+              // 完全に空のクリップボードは無視
+              if (lines.length === 1 && lines[0] === '') return;
 
               if (lines.length > 1) {
                 // 複数行データの場合：1列のシフトとして処理
@@ -4832,16 +4835,18 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                     const clipboardText = e.clipboardData.getData('text/plain');
 
                                     // 改行で分割
-                                    const lines = clipboardText.split(/\r?\n/).filter(line => line.trim() !== '');
+                                    // 空行を消すと行ズレするので保持する（Sheetsのセル内改行もそのまま扱う）
+                                    const lines = clipboardText.split(/\r?\n/);
 
-                                    if (lines.length === 0) {
+                                    if (lines.length === 0 || (lines.length === 1 && lines[0] === '')) {
                                       return;
                                     }
 
                                     console.log(`📋 ペースト処理開始: ${lines.length}行`);
 
                                     // 現在のセルから順番に貼り付け
-                                    const dataToSave: string[] = ['', '', '', ''];
+                                    // null=未変更、''=空白を貼り付け（クリア）
+                                    const dataToSave: Array<string | null> = [null, null, null, null];
 
                                     // DOM更新を次のフレームに遅延させて安全に実行
                                     requestAnimationFrame(async () => {
@@ -4853,17 +4858,26 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                                           if (targetCell) {
                                             // 安全にテキストを設定
-                                            if (safeSetTextContent(targetCell, lines[i])) {
-                                              dataToSave[targetLine] = lines[i];
+                                            const pasted = lines[i] ?? '';
+                                            if (safeSetTextContent(targetCell, pasted)) {
+                                              dataToSave[targetLine] = pasted; // '' も有効な値として保持
                                             }
 
                                             // 1段目（時間）の場合、3段目（時間数）を自動計算
                                             if (targetLine === 0) {
-                                              const duration = calculateTimeDuration(lines[i]);
-                                              if (duration) {
-                                                const durationSelector = `.editable-cell[data-row="${currentRow}"][data-line="2"][data-helper="${helperId}"][data-date="${date}"]`;
-                                                const durationCell = safeQuerySelector<HTMLElement>(durationSelector);
+                                              const timeText = pasted;
+                                              const durationSelector = `.editable-cell[data-row="${currentRow}"][data-line="2"][data-helper="${helperId}"][data-date="${date}"]`;
+                                              const durationCell = safeQuerySelector<HTMLElement>(durationSelector);
+
+                                              if (timeText.trim() === '') {
+                                                // 時間が空なら時間数もクリア（ズレ防止）
                                                 if (durationCell) {
+                                                  safeSetTextContent(durationCell, '');
+                                                  dataToSave[2] = '';
+                                                }
+                                              } else {
+                                                const duration = calculateTimeDuration(timeText);
+                                                if (duration && durationCell) {
                                                   if (safeSetTextContent(durationCell, duration)) {
                                                     dataToSave[2] = duration;
                                                   }
@@ -4873,7 +4887,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                                             // 2段目（利用者名）の場合、サービスタイプから背景色を設定
                                             if (targetLine === 1) {
-                                              const match = lines[i].match(/\((.+?)\)/);
+                                              const match = pasted.match(/\((.+?)\)/);
                                               if (match) {
                                                 const serviceLabel = match[1];
                                                 const serviceEntry = Object.entries(SERVICE_CONFIG).find(
@@ -4909,12 +4923,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                     requestAnimationFrame(async () => {
                                       // 全4ラインのデータを取得（既存データも含む）
                                       for (let i = 0; i < 4; i++) {
-                                        if (dataToSave[i] === '') {
+                                        if (dataToSave[i] === null) {
                                           const cellSelector = `.editable-cell[data-row="${currentRow}"][data-line="${i}"][data-helper="${helperId}"][data-date="${date}"]`;
                                           const cell = safeQuerySelector<HTMLElement>(cellSelector);
-                                          if (cell && cell.textContent) {
-                                            dataToSave[i] = cell.textContent;
-                                          }
+                                          dataToSave[i] = cell?.textContent ?? '';
                                         }
                                       }
 
@@ -4922,9 +4934,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                       updateTotalsForHelperAndDate(helperId, date);
 
                                       // Firestoreに保存
-                                      const [timeRange, clientInfo, durationStr, area] = dataToSave;
+                                      const resolved = dataToSave.map(v => v ?? '');
+                                      const [timeRange, clientInfo, durationStr, area] = resolved;
 
-                                      if (dataToSave.some(line => line.trim() !== '')) {
+                                      if (resolved.some(line => line.trim() !== '')) {
                                         const match = clientInfo.match(/\((.+?)\)/);
                                         let serviceType: ServiceType = 'shintai';
 
@@ -4982,6 +4995,22 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                           console.log('✅ ペーストデータを保存しました');
                                         } catch (error) {
                                           console.error('ペーストデータの保存に失敗しました:', error);
+                                        }
+                                      }
+                                      else {
+                                        // 全行が空の場合：セル編集と同じ削除ルールに合わせる
+                                        const dayOffKey = `${helperId}-${date}-${currentRow}`;
+                                        const hasHolidayRequest = dayOffRequests.has(dayOffKey);
+                                        if (!hasHolidayRequest) {
+                                          const shiftId = `shift-${helperId}-${date}-${currentRow}`;
+                                          try {
+                                            await deleteShift(shiftId);
+                                            console.log('✅ 空のシフトを削除しました（ペースト）:', shiftId);
+                                          } catch (error) {
+                                            console.error('❌ シフト削除エラー（ペースト）:', error);
+                                          }
+                                        } else {
+                                          console.log('🏖️ 休み希望があるため削除をスキップ（ペースト）:', dayOffKey);
                                         }
                                       }
                                     });
