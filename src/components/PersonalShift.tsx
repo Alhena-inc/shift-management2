@@ -762,24 +762,26 @@ export function PersonalShift({ token }: Props) {
                                     title={`${shift.startTime}-${shift.endTime} ${shift.clientName} ${shift.duration} ${shift.area}`}
                                   >
                                     {/* 時間（横並び1行で全て表示） */}
-                                    <div className="font-extrabold text-[6.5px] w-full whitespace-nowrap">{shift.startTime}-{shift.endTime}</div>
-                                    {/* 利用者名 + サービス（サービス名は見切れないように固定表示） */}
-                                    <div className="w-full flex items-center justify-center gap-[1px] min-w-0">
-                                      <span className="font-extrabold text-[8px] min-w-0 flex-1 truncate">
+                                    <div className="font-extrabold text-[6px] w-full whitespace-nowrap">{shift.startTime}-{shift.endTime}</div>
+                                    {/* 利用者名 + サービス（見切れゼロ優先：2行に分けて必ず表示） */}
+                                    <div className="w-full leading-[1.05]">
+                                      <div className="font-extrabold text-[7px] w-full break-all">
                                         {shift.clientName || '-'}
-                                      </span>
+                                      </div>
                                       {config.label ? (
-                                        <span className="font-bold text-[7px] flex-shrink-0 whitespace-nowrap">
+                                        <div className="font-bold text-[6.5px] w-full whitespace-nowrap">
                                           ({config.label})
-                                        </span>
+                                        </div>
                                       ) : null}
                                     </div>
                                     {/* 時間数（濃く） */}
-                                    <div className="font-bold text-[8px] w-full truncate" style={{ color: isCancelled ? '#ffffff' : '#1f2937' }}>
+                                    <div className="font-bold text-[7px] w-full" style={{ color: isCancelled ? '#ffffff' : '#1f2937' }}>
                                       {cancelStatus === 'remove_time' ? '' : (shift.duration || '')}
                                     </div>
                                     {/* 地名（濃く） */}
-                                    <div className="font-bold text-[7px] w-full truncate" style={{ color: isCancelled ? '#ffffff' : '#374151' }}>{shift.area || ''}</div>
+                                    <div className="font-bold text-[6.5px] w-full whitespace-nowrap" style={{ color: isCancelled ? '#ffffff' : '#374151' }}>
+                                      {shift.area || ''}
+                                    </div>
                                     {/* キャンセル表示 */}
                                     {cancelStatus && (
                                       <div className="text-[6px] font-bold text-white bg-black bg-opacity-60 px-1 rounded w-full truncate">
