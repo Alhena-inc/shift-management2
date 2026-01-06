@@ -5013,43 +5013,62 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                       if (isDayOffRow || isScheduled) {
                                         const currentTd = currentCell.closest('td') as HTMLElement;
                                         if (currentTd) {
-                                          let hasShiftContent = false;
-                                          let detectedServiceType: ServiceType | null = null;
                                           const allLineCells = currentTd.querySelectorAll('.editable-cell');
-                                          
-                                          // 2段目（lineIndex=1）からサービスタイプを判定
-                                          allLineCells.forEach((cell, idx) => {
-                                            const text = cell.textContent?.trim();
-                                            if (text && text !== '' && text !== '休み希望' && text !== '指定休') {
-                                              hasShiftContent = true;
-                                              // 2段目からサービスタイプを抽出
-                                              if (idx === 1 && text) {
-                                                if (text.includes('家事')) detectedServiceType = 'kaji';
-                                                else if (text.includes('重度')) detectedServiceType = 'judo';
-                                                else if (text.includes('身体')) detectedServiceType = 'shintai';
-                                                else if (text.includes('同行') && !text.includes('深夜')) detectedServiceType = 'doko';
-                                                else if (text.includes('行動')) detectedServiceType = 'kodo_engo';
-                                                else if (text.includes('深夜') && text.includes('同行')) detectedServiceType = 'shinya_doko';
-                                                else if (text.includes('深夜')) detectedServiceType = 'shinya';
-                                                else if (text.includes('通院')) detectedServiceType = 'tsuin';
-                                                else if (text.includes('移動')) detectedServiceType = 'ido';
-                                                else if (text.includes('事務')) detectedServiceType = 'jimu';
-                                                else if (text.includes('営業')) detectedServiceType = 'eigyo';
-                                              }
-                                            }
+                                          const getText = (idx: number) =>
+                                            (allLineCells[idx] as HTMLElement | undefined)?.textContent?.trim() || '';
+
+                                          // ケア入力の有無（「休み希望」「指定休」だけならケアなし扱い）
+                                          const hasShiftContent = Array.from(allLineCells).some((cell) => {
+                                            const text = (cell as HTMLElement).textContent?.trim();
+                                            return !!(text && text !== '' && text !== '休み希望' && text !== '指定休');
                                           });
 
-                                          // 背景色の決定（ケアがあればケアの色、なければ休み希望/指定休）
-                                          let targetColor: string;
-                                          if (hasShiftContent && detectedServiceType && SERVICE_CONFIG[detectedServiceType]) {
-                                            targetColor = SERVICE_CONFIG[detectedServiceType].bgColor;
-                                          } else if (!hasShiftContent) {
-                                            targetColor = isScheduled ? '#22c55e' : '#ffcccc';
-                                          } else {
-                                            // ケア内容があるがサービスタイプが判定できない場合は白
-                                            targetColor = '#ffffff';
-                                          }
-                                          
+                                          const inferServiceTypeFromClientInfo = (clientInfo: string): ServiceType | null => {
+                                            const trimmed = clientInfo.trim();
+                                            // (家事) のような括弧表記がある場合はラベルから厳密に判定
+                                            const match = trimmed.match(/\((.+?)\)/);
+                                            if (match) {
+                                              const serviceLabel = match[1];
+                                              const serviceEntry = Object.entries(SERVICE_CONFIG).find(
+                                                ([_, config]) => config.label === serviceLabel
+                                              );
+                                              if (serviceEntry) return serviceEntry[0] as ServiceType;
+                                            }
+
+                                            // 括弧がない入力でもある程度拾えるようにキーワードでも判定
+                                            const keywordMap: Array<[string, ServiceType]> = [
+                                              ['家事', 'kaji'],
+                                              ['重度', 'judo'],
+                                              ['身体', 'shintai'],
+                                              ['行動', 'kodo_engo'],
+                                              ['通院', 'tsuin'],
+                                              ['移動', 'ido'],
+                                              ['事務', 'jimu'],
+                                              ['営業', 'eigyo'],
+                                              ['会議', 'kaigi'],
+                                              ['深夜(同行)', 'shinya_doko'],
+                                              ['深夜', 'shinya'],
+                                              ['同行', 'doko']
+                                            ];
+                                            for (const [kw, st] of keywordMap) {
+                                              if (trimmed.includes(kw)) return st;
+                                            }
+                                            return null;
+                                          };
+
+                                          // 2段目（利用者名+サービス種別）を元にケア背景色を決定
+                                          const clientInfoText = getText(1);
+                                          const detectedServiceType = inferServiceTypeFromClientInfo(clientInfoText);
+
+                                          // 背景色の決定
+                                          // - ケアがあれば「ケア背景色」を優先（終日休み希望の上書き要件）
+                                          // - ケアがなければ休み希望/指定休の色
+                                          // - ケアがあるが判定できない場合は白（other相当）
+                                          const targetColor =
+                                            hasShiftContent
+                                              ? (detectedServiceType ? SERVICE_CONFIG[detectedServiceType].bgColor : SERVICE_CONFIG.other.bgColor)
+                                              : (isScheduled ? SERVICE_CONFIG.shitei_kyuu.bgColor : SERVICE_CONFIG.yasumi_kibou.bgColor);
+
                                           currentTd.style.backgroundColor = targetColor;
                                           allLineCells.forEach((cell) => {
                                             (cell as HTMLElement).style.backgroundColor = targetColor;
@@ -5080,8 +5099,15 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                             }
                                           }
                                         }
-                                        // ケアがある場合はreturnせずに通常の保存処理を続行
-                                        if (!hasShiftContent) return;
+                                        // 休み希望/指定休のセルでケアがない場合はここで終了（通常の保存処理は不要）
+                                        if (currentTd) {
+                                          const allLineCells = currentTd.querySelectorAll('.editable-cell');
+                                          const hasShiftContent = Array.from(allLineCells).some((cell) => {
+                                            const text = (cell as HTMLElement).textContent?.trim();
+                                            return !!(text && text !== '' && text !== '休み希望' && text !== '指定休');
+                                          });
+                                          if (!hasShiftContent) return;
+                                        }
                                       }
                                     }
 
