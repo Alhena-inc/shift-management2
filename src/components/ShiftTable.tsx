@@ -1573,11 +1573,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                 // 休み希望が有効だがケア（Shift）がある場合は、ケア内容を表示
                 // ケアがない場合のみ「休み希望」を表示（上の `if (!shift)` 側で処理されるはずだが念のため）
-                if (isHolidayActive && !shift) {
-                  lines[0] = '休み希望';
-                  lines[1] = '';
-                  lines[2] = '';
-                  lines[3] = '';
+                const isHolidayActive = isRowSpecificDayOff || isOldFormatDayOff;
+                if (isHolidayActive && !hasActualCare) {
+                  // 休み希望で実際のケアがない場合は「休み希望」と表示
+                  // ただし、shiftがある場合はそのままケア内容を表示
                 }
 
                 cache.set(key, { lines, bgColor, hasWarning });
