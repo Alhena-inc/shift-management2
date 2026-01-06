@@ -5125,6 +5125,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                         const match = clientInfo.match(/\((.+?)\)/);
                                         let serviceType: ServiceType = 'shintai';
 
+                                        // 既存のシフトを確認（右クリックで予定(紫)にした場合など、()なしでもserviceTypeを保持したい）
+                                        const shiftId = `shift-${helperId}-${date}-${currentRow}`;
+                                        const existingShift = shifts.find(s => s.id === shiftId);
+
                                         if (match) {
                                           const serviceLabel = match[1];
                                           const serviceEntry = Object.entries(SERVICE_CONFIG).find(
@@ -5133,6 +5137,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                           if (serviceEntry) {
                                             serviceType = serviceEntry[0] as ServiceType;
                                           }
+                                        } else if (existingShift?.serviceType === 'yotei') {
+                                          // 予定（紫）は()がない表示なので、誤ってother等に落とさない
+                                          serviceType = 'yotei';
                                         }
 
                                         const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
@@ -5141,8 +5148,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                         const endTime = timeMatch ? timeMatch[2] : '';
 
                                         // 既存のシフトを確認してキャンセルステータスを保持
-                                        const shiftId = `shift-${helperId}-${date}-${currentRow}`;
-                                        const existingShift = shifts.find(s => s.id === shiftId);
                                         const newCancelStatus = existingShift?.cancelStatus;
 
                                         // 給与を計算（日付を渡して年末年始判定）
