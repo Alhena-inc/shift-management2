@@ -3885,6 +3885,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         menu.remove();
       }
     };
+    // メニューに追加（← これが抜けていたため表示されなかった）
+    menu.appendChild(purpleBtn);
 
     // 休み希望の設定/解除ボタン
     // Shift+クリックでの複数選択をチェック
