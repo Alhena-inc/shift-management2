@@ -39,7 +39,7 @@ export const SERVICE_CONFIG: Record<ServiceType, {
   jimu: { label: '事務', color: '#4338ca', bgColor: '#a5b4fc', hourlyRate: 1200 },  // インディゴ
   eigyo: { label: '営業', color: '#7c3aed', bgColor: '#c4b5fd', hourlyRate: 1200 },  // バイオレット
   kaigi: { label: '会議', color: '#7c3aed', bgColor: '#c4b5fd', hourlyRate: 0 },  // 紫（給与算出なし）
-  other: { label: '', color: '#7c3aed', bgColor: '#c4b5fd', hourlyRate: 0 },  // 紫（給与算出なし）
+  other: { label: '', color: '#374151', bgColor: '#ffffff', hourlyRate: 0 },  // 白（給与算出なし）
 };
 
 // 扶養者情報
