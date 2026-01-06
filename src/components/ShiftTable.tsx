@@ -4320,38 +4320,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                               e.currentTarget.draggable = true;
                             }
 
-                            // Shift+ドラッグで複数選択
-                            if (e.shiftKey && e.button === 0) {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              
-                              // 現在のセルキーを取得
-                              const cellKey = `${helper.id}-${day.date}-${rowIndex}`;
-                              
-                              // ドラッグ開始フラグ
-                              isDraggingForSelectionRef.current = true;
-                              justStartedDraggingRef.current = false;
-                              lastProcessedCellRef.current = cellKey;
-                              
-                              // 最初のセルを選択（枠線のみ、背景色は変更しない）
-                              if (!selectedRowsRef.current.has(cellKey)) {
-                                selectedRowsRef.current.add(cellKey);
-                                const td = e.currentTarget as HTMLElement;
-                                td.style.setProperty('outline', '3px solid #2563eb', 'important');
-                                td.style.setProperty('outline-offset', '-3px', 'important');
-                                td.style.setProperty('z-index', '10', 'important');
-                                lastSelectedRowTdsRef.current.push(td);
-                              }
-                              
-                              // ポインターキャプチャ
-                              (e.target as HTMLElement).setPointerCapture(e.pointerId);
-                              
-                              // グローバルイベントリスナー追加
-                              document.addEventListener('pointermove', handlePointerMove, { passive: true });
-                              document.addEventListener('pointerup', handlePointerUp, { once: true });
-                              return;
-                            }
-
                             // 右クリックは無視
                             if (e.button === 2) return;
 
