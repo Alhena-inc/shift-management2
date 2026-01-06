@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { deleteCareContentByDate, getCareContentCountByDate, saveDeletionLog } from '../services/careContentService';
+import { deleteCareContentByDate, deleteShiftsByMonth, getCareContentCountByDate, getShiftCountByMonth, saveDeletionLog } from '../services/careContentService';
 
 interface CareContentDeleterProps {
   onClose: () => void;
@@ -13,6 +13,7 @@ export const CareContentDeleter: React.FC<CareContentDeleterProps> = ({ onClose,
   const [isDeleting, setIsDeleting] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [count, setCount] = useState<number | null>(null);
+  const [checkedScope, setCheckedScope] = useState<'day' | 'month'>('day');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -28,6 +29,7 @@ export const CareContentDeleter: React.FC<CareContentDeleterProps> = ({ onClose,
     try {
       const dataCount = await getCareContentCountByDate(currentYear, currentMonth, selectedDay);
       setCount(dataCount);
+      setCheckedScope('day');
       if (dataCount === 0) {
         setMessage(`${currentYear}年${currentMonth}月${selectedDay}日のシフトデータはありません。`);
       } else {
@@ -42,14 +44,42 @@ export const CareContentDeleter: React.FC<CareContentDeleterProps> = ({ onClose,
     }
   }, [currentYear, currentMonth, selectedDay]);
 
+  // 月全体のデータ件数チェック
+  const handleCheckMonthCount = useCallback(async () => {
+    setIsChecking(true);
+    setError('');
+    setMessage('');
+    try {
+      const dataCount = await getShiftCountByMonth(currentYear, currentMonth);
+      setCount(dataCount);
+      setCheckedScope('month');
+      if (dataCount === 0) {
+        setMessage(`${currentYear}年${currentMonth}月のシフトデータはありません。`);
+      } else {
+        setMessage(`${currentYear}年${currentMonth}月のシフトデータが${dataCount}件見つかりました。`);
+      }
+    } catch (err) {
+      console.error('データ確認エラー:', err);
+      setError('データの確認中にエラーが発生しました。');
+      setCount(null);
+    } finally {
+      setIsChecking(false);
+    }
+  }, [currentYear, currentMonth]);
+
   // 削除処理
   const handleDelete = useCallback(async () => {
     if (count === null || count === 0) {
       return;
     }
 
+    const targetLabel =
+      checkedScope === 'month'
+        ? `${currentYear}年${currentMonth}月`
+        : `${currentYear}年${currentMonth}月${selectedDay}日`;
+
     const confirmed = window.confirm(
-      `本当に${currentYear}年${currentMonth}月${selectedDay}日のシフトデータ（${count}件）を全て削除しますか？\n\nこの操作は取り消せません。`
+      `本当に${targetLabel}のシフトデータ（${count}件）を全て削除しますか？\n\nこの操作は取り消せません。`
     );
 
     if (!confirmed) {
@@ -61,19 +91,22 @@ export const CareContentDeleter: React.FC<CareContentDeleterProps> = ({ onClose,
     setMessage('削除処理を実行中...');
 
     try {
-      const deletedCount = await deleteCareContentByDate(currentYear, currentMonth, selectedDay);
+      const deletedCount =
+        checkedScope === 'month'
+          ? await deleteShiftsByMonth(currentYear, currentMonth)
+          : await deleteCareContentByDate(currentYear, currentMonth, selectedDay);
 
       // 削除履歴を保存
       await saveDeletionLog({
         targetYear: currentYear,
         targetMonth: currentMonth,
-        targetDay: selectedDay,
+        ...(checkedScope === 'day' ? { targetDay: selectedDay } : {}),
         deletedCount,
         deletedAt: new Date(),
         executedBy: 'system' // ログインユーザー情報があればここに設定
       });
 
-      setMessage(`${currentYear}年${currentMonth}月${selectedDay}日のシフトデータ（${deletedCount}件）を削除しました。`);
+      setMessage(`${targetLabel}のシフトデータ（${deletedCount}件）を削除しました。`);
       setCount(0);
 
       // 削除完了のコールバックを実行
@@ -91,7 +124,7 @@ export const CareContentDeleter: React.FC<CareContentDeleterProps> = ({ onClose,
     } finally {
       setIsDeleting(false);
     }
-  }, [currentYear, currentMonth, selectedDay, count, onClose]);
+  }, [currentYear, currentMonth, selectedDay, count, checkedScope, onClose]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -127,6 +160,7 @@ export const CareContentDeleter: React.FC<CareContentDeleterProps> = ({ onClose,
                 onChange={(e) => {
                   setSelectedDay(Number(e.target.value));
                   setCount(null);
+                  setCheckedScope('day');
                   setMessage('');
                   setError('');
                 }}
@@ -148,6 +182,14 @@ export const CareContentDeleter: React.FC<CareContentDeleterProps> = ({ onClose,
               className="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
               {isChecking ? 'データを確認中...' : 'データ件数を確認'}
+            </button>
+
+            <button
+              onClick={handleCheckMonthCount}
+              disabled={isDeleting || isChecking}
+              className="w-full mt-2 px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {isChecking ? 'データを確認中...' : 'この月のデータ件数を確認'}
             </button>
           </div>
 
@@ -173,7 +215,11 @@ export const CareContentDeleter: React.FC<CareContentDeleterProps> = ({ onClose,
                 disabled={isDeleting}
                 className="w-full px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed font-semibold"
               >
-                {isDeleting ? '削除中...' : `${currentMonth}月${selectedDay}日のシフトを削除`}
+                {isDeleting
+                  ? '削除中...'
+                  : (checkedScope === 'month'
+                    ? `${currentMonth}月のシフトを全て削除`
+                    : `${currentMonth}月${selectedDay}日のシフトを削除`)}
               </button>
               <p className="text-sm text-gray-500 mt-2 text-center">
                 ※ この操作は取り消せません

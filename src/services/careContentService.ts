@@ -3,7 +3,6 @@ import {
   query,
   where,
   getDocs,
-  deleteDoc,
   doc,
   setDoc,
   Timestamp,
@@ -148,6 +147,108 @@ export const deleteCareContentByDate = async (year: number, month: number, day: 
     return deletedCount;
   } catch (error) {
     console.error('ケア内容削除エラー:', error);
+    throw error;
+  }
+};
+
+/**
+ * 指定年月のシフトデータ件数を取得（shiftsコレクション）
+ */
+export const getShiftCountByMonth = async (year: number, month: number): Promise<number> => {
+  try {
+    console.log(`📊 ${year}年${month}月のシフトデータ件数を確認中...`);
+
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    const q = query(
+      collection(db, 'shifts'),
+      where('date', '>=', startDate),
+      where('date', '<=', endDate)
+    );
+
+    const querySnapshot = await getDocs(q);
+
+    let totalCount = 0;
+    querySnapshot.forEach((docSnapshot) => {
+      const data = docSnapshot.data();
+      if (!data.deleted) totalCount++;
+    });
+
+    console.log(`✅ ${year}年${month}月のシフト: ${totalCount}件`);
+    return totalCount;
+  } catch (error) {
+    console.error('シフトデータ件数取得エラー:', error);
+    throw error;
+  }
+};
+
+/**
+ * 指定年月のシフトデータを削除（shiftsコレクション / 論理削除）
+ * Firestoreバッチ上限(500)を考慮して分割コミットする
+ */
+export const deleteShiftsByMonth = async (year: number, month: number): Promise<number> => {
+  try {
+    console.log(`🗑️ ${year}年${month}月のシフトデータを削除中...`);
+
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    const q = query(
+      collection(db, 'shifts'),
+      where('date', '>=', startDate),
+      where('date', '<=', endDate)
+    );
+
+    const querySnapshot = await getDocs(q);
+    if (querySnapshot.empty) {
+      console.log('削除対象のデータがありません');
+      return 0;
+    }
+
+    const now = Timestamp.now();
+    let deletedCount = 0;
+
+    // FirestoreのwriteBatchは最大500操作
+    const MAX_BATCH_OPS = 450;
+    let batch = writeBatch(db);
+    let ops = 0;
+
+    const commitIfNeeded = async (force: boolean = false) => {
+      if (ops === 0) return;
+      if (force || ops >= MAX_BATCH_OPS) {
+        await batch.commit();
+        batch = writeBatch(db);
+        ops = 0;
+      }
+    };
+
+    for (const docSnapshot of querySnapshot.docs) {
+      const data = docSnapshot.data();
+      if (data.deleted) continue;
+
+      deletedCount++;
+      const docRef = doc(db, 'shifts', docSnapshot.id);
+      batch.update(docRef, {
+        deleted: true,
+        deletedAt: now,
+        deletedBy: 'system',
+        updatedAt: now
+      });
+      ops++;
+
+      await commitIfNeeded();
+    }
+
+    // 残りをコミット
+    await commitIfNeeded(true);
+
+    console.log(`✅ ${year}年${month}月のシフトデータを削除しました（${deletedCount}件）`);
+    return deletedCount;
+  } catch (error) {
+    console.error('シフト削除エラー:', error);
     throw error;
   }
 };
