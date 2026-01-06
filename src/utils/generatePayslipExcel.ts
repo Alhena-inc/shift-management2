@@ -259,10 +259,10 @@ export async function generatePayslipExcel(payslip: HourlyPayslip): Promise<Blob
   paymentLabel.font = { bold: true };
   worksheet.mergeCells(`A${currentRow}:A${currentRow + 3}`);
 
-  // 1行目：通常稼働報酬 | 同行稼働報酬 | (深夜)稼働報酬 | (深夜)同行報酬 | 事務・営業報酬 | 支給額合計 |
+  // 1行目：通常稼働報酬 | 同行稼働報酬 | (深夜)稼働報酬 | (深夜)同行報酬 | 事務・営業報酬 | 年末年始手当 | 支給額合計 |
   const payRow1 = worksheet.getRow(currentRow);
   payRow1.height = 20;
-  const payLabels1 = ['通常稼働報酬', '同行稼働報酬', '(深夜)稼働報酬', '(深夜)同行報酬', '事務・営業報酬', '支給額合計'];
+  const payLabels1 = ['通常稼働報酬', '同行稼働報酬', '(深夜)稼働報酬', '(深夜)同行報酬', '事務・営業報酬', '年末年始手当', '支給額合計'];
   for (let i = 0; i < payLabels1.length; i++) {
     const cell = payRow1.getCell(i + 2);
     cell.value = payLabels1[i];
@@ -287,6 +287,7 @@ export async function generatePayslipExcel(payslip: HourlyPayslip): Promise<Blob
     formatCurrency(payslip.payments.nightNormalPay),
     formatCurrency(payslip.payments.nightAccompanyPay),
     formatCurrency(payslip.payments.officePay),
+    formatCurrency((payslip.payments as any).yearEndNewYearAllowance || 0),
     formatCurrency(payslip.payments.totalPayment)
   ];
   for (let i = 0; i < payValues1.length; i++) {
@@ -319,7 +320,7 @@ export async function generatePayslipExcel(payslip: HourlyPayslip): Promise<Blob
     };
   }
   // 支給額合計セル（2行結合）
-  worksheet.mergeCells(`G${currentRow}:G${currentRow + 1}`);
+  worksheet.mergeCells(`H${currentRow}:H${currentRow + 1}`);
   currentRow++;
 
   // 4行目：値

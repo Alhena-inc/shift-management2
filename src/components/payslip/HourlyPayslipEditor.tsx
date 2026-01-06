@@ -89,6 +89,7 @@ export const HourlyPayslipEditor: React.FC<HourlyPayslipEditorProps> = ({
       newPayslip.payments.normalWorkPay +
       newPayslip.payments.accompanyPay +
       newPayslip.payments.officePay +
+      ((newPayslip.payments as any).yearEndNewYearAllowance || 0) +
       newPayslip.payments.nightNormalPay +
       newPayslip.payments.nightAccompanyPay +
       newPayslip.payments.expenseReimbursement +

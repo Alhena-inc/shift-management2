@@ -76,6 +76,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       (updated.payments.nightNormalPay || 0) +
       (updated.payments.nightAccompanyPay || 0) +
       (updated.payments.officePay || 0) +
+      ((updated.payments as any).yearEndNewYearAllowance || 0) +
       (updated.payments.expenseReimbursement || 0) +
       (updated.payments.transportAllowance || 0) +
       (updated.payments.emergencyAllowance || 0) +
@@ -129,6 +130,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
         (updated.payments?.nightNormalPay || 0) +
         (updated.payments?.nightAccompanyPay || 0) +
         (updated.payments?.officePay || 0) +
+        ((updated.payments as any)?.yearEndNewYearAllowance || 0) +
         taxableOther;
 
       // 月給合計（非課税手当含む）
@@ -525,7 +527,10 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={payslip.paymentLabels?.officePayLabel || '事務・営業報酬'} onChange={(e) => updateField(['paymentLabels', 'officePayLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
-            <td colSpan={2} style={{ border: '1px solid black', backgroundColor: '#e8f4f8', height: '20px', maxHeight: '20px' }}></td>
+            <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+              <input type="text" value={payslip.paymentLabels?.yearEndNewYearAllowanceLabel || '年末年始手当'} onChange={(e) => updateField(['paymentLabels', 'yearEndNewYearAllowanceLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+            </td>
+            <td style={{ border: '1px solid black', backgroundColor: '#e8f4f8', height: '20px', maxHeight: '20px' }}></td>
           </tr>
           <tr style={{ height: '20px', maxHeight: '20px' }}>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
@@ -543,7 +548,10 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={formatNumber(payslip.payments.officePay || 0)} onChange={(e) => updateField(['payments', 'officePay'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
-            <td colSpan={2} style={{ border: '1px solid black', height: '20px', maxHeight: '20px' }}></td>
+            <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+              <input type="text" value={formatNumber((payslip.payments as any).yearEndNewYearAllowance || 0)} onChange={(e) => updateField(['payments', 'yearEndNewYearAllowance'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+            </td>
+            <td style={{ border: '1px solid black', height: '20px', maxHeight: '20px' }}></td>
           </tr>
           <tr style={{ height: '20px', maxHeight: '20px' }}>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>

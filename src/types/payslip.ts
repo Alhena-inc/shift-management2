@@ -241,6 +241,7 @@ export interface HourlyPayslip extends BasePayslip {
     nightNormalPayLabel?: string;      // (深夜)稼働報酬ラベル
     nightAccompanyPayLabel?: string;   // (深夜)同行報酬ラベル
     officePayLabel?: string;           // 事務・営業報酬ラベル
+    yearEndNewYearAllowanceLabel?: string; // 年末年始手当ラベル
     expenseReimbursementLabel?: string; // 経費精算ラベル
     transportAllowanceLabel?: string;   // 交通費立替・手当ラベル
     emergencyAllowanceLabel?: string;   // 緊急時対応加算ラベル
@@ -253,6 +254,7 @@ export interface HourlyPayslip extends BasePayslip {
     normalWorkPay: number;     // 通常稼働報酬
     accompanyPay: number;      // 同行稼働報酬
     officePay: number;         // 事務・営業報酬
+    yearEndNewYearAllowance: number; // 年末年始手当（12/31〜1/4の差額）
     nightNormalPay: number;    // (深夜)稼働報酬
     nightAccompanyPay: number; // (深夜)同行報酬
     expenseReimbursement: number; // 経費精算

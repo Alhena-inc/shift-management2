@@ -67,6 +67,7 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, helper, onChange }
       newPayslip.payments.nightNormalPay +
       newPayslip.payments.nightAccompanyPay +
       newPayslip.payments.officePay +
+      ((newPayslip.payments as any).yearEndNewYearAllowance || 0) +
       newPayslip.payments.expenseReimbursement +
       newPayslip.payments.transportAllowance +
       newPayslip.payments.emergencyAllowance +

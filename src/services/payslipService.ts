@@ -367,6 +367,7 @@ export const createEmptyFixedPayslip = (
       transportAllowance: 0,          // 交通費手当：0円
       emergencyAllowance: 0,          // 緊急時対応加算：0円
       nightAllowance: 0,              // 夜間手当：0円
+      yearEndNewYearAllowance: 0,     // 年末年始手当：0円
       otherAllowances,                // その他手当
       totalPayment,                   // 支給額合計
     },
@@ -539,6 +540,7 @@ export const createEmptyHourlyPayslip = (
       normalWorkPay: 0,
       accompanyPay: 0,
       officePay: 0,
+      yearEndNewYearAllowance: 0,
       nightNormalPay: 0,
       nightAccompanyPay: 0,
       expenseReimbursement: 0,

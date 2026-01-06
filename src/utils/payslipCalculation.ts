@@ -452,6 +452,14 @@ export function generateHourlyPayslipFromShifts(
   payslip.treatmentAllowance = helper.treatmentImprovementPerHour || 800; // デフォルト800円
   payslip.totalHourlyRate = payslip.baseHourlyRate + payslip.treatmentAllowance;
 
+  // 年末年始手当（12/31〜1/4は時給3000円扱い。通常の合計時間単価との差額分をここで積み上げる）
+  const specialMonthDays = new Set(['12-31', '01-01', '01-02', '01-03', '01-04']);
+  const isYearEndNewYear = (dateStr: string) => specialMonthDays.has(dateStr.substring(5));
+  const specialTotalRate = 3000;
+  const baseTotalRate = payslip.totalHourlyRate;
+  const rateDiff = Math.max(0, specialTotalRate - baseTotalRate);
+  let yearEndNewYearAllowance = 0;
+
   // シフトデータを日次に集計
   const daysInMonth = new Date(year, month, 0).getDate();
   // 12月のみ翌年1/1～1/4も含める（35日）
@@ -501,10 +509,18 @@ export function generateHourlyPayslipFromShifts(
     const dailySlots: Array<{ slotNumber: number; clientName: string; timeRange: string }> = [];
 
     dayShifts.forEach(shift => {
-      const { normalHours, nightHours } = calculateNormalAndNightHours(shift.startTime, shift.endTime);
+      // 時間の計算（start/endがない場合はdurationを通常時間として扱う）
+      const { normalHours, nightHours } =
+        shift.startTime && shift.endTime
+          ? calculateNormalAndNightHours(shift.startTime, shift.endTime)
+          : { normalHours: shift.duration || 0, nightHours: 0 };
 
       // サービス種別ごとに分類
       if (['shintai', 'judo', 'kaji', 'tsuin', 'ido', 'kodo_engo', 'shinya'].includes(shift.serviceType)) {
+        // 年末年始手当（差額分のみ）
+        if (rateDiff > 0 && isYearEndNewYear(shift.date)) {
+          yearEndNewYearAllowance += rateDiff * normalHours + rateDiff * nightHours * 1.25;
+        }
         // 通常稼働
         normalWork += normalHours;
         normalNight += nightHours;
@@ -589,6 +605,7 @@ export function generateHourlyPayslipFromShifts(
   payslip.payments.accompanyPay = payslip.attendance.accompanyHours * rate;
   payslip.payments.nightAccompanyPay = payslip.attendance.nightAccompanyHours * nightRate;
   payslip.payments.officePay = (payslip.attendance.officeHours + payslip.attendance.salesHours) * officeRate;
+  payslip.payments.yearEndNewYearAllowance = Math.round(yearEndNewYearAllowance);
 
   // その他手当をHelperマスタから取得
   if (helper.otherAllowances && helper.otherAllowances.length > 0) {
@@ -604,6 +621,7 @@ export function generateHourlyPayslipFromShifts(
     payslip.payments.normalWorkPay +
     payslip.payments.accompanyPay +
     payslip.payments.officePay +
+    payslip.payments.yearEndNewYearAllowance +
     payslip.payments.nightNormalPay +
     payslip.payments.nightAccompanyPay +
     payslip.payments.expenseReimbursement +
@@ -628,6 +646,7 @@ export function generateHourlyPayslipFromShifts(
       payslip.payments.normalWorkPay +
       payslip.payments.accompanyPay +
       payslip.payments.officePay +
+      payslip.payments.yearEndNewYearAllowance +
       payslip.payments.nightNormalPay +
       payslip.payments.nightAccompanyPay +
       payslip.payments.otherAllowances.filter(a => !a.taxExempt).reduce((sum, item) => sum + item.amount, 0);
