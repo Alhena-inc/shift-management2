@@ -1666,9 +1666,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     // リスナー解除
     document.removeEventListener('pointermove', handlePointerMove);
 
-    // React stateを最後に一度だけ同期
-    setSelectedRows(new Set(selectedRowsRef.current));
-
     // 選択数をコンソールに表示（デバッグ用）
     console.log(`✅ ${selectedRowsRef.current.size}個のセルを選択しました`);
 
