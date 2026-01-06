@@ -1551,18 +1551,19 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                 if (cancelStatus === 'keep_time' || cancelStatus === 'remove_time') {
                   bgColor = '#f87171';  // キャンセル状態は赤
-                } else if (serviceType && SERVICE_CONFIG[serviceType] &&
-                  (serviceType as string) !== 'yasumi_kibou' &&
-                  (serviceType as string) !== 'shitei_kyuu' &&
-                  (clientName || startTime || endTime)) {
-                  // 内容があるケア（Shift）がある場合は、ケアの背景色を優先
-                  bgColor = SERVICE_CONFIG[serviceType].bgColor;
                 } else if (isScheduledDayOff || (serviceType as string) === 'shitei_kyuu') {
                   bgColor = '#22c55e';  // 指定休は緑色
                 } else if (isHolidayActive || (serviceType as string) === 'yasumi_kibou') {
-                  bgColor = '#ffcccc';  // 休み希望のピンク背景
-                } else if (serviceType && SERVICE_CONFIG[serviceType]) {
-                  // 内容がない場合などはサービスのデフォルト色（otherなら白に近くなる等の考慮が必要だが、基本はここに来る）
+                  bgColor = '#ffcccc';  // 休み希望のピンク背景（文言入力されていても維持）
+                } else if (serviceType && SERVICE_CONFIG[serviceType] &&
+                  (serviceType as string) !== 'yasumi_kibou' &&
+                  (serviceType as string) !== 'shitei_kyuu' &&
+                  (serviceType as string) !== 'other' &&
+                  (clientName || startTime || endTime)) {
+                  // 内容があるケア（Shift）がある場合は、ケアの背景色を優先（otherは除く）
+                  bgColor = SERVICE_CONFIG[serviceType].bgColor;
+                } else if (serviceType && SERVICE_CONFIG[serviceType] && (serviceType as string) !== 'other') {
+                  // 内容がない場合などはサービスのデフォルト色
                   bgColor = SERVICE_CONFIG[serviceType].bgColor;
                 }
 
