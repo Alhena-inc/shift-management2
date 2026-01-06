@@ -115,8 +115,9 @@ export const ExpenseModal = memo(function ExpenseModal({ isOpen, onClose, initia
             <select
               value={selectedYear}
               onChange={(e) => handleMonthChange(parseInt(e.target.value), selectedMonth)}
-              className="border border-gray-300 rounded px-3 py-2"
+              className="border border-gray-300 rounded px-3 py-2 bg-white text-black disabled:bg-gray-100 disabled:text-gray-500"
               disabled={loading}
+              style={{ backgroundColor: 'white' }}
             >
               {[2024, 2025, 2026].map(year => (
                 <option key={year} value={year}>{year}年</option>
@@ -125,8 +126,9 @@ export const ExpenseModal = memo(function ExpenseModal({ isOpen, onClose, initia
             <select
               value={selectedMonth}
               onChange={(e) => handleMonthChange(selectedYear, parseInt(e.target.value))}
-              className="border border-gray-300 rounded px-3 py-2"
+              className="border border-gray-300 rounded px-3 py-2 bg-white text-black disabled:bg-gray-100 disabled:text-gray-500"
               disabled={loading}
+              style={{ backgroundColor: 'white' }}
             >
               {Array.from({ length: 12 }, (_, i) => i + 1).map(month => (
                 <option key={month} value={month}>{month}月</option>
