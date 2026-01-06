@@ -2381,9 +2381,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         // DOM要素のoutlineも削除
         lastSelectedRowTdsRef.current.forEach(td => {
           td.style.removeProperty('outline');
-          td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index'); td.style.removeProperty('background-color');
+          td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index');
           td.style.removeProperty('z-index');
-          td.style.removeProperty('background-color');
+         
         });
         lastSelectedRowTdsRef.current = [];
         syncSelection();
@@ -2672,7 +2672,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       // DOM要素の青枠も削除
       lastSelectedRowTdsRef.current.forEach(td => {
         td.style.removeProperty('outline');
-        td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index'); td.style.removeProperty('background-color');
+        td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index');
       });
       lastSelectedRowTdsRef.current = [];
 
@@ -2769,7 +2769,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       // DOM要素の青枠も削除
       lastSelectedRowTdsRef.current.forEach(td => {
         td.style.removeProperty('outline');
-        td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index'); td.style.removeProperty('background-color');
+        td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index');
       });
       lastSelectedRowTdsRef.current = [];
 
@@ -2872,7 +2872,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       // 前回選択されたtdのoutlineのみ削除
       lastSelectedRowTdsRef.current.forEach(td => {
         td.style.removeProperty('outline');
-        td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index'); td.style.removeProperty('background-color');
+        td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index');
       });
       lastSelectedRowTdsRef.current = [];
 
@@ -3214,7 +3214,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         // 前回選択されたtdのoutlineのみ削除
         lastSelectedRowTdsRef.current.forEach(td => {
           td.style.removeProperty('outline');
-          td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index'); td.style.removeProperty('background-color');
+          td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index');
         });
         lastSelectedRowTdsRef.current = [];
 
@@ -3449,7 +3449,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       // 前回選択されたtdのoutlineのみ削除
       lastSelectedRowTdsRef.current.forEach(td => {
         td.style.removeProperty('outline');
-        td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index'); td.style.removeProperty('background-color');
+        td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index');
       });
       lastSelectedRowTdsRef.current = [];
 
@@ -3691,7 +3691,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       // 前回選択されたtdのoutlineのみ削除
       lastSelectedRowTdsRef.current.forEach(td => {
         td.style.removeProperty('outline');
-        td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index'); td.style.removeProperty('background-color');
+        td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index');
       });
       lastSelectedRowTdsRef.current = [];
 
@@ -4366,7 +4366,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                             selectedRowsRef.current.clear();
                             lastSelectedRowTdsRef.current.forEach(td => {
                               td.style.removeProperty('outline');
-                              td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index'); td.style.removeProperty('background-color');
+                              td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index');
                             });
                             lastSelectedRowTdsRef.current = [];
 
