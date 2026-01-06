@@ -5014,24 +5014,48 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                         const currentTd = currentCell.closest('td') as HTMLElement;
                                         if (currentTd) {
                                           let hasShiftContent = false;
+                                          let detectedServiceType: ServiceType | null = null;
                                           const allLineCells = currentTd.querySelectorAll('.editable-cell');
-                                          allLineCells.forEach(cell => {
+                                          
+                                          // 2段目（lineIndex=1）からサービスタイプを判定
+                                          allLineCells.forEach((cell, idx) => {
                                             const text = cell.textContent?.trim();
                                             if (text && text !== '' && text !== '休み希望' && text !== '指定休') {
                                               hasShiftContent = true;
+                                              // 2段目からサービスタイプを抽出
+                                              if (idx === 1 && text) {
+                                                if (text.includes('家事')) detectedServiceType = 'kaji';
+                                                else if (text.includes('重度')) detectedServiceType = 'judo';
+                                                else if (text.includes('身体')) detectedServiceType = 'shintai';
+                                                else if (text.includes('同行') && !text.includes('深夜')) detectedServiceType = 'doko';
+                                                else if (text.includes('行動')) detectedServiceType = 'kodo_engo';
+                                                else if (text.includes('深夜') && text.includes('同行')) detectedServiceType = 'shinya_doko';
+                                                else if (text.includes('深夜')) detectedServiceType = 'shinya';
+                                                else if (text.includes('通院')) detectedServiceType = 'tsuin';
+                                                else if (text.includes('移動')) detectedServiceType = 'ido';
+                                                else if (text.includes('事務')) detectedServiceType = 'jimu';
+                                                else if (text.includes('営業')) detectedServiceType = 'eigyo';
+                                              }
                                             }
                                           });
 
-                                          // 背景色の決定（ケアがあればケア、なければ休み希望/指定休）
-                                          if (!hasShiftContent) {
-                                            const targetColor = isScheduled ? '#22c55e' : '#ffcccc';
-                                            currentTd.style.backgroundColor = targetColor;
-                                            allLineCells.forEach((cell) => {
-                                              (cell as HTMLElement).style.backgroundColor = targetColor;
-                                            });
+                                          // 背景色の決定（ケアがあればケアの色、なければ休み希望/指定休）
+                                          let targetColor: string;
+                                          if (hasShiftContent && detectedServiceType && SERVICE_CONFIG[detectedServiceType]) {
+                                            targetColor = SERVICE_CONFIG[detectedServiceType].bgColor;
+                                          } else if (!hasShiftContent) {
+                                            targetColor = isScheduled ? '#22c55e' : '#ffcccc';
+                                          } else {
+                                            // ケア内容があるがサービスタイプが判定できない場合は白
+                                            targetColor = '#ffffff';
                                           }
+                                          
+                                          currentTd.style.backgroundColor = targetColor;
+                                          allLineCells.forEach((cell) => {
+                                            (cell as HTMLElement).style.backgroundColor = targetColor;
+                                          });
 
-                                          // 文言の復元（重複防止：この日の休み希望の中で最初の行のみ、かつ1段目のみに表示）
+                                          // 文言の復元（ケアがない場合のみ「休み希望」を表示）
                                           if (!hasShiftContent) {
                                             let hasDayOffBefore = false;
                                             const rowTarget = parseInt(rowIndex || '0');
@@ -5056,7 +5080,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                             }
                                           }
                                         }
-                                        return;
+                                        // ケアがある場合はreturnせずに通常の保存処理を続行
+                                        if (!hasShiftContent) return;
                                       }
                                     }
 
