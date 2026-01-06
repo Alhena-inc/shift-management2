@@ -763,8 +763,17 @@ export function PersonalShift({ token }: Props) {
                                   >
                                     {/* 時間（横並び1行で全て表示） */}
                                     <div className="font-extrabold text-[6.5px] w-full whitespace-nowrap">{shift.startTime}-{shift.endTime}</div>
-                                    {/* 利用者名(サービス) */}
-                                    <div className="font-extrabold text-[8px] w-full truncate">{shift.clientName || '-'}({config.label})</div>
+                                    {/* 利用者名 + サービス（サービス名は見切れないように固定表示） */}
+                                    <div className="w-full flex items-center justify-center gap-[1px] min-w-0">
+                                      <span className="font-extrabold text-[8px] min-w-0 flex-1 truncate">
+                                        {shift.clientName || '-'}
+                                      </span>
+                                      {config.label ? (
+                                        <span className="font-bold text-[7px] flex-shrink-0 whitespace-nowrap">
+                                          ({config.label})
+                                        </span>
+                                      ) : null}
+                                    </div>
                                     {/* 時間数（濃く） */}
                                     <div className="font-bold text-[8px] w-full truncate" style={{ color: isCancelled ? '#ffffff' : '#1f2937' }}>
                                       {cancelStatus === 'remove_time' ? '' : (shift.duration || '')}
