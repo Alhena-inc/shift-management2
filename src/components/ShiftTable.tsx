@@ -1535,7 +1535,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 const timeString = startTime && endTime ? `${startTime}-${endTime}` : (startTime || endTime ? `${startTime || ''}-${endTime || ''}` : '');
                 const lines = [
                   timeString,
-                  serviceType === 'other'
+                  (serviceType === 'other' || serviceType === 'yotei')
                     ? clientName
                     : (clientName ? `${clientName}(${SERVICE_CONFIG[serviceType]?.label || ''})` : `(${SERVICE_CONFIG[serviceType]?.label || ''})`),
                   duration ? duration.toString() : '',
@@ -1993,12 +1993,19 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                         targetCell.textContent = shiftData[lineIndex];
 
                         // 1段目（時間）の場合、3段目（時間数）を自動計算
+                        // ※ 休み希望/指定休の行では自動入力しない
                         if (lineIndex === 0 && shiftData[lineIndex]) {
-                          const duration = calculateTimeDuration(shiftData[lineIndex]);
-                          if (duration) {
-                            const durationSelector = `.editable-cell[data-row="${currentRowIndex}"][data-line="2"][data-helper="${targetHelper.id}"][data-date="${startDate}"]`;
-                            const durationCell = document.querySelector(durationSelector) as HTMLElement;
-                            if (durationCell) {
+                          const isDayOffRow = checkIsDayOffRow(targetHelper.id, startDate, currentRowIndex);
+                          const isScheduled = scheduledDayOffs.has(`${targetHelper.id}-${startDate}`);
+                          const durationSelector = `.editable-cell[data-row="${currentRowIndex}"][data-line="2"][data-helper="${targetHelper.id}"][data-date="${startDate}"]`;
+                          const durationCell = document.querySelector(durationSelector) as HTMLElement;
+
+                          if (isDayOffRow || isScheduled) {
+                            if (durationCell) durationCell.textContent = '';
+                            shiftData[2] = '';
+                          } else {
+                            const duration = calculateTimeDuration(shiftData[lineIndex]);
+                            if (duration && durationCell) {
                               durationCell.textContent = duration;
                               shiftData[2] = duration;
                             }
@@ -2069,7 +2076,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     const newCanceledAt = existingShift?.canceledAt;
 
                     // 給与を計算（会議とその他は計算しない）
-                    const payCalculation = (serviceType === 'kaigi' || serviceType === 'other')
+                    const payCalculation = (serviceType === 'kaigi' || serviceType === 'other' || serviceType === 'yotei')
                       ? { regularHours: 0, nightHours: 0, regularPay: 0, nightPay: 0, totalPay: 0 }
                       : calculateShiftPay(serviceType, timeRange, startDate);
 
@@ -2167,12 +2174,20 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                       targetCell.textContent = dataToSave[lineIndex];
 
                       // 1段目（時間）の場合、3段目（時間数）を自動計算
+                      // ※ 休み希望/指定休の行では自動入力しない
                       if (lineIndex === 0 && dataToSave[lineIndex]) {
-                        const duration = calculateTimeDuration(dataToSave[lineIndex]);
-                        if (duration) {
-                          const durationSelector = `.editable-cell[data-row="${currentRow}"][data-line="2"][data-helper="${helperId}"][data-date="${date}"]`;
-                          const durationCell = document.querySelector(durationSelector) as HTMLElement;
-                          if (durationCell) {
+                        const rowIndexNum = parseInt(currentRow);
+                        const isDayOffRow = checkIsDayOffRow(helperId, date, rowIndexNum);
+                        const isScheduled = scheduledDayOffs.has(`${helperId}-${date}`);
+                        const durationSelector = `.editable-cell[data-row="${currentRow}"][data-line="2"][data-helper="${helperId}"][data-date="${date}"]`;
+                        const durationCell = document.querySelector(durationSelector) as HTMLElement;
+
+                        if (isDayOffRow || isScheduled) {
+                          if (durationCell) durationCell.textContent = '';
+                          dataToSave[2] = '';
+                        } else {
+                          const duration = calculateTimeDuration(dataToSave[lineIndex]);
+                          if (duration && durationCell) {
                             durationCell.textContent = duration;
                             dataToSave[2] = duration;
                           }
@@ -2244,7 +2259,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     const newCanceledAt = existingShift?.canceledAt;
 
                     // 給与を計算（会議とその他は計算しない）
-                    const payCalculation = (serviceType === 'kaigi' || serviceType === 'other')
+                    const payCalculation = (serviceType === 'kaigi' || serviceType === 'other' || serviceType === 'yotei')
                       ? { regularHours: 0, nightHours: 0, regularPay: 0, nightPay: 0, totalPay: 0 }
                       : calculateShiftPay(serviceType, timeRange, date);
 
@@ -3720,6 +3735,157 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     }
     menu.appendChild(deleteBtn);
 
+    // 予定（紫）背景の切り替え（右クリックで選択 → クリックで紫に）
+    // ※ 休み希望/指定休の行は対象外（背景優先ロジックを崩さない）
+    const parseRowKey = (key: string): { hId: string; dt: string; rowIdx: number } => {
+      const parts = key.split('-');
+      const rowIdx = parseInt(parts[parts.length - 1]);
+      const dt = parts.slice(parts.length - 4, parts.length - 1).join('-'); // YYYY-MM-DD
+      const hId = parts.slice(0, parts.length - 4).join('-');
+      return { hId, dt, rowIdx };
+    };
+
+    const parsedTargets = targetRows.map(parseRowKey).filter(t => t.hId && t.dt && !Number.isNaN(t.rowIdx));
+    const allAreYotei = parsedTargets.length > 0 && parsedTargets.every(({ hId, dt, rowIdx }) => {
+      const key = `${hId}-${dt}-${rowIdx}`;
+      return shiftMap.get(key)?.serviceType === 'yotei';
+    });
+
+    const purpleBtn = document.createElement('div');
+    const purpleCountText = parsedTargets.length > 1 ? ` (${parsedTargets.length}件)` : '';
+    purpleBtn.textContent = allAreYotei ? `🟣 予定（紫）を解除${purpleCountText}` : `🟣 予定（紫）にする${purpleCountText}`;
+    purpleBtn.style.padding = '8px 16px';
+    purpleBtn.style.cursor = 'pointer';
+    purpleBtn.style.borderTop = '1px solid #e5e7eb';
+    purpleBtn.onmouseover = () => purpleBtn.style.backgroundColor = '#f3f4f6';
+    purpleBtn.onmouseout = () => purpleBtn.style.backgroundColor = 'transparent';
+    purpleBtn.onclick = async () => {
+      const setToYotei = !allAreYotei;
+      const updatedShifts: Shift[] = [];
+
+      await Promise.all(parsedTargets.map(async ({ hId, dt, rowIdx }) => {
+        // 休み希望/指定休は対象外
+        const isDayOffRow = checkIsDayOffRow(hId, dt, rowIdx);
+        const isScheduled = scheduledDayOffs.has(`${hId}-${dt}`);
+        if (isDayOffRow || isScheduled) return;
+
+        const cellKey = `${hId}-${dt}-${rowIdx}`;
+        const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement | null;
+        const cells = td ? td.querySelectorAll('.editable-cell') : null;
+
+        // 背景を即時反映（DOM）
+        if (td) {
+          if (setToYotei) {
+            td.style.backgroundColor = SERVICE_CONFIG.yotei.bgColor;
+          } else {
+            td.style.backgroundColor = '#ffffff';
+          }
+        }
+        if (cells) {
+          cells.forEach(cell => {
+            const el = cell as HTMLElement;
+            if (setToYotei) {
+              el.style.backgroundColor = SERVICE_CONFIG.yotei.bgColor;
+            } else {
+              el.style.removeProperty('background-color');
+            }
+          });
+        }
+
+        const existingShift = shiftMap.get(cellKey);
+        if (setToYotei) {
+          // 予定（紫）へ
+          let newShift: Shift;
+          if (existingShift) {
+            newShift = {
+              ...existingShift,
+              serviceType: 'yotei',
+              // 予定は給与計算しない
+              regularHours: 0,
+              nightHours: 0,
+              regularPay: 0,
+              nightPay: 0,
+              totalPay: 0,
+              deleted: false
+            };
+          } else {
+            // まだShiftがない場合は、現在のセル内容から作成（最低限）
+            const readLine = (idx: number) => {
+              const sel = `.editable-cell[data-row="${rowIdx}"][data-line="${idx}"][data-helper="${hId}"][data-date="${dt}"]`;
+              const el = document.querySelector(sel) as HTMLElement | null;
+              return (el?.textContent ?? '').trimEnd();
+            };
+            const timeRange = readLine(0);
+            const clientInfo = readLine(1);
+            const durationStr = readLine(2);
+            const area = readLine(3);
+
+            const timeMatch = timeRange.match(/(\d{1,2}:\d{2})(?:\s*[-~]\s*(\d{1,2}:\d{2}))?/);
+            const startTime = timeMatch ? timeMatch[1] : '';
+            const endTime = timeMatch && timeMatch[2] ? timeMatch[2] : '';
+            const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
+            const duration = parseFloat(durationStr) || 0;
+
+            newShift = {
+              id: `shift-${hId}-${dt}-${rowIdx}`,
+              date: dt,
+              helperId: String(hId),
+              clientName,
+              serviceType: 'yotei',
+              startTime,
+              endTime,
+              duration,
+              area,
+              rowIndex: rowIdx,
+              regularHours: 0,
+              nightHours: 0,
+              regularPay: 0,
+              nightPay: 0,
+              totalPay: 0,
+              deleted: false
+            };
+          }
+
+          try {
+            await saveShiftWithCorrectYearMonth(newShift);
+            updatedShifts.push(newShift);
+          } catch (error) {
+            console.error('予定（紫）の保存に失敗しました:', error);
+          }
+        } else {
+          // 解除（yotei → other）
+          if (existingShift && existingShift.serviceType === 'yotei') {
+            const newShift: Shift = {
+              ...existingShift,
+              serviceType: 'other',
+              regularHours: 0,
+              nightHours: 0,
+              regularPay: 0,
+              nightPay: 0,
+              totalPay: 0,
+              deleted: false
+            };
+            try {
+              await saveShiftWithCorrectYearMonth(newShift);
+              updatedShifts.push(newShift);
+            } catch (error) {
+              console.error('予定（紫）の解除保存に失敗しました:', error);
+            }
+          }
+        }
+      }));
+
+      if (updatedShifts.length > 0) {
+        const updatedIds = new Set(updatedShifts.map(s => s.id));
+        const next = [...shifts.filter(s => !updatedIds.has(s.id)), ...updatedShifts];
+        onUpdateShifts(next);
+      }
+
+      if (document.body.contains(menu)) {
+        menu.remove();
+      }
+    };
+
     // 休み希望の設定/解除ボタン
     // Shift+クリックでの複数選択をチェック
     const selectedRowsForThisHelperDate = Array.from(selectedRows)
@@ -3772,7 +3938,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     setTimeout(() => {
       document.addEventListener('click', closeMenu);
     }, 0);
-  }, [deleteCare, selectedRows, setSelectedRows, dayOffRequests, toggleDayOff, saveDayOffToFirestore, selectedCells]);
+  }, [deleteCare, selectedRows, setSelectedRows, dayOffRequests, toggleDayOff, saveDayOffToFirestore, selectedCells, checkIsDayOffRow, scheduledDayOffs, shiftMap, shifts, onUpdateShifts]);
 
   // ドラッグ開始
   const handleDragStart = useCallback((e: React.DragEvent, helperId: string, date: string, rowIndex: number) => {
@@ -4697,16 +4863,23 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                     enterCountRef.set(cellKey, 0);
 
                                     // 1段目（時間入力）の場合、3段目（時間数）を自動計算
+                                    // ※ 休み希望/指定休の行では自動入力しない
                                     if (lineIndex === 0) {
                                       const timeText = e.currentTarget.textContent || '';
-                                      const duration = calculateTimeDuration(timeText);
+                                      const rowIndexNum = parseInt(currentRow || '0');
+                                      const isDayOffRow = checkIsDayOffRow(helperId, date, rowIndexNum);
+                                      const isScheduled = scheduledDayOffs.has(`${helperId}-${date}`);
 
-                                      if (duration) {
-                                        // 3段目のセルを探して自動入力
-                                        const thirdLineSelector = `.editable-cell[data-row="${currentRow}"][data-line="2"][data-helper="${helperId}"][data-date="${date}"]`;
-                                        const thirdLineCell = document.querySelector(thirdLineSelector) as HTMLElement;
+                                      // 3段目のセルを探す
+                                      const thirdLineSelector = `.editable-cell[data-row="${currentRow}"][data-line="2"][data-helper="${helperId}"][data-date="${date}"]`;
+                                      const thirdLineCell = document.querySelector(thirdLineSelector) as HTMLElement;
 
-                                        if (thirdLineCell) {
+                                      if (isDayOffRow || isScheduled) {
+                                        // 休み希望/指定休は時間数を自動入力しない（必要ならクリア）
+                                        if (thirdLineCell) thirdLineCell.textContent = '';
+                                      } else {
+                                        const duration = calculateTimeDuration(timeText);
+                                        if (duration && thirdLineCell) {
                                           thirdLineCell.textContent = duration;
                                         }
                                       }
@@ -4868,8 +5041,17 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                               const timeText = pasted;
                                               const durationSelector = `.editable-cell[data-row="${currentRow}"][data-line="2"][data-helper="${helperId}"][data-date="${date}"]`;
                                               const durationCell = safeQuerySelector<HTMLElement>(durationSelector);
+                                              const rowIndexNum = parseInt(currentRow || '0');
+                                              const isDayOffRow = checkIsDayOffRow(helperId, date, rowIndexNum);
+                                              const isScheduled = scheduledDayOffs.has(`${helperId}-${date}`);
 
-                                              if (timeText.trim() === '') {
+                                              if (isDayOffRow || isScheduled) {
+                                                // 休み希望/指定休の行では時間数を自動入力しない
+                                                if (durationCell) {
+                                                  safeSetTextContent(durationCell, '');
+                                                  dataToSave[2] = '';
+                                                }
+                                              } else if (timeText.trim() === '') {
                                                 // 時間が空なら時間数もクリア（ズレ防止）
                                                 if (durationCell) {
                                                   safeSetTextContent(durationCell, '');
@@ -5192,7 +5374,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                             const endTime = timeMatch && timeMatch[2] ? timeMatch[2] : '';
 
                                             // 給与を計算
-                                            const payCalculation = (serviceType === 'kaigi' || serviceType === 'other')
+                                            const payCalculation = (serviceType === 'kaigi' || serviceType === 'other' || serviceType === 'yotei')
                                               ? { regularHours: 0, nightHours: 0, regularPay: 0, nightPay: 0, totalPay: 0 }
                                               : calculateShiftPay(serviceType, timeRange, date);
 
