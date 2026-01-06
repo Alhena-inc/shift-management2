@@ -3752,9 +3752,16 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     };
 
     const parsedTargets = targetRows.map(parseRowKey).filter(t => t.hId && t.dt && !Number.isNaN(t.rowIdx));
+    const getExistingShiftByKey = (cellKey: string) => {
+      const fromMap = shiftMap.get(cellKey);
+      if (fromMap) return fromMap;
+      // shiftMapが古い瞬間があるので、常に最新参照のrefでも探す
+      const id = `shift-${cellKey}`;
+      return shiftsRef.current.find(s => s.id === id);
+    };
     const allAreYotei = parsedTargets.length > 0 && parsedTargets.every(({ hId, dt, rowIdx }) => {
       const key = `${hId}-${dt}-${rowIdx}`;
-      return shiftMap.get(key)?.serviceType === 'yotei';
+      return getExistingShiftByKey(key)?.serviceType === 'yotei';
     });
 
     const purpleBtn = document.createElement('div');
@@ -3767,13 +3774,25 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     purpleBtn.onmouseout = () => purpleBtn.style.backgroundColor = 'transparent';
     purpleBtn.onclick = async () => {
       const setToYotei = !allAreYotei;
+      // 二重クリック等で不安定にならないよう、操作中は無効化
+      purpleBtn.style.pointerEvents = 'none';
+      const originalText = purpleBtn.textContent;
+      purpleBtn.textContent = '💾 保存中...';
+
       const updatedShifts: Shift[] = [];
 
-      await Promise.all(parsedTargets.map(async ({ hId, dt, rowIdx }) => {
+      // 重複排除（複数選択状態によって同じキーが混ざることがある）
+      const uniqTargets = new Map<string, { hId: string; dt: string; rowIdx: number }>();
+      parsedTargets.forEach(t => {
+        const key = `${t.hId}-${t.dt}-${t.rowIdx}`;
+        uniqTargets.set(key, t);
+      });
+
+      for (const { hId, dt, rowIdx } of uniqTargets.values()) {
         // 休み希望/指定休は対象外
         const isDayOffRow = checkIsDayOffRow(hId, dt, rowIdx);
         const isScheduled = scheduledDayOffs.has(`${hId}-${dt}`);
-        if (isDayOffRow || isScheduled) return;
+        if (isDayOffRow || isScheduled) continue;
 
         const cellKey = `${hId}-${dt}-${rowIdx}`;
         const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement | null;
@@ -3798,7 +3817,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           });
         }
 
-        const existingShift = shiftMap.get(cellKey);
+        const existingShift = getExistingShiftByKey(cellKey);
         if (setToYotei) {
           // 予定（紫）へ
           let newShift: Shift;
@@ -3852,11 +3871,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             };
           }
 
-          try {
-            await saveShiftWithCorrectYearMonth(newShift);
+          // 既にyoteiなら保存不要
+          if (existingShift?.serviceType !== 'yotei') {
             updatedShifts.push(newShift);
-          } catch (error) {
-            console.error('予定（紫）の保存に失敗しました:', error);
           }
         } else {
           // 解除（yotei → other）
@@ -3871,25 +3888,48 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               totalPay: 0,
               deleted: false
             };
-            try {
-              await saveShiftWithCorrectYearMonth(newShift);
-              updatedShifts.push(newShift);
-            } catch (error) {
-              console.error('予定（紫）の解除保存に失敗しました:', error);
-            }
+            updatedShifts.push(newShift);
           }
         }
-      }));
+      }
 
       if (updatedShifts.length > 0) {
         const updatedIds = new Set(updatedShifts.map(s => s.id));
-        const next = [...shifts.filter(s => !updatedIds.has(s.id)), ...updatedShifts];
+        // まずローカルをref基準で即時更新（直後のonBlur等でotherに上書きされないように）
+        const next = [...shiftsRef.current.filter(s => !updatedIds.has(s.id)), ...updatedShifts];
+        shiftsRef.current = next;
         onUpdateShifts(next);
+
+        // Firestoreは一括保存（セルごとのPromise.allより安定）
+        const delays = [0, 400, 1200];
+        let saved = false;
+        let lastError: unknown = null;
+        for (let i = 0; i < delays.length; i++) {
+          if (delays[i] > 0) {
+            await new Promise(resolve => setTimeout(resolve, delays[i]));
+          }
+          try {
+            await saveShiftsByYearMonth(updatedShifts);
+            saved = true;
+            break;
+          } catch (e) {
+            lastError = e;
+            console.error(`予定（紫）の一括保存に失敗（retry ${i + 1}/${delays.length}）:`, e);
+          }
+        }
+        if (!saved) {
+          console.error('予定（紫）の保存が最終的に失敗しました:', lastError);
+          alert('予定（紫）の保存に失敗しました。通信状況を確認して、もう一度お試しください。');
+        }
       }
 
       if (document.body.contains(menu)) {
         menu.remove();
       }
+
+      // ボタン状態を戻す
+      purpleBtn.style.pointerEvents = 'auto';
+      purpleBtn.textContent = originalText || (setToYotei ? '🟣 予定（紫）にする' : '🟣 予定（紫）を解除');
     };
     // メニューに追加（← これが抜けていたため表示されなかった）
     menu.appendChild(purpleBtn);
