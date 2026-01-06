@@ -269,6 +269,12 @@ async function saveShiftsByYearMonth(shifts: Shift[]): Promise<void> {
 const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: Props) => {
   console.log('🔄 ShiftTable レンダリング', performance.now());
 
+  // 非同期コールバック（setTimeout/requestAnimationFrame）から最新のshiftsを参照できるようにする
+  const shiftsRef = useRef<Shift[]>(shifts);
+  useEffect(() => {
+    shiftsRef.current = shifts;
+  }, [shifts]);
+
   // キャンセル済みシフトのログ
   const canceledShifts = shifts.filter(s => s.cancelStatus);
   if (canceledShifts.length > 0) {
@@ -2071,7 +2077,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     const endTime = timeMatch && timeMatch[2] ? timeMatch[2] : '';
 
                     const shiftId = `shift-${targetHelper.id}-${startDate}-${currentRowIndex}`;
-                    const existingShift = shifts.find(s => s.id === shiftId);
+                    const existingShift = shiftsRef.current.find(s => s.id === shiftId);
                     const newCancelStatus = existingShift?.cancelStatus;
                     const newCanceledAt = existingShift?.canceledAt;
 
@@ -2254,7 +2260,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     const endTime = timeMatch && timeMatch[2] ? timeMatch[2] : '';
 
                     const shiftId = `shift-${helperId}-${date}-${currentRow}`;
-                    const existingShift = shifts.find(s => s.id === shiftId);
+                    const existingShift = shiftsRef.current.find(s => s.id === shiftId);
                     const newCancelStatus = existingShift?.cancelStatus;
                     const newCanceledAt = existingShift?.canceledAt;
 
@@ -2933,7 +2939,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
       // 2. shifts配列からも確認
       const shiftId = `shift-${hId}-${dt}-${rowIdx}`;
-      const existingShift = shifts.find(s => s.id === shiftId);
+      const existingShift = shiftsRef.current.find(s => s.id === shiftId);
       console.log(`  2. shifts配列確認 (${shiftId}):`, existingShift?.cancelStatus);
       if (existingShift?.cancelStatus === 'keep_time' || existingShift?.cancelStatus === 'remove_time') {
         console.log('  ✅ shifts配列でキャンセル状態を検出');
@@ -3000,7 +3006,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
           // 既存のシフトデータを取得
           const shiftId = `shift-${hId}-${dt}-${rowIdx}`;
-          const existingShift = shifts.find(s => s.id === shiftId);
+          const existingShift = shiftsRef.current.find(s => s.id === shiftId);
 
           if (!existingShift) {
             console.warn(`シフトが見つかりません: ${shiftId}`);
@@ -3345,7 +3351,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
           // 既存のシフトを確認
           const shiftId = `shift-${hId}-${dt}-${rowIdx}`;
-          const existingShift = shifts.find(s => s.id === shiftId);
+          const existingShift = shiftsRef.current.find(s => s.id === shiftId);
           console.log(`🔍 既存シフト確認: ${shiftId}`, existingShift ? '存在する' : '新規作成');
 
           const duration = parseFloat(durationStr) || 0;
@@ -3585,7 +3591,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
           // 既存のシフトを確認
           const shiftId = `shift-${hId}-${dt}-${rowIdx}`;
-          const existingShift = shifts.find(s => s.id === shiftId);
+          const existingShift = shiftsRef.current.find(s => s.id === shiftId);
           console.log(`🔍 既存シフト確認（時間削除）: ${shiftId}`, existingShift ? '存在する' : '新規作成');
 
           // 既存のシフトがある場合は引き継ぎ、ない場合は新規作成
@@ -5127,7 +5133,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                                         // 既存のシフトを確認（右クリックで予定(紫)にした場合など、()なしでもserviceTypeを保持したい）
                                         const shiftId = `shift-${helperId}-${date}-${currentRow}`;
-                                        const existingShift = shifts.find(s => s.id === shiftId);
+                                        const existingShift = shiftsRef.current.find(s => s.id === shiftId);
 
                                         if (match) {
                                           const serviceLabel = match[1];
@@ -5387,7 +5393,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                               : calculateShiftPay(serviceType, timeRange, date);
 
                                             const shiftId = `shift-${helperId}-${date}-${currentRow}`;
-                                            const existingShift = shifts.find(s => s.id === shiftId);
+                                            const existingShift = shiftsRef.current.find(s => s.id === shiftId);
 
                                             // ()が無い場合でも、既存がyoteiならyoteiを保持（紫がリロードで消えるのを防止）
                                             if (!match && existingShift?.serviceType === 'yotei') {
