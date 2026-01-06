@@ -1628,13 +1628,14 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     return td.dataset.cellKey || null;
   }, []);
 
-  // pointermoveハンドラ（即座に反映）
+  // pointermoveハンドラ（即座に反映・高精度版）
   const handlePointerMove = useCallback((e: PointerEvent) => {
     if (!isDraggingForSelectionRef.current) return;
 
     // 実際にドラッグが開始されたことを記録
     justStartedDraggingRef.current = true;
 
+    // 座標からセルを取得
     const cellKey = getCellFromPoint(e.clientX, e.clientY);
     if (!cellKey) return;
 
@@ -1646,11 +1647,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     if (!selectedRowsRef.current.has(cellKey)) {
       selectedRowsRef.current.add(cellKey);
 
-      // DOM直接操作で即座に青枠表示
+      // DOM直接操作で即座に青枠表示（太くて目立つスタイル）
       const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
       if (td) {
-        td.style.setProperty('outline', '2px solid #3b82f6', 'important');
-        td.style.setProperty('outline-offset', '-2px', 'important');
+        td.style.setProperty('outline', '3px solid #2563eb', 'important');
+        td.style.setProperty('outline-offset', '-3px', 'important');
+        td.style.setProperty('z-index', '10', 'important');
+        td.style.setProperty('background-color', 'rgba(59, 130, 246, 0.1)', 'important');
         lastSelectedRowTdsRef.current.push(td);
       }
     }
@@ -1667,10 +1670,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     // React stateを最後に一度だけ同期
     setSelectedRows(new Set(selectedRowsRef.current));
 
+    // 選択数をコンソールに表示（デバッグ用）
+    console.log(`✅ ${selectedRowsRef.current.size}個のセルを選択しました`);
+
     // フラグをリセット（少し遅延させて、clickイベント後に確実にリセット）
     setTimeout(() => {
       justStartedDraggingRef.current = false;
-    }, 100);
+    }, 50);
   }, [handlePointerMove]);
 
   // Shift+ドラッグ用イベントハンドラ
@@ -2376,7 +2382,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         // DOM要素のoutlineも削除
         lastSelectedRowTdsRef.current.forEach(td => {
           td.style.removeProperty('outline');
-          td.style.removeProperty('outline-offset');
+          td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index'); td.style.removeProperty('background-color');
+          td.style.removeProperty('z-index');
+          td.style.removeProperty('background-color');
         });
         lastSelectedRowTdsRef.current = [];
         syncSelection();
@@ -2665,7 +2673,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       // DOM要素の青枠も削除
       lastSelectedRowTdsRef.current.forEach(td => {
         td.style.removeProperty('outline');
-        td.style.removeProperty('outline-offset');
+        td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index'); td.style.removeProperty('background-color');
       });
       lastSelectedRowTdsRef.current = [];
 
@@ -2762,7 +2770,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       // DOM要素の青枠も削除
       lastSelectedRowTdsRef.current.forEach(td => {
         td.style.removeProperty('outline');
-        td.style.removeProperty('outline-offset');
+        td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index'); td.style.removeProperty('background-color');
       });
       lastSelectedRowTdsRef.current = [];
 
@@ -2865,7 +2873,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       // 前回選択されたtdのoutlineのみ削除
       lastSelectedRowTdsRef.current.forEach(td => {
         td.style.removeProperty('outline');
-        td.style.removeProperty('outline-offset');
+        td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index'); td.style.removeProperty('background-color');
       });
       lastSelectedRowTdsRef.current = [];
 
@@ -3207,7 +3215,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         // 前回選択されたtdのoutlineのみ削除
         lastSelectedRowTdsRef.current.forEach(td => {
           td.style.removeProperty('outline');
-          td.style.removeProperty('outline-offset');
+          td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index'); td.style.removeProperty('background-color');
         });
         lastSelectedRowTdsRef.current = [];
 
@@ -3442,7 +3450,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       // 前回選択されたtdのoutlineのみ削除
       lastSelectedRowTdsRef.current.forEach(td => {
         td.style.removeProperty('outline');
-        td.style.removeProperty('outline-offset');
+        td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index'); td.style.removeProperty('background-color');
       });
       lastSelectedRowTdsRef.current = [];
 
@@ -3684,7 +3692,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       // 前回選択されたtdのoutlineのみ削除
       lastSelectedRowTdsRef.current.forEach(td => {
         td.style.removeProperty('outline');
-        td.style.removeProperty('outline-offset');
+        td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index'); td.style.removeProperty('background-color');
       });
       lastSelectedRowTdsRef.current = [];
 
@@ -4316,7 +4324,37 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                               e.currentTarget.draggable = true;
                             }
 
-                            // Shift+ドラッグの複数選択機能は無効化
+                            // Shift+ドラッグで複数選択
+                            if (e.shiftKey && e.button === 0) {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              
+                              // 現在のセルキーを取得
+                              const cellKey = `${helper.id}-${day.date}-${rowIndex}`;
+                              
+                              // ドラッグ開始フラグ
+                              isDraggingForSelectionRef.current = true;
+                              justStartedDraggingRef.current = false;
+                              lastProcessedCellRef.current = cellKey;
+                              
+                              // 最初のセルを選択
+                              if (!selectedRowsRef.current.has(cellKey)) {
+                                selectedRowsRef.current.add(cellKey);
+                                const td = e.currentTarget as HTMLElement;
+                                td.style.setProperty('outline', '3px solid #2563eb', 'important');
+                                td.style.setProperty('outline-offset', '-3px', 'important');
+                                td.style.setProperty('z-index', '10', 'important');
+                                lastSelectedRowTdsRef.current.push(td);
+                              }
+                              
+                              // ポインターキャプチャ
+                              (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                              
+                              // グローバルイベントリスナー追加
+                              document.addEventListener('pointermove', handlePointerMove, { passive: true });
+                              document.addEventListener('pointerup', handlePointerUp, { once: true });
+                              return;
+                            }
 
                             // 右クリックは無視
                             if (e.button === 2) return;
@@ -4329,7 +4367,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                             selectedRowsRef.current.clear();
                             lastSelectedRowTdsRef.current.forEach(td => {
                               td.style.removeProperty('outline');
-                              td.style.removeProperty('outline-offset');
+                              td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index'); td.style.removeProperty('background-color');
                             });
                             lastSelectedRowTdsRef.current = [];
 
