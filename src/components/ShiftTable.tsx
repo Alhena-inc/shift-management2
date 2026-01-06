@@ -5363,6 +5363,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                             const [timeRange, clientInfo, durationStr, area] = lines;
 
                                             // サービスタイプを抽出
+                                            // ※ 予定（紫=yotei）は()を付けない表示なので、編集保存でotherに落ちないよう既存値を保持する
                                             const match = clientInfo.match(/\((.+?)\)/);
                                             let serviceType: ServiceType = 'other';
                                             if (match) {
@@ -5387,6 +5388,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                                             const shiftId = `shift-${helperId}-${date}-${currentRow}`;
                                             const existingShift = shifts.find(s => s.id === shiftId);
+
+                                            // ()が無い場合でも、既存がyoteiならyoteiを保持（紫がリロードで消えるのを防止）
+                                            if (!match && existingShift?.serviceType === 'yotei') {
+                                              serviceType = 'yotei';
+                                            }
 
                                             let newCancelStatus = existingShift?.cancelStatus;
                                             let newCanceledAt = existingShift?.canceledAt;
