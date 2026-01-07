@@ -626,7 +626,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         menu.remove();
       }
     }
-  }, [updateTotalsForHelperAndDate, undoStackRef, onUpdateShifts]);
+  }, [updateTotalsForHelperAndDate, undoStackRef, onUpdateShifts, dayOffRequests]);
 
   // Undo関数
   const undo = useCallback(() => {
@@ -2876,31 +2876,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       console.log(`🗑️ ケア削除処理開始 - ${targetRows.length}件`);
       console.log(`対象行:`, targetRows);
 
-      // 削除対象の休み希望キーを収集
-      const dayOffKeysToDelete = new Set<string>();
-      targetRows.forEach(key => {
-        const parts = key.split('-');
-        const hId = parts[0];
-        const dt = parts.slice(1, parts.length - 1).join('-');
-        const dayOffKey = `${hId}-${dt}`;
-        if (dayOffRequests.has(dayOffKey)) {
-          dayOffKeysToDelete.add(dayOffKey);
-        }
-      });
-
-      // 休み希望を一括削除
-      if (dayOffKeysToDelete.size > 0) {
-        setDayOffRequests(prev => {
-          const next = new Map(prev);
-          dayOffKeysToDelete.forEach(key => {
-            next.delete(key);
-            console.log(`🏖️ 休み希望を削除: ${key}`);
-          });
-          // Firestoreに保存
-          saveDayOffToFirestore(next);
-          return next;
-        });
-      }
+      // ケア削除では休み希望は維持する（休み希望の削除は別メニューで行う）
 
       // 全ての行を並列処理で一気に削除
       await Promise.all(targetRows.map(async (key) => {
@@ -3983,21 +3959,75 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     // いずれかの行が休み希望かチェック
     const isDayOff = rowsToCheck.some(row => dayOffRequests.has(`${helperId}-${date}-${row}`));
 
-    const dayOffBtn = document.createElement('div');
     // 選択数を表示
     const countText = rowsToCheck.length > 1 ? ` (${rowsToCheck.length}件)` : '';
-    dayOffBtn.textContent = isDayOff ? `✅ 休み希望を解除${countText}` : `🏖️ 休み希望を設定${countText}`;
-    dayOffBtn.style.padding = '8px 16px';
-    dayOffBtn.style.cursor = 'pointer';
-    dayOffBtn.style.borderTop = '1px solid #e5e7eb';
-    dayOffBtn.onmouseover = () => dayOffBtn.style.backgroundColor = isDayOff ? '#fee2e2' : '#fef3c7';
-    dayOffBtn.onmouseout = () => dayOffBtn.style.backgroundColor = 'transparent';
-    dayOffBtn.onclick = () => {
-      toggleDayOff(helperId, date, rowIndex);
-      menu.remove();
-    };
 
-    menu.appendChild(dayOffBtn);
+    // 休み希望を設定するボタン（休み希望がない場合のみ表示）
+    if (!isDayOff) {
+      const setDayOffBtn = document.createElement('div');
+      setDayOffBtn.textContent = `🏖️ 休み希望を設定${countText}`;
+      setDayOffBtn.style.padding = '8px 16px';
+      setDayOffBtn.style.cursor = 'pointer';
+      setDayOffBtn.style.borderTop = '1px solid #e5e7eb';
+      setDayOffBtn.style.color = '#d97706';
+      setDayOffBtn.onmouseover = () => setDayOffBtn.style.backgroundColor = '#fef3c7';
+      setDayOffBtn.onmouseout = () => setDayOffBtn.style.backgroundColor = 'transparent';
+      setDayOffBtn.onclick = () => {
+        toggleDayOff(helperId, date, rowIndex);
+        menu.remove();
+      };
+      menu.appendChild(setDayOffBtn);
+    }
+
+    // 休み希望を削除するボタン（休み希望がある場合のみ表示）
+    if (isDayOff) {
+      const deleteDayOffBtn = document.createElement('div');
+      deleteDayOffBtn.textContent = `🗑️ 休み希望を削除${countText}`;
+      deleteDayOffBtn.style.padding = '8px 16px';
+      deleteDayOffBtn.style.cursor = 'pointer';
+      deleteDayOffBtn.style.borderTop = '1px solid #e5e7eb';
+      deleteDayOffBtn.style.color = '#dc2626';
+      deleteDayOffBtn.onmouseover = () => deleteDayOffBtn.style.backgroundColor = '#fee2e2';
+      deleteDayOffBtn.onmouseout = () => deleteDayOffBtn.style.backgroundColor = 'transparent';
+      deleteDayOffBtn.onclick = () => {
+        // 休み希望を削除（ケアは維持）
+        const keysToDelete = rowsToCheck.map(row => `${helperId}-${date}-${row}`);
+        setDayOffRequests(prev => {
+          const next = new Map(prev);
+          keysToDelete.forEach(key => {
+            if (next.has(key)) {
+              next.delete(key);
+              console.log(`🏖️ 休み希望を削除: ${key}`);
+              
+              // DOMの背景色を白に戻す（ケアがある場合はケアの色に）
+              const parts = key.split('-');
+              const rowIdx = parseInt(parts[parts.length - 1]);
+              const hId = parts[0];
+              const dt = parts.slice(1, parts.length - 1).join('-');
+              
+              const shiftKey = `${hId}-${dt}-${rowIdx}`;
+              const existingShift = shiftMap.get(shiftKey);
+              const bgColor = existingShift ? (SERVICE_CONFIG[existingShift.serviceType]?.bgColor || '#ffffff') : '#ffffff';
+              
+              const cellSelector = `.editable-cell[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
+              const cells = document.querySelectorAll(cellSelector);
+              cells.forEach(cell => {
+                (cell as HTMLElement).style.backgroundColor = bgColor;
+              });
+              const td = document.querySelector(`td[data-cell-key="${shiftKey}"]`) as HTMLElement;
+              if (td) {
+                td.style.backgroundColor = bgColor;
+              }
+            }
+          });
+          // Firestoreに保存
+          saveDayOffToFirestore(next);
+          return next;
+        });
+        menu.remove();
+      };
+      menu.appendChild(deleteDayOffBtn);
+    }
     document.body.appendChild(menu);
 
     // 外部クリックでメニューを閉じる
