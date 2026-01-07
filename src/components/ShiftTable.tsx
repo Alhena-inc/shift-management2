@@ -4544,9 +4544,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                               ? 'grabbing'
                               : 'grab',
                             opacity: draggedCell && draggedCell.helperId === helper.id && draggedCell.date === day.date && draggedCell.rowIndex === rowIndex ? 0.5 : 1,
-                            backgroundColor: isSelectedRow
-                              ? 'rgba(33, 150, 243, 0.05)'
-                              : cellDisplayData.bgColor
+                            backgroundColor: cellDisplayData.bgColor,
+                            // 選択時はoutlineのみで表示（背景色は維持）
+                            outline: isSelectedRow ? '3px solid #2563eb' : undefined,
+                            outlineOffset: isSelectedRow ? '-3px' : undefined
                           }}
                           title={cellDisplayData.hasWarning ? '⚠️ 終了時刻が入力されていません' : undefined}
                           onPointerDown={(e) => {
