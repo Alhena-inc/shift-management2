@@ -610,6 +610,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     try {
       await deleteShift(shiftId);
       console.log('✅ Firestoreから削除完了:', shiftId);
+      
+      // React stateのshiftsからも削除（再レンダリングをトリガー）
+      const updatedShifts = shiftsRef.current.filter(s => s.id !== shiftId);
+      onUpdateShifts(updatedShifts);
+      console.log('✅ React stateからも削除完了');
     } catch (error) {
       console.error('❌ 削除に失敗しました:', error);
     }
@@ -621,7 +626,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         menu.remove();
       }
     }
-  }, [updateTotalsForHelperAndDate, undoStackRef]);
+  }, [updateTotalsForHelperAndDate, undoStackRef, onUpdateShifts]);
 
   // Undo関数
   const undo = useCallback(() => {
