@@ -478,7 +478,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   }, [calculateServiceTotal]);
 
   // ケアを削除する関数（安全版）
-  const deleteCare = useCallback(async (helperId: string, date: string, rowIndex: number, skipMenuClose: boolean = false) => {
+  // skipStateUpdate: 複数削除時に一括でstate更新するため、個別のstate更新をスキップ
+  const deleteCare = useCallback(async (helperId: string, date: string, rowIndex: number, skipMenuClose: boolean = false, skipStateUpdate: boolean = false): Promise<string> => {
     // 削除前のデータを保存（Undo用）
     const data: string[] = [];
     let backgroundColor = '#ffffff';
@@ -611,10 +612,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       await deleteShift(shiftId);
       console.log('✅ Firestoreから削除完了:', shiftId);
       
-      // React stateのshiftsからも削除（再レンダリングをトリガー）
-      const updatedShifts = shiftsRef.current.filter(s => s.id !== shiftId);
-      onUpdateShifts(updatedShifts);
-      console.log('✅ React stateからも削除完了');
+      // 複数削除時はstate更新をスキップ（呼び出し元で一括更新）
+      if (!skipStateUpdate) {
+        // React stateのshiftsからも削除（再レンダリングをトリガー）
+        const updatedShifts = shiftsRef.current.filter(s => s.id !== shiftId);
+        onUpdateShifts(updatedShifts);
+        console.log('✅ React stateからも削除完了');
+      }
     } catch (error) {
       console.error('❌ 削除に失敗しました:', error);
     }
@@ -626,6 +630,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         menu.remove();
       }
     }
+    
+    return shiftId; // 削除したシフトIDを返す
   }, [updateTotalsForHelperAndDate, undoStackRef, onUpdateShifts, dayOffRequests]);
 
   // Undo関数
@@ -2878,15 +2884,25 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
       // ケア削除では休み希望は維持する（休み希望の削除は別メニューで行う）
 
-      // 全ての行を並列処理で一気に削除
+      // 削除するシフトIDを収集
+      const deletedShiftIds: string[] = [];
+
+      // 全ての行を並列処理で一気に削除（state更新はスキップ）
       await Promise.all(targetRows.map(async (key) => {
         const parts = key.split('-');
         const rowIdx = parseInt(parts[parts.length - 1]);
         const hId = parts[0];
         const dt = parts.slice(1, parts.length - 1).join('-');
         console.log(`削除中: ${key} (helperId=${hId}, date=${dt}, rowIndex=${rowIdx})`);
-        return deleteCare(hId, dt, rowIdx, true); // skipMenuClose=trueを渡す
+        const shiftId = await deleteCare(hId, dt, rowIdx, true, true); // skipMenuClose=true, skipStateUpdate=true
+        deletedShiftIds.push(shiftId);
       }));
+
+      // 一括でReact stateを更新（すべての削除が完了してから）
+      const deletedIdSet = new Set(deletedShiftIds);
+      const updatedShifts = shiftsRef.current.filter(s => !deletedIdSet.has(s.id));
+      onUpdateShifts(updatedShifts);
+      console.log(`✅ React stateから ${deletedShiftIds.length}件を一括削除完了`);
 
       // 複数選択をクリア
       selectedRowsRef.current.clear();
