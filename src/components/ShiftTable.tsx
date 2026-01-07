@@ -477,9 +477,19 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     });
   }, [calculateServiceTotal]);
 
+  // Undoアクションの型
+  type UndoActionData = {
+    helperId: string;
+    date: string;
+    rowIndex: number;
+    data: string[];
+    backgroundColor: string;
+  };
+
   // ケアを削除する関数（安全版）
   // skipStateUpdate: 複数削除時に一括でstate更新するため、個別のstate更新をスキップ
-  const deleteCare = useCallback(async (helperId: string, date: string, rowIndex: number, skipMenuClose: boolean = false, skipStateUpdate: boolean = false): Promise<string> => {
+  // skipUndoPush: 複数削除時に一括でUndoスタックに保存するため、個別のpushをスキップ
+  const deleteCare = useCallback(async (helperId: string, date: string, rowIndex: number, skipMenuClose: boolean = false, skipStateUpdate: boolean = false, skipUndoPush: boolean = false): Promise<{ shiftId: string; undoData: UndoActionData }> => {
     // 削除前のデータを保存（Undo用）
     const data: string[] = [];
     let backgroundColor = '#ffffff';
@@ -505,14 +515,18 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       }
     }
 
-    // Undoスタックに保存
-    undoStackRef.push({
+    const undoData: UndoActionData = {
       helperId,
       date,
       rowIndex,
       data,
       backgroundColor,
-    });
+    };
+
+    // 複数削除時はUndoスタックへのpushをスキップ（呼び出し元で一括保存）
+    if (!skipUndoPush) {
+      undoStackRef.push(undoData);
+    }
 
     // 4つのラインすべてをクリア（安全版）
     for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
@@ -631,7 +645,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       }
     }
     
-    return shiftId; // 削除したシフトIDを返す
+    return { shiftId, undoData }; // 削除したシフトIDとUndoデータを返す
   }, [updateTotalsForHelperAndDate, undoStackRef, onUpdateShifts, dayOffRequests]);
 
   // Undo関数
@@ -726,6 +740,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     }
 
     // shifts配列を更新（すべてのアクションを反映）
+    // 既存のシフトを更新
+    const existingShiftIds = new Set(shifts.map(s => s.id));
     const updatedShifts = shifts.map(s => {
       const action = actions.find(a => s.id === `shift-${a.helperId}-${a.date}-${a.rowIndex}`);
       if (action) {
@@ -780,31 +796,92 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           nightPay: payCalculation.nightPay,
           totalPay: payCalculation.totalPay,
           cancelStatus,
+          deleted: false,
           ...(cancelStatus && { canceledAt: Timestamp.now() })
         };
       }
       return s;
     });
 
-    // 画面を即座に更新（タイムラグなし）
-    onUpdateShifts(updatedShifts);
-
-    // Firestoreへの保存を並列実行（画面更新をブロックしない）
+    // 削除されていたシフトを復元（shifts配列に存在しないもの）
+    const restoredShifts: Shift[] = [];
     actions.forEach((action) => {
       const shiftId = `shift-${action.helperId}-${action.date}-${action.rowIndex}`;
-      const updatedShift = updatedShifts.find(s => s.id === shiftId);
-      if (updatedShift) {
-        // 削除フラグがある場合は論理削除
-        if (updatedShift.deleted) {
-          softDeleteShift(shiftId)
-            .then(() => console.log('↶ Undoしました（削除状態に戻す）'))
-            .catch((error: unknown) => console.error('Undo後の保存に失敗しました:', error));
-        } else {
-          // 通常の保存
-          saveShiftWithCorrectYearMonth(updatedShift)
-            .then(() => console.log('↶ Undoしました（Firestoreに保存完了）', updatedShift))
-            .catch((error: unknown) => console.error('Undo後の保存に失敗しました:', error));
+      if (!existingShiftIds.has(shiftId)) {
+        const { helperId, date, rowIndex, data, backgroundColor } = action;
+        const [timeRange, clientInfo, durationStr, area] = data;
+
+        // データが空でない場合のみ復元
+        if (!data.every((line: string) => line.trim() === '')) {
+          const match = clientInfo.match(/\((.+?)\)/);
+          let serviceType: ServiceType = 'shintai';
+          let cancelStatus: 'keep_time' | 'remove_time' | undefined = undefined;
+
+          if (match) {
+            const serviceLabel = match[1];
+            const serviceEntry = Object.entries(SERVICE_CONFIG).find(
+              ([_, config]) => config.label === serviceLabel
+            );
+            if (serviceEntry) {
+              serviceType = serviceEntry[0] as ServiceType;
+            }
+          }
+
+          // 背景色が赤の場合はキャンセル状態
+          if (backgroundColor === '#f87171' || backgroundColor === 'rgb(248, 113, 113)') {
+            cancelStatus = parseFloat(durationStr) === 0 ? 'remove_time' : 'keep_time';
+          }
+
+          const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
+          const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+          const startTime = timeMatch ? timeMatch[1] : '';
+          const endTime = timeMatch ? timeMatch[2] : '';
+          const payCalculation = calculateShiftPay(serviceType, timeRange, date);
+
+          const restoredShift: Shift = {
+            id: shiftId,
+            date,
+            helperId: String(helperId),
+            clientName,
+            serviceType,
+            startTime,
+            endTime,
+            duration: parseFloat(durationStr) || 0,
+            area,
+            rowIndex,
+            regularHours: payCalculation.regularHours,
+            nightHours: payCalculation.nightHours,
+            regularPay: payCalculation.regularPay,
+            nightPay: payCalculation.nightPay,
+            totalPay: payCalculation.totalPay,
+            deleted: false,
+            ...(cancelStatus && { cancelStatus, canceledAt: Timestamp.now() })
+          };
+          restoredShifts.push(restoredShift);
+          console.log(`↶ 削除されたシフトを復元: ${shiftId}`);
         }
+      }
+    });
+
+    // 復元したシフトを追加
+    const finalShifts = [...updatedShifts, ...restoredShifts];
+
+    // 画面を即座に更新（タイムラグなし）
+    onUpdateShifts(finalShifts);
+
+    // Firestoreへの保存を並列実行（画面更新をブロックしない）
+    const allShiftsToSave = [...updatedShifts.filter(s => actions.find(a => s.id === `shift-${a.helperId}-${a.date}-${a.rowIndex}`)), ...restoredShifts];
+    allShiftsToSave.forEach((shiftToSave) => {
+      // 削除フラグがある場合は論理削除
+      if (shiftToSave.deleted) {
+        softDeleteShift(shiftToSave.id)
+          .then(() => console.log('↶ Undoしました（削除状態に戻す）'))
+          .catch((error: unknown) => console.error('Undo後の保存に失敗しました:', error));
+      } else {
+        // 通常の保存
+        saveShiftWithCorrectYearMonth(shiftToSave)
+          .then(() => console.log('↶ Undoしました（Firestoreに保存完了）', shiftToSave))
+          .catch((error: unknown) => console.error('Undo後の保存に失敗しました:', error));
       }
     });
   }, [undoStackRef, redoStackRef, updateTotalsForHelperAndDate, year, month, shifts, onUpdateShifts]);
@@ -2884,19 +2961,33 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
       // ケア削除では休み希望は維持する（休み希望の削除は別メニューで行う）
 
-      // 削除するシフトIDを収集
+      // 削除するシフトIDとUndoデータを収集
       const deletedShiftIds: string[] = [];
+      const undoGroup: Array<{
+        helperId: string;
+        date: string;
+        rowIndex: number;
+        data: string[];
+        backgroundColor: string;
+      }> = [];
 
-      // 全ての行を並列処理で一気に削除（state更新はスキップ）
+      // 全ての行を並列処理で一気に削除（state更新とUndo pushをスキップ）
       await Promise.all(targetRows.map(async (key) => {
         const parts = key.split('-');
         const rowIdx = parseInt(parts[parts.length - 1]);
         const hId = parts[0];
         const dt = parts.slice(1, parts.length - 1).join('-');
         console.log(`削除中: ${key} (helperId=${hId}, date=${dt}, rowIndex=${rowIdx})`);
-        const shiftId = await deleteCare(hId, dt, rowIdx, true, true); // skipMenuClose=true, skipStateUpdate=true
+        const { shiftId, undoData } = await deleteCare(hId, dt, rowIdx, true, true, true); // skipMenuClose=true, skipStateUpdate=true, skipUndoPush=true
         deletedShiftIds.push(shiftId);
+        undoGroup.push(undoData);
       }));
+
+      // 複数削除をグループとしてUndoスタックに保存（Cmd+Zで一括復元）
+      if (undoGroup.length > 0) {
+        undoStackRef.push(undoGroup);
+        console.log(`📦 Undoグループ保存: ${undoGroup.length}件の削除を1つのグループとして保存`);
+      }
 
       // 一括でReact stateを更新（すべての削除が完了してから）
       const deletedIdSet = new Set(deletedShiftIds);
