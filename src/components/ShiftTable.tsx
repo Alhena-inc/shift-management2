@@ -1679,14 +1679,17 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     // 選択数をコンソールに表示（デバッグ用）
     console.log(`✅ ${selectedRowsRef.current.size}個のセルを選択しました`);
 
+    // 選択をStateに同期（右クリックメニューで使用）
+    syncSelection();
+
     // フラグをリセット（少し遅延させて、clickイベント後に確実にリセット）
     setTimeout(() => {
       justStartedDraggingRef.current = false;
     }, 50);
-  }, [handlePointerMove]);
+  }, [handlePointerMove, syncSelection]);
 
   // Shift+ドラッグ用イベントハンドラ
-  const handleCellPointerDown = useCallback((e: React.PointerEvent, _helperId: string, _date: string, _rowIndex: number) => {
+  const handleCellPointerDown = useCallback((e: React.PointerEvent, helperId: string, date: string, rowIndex: number) => {
     if (!e.shiftKey) return;
 
     e.preventDefault();
@@ -1698,6 +1701,20 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     isDraggingForSelectionRef.current = true;
     justStartedDraggingRef.current = false; // まだドラッグしていない
     lastProcessedCellRef.current = null;
+
+    // 最初にクリックしたセルも選択に追加
+    const cellKey = `${helperId}-${date}-${rowIndex}`;
+    if (!selectedRowsRef.current.has(cellKey)) {
+      selectedRowsRef.current.add(cellKey);
+      // DOM直接操作で即座に青枠表示
+      const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
+      if (td) {
+        td.style.setProperty('outline', '3px solid #2563eb', 'important');
+        td.style.setProperty('outline-offset', '-3px', 'important');
+        td.style.setProperty('z-index', '10', 'important');
+        lastSelectedRowTdsRef.current.push(td);
+      }
+    }
 
     // documentレベルでpointermoveを監視
     document.addEventListener('pointermove', handlePointerMove, { passive: true });
@@ -4544,12 +4561,19 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                             // 右クリックは無視
                             if (e.button === 2) return;
 
+                            // Shift+クリック/ドラッグで複数選択
+                            if (e.shiftKey) {
+                              handleCellPointerDown(e, helper.id, day.date, rowIndex);
+                              return;
+                            }
+
                             // 通常のクリック・ドラッグでセル選択
                             const isMultiSelect = e.ctrlKey || e.metaKey;
 
                             // 既存のShift+ドラッグ選択をクリア（Refのみ更新・再レンダリングなし）
                             // setSelectedRows(new Set());  // ← React再レンダリング防止のため削除
                             selectedRowsRef.current.clear();
+                            setSelectedRows(new Set());
                             lastSelectedRowTdsRef.current.forEach(td => {
                               td.style.removeProperty('outline');
                               td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index');
