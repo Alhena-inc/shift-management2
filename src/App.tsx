@@ -12,6 +12,7 @@ import HomePage from './pages/HomePage';
 import HelperManagementPage from './pages/HelperManagementPage';
 import HelperDetailPage from './pages/HelperDetailPage';
 import PayslipDemo from './pages/PayslipDemo';
+import RangeSelectionDemo from './pages/RangeSelectionDemo';
 import { helpers as initialHelpers } from './data/mockData';
 import { SERVICE_CONFIG } from './types';
 import type { Helper, Shift } from './types';
@@ -96,6 +97,11 @@ function App() {
   // /payslip-demo の形式の場合（給与明細デモ）
   if (path === '/payslip-demo' || path === '/payslip-demo/') {
     return <PayslipDemo />;
+  }
+
+  // /range-selection-demo の形式の場合（範囲選択デモ）
+  if (path === '/range-selection-demo' || path === '/range-selection-demo/') {
+    return <RangeSelectionDemo />;
   }
 
   // /payslip の形式の場合（給与明細一覧）

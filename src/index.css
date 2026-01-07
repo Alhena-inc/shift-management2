@@ -149,3 +149,59 @@ table tbody td:empty {
   height: 60px;
   min-height: 60px;
 }
+
+/* ===== スプレッドシート風 範囲選択スタイル ===== */
+
+/* 範囲選択中のセル - 背景色 */
+.range-selected {
+  background-color: rgba(66, 133, 244, 0.15) !important;
+}
+
+/* 範囲選択 - 外周ボーダー（上） */
+.range-border-top {
+  border-top: 2px solid #4285F4 !important;
+}
+
+/* 範囲選択 - 外周ボーダー（下） */
+.range-border-bottom {
+  border-bottom: 2px solid #4285F4 !important;
+}
+
+/* 範囲選択 - 外周ボーダー（左） */
+.range-border-left {
+  border-left: 2px solid #4285F4 !important;
+}
+
+/* 範囲選択 - 外周ボーダー（右） */
+.range-border-right {
+  border-right: 2px solid #4285F4 !important;
+}
+
+/* 範囲選択時のカーソル */
+.range-selectable {
+  cursor: cell;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 範囲選択中（ドラッグ中）のカーソル */
+.range-selecting {
+  cursor: crosshair;
+}
+
+/* 選択オーバーレイ - アニメーションなし（即座に反映） */
+.selection-overlay {
+  transition: none;
+  pointer-events: none;
+}
+
+/* 範囲選択対象のテーブルセル */
+.range-cell {
+  position: relative;
+  transition: background-color 0.05s ease;
+}
+
+/* 範囲選択で選択中のセル - 内部ボーダーを非表示 */
+.range-selected.range-inner {
+  border-color: transparent !important;
+}
