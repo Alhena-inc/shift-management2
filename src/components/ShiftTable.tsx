@@ -4887,8 +4887,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                             // ★ 前回選択されたtdの枠を削除
                             if (lastSelectedTdRef.current && lastSelectedTdRef.current !== e.currentTarget) {
-                              lastSelectedTdRef.current.style.removeProperty('outline');
-                              lastSelectedTdRef.current.style.removeProperty('outline-offset');
+                              lastSelectedTdRef.current.style.removeProperty('box-shadow');
                               lastSelectedTdRef.current.style.removeProperty('z-index');
                             }
                             
@@ -4897,10 +4896,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                               el.classList.remove('cell-selected');
                             });
 
-                            // ★ 現在のtd（長方形）に青い枠を表示
+                            // ★ 現在のtd（長方形80x60px）に青い枠を表示（box-shadowで内側に）
                             const currentTd = e.currentTarget as HTMLElement;
-                            currentTd.style.setProperty('outline', '2px solid #2563eb', 'important');
-                            currentTd.style.setProperty('outline-offset', '-2px', 'important');
+                            currentTd.style.setProperty('box-shadow', 'inset 0 0 0 2px #2563eb', 'important');
                             currentTd.style.setProperty('z-index', '5', 'important');
                             lastSelectedTdRef.current = currentTd;
                             
