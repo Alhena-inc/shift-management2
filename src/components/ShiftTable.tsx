@@ -389,7 +389,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     data: [] as string[],
     backgroundColor: '#ffffff',
     cancelStatus: undefined as 'none' | 'keep_time' | 'remove_time' | undefined,
-    canceledAt: undefined as any
+    canceledAt: undefined as any,
+    hasCopiedData: false  // ★ 内部コピーが行われたかどうかのフラグ
   }), []);
 
   // 日付全体のコピーバッファ
@@ -1852,6 +1853,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     copyBufferRef.backgroundColor = backgroundColor;
     copyBufferRef.cancelStatus = shift?.cancelStatus;
     copyBufferRef.canceledAt = shift?.canceledAt;
+    
+    // ★ データがある場合のみ内部コピーフラグを設定
+    copyBufferRef.hasCopiedData = data.some(line => line.trim() !== '');
 
     // ★ 視覚的フィードバック：コピー時に緑色の枠を一瞬表示
     const bgCellSelectorForFeedback = `.editable-cell[data-row="${rowIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
@@ -1876,10 +1880,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
   // セルにペーストする関数
   const pasteCellData = useCallback((helperId: string, date: string, rowIndex: number) => {
-    if (copyBufferRef.data.length === 0) {
+    // データがない場合はスキップ
+    if (!copyBufferRef.hasCopiedData || !copyBufferRef.data.some(line => line.trim() !== '')) {
       console.log('⚠️ コピーされたデータがありません');
       return;
     }
+    
+    console.log('🎯 ペースト開始:', { helperId, date, rowIndex, data: copyBufferRef.data });
 
     // ペースト前の状態をUndoスタックに保存
     const beforeData: string[] = [];
@@ -2018,8 +2025,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     selectedCellRef.rowIndex = rowIndex;
     currentTargetCellRef.current = { helperId, date, rowIndex };
 
-    console.log('📌 セルにペーストしました');
-  }, [copyBufferRef, updateTotalsForHelperAndDate, year, month, dayOffRequests, selectedCellRef, currentTargetCellRef]);
+    console.log('✅ セルにペーストしました:', copyBufferRef.data);
+  }, [copyBufferRef, updateTotalsForHelperAndDate, year, month, dayOffRequests, selectedCellRef, currentTargetCellRef, undoStackRef, redoStackRef]);
 
   // キーボードイベント（Cmd+C / Cmd+V / Cmd+Z / Cmd+Shift+Z / 直接入力）のリスナー
   useEffect(() => {
@@ -2088,6 +2095,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
         if (selectedCellRef.helperId && selectedCellRef.rowIndex >= 0) {
           e.preventDefault();
+
+          // ★ 内部コピーバッファにデータがある場合は優先使用
+          if (copyBufferRef.hasCopiedData && copyBufferRef.data.some(line => line.trim() !== '')) {
+            console.log('📌 内部コピーバッファからペーストします');
+            pasteCellData(selectedCellRef.helperId, selectedCellRef.date, selectedCellRef.rowIndex);
+            return;
+          }
 
           // クリップボードからデータを取得してペースト
           navigator.clipboard.readText().then(async (clipboardText) => {
