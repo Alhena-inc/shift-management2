@@ -3134,13 +3134,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       });
       lastSelectedRowTdsRef.current = [];
 
-      // 前回選択されたセルの青枠を削除
-      if (lastSelectedTdRef.current) {
-        lastSelectedTdRef.current.style.removeProperty('outline');
-        lastSelectedTdRef.current.style.removeProperty('outline-offset');
-        lastSelectedTdRef.current.style.removeProperty('z-index');
-        lastSelectedTdRef.current = null;
-      }
+      // 前回選択された行の青枠を削除
+      document.querySelectorAll('.line-selected').forEach(el => {
+        el.classList.remove('line-selected');
+      });
+      lastSelectedTdRef.current = null;
       lastSelectedCellRef.current = null;
 
       // 要素が存在する場合のみ削除
@@ -3496,13 +3494,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         });
         lastSelectedRowTdsRef.current = [];
 
-        // 前回選択されたセルの青枠を削除
-        if (lastSelectedTdRef.current) {
-          lastSelectedTdRef.current.style.removeProperty('outline');
-          lastSelectedTdRef.current.style.removeProperty('outline-offset');
-          lastSelectedTdRef.current.style.removeProperty('z-index');
-          lastSelectedTdRef.current = null;
-        }
+        // 前回選択された行の青枠を削除
+        document.querySelectorAll('.line-selected').forEach(el => {
+          el.classList.remove('line-selected');
+        });
+        lastSelectedTdRef.current = null;
         lastSelectedCellRef.current = null;
 
         // 要素が存在する場合のみ削除
@@ -3734,13 +3730,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       });
       lastSelectedRowTdsRef.current = [];
 
-      // 前回選択されたセルの青枠を削除
-      if (lastSelectedTdRef.current) {
-        lastSelectedTdRef.current.style.removeProperty('outline');
-        lastSelectedTdRef.current.style.removeProperty('outline-offset');
-        lastSelectedTdRef.current.style.removeProperty('z-index');
-        lastSelectedTdRef.current = null;
-      }
+      // 前回選択された行の青枠を削除
+      document.querySelectorAll('.line-selected').forEach(el => {
+        el.classList.remove('line-selected');
+      });
+      lastSelectedTdRef.current = null;
       lastSelectedCellRef.current = null;
 
       // 要素が存在する場合のみ削除
@@ -3979,13 +3973,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       });
       lastSelectedRowTdsRef.current = [];
 
-      // 前回選択されたセルの青枠を削除
-      if (lastSelectedTdRef.current) {
-        lastSelectedTdRef.current.style.removeProperty('outline');
-        lastSelectedTdRef.current.style.removeProperty('outline-offset');
-        lastSelectedTdRef.current.style.removeProperty('z-index');
-        lastSelectedTdRef.current = null;
-      }
+      // 前回選択された行の青枠を削除
+      document.querySelectorAll('.line-selected').forEach(el => {
+        el.classList.remove('line-selected');
+      });
+      lastSelectedTdRef.current = null;
       lastSelectedCellRef.current = null;
 
       // 要素が存在する場合のみ削除
@@ -4885,26 +4877,25 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                             selectedCellRef.date = day.date;
                             selectedCellRef.rowIndex = rowIndex;
 
-                            // ★ 前回選択されたtdの枠を削除
-                            if (lastSelectedTdRef.current && lastSelectedTdRef.current !== e.currentTarget) {
-                              lastSelectedTdRef.current.style.removeProperty('box-shadow');
-                              lastSelectedTdRef.current.style.removeProperty('z-index');
-                            }
+                            // ★ 前回選択された行の青枠を削除
+                            document.querySelectorAll('.line-selected').forEach(el => {
+                              el.classList.remove('line-selected');
+                            });
                             
                             // ★ cell-selectedクラスも削除
                             document.querySelectorAll('.cell-selected').forEach(el => {
                               el.classList.remove('cell-selected');
                             });
 
-                            // ★ 現在のtd（長方形80x60px）に青い枠を表示（box-shadowで内側に）
+                            // ★ tdの青枠は設定しない（1行単位で設定するため）
+                            // クリックされた位置から対象の行を特定
                             const currentTd = e.currentTarget as HTMLElement;
-                            currentTd.style.setProperty('box-shadow', 'inset 0 0 0 2px #2563eb', 'important');
-                            currentTd.style.setProperty('z-index', '5', 'important');
                             lastSelectedTdRef.current = currentTd;
                             
-                            // ★ 現在のセルを記録
+                            // ★ 現在のセルを記録（最初の行をデフォルトで選択）
                             const firstCell = currentTd.querySelector('.editable-cell') as HTMLElement;
                             if (firstCell) {
+                              firstCell.classList.add('line-selected');
                               lastSelectedCellRef.current = firstCell;
                             }
 
@@ -5051,9 +5042,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                     }
                                   }}
                                   onMouseDown={(e) => {
-                                    // ★ 青枠はtdのonPointerDownで設定済みなので、ここでは設定しない
-                                    // イベントの伝播を止めない（tdのハンドラが先に処理）
-                                    
                                     // 右クリックは無視
                                     if (e.button === 2) return;
 
@@ -5064,6 +5052,15 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                     if (isEditable) {
                                       return;
                                     }
+
+                                    // ★ 前回選択された行の青枠を削除
+                                    document.querySelectorAll('.line-selected').forEach(el => {
+                                      el.classList.remove('line-selected');
+                                    });
+
+                                    // ★ クリックした行に青枠を表示
+                                    currentCell.classList.add('line-selected');
+                                    lastSelectedCellRef.current = currentCell;
 
                                     // 休み希望のセルかチェック（共通関数を使用）
                                     const isDayOff = checkIsDayOffRow(helper.id, day.date, rowIndex);
@@ -5090,9 +5087,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                       }
                                     }
 
-                                    // ★ 現在のセルを記録（青枠はtdで設定済み）
+                                    // ★ 現在のセルを記録
                                     currentCell.classList.add('cell-selected');
-                                    lastSelectedCellRef.current = currentCell;
 
                                     // ★★★ 他の処理は全て setTimeout で遅延 ★★★
                                     setTimeout(() => {

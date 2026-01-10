@@ -64,8 +64,8 @@ table {
 
 /* シフトセルのスタイル - シンプル版 */
 .editable-cell {
-  outline: none !important;
-  box-shadow: none !important;
+  outline: none;
+  box-shadow: none;
   box-sizing: border-box;
   min-height: 15px;
   /* 各ラインの最小高さ（60px ÷ 4行） */
@@ -79,12 +79,16 @@ table {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* フォーカス時も青枠を表示しない（tdのみで表示） */
+/* フォーカス時はブラウザデフォルトの枠を非表示 */
 .editable-cell:focus,
-.editable-cell:focus-visible,
-.editable-cell:focus-within {
-  outline: none !important;
-  box-shadow: none !important;
+.editable-cell:focus-visible {
+  outline: none;
+}
+
+/* 選択された1行に青枠を表示 */
+.editable-cell.line-selected {
+  box-shadow: inset 0 0 0 2px #2563eb !important;
+  z-index: 5;
 }
 
 /* 最後のライン（line-3）は下線なし */
