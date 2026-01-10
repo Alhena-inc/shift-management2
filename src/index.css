@@ -152,6 +152,16 @@ table tbody td {
   box-sizing: border-box;
 }
 
+/* シフト表のセルサイズを強制（横長の長方形） */
+table tbody td[data-cell-key] {
+  width: 80px !important;
+  min-width: 80px !important;
+  max-width: 80px !important;
+  height: 60px !important;
+  min-height: 60px !important;
+  max-height: 60px !important;
+}
+
 /* 空のセルも高さを保持 */
 table tbody td:empty {
   height: 60px;
