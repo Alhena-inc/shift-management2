@@ -2113,6 +2113,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               const shiftsToSave: Shift[] = [];
               const updatedHelperDates = new Set<string>();
 
+              // ★ Undo用：ペースト前の状態を保存
+              const undoGroup2D: UndoActionData[] = [];
+
               // 各セルを処理（行位置を保持）
               for (let colIndex = 0; colIndex < grid[0]?.length || 0; colIndex++) {
                 const targetHelperIndex = startHelperIndex + colIndex;
@@ -2135,6 +2138,30 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                   if (shiftData.some(line => line.trim() !== '')) {
                     const currentRowIndex = startRowIndex + Math.floor(i / 4);
+
+                    // ★ Undo用：ペースト前のセルデータを保存
+                    const beforeData: string[] = [];
+                    let beforeBackgroundColor = '#ffffff';
+                    for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
+                      const cellSelector = `.editable-cell[data-row="${currentRowIndex}"][data-line="${lineIndex}"][data-helper="${targetHelper.id}"][data-date="${startDate}"]`;
+                      const cell = document.querySelector(cellSelector) as HTMLElement;
+                      beforeData.push(cell ? cell.textContent || '' : '');
+                    }
+                    const bgCellSelector = `.editable-cell[data-row="${currentRowIndex}"][data-helper="${targetHelper.id}"][data-date="${startDate}"]`;
+                    const bgCells = document.querySelectorAll(bgCellSelector);
+                    if (bgCells.length > 0) {
+                      const parentTd = bgCells[0].closest('td') as HTMLElement;
+                      if (parentTd) {
+                        beforeBackgroundColor = parentTd.style.backgroundColor || '#ffffff';
+                      }
+                    }
+                    undoGroup2D.push({
+                      helperId: targetHelper.id,
+                      date: startDate,
+                      rowIndex: currentRowIndex,
+                      data: beforeData,
+                      backgroundColor: beforeBackgroundColor
+                    });
 
                     // DOM要素にデータを設定
                     for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
@@ -2276,6 +2303,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                   updatedShifts.push(...shiftsToSave);
                   onUpdateShifts(updatedShifts);
 
+                  // ★ Undoスタックに追加（2次元グループとして）
+                  if (undoGroup2D.length > 0) {
+                    undoStackRef.push(undoGroup2D);
+                    redoStackRef.length = 0; // Redoスタックをクリア
+                    console.log(`📦 Undoグループ保存: ${undoGroup2D.length}件の2Dペーストを1つのグループとして保存`);
+                  }
+
                   console.log(`✅ ${shiftsToSave.length}件のシフトをペーストして保存しました`);
                 } catch (error) {
                   console.error('ペーストデータの保存に失敗しました:', error);
@@ -2309,6 +2343,37 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 }
 
                 console.log(`📦 ${shiftGroups.length}件のシフトをペーストします`);
+
+                // ★ Undo用：ペースト前の状態を保存
+                const undoGroup: UndoActionData[] = [];
+                for (let groupIndex = 0; groupIndex < shiftGroups.length; groupIndex++) {
+                  const currentRow = startRowIndex + groupIndex;
+                  const beforeData: string[] = [];
+                  let beforeBackgroundColor = '#ffffff';
+
+                  for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
+                    const cellSelector = `.editable-cell[data-row="${currentRow}"][data-line="${lineIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
+                    const cell = document.querySelector(cellSelector) as HTMLElement;
+                    beforeData.push(cell ? cell.textContent || '' : '');
+                  }
+
+                  const bgCellSelector = `.editable-cell[data-row="${currentRow}"][data-helper="${helperId}"][data-date="${date}"]`;
+                  const bgCells = document.querySelectorAll(bgCellSelector);
+                  if (bgCells.length > 0) {
+                    const parentTd = bgCells[0].closest('td') as HTMLElement;
+                    if (parentTd) {
+                      beforeBackgroundColor = parentTd.style.backgroundColor || '#ffffff';
+                    }
+                  }
+
+                  undoGroup.push({
+                    helperId,
+                    date,
+                    rowIndex: currentRow,
+                    data: beforeData,
+                    backgroundColor: beforeBackgroundColor
+                  });
+                }
 
                 const shiftsToSave: Shift[] = [];
 
@@ -2453,6 +2518,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     );
                     updatedShifts.push(...shiftsToSave);
                     onUpdateShifts(updatedShifts);
+
+                    // ★ Undoスタックに追加（グループとして）
+                    if (undoGroup.length > 0) {
+                      undoStackRef.push(undoGroup);
+                      redoStackRef.length = 0; // Redoスタックをクリア
+                      console.log(`📦 Undoグループ保存: ${undoGroup.length}件のペーストを1つのグループとして保存`);
+                    }
 
                     console.log(`✅ ${shiftsToSave.length}件のシフトをペーストして保存しました`);
                   } catch (error) {
