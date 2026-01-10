@@ -4760,10 +4760,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                         key={day.isEmpty ? `empty-${dayIndex}-${helper.id}` : `${day.date}-${helper.id}`}
                         className="font-bold"
                         style={{
-                          width: '80px',
+                          width: '120px',
                           height: '2px',
-                          minWidth: '80px',
-                          maxWidth: '80px',
+                          minWidth: '120px',
+                          maxWidth: '120px',
                           minHeight: '2px',
                           maxHeight: '2px',
                           padding: '0',
@@ -4789,8 +4789,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             <tbody style={{ contain: 'layout style paint' }}>
               {/* 入力スペース（5行） */}
               {[0, 1, 2, 3, 4].map((rowIndex) => (
-                <tr key={`input-${rowIndex}`} style={{ height: '60px', minHeight: '60px' }}>
-                  <td className="border p-1 sticky left-0 bg-gray-50 z-10 w-20" style={{ height: '60px', minHeight: '60px' }}></td>
+                <tr key={`input-${rowIndex}`} style={{ height: '50px', minHeight: '50px' }}>
+                  <td className="border p-1 sticky left-0 bg-gray-50 z-10 w-20" style={{ height: '50px', minHeight: '50px' }}></td>
                   {week.days.map((day, dayIndex) =>
                     sortedHelpers.map((helper, helperIndex) => {
                       const isLastHelper = helperIndex === sortedHelpers.length - 1;
@@ -4802,11 +4802,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                             key={`empty-${dayIndex}-${helper.id}-input-${rowIndex}`}
                             className="bg-gray-300 p-0"
                             style={{
-                              width: '80px',
-                              minWidth: '80px',
-                              maxWidth: '80px',
-                              minHeight: '60px',
-                              height: '60px',
+                              width: '120px',
+                              minWidth: '120px',
+                              maxWidth: '120px',
+                              minHeight: '50px',
+                              height: '50px',
                               padding: '0',
                               boxSizing: 'border-box',
                               border: '1px solid #374151',
@@ -4830,11 +4830,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                           className="bg-white p-0"
                           draggable={true}
                           style={{
-                            width: '80px',
-                            minWidth: '80px',
-                            maxWidth: '80px',
-                            minHeight: '60px',
-                            height: '60px',
+                            width: '120px',
+                            minWidth: '120px',
+                            maxWidth: '120px',
+                            minHeight: '50px',
+                            height: '50px',
                             padding: '0',
                             boxSizing: 'border-box',
                             border: cellDisplayData.hasWarning ? '3px solid #f97316' : '1px solid #374151',
