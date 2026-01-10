@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { Helper } from '../types';
 import { loadHelpers, saveHelpers } from '../services/firestoreService';
 
-type TabType = 'basic' | 'qualifications' | 'services' | 'employment' | 'salary';
+type TabType = 'basic' | 'qualifications' | 'salary';
 
 const HelperDetailPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('basic');
@@ -103,8 +103,6 @@ const HelperDetailPage: React.FC = () => {
   const tabs = [
     { id: 'basic' as TabType, label: '基本' },
     { id: 'qualifications' as TabType, label: '資格' },
-    { id: 'services' as TabType, label: '対応サービス' },
-    { id: 'employment' as TabType, label: '勤務' },
     { id: 'salary' as TabType, label: '給与' },
   ];
 
@@ -115,14 +113,6 @@ const HelperDetailPage: React.FC = () => {
     '同行援護従事者',
     '行動援護従事者',
     '重度訪問介護従事者',
-  ];
-
-  const serviceTypeOptions = [
-    { value: 'shintai', label: '身体介護' },
-    { value: 'kaji', label: '家事援助' },
-    { value: 'judo', label: '重度訪問介護' },
-    { value: 'doko', label: '同行援護' },
-    { value: 'kodo_engo', label: '行動援護' },
   ];
 
   if (isLoading) {
@@ -398,78 +388,7 @@ const HelperDetailPage: React.FC = () => {
             </div>
           )}
 
-          {/* タブ3: 対応サービス */}
-          {activeTab === 'services' && (
-            <div className="space-y-6">
-              <h2 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">対応可能サービス</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {serviceTypeOptions.map((service) => (
-                  <label key={service.value} className="flex items-center gap-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={helper.serviceTypes?.includes(service.value) || false}
-                      onChange={() => toggleArrayItem('serviceTypes', service.value)}
-                      className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                    />
-                    <span className="text-gray-700 font-medium">{service.label}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* タブ4: 勤務 */}
-          {activeTab === 'employment' && (
-            <div className="space-y-6">
-              <h2 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">勤務情報</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    雇用形態 <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={helper.employmentType || ''}
-                    onChange={(e) => handleChange('employmentType', e.target.value)}
-                    className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="">選択してください</option>
-                    <option value="fulltime">正社員</option>
-                    <option value="contract">契約社員</option>
-                    <option value="parttime">パート</option>
-                    <option value="temporary">派遣</option>
-                    <option value="outsourced">業務委託</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    入社日
-                  </label>
-                  <input
-                    type="date"
-                    value={helper.hireDate || ''}
-                    onChange={(e) => handleChange('hireDate', e.target.value)}
-                    className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    ステータス
-                  </label>
-                  <select
-                    value={helper.status || 'active'}
-                    onChange={(e) => handleChange('status', e.target.value)}
-                    className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="active">在籍中</option>
-                    <option value="on-leave">休職中</option>
-                    <option value="retired">退職済み</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* タブ5: 給与 */}
+          {/* タブ3: 給与 */}
           {activeTab === 'salary' && (
             <div className="space-y-8">
               {/* 給与タイプ選択 */}

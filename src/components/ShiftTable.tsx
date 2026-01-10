@@ -1853,6 +1853,24 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     copyBufferRef.cancelStatus = shift?.cancelStatus;
     copyBufferRef.canceledAt = shift?.canceledAt;
 
+    // ★ 視覚的フィードバック：コピー時に緑色の枠を一瞬表示
+    const bgCellSelectorForFeedback = `.editable-cell[data-row="${rowIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
+    const feedbackCells = document.querySelectorAll(bgCellSelectorForFeedback);
+    if (feedbackCells.length > 0) {
+      const parentTd = feedbackCells[0].closest('td') as HTMLElement;
+      if (parentTd) {
+        const originalOutline = parentTd.style.outline;
+        parentTd.style.setProperty('outline', '3px solid #22c55e', 'important'); // 緑色
+        parentTd.style.setProperty('outline-offset', '-3px', 'important');
+        
+        // 0.3秒後に元に戻す（青色の選択枠に）
+        setTimeout(() => {
+          parentTd.style.setProperty('outline', '2px solid #2563eb', 'important');
+          parentTd.style.setProperty('outline-offset', '-2px', 'important');
+        }, 300);
+      }
+    }
+
     console.log('📋 セルをコピーしました:', data, 'cancelStatus:', shift?.cancelStatus);
   }, [copyBufferRef, shiftMap]);
 
@@ -1977,8 +1995,31 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
     saveData();
 
+    // ★ 視覚的フィードバック：ペースト時に緑色の枠を一瞬表示
+    const bgCellSelectorForFeedback = `.editable-cell[data-row="${rowIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
+    const feedbackCells = document.querySelectorAll(bgCellSelectorForFeedback);
+    if (feedbackCells.length > 0) {
+      const parentTd = feedbackCells[0].closest('td') as HTMLElement;
+      if (parentTd) {
+        parentTd.style.setProperty('outline', '3px solid #22c55e', 'important'); // 緑色
+        parentTd.style.setProperty('outline-offset', '-3px', 'important');
+        
+        // 0.3秒後に青色の選択枠に
+        setTimeout(() => {
+          parentTd.style.setProperty('outline', '2px solid #2563eb', 'important');
+          parentTd.style.setProperty('outline-offset', '-2px', 'important');
+        }, 300);
+      }
+    }
+
+    // ★ 選択状態を更新（ペースト先を選択状態に）
+    selectedCellRef.helperId = helperId;
+    selectedCellRef.date = date;
+    selectedCellRef.rowIndex = rowIndex;
+    currentTargetCellRef.current = { helperId, date, rowIndex };
+
     console.log('📌 セルにペーストしました');
-  }, [copyBufferRef, updateTotalsForHelperAndDate, year, month, dayOffRequests]);
+  }, [copyBufferRef, updateTotalsForHelperAndDate, year, month, dayOffRequests, selectedCellRef, currentTargetCellRef]);
 
   // キーボードイベント（Cmd+C / Cmd+V / Cmd+Z / Cmd+Shift+Z / 直接入力）のリスナー
   useEffect(() => {
@@ -4723,22 +4764,35 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                             });
                             lastSelectedRowTdsRef.current = [];
 
-                            // Ctrl/Cmdキーなしの場合は選択をクリア（ドラッグ選択を新規開始）
-                            // if (!isMultiSelect) {
-                            //   setSelectedCells(new Set());  // ← React再レンダリング防止のため削除
-                            // }
+                            // ★ コピー&ペースト用に現在選択されているセルを記録
+                            selectedCellRef.helperId = helper.id;
+                            selectedCellRef.date = day.date;
+                            selectedCellRef.rowIndex = rowIndex;
 
-                            // セル選択を追加
-                            // const cellKey = `${helper.id}-${day.date}-${rowIndex}`;
-                            // setSelectedCells(prev => {  // ← React再レンダリング防止のため削除
-                            //   const next = new Set(prev);
-                            //   if (isMultiSelect && next.has(cellKey)) {
-                            //     next.delete(cellKey);
-                            //   } else {
-                            //     next.add(cellKey);
-                            //   }
-                            //   return next;
-                            // });
+                            // ★ 前回選択されたセルの枠を削除
+                            if (lastSelectedCellRef.current) {
+                              const prevTd = lastSelectedCellRef.current.closest('td') as HTMLElement;
+                              if (prevTd) {
+                                prevTd.style.removeProperty('outline');
+                                prevTd.style.removeProperty('outline-offset');
+                                prevTd.style.removeProperty('z-index');
+                              }
+                            }
+
+                            // ★ 現在のセルに青い枠を表示（選択状態を視覚化）
+                            const currentTd = e.currentTarget as HTMLElement;
+                            currentTd.style.setProperty('outline', '2px solid #2563eb', 'important');
+                            currentTd.style.setProperty('outline-offset', '-2px', 'important');
+                            currentTd.style.setProperty('z-index', '5', 'important');
+
+                            // ★ 現在のセルを記録（次回のクリアに使用）
+                            const firstCell = currentTd.querySelector('.editable-cell') as HTMLElement;
+                            if (firstCell) {
+                              lastSelectedCellRef.current = firstCell;
+                            }
+
+                            // currentTargetCellRefも更新（ペースト先として使用）
+                            currentTargetCellRef.current = { helperId: helper.id, date: day.date, rowIndex };
 
                             isSelectingCellsRef.current = true;
                           }}
