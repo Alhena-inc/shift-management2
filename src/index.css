@@ -67,12 +67,12 @@ table {
   outline: none !important;
   box-shadow: none !important;
   box-sizing: border-box;
-  min-height: 12px;
-  /* 各ラインの最小高さ（50px ÷ 4行 = 12.5px） */
-  height: 12px;
-  padding: 0px 2px;
-  font-size: 10px;
-  line-height: 12px;
+  min-height: 15px;
+  /* 各ラインの最小高さ（60px ÷ 4行） */
+  height: 15px;
+  padding: 1px 2px;
+  font-size: 11px;
+  line-height: 13px;
   /* 4行区切りの境界線 */
   border-bottom: 1px solid #e5e7eb;
   /* モバイルのタップハイライト無効 */
@@ -94,8 +94,8 @@ table {
 
 /* 空のセルでも境界線を表示 */
 .editable-cell:empty {
-  min-height: 12px;
-  height: 12px;
+  min-height: 15px;
+  height: 15px;
   border-bottom: 1px solid #e5e7eb;
 }
 
@@ -141,31 +141,31 @@ table {
 }
 
 table tbody tr {
-  height: 50px;
-  min-height: 50px;
+  height: 60px;
+  min-height: 60px;
 }
 
 table tbody td {
-  height: 50px;
-  min-height: 50px;
+  height: 60px;
+  min-height: 60px;
   vertical-align: top;
   box-sizing: border-box;
 }
 
-/* シフト表のセルサイズを強制（横長の長方形：スプレッドシート風） */
+/* シフト表のセルサイズを強制（横長の長方形） */
 table tbody td[data-cell-key] {
-  width: 120px !important;
-  min-width: 120px !important;
-  max-width: 120px !important;
-  height: 50px !important;
-  min-height: 50px !important;
-  max-height: 50px !important;
+  width: 80px !important;
+  min-width: 80px !important;
+  max-width: 80px !important;
+  height: 60px !important;
+  min-height: 60px !important;
+  max-height: 60px !important;
 }
 
 /* 空のセルも高さを保持 */
 table tbody td:empty {
-  height: 50px;
-  min-height: 50px;
+  height: 60px;
+  min-height: 60px;
 }
 
 /* ===== スプレッドシート風 範囲選択スタイル ===== */
