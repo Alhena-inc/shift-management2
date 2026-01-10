@@ -372,18 +372,44 @@ const HelperDetailPage: React.FC = () => {
           {activeTab === 'qualifications' && (
             <div className="space-y-6">
               <h2 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">保有資格</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {qualificationOptions.map((qual) => (
-                  <label key={qual} className="flex items-center gap-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={helper.qualifications?.includes(qual) || false}
-                      onChange={() => toggleArrayItem('qualifications', qual)}
-                      className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                    />
-                    <span className="text-gray-700 font-medium">{qual}</span>
-                  </label>
-                ))}
+              <div className="grid grid-cols-1 gap-4">
+                {qualificationOptions.map((qual) => {
+                  const isChecked = helper.qualifications?.includes(qual) || false;
+                  const acquiredDate = helper.qualificationDates?.[qual] || '';
+                  
+                  return (
+                    <div key={qual} className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleArrayItem('qualifications', qual)}
+                          className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                        />
+                        <span className="text-gray-700 font-medium flex-1">{qual}</span>
+                        {isChecked && (
+                          <div className="flex items-center gap-2">
+                            <label className="text-sm text-gray-600">取得日:</label>
+                            <input
+                              type="date"
+                              value={acquiredDate}
+                              onChange={(e) => {
+                                const newDates = { ...(helper.qualificationDates || {}) };
+                                if (e.target.value) {
+                                  newDates[qual] = e.target.value;
+                                } else {
+                                  delete newDates[qual];
+                                }
+                                handleChange('qualificationDates', newDates);
+                              }}
+                              className="px-3 py-1 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

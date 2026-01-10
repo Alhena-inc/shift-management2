@@ -78,6 +78,7 @@ export interface Helper {
 
   // 資格・スキル
   qualifications?: string[];   // 資格
+  qualificationDates?: Record<string, string>;  // 資格取得日 { '介護福祉士': '2020-04-15', ... }
   serviceTypes?: string[];     // サービスタイプ
   commuteMethods?: string[];   // 通勤方法
 
