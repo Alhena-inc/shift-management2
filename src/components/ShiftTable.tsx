@@ -5053,8 +5053,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                     }
                                   }}
                                   onMouseDown={(e) => {
-                                    console.time('⚡ 青枠表示');
-
+                                    // ★ 青枠はtdのonPointerDownで設定済みなので、ここでは設定しない
+                                    // イベントの伝播を止めない（tdのハンドラが先に処理）
+                                    
                                     // 右クリックは無視
                                     if (e.button === 2) return;
 
@@ -5069,8 +5070,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                     // 休み希望のセルかチェック（共通関数を使用）
                                     const isDayOff = checkIsDayOffRow(helper.id, day.date, rowIndex);
 
-                                    console.log(`🔍 休み希望チェック: helper=${helper.id}, date=${day.date}, row=${rowIndex}, isDayOff=${isDayOff}`);
-
                                     if (isDayOff) {
                                       // 現場（シフト）が入っている場合でも、編集可能にする
                                       const hasShift = cellDisplayData.lines.some(line => line !== '' && line !== '休み希望');
@@ -5079,13 +5078,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                         console.log('⚡ 現場ありの休み希望セル: 編集可能な通常のセルとして処理');
                                       } else {
                                         console.log('🏖️ 空セルの休み希望: 編集モードに入らず背景色維持');
-                                        // 青枠の処理のみ行う
-                                        document.querySelectorAll('.cell-selected').forEach(el => {
-                                          el.classList.remove('cell-selected');
-                                        });
-                                        currentCell.classList.add('cell-selected');
-                                        lastSelectedCellRef.current = currentCell;
-
                                         // 背景色を維持（キャッシュされた色を使用：基本はピンク）
                                         const parentTd = currentCell.closest('td');
                                         if (parentTd) {
@@ -5096,40 +5088,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                             (cell as HTMLElement).style.backgroundColor = bgColor;
                                           });
                                         }
-                                        console.timeEnd('⚡ 青枠表示');
                                         return;
                                       }
                                     }
 
-                                    // ★★★ 最優先: 青枠のDOM操作のみ ★★★
-
-                                    // 全ての青枠を削除（常に1つだけ表示されるようにする）
-                                    // 1. cell-selectedクラスを削除
-                                    document.querySelectorAll('.cell-selected').forEach(el => {
-                                      el.classList.remove('cell-selected');
-                                    });
-                                    
-                                    // 2. 前回選択されたtdのoutlineを削除
-                                    if (lastSelectedTdRef.current) {
-                                      lastSelectedTdRef.current.style.removeProperty('outline');
-                                      lastSelectedTdRef.current.style.removeProperty('outline-offset');
-                                      lastSelectedTdRef.current.style.removeProperty('z-index');
-                                    }
-
-                                    // 現在のセルを記録
+                                    // ★ 現在のセルを記録（青枠はtdで設定済み）
                                     currentCell.classList.add('cell-selected');
                                     lastSelectedCellRef.current = currentCell;
-                                    
-                                    // ★ td要素（長方形）に青枠を設定
-                                    const currentTdForSelection = currentCell.closest('td') as HTMLElement;
-                                    if (currentTdForSelection) {
-                                      currentTdForSelection.style.setProperty('outline', '2px solid #2563eb', 'important');
-                                      currentTdForSelection.style.setProperty('outline-offset', '-2px', 'important');
-                                      currentTdForSelection.style.setProperty('z-index', '5', 'important');
-                                      lastSelectedTdRef.current = currentTdForSelection;
-                                    }
-
-                                    console.timeEnd('⚡ 青枠表示');
 
                                     // ★★★ 他の処理は全て setTimeout で遅延 ★★★
                                     setTimeout(() => {
