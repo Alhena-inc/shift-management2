@@ -95,10 +95,9 @@ table {
 }
 
 /* 選択状態のスタイル（JavaScriptで管理） - レイアウト再計算なし */
+/* ★ editable-cellには青枠を設定しない（td要素にのみ設定） */
 .editable-cell.cell-selected {
-  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.3) !important;
-  outline: 2px solid #1a73e8 !important;
-  outline-offset: -2px !important;
+  /* box-shadow と outline は削除（td要素で設定するため） */
   /* 下線は維持（4行区切りを保持） */
   border-bottom: 1px solid #e5e7eb;
 }

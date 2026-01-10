@@ -4897,13 +4897,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                               el.classList.remove('cell-selected');
                             });
 
-                            // ★ 現在のセルに青い枠を表示（選択状態を視覚化）
+                            // ★ 現在のtd（長方形）に青い枠を表示
                             const currentTd = e.currentTarget as HTMLElement;
                             currentTd.style.setProperty('outline', '2px solid #2563eb', 'important');
                             currentTd.style.setProperty('outline-offset', '-2px', 'important');
                             currentTd.style.setProperty('z-index', '5', 'important');
-
-                            // ★ 現在のtdを記録（次回のクリアに使用）
                             lastSelectedTdRef.current = currentTd;
                             
                             // ★ 現在のセルを記録
@@ -5118,11 +5116,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                       lastSelectedTdRef.current.style.removeProperty('z-index');
                                     }
 
-                                    // 現在のセルに青枠を追加
+                                    // 現在のセルを記録
                                     currentCell.classList.add('cell-selected');
                                     lastSelectedCellRef.current = currentCell;
                                     
-                                    // 現在のtdも記録
+                                    // ★ td要素（長方形）に青枠を設定
                                     const currentTdForSelection = currentCell.closest('td') as HTMLElement;
                                     if (currentTdForSelection) {
                                       currentTdForSelection.style.setProperty('outline', '2px solid #2563eb', 'important');
