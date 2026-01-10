@@ -341,6 +341,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
   // 前回選択されたセルを記録（高速クリーンアップ用）
   const lastSelectedCellRef = useRef<HTMLElement | null>(null);
+  const lastSelectedTdRef = useRef<HTMLElement | null>(null);  // ★ 追加: 前回選択されたtd要素
   const lastSelectedRowTdsRef = useRef<HTMLElement[]>([]);
 
   // Shift+ドラッグ用のref（遅延なし）
@@ -3133,11 +3134,14 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       });
       lastSelectedRowTdsRef.current = [];
 
-      // 前回選択されたセルのbox-shadowのみ削除
-      if (lastSelectedCellRef.current) {
-        lastSelectedCellRef.current.style.removeProperty('box-shadow');
-        lastSelectedCellRef.current = null;
+      // 前回選択されたセルの青枠を削除
+      if (lastSelectedTdRef.current) {
+        lastSelectedTdRef.current.style.removeProperty('outline');
+        lastSelectedTdRef.current.style.removeProperty('outline-offset');
+        lastSelectedTdRef.current.style.removeProperty('z-index');
+        lastSelectedTdRef.current = null;
       }
+      lastSelectedCellRef.current = null;
 
       // 要素が存在する場合のみ削除
       if (document.body.contains(menu)) {
@@ -3475,11 +3479,14 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         });
         lastSelectedRowTdsRef.current = [];
 
-        // 前回選択されたセルのbox-shadowのみ削除
-        if (lastSelectedCellRef.current) {
-          lastSelectedCellRef.current.style.removeProperty('box-shadow');
-          lastSelectedCellRef.current = null;
+        // 前回選択されたセルの青枠を削除
+        if (lastSelectedTdRef.current) {
+          lastSelectedTdRef.current.style.removeProperty('outline');
+          lastSelectedTdRef.current.style.removeProperty('outline-offset');
+          lastSelectedTdRef.current.style.removeProperty('z-index');
+          lastSelectedTdRef.current = null;
         }
+        lastSelectedCellRef.current = null;
 
         // 要素が存在する場合のみ削除
         if (document.body.contains(menu)) {
@@ -3710,11 +3717,14 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       });
       lastSelectedRowTdsRef.current = [];
 
-      // 前回選択されたセルのbox-shadowのみ削除
-      if (lastSelectedCellRef.current) {
-        lastSelectedCellRef.current.style.removeProperty('box-shadow');
-        lastSelectedCellRef.current = null;
+      // 前回選択されたセルの青枠を削除
+      if (lastSelectedTdRef.current) {
+        lastSelectedTdRef.current.style.removeProperty('outline');
+        lastSelectedTdRef.current.style.removeProperty('outline-offset');
+        lastSelectedTdRef.current.style.removeProperty('z-index');
+        lastSelectedTdRef.current = null;
       }
+      lastSelectedCellRef.current = null;
 
       // 要素が存在する場合のみ削除
       if (document.body.contains(menu)) {
@@ -3952,11 +3962,14 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       });
       lastSelectedRowTdsRef.current = [];
 
-      // 前回選択されたセルのbox-shadowのみ削除
-      if (lastSelectedCellRef.current) {
-        lastSelectedCellRef.current.style.removeProperty('box-shadow');
-        lastSelectedCellRef.current = null;
+      // 前回選択されたセルの青枠を削除
+      if (lastSelectedTdRef.current) {
+        lastSelectedTdRef.current.style.removeProperty('outline');
+        lastSelectedTdRef.current.style.removeProperty('outline-offset');
+        lastSelectedTdRef.current.style.removeProperty('z-index');
+        lastSelectedTdRef.current = null;
       }
+      lastSelectedCellRef.current = null;
 
       // 要素が存在する場合のみ削除
       if (document.body.contains(menu)) {
@@ -4855,15 +4868,17 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                             selectedCellRef.date = day.date;
                             selectedCellRef.rowIndex = rowIndex;
 
-                            // ★ 前回選択されたセルの枠を削除
-                            if (lastSelectedCellRef.current) {
-                              const prevTd = lastSelectedCellRef.current.closest('td') as HTMLElement;
-                              if (prevTd) {
-                                prevTd.style.removeProperty('outline');
-                                prevTd.style.removeProperty('outline-offset');
-                                prevTd.style.removeProperty('z-index');
-                              }
+                            // ★ 前回選択されたtdの枠を削除
+                            if (lastSelectedTdRef.current && lastSelectedTdRef.current !== e.currentTarget) {
+                              lastSelectedTdRef.current.style.removeProperty('outline');
+                              lastSelectedTdRef.current.style.removeProperty('outline-offset');
+                              lastSelectedTdRef.current.style.removeProperty('z-index');
                             }
+                            
+                            // ★ cell-selectedクラスも削除
+                            document.querySelectorAll('.cell-selected').forEach(el => {
+                              el.classList.remove('cell-selected');
+                            });
 
                             // ★ 現在のセルに青い枠を表示（選択状態を視覚化）
                             const currentTd = e.currentTarget as HTMLElement;
@@ -4871,7 +4886,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                             currentTd.style.setProperty('outline-offset', '-2px', 'important');
                             currentTd.style.setProperty('z-index', '5', 'important');
 
-                            // ★ 現在のセルを記録（次回のクリアに使用）
+                            // ★ 現在のtdを記録（次回のクリアに使用）
+                            lastSelectedTdRef.current = currentTd;
+                            
+                            // ★ 現在のセルを記録
                             const firstCell = currentTd.querySelector('.editable-cell') as HTMLElement;
                             if (firstCell) {
                               lastSelectedCellRef.current = firstCell;
@@ -5068,16 +5086,33 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                       }
                                     }
 
-                                    // ★★★ 最優先: 青枠のDOM操作のみ（querySelectorAll使わない） ★★★
+                                    // ★★★ 最優先: 青枠のDOM操作のみ ★★★
 
                                     // 全ての青枠を削除（常に1つだけ表示されるようにする）
+                                    // 1. cell-selectedクラスを削除
                                     document.querySelectorAll('.cell-selected').forEach(el => {
                                       el.classList.remove('cell-selected');
                                     });
+                                    
+                                    // 2. 前回選択されたtdのoutlineを削除
+                                    if (lastSelectedTdRef.current) {
+                                      lastSelectedTdRef.current.style.removeProperty('outline');
+                                      lastSelectedTdRef.current.style.removeProperty('outline-offset');
+                                      lastSelectedTdRef.current.style.removeProperty('z-index');
+                                    }
 
                                     // 現在のセルに青枠を追加
                                     currentCell.classList.add('cell-selected');
                                     lastSelectedCellRef.current = currentCell;
+                                    
+                                    // 現在のtdも記録
+                                    const currentTdForSelection = currentCell.closest('td') as HTMLElement;
+                                    if (currentTdForSelection) {
+                                      currentTdForSelection.style.setProperty('outline', '2px solid #2563eb', 'important');
+                                      currentTdForSelection.style.setProperty('outline-offset', '-2px', 'important');
+                                      currentTdForSelection.style.setProperty('z-index', '5', 'important');
+                                      lastSelectedTdRef.current = currentTdForSelection;
+                                    }
 
                                     console.timeEnd('⚡ 青枠表示');
 
