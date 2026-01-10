@@ -3287,18 +3287,35 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
           // remove_timeの場合、時間情報を復元
           if (existingShift.cancelStatus === 'remove_time') {
-            const timeRange = `${existingShift.startTime}-${existingShift.endTime}`;
-            const duration = calculateTimeDuration(timeRange);
+            // 既存のstartTime/endTimeを使用（Firestoreに保存されている）
+            const startTime = existingShift.startTime || '';
+            const endTime = existingShift.endTime || '';
+            
+            if (startTime && endTime) {
+              const timeRange = `${startTime}-${endTime}`;
+              const duration = calculateTimeDuration(timeRange);
 
-            restoredShift.duration = parseFloat(duration || '0');
+              restoredShift.duration = parseFloat(duration || '0');
+              restoredShift.startTime = startTime;
+              restoredShift.endTime = endTime;
 
-            // DOM要素にも時間を復元
-            const timeCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="0"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
-            const durationCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="2"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
-            if (timeCell) timeCell.textContent = timeRange;
-            if (durationCell) durationCell.textContent = duration || '';
+              // DOM要素にも時間を復元（1行目と3行目）
+              const timeCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="0"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
+              const durationCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="2"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
+              
+              if (timeCell) {
+                timeCell.textContent = timeRange;
+                console.log(`✅ 1行目に時間範囲を復元: ${timeRange}`);
+              }
+              if (durationCell) {
+                durationCell.textContent = duration || '';
+                console.log(`✅ 3行目にdurationを復元: ${duration}`);
+              }
 
-            console.log(`時間を復元: ${timeRange}, duration: ${duration}`);
+              console.log(`✅ 時間を復元完了: ${timeRange}, duration: ${duration}`);
+            } else {
+              console.warn(`⚠️ 時間情報がありません: startTime=${startTime}, endTime=${endTime}`);
+            }
           }
 
           // 給与を再計算（日付を渡して年末年始判定）
@@ -5138,8 +5155,16 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                       if (lastSelectedRowTdsRef.current.length > 0) {
                                         lastSelectedRowTdsRef.current.forEach(td => {
                                           td.classList.remove('shift-cell-multi-selected');
+                                          td.style.removeProperty('outline');
+                                          td.style.removeProperty('outline-offset');
+                                          td.style.removeProperty('z-index');
                                         });
                                         lastSelectedRowTdsRef.current = [];
+                                      }
+                                      
+                                      // 複数選択stateもクリア
+                                      if (selectedRowsRef.current.size > 0) {
+                                        selectedRowsRef.current.clear();
                                       }
 
                                       // クリック回数を取得
