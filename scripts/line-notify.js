@@ -4,18 +4,15 @@
 
 import admin from 'firebase-admin';
 
-// 環境変数から認証情報を取得
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 const LINE_ACCESS_TOKEN = process.env.LINE_ACCESS_TOKEN;
 const LINE_GROUP_ID = process.env.LINE_GROUP_ID;
 
-// Firebase初期化
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
 const db = admin.firestore();
 
-// サービスタイプのラベル
 const SERVICE_LABELS = {
   kaji: '家事',
   judo: '重度',
@@ -32,11 +29,9 @@ const SERVICE_LABELS = {
   other: 'その他'
 };
 
-// メイン処理
 async function main() {
   console.log('🚀 LINE通知処理開始');
   
-  // 翌日の日付（JST）
   const now = new Date();
   const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
   const tomorrow = new Date(jst);
@@ -49,24 +44,20 @@ async function main() {
   
   console.log(`📅 対象日: ${dateStr}`);
   
-  // ヘルパー取得
   const helpersSnap = await db.collection('helpers').get();
   const helpers = helpersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   helpers.sort((a, b) => (a.order || 0) - (b.order || 0));
   console.log(`👥 ヘルパー数: ${helpers.length}`);
   
-  // シフト取得
   const shiftsSnap = await db.collection('shifts').where('date', '==', dateStr).get();
   const shifts = shiftsSnap.docs
     .map(doc => ({ id: doc.id, ...doc.data() }))
     .filter(s => !s.deleted && !s.cancelStatus);
   console.log(`📋 シフト数: ${shifts.length}`);
   
-  // メッセージ生成
   const message = generateMessage(month, day, shifts, helpers);
   console.log('📤 メッセージ:\n' + message);
   
-  // LINE送信
   await sendLineMessage(message);
   console.log('✅ 完了');
 }
@@ -78,7 +69,6 @@ function generateMessage(month, day, shifts, helpers) {
     return msg + '\n本日のケア予定はありません';
   }
   
-  // ヘルパーID→名前、ヘルパーID→orderのマップを作成
   const helperMap = {};
   const helperOrderMap = {};
   helpers.forEach(h => {
