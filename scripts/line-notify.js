@@ -1,12 +1,11 @@
 /**
  * LINE シフト通知スクリプト（GitHub Actions用）
+ * テストモード: LINE送信スキップ
  */
 
 import admin from 'firebase-admin';
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-const LINE_ACCESS_TOKEN = process.env.LINE_ACCESS_TOKEN;
-const LINE_GROUP_ID = process.env.LINE_GROUP_ID;
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
@@ -30,7 +29,7 @@ const SERVICE_LABELS = {
 };
 
 async function main() {
-  console.log('🚀 LINE通知処理開始');
+  console.log('🚀 LINE通知処理開始（テストモード - 送信スキップ）');
   
   const now = new Date();
   const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
@@ -48,8 +47,7 @@ async function main() {
   const helpers = helpersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   helpers.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
   
-  // デバッグ: ヘルパーのorder確認
-  console.log('📋 ヘルパー順序:');
+  console.log('📋 ヘルパー順序（最初の10人）:');
   helpers.slice(0, 10).forEach(h => console.log(`  ${h.name}: order=${h.order}`));
   
   console.log(`👥 ヘルパー数: ${helpers.length}`);
@@ -61,9 +59,13 @@ async function main() {
   console.log(`📋 シフト数: ${shifts.length}`);
   
   const message = generateMessage(month, day, shifts, helpers);
-  console.log('📤 メッセージ:\n' + message);
+  console.log('📤 生成されたメッセージ:');
+  console.log('========================================');
+  console.log(message);
+  console.log('========================================');
   
-  await sendLineMessage(message);
+  // LINE送信をスキップ
+  console.log('⏭️ LINE送信スキップ（テストモード）');
   console.log('✅ 完了');
 }
 
@@ -87,10 +89,9 @@ function generateMessage(month, day, shifts, helpers) {
     byHelper[s.helperId].push(s);
   });
   
-  // デバッグ: ソート前のヘルパーID
-  console.log('🔍 シフトがあるヘルパー:');
+  console.log('🔍 シフトがあるヘルパーとorder値:');
   Object.keys(byHelper).forEach(id => {
-    console.log(`  ID:${id} ${helperMap[id]}: order=${helperOrderMap[id]}`);
+    console.log(`  ${helperMap[id]}: order=${helperOrderMap[id]}`);
   });
   
   // ヘルパーのorder順でソート（シフト表の左から順）
@@ -98,7 +99,8 @@ function generateMessage(month, day, shifts, helpers) {
     (helperOrderMap[a] || 9999) - (helperOrderMap[b] || 9999)
   );
   
-  console.log('📊 ソート後の順序:', sortedIds.map(id => `${helperMap[id]}(${helperOrderMap[id]})`).join(' → '));
+  console.log('📊 ソート後の順序:');
+  console.log('  ' + sortedIds.map(id => `${helperMap[id]}(${helperOrderMap[id]})`).join(' → '));
   
   for (const hid of sortedIds) {
     const name = helperMap[hid] || hid;
@@ -131,24 +133,6 @@ function generateMessage(month, day, shifts, helpers) {
   }
   
   return msg + '\n明日もよろしくお願いします';
-}
-
-async function sendLineMessage(text) {
-  const res = await fetch('https://api.line.me/v2/bot/message/push', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${LINE_ACCESS_TOKEN}`
-    },
-    body: JSON.stringify({
-      to: LINE_GROUP_ID,
-      messages: [{ type: 'text', text }]
-    })
-  });
-  
-  if (!res.ok) {
-    throw new Error(`LINE API error: ${res.status} ${await res.text()}`);
-  }
 }
 
 main().catch(e => {
