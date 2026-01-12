@@ -78,8 +78,13 @@ function generateMessage(month, day, shifts, helpers) {
     return msg + '\n本日のケア予定はありません';
   }
   
+  // ヘルパーID→名前、ヘルパーID→orderのマップを作成
   const helperMap = {};
-  helpers.forEach(h => helperMap[h.id] = h.name);
+  const helperOrderMap = {};
+  helpers.forEach(h => {
+    helperMap[h.id] = h.name;
+    helperOrderMap[h.id] = h.order ?? 9999;
+  });
   
   const byHelper = {};
   shifts.forEach(s => {
@@ -87,8 +92,9 @@ function generateMessage(month, day, shifts, helpers) {
     byHelper[s.helperId].push(s);
   });
   
+  // ヘルパーのorder順でソート（シフト表の左から順）
   const sortedIds = Object.keys(byHelper).sort((a, b) => 
-    (helperMap[a] || a).localeCompare(helperMap[b] || b, 'ja')
+    (helperOrderMap[a] ?? 9999) - (helperOrderMap[b] ?? 9999)
   );
   
   for (const hid of sortedIds) {
@@ -99,7 +105,14 @@ function generateMessage(month, day, shifts, helpers) {
     
     msg += `\n【${name}】\n`;
     
-    for (const s of hShifts) {
+    for (let i = 0; i < hShifts.length; i++) {
+      const s = hShifts[i];
+      
+      // 2個目以降のケアは空行を入れる
+      if (i > 0) {
+        msg += '\n';
+      }
+      
       if (s.startTime && s.endTime) msg += `${s.startTime}-${s.endTime}\n`;
       
       let line = s.clientName || '';
