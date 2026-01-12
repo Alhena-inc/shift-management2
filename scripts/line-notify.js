@@ -46,7 +46,12 @@ async function main() {
   
   const helpersSnap = await db.collection('helpers').get();
   const helpers = helpersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  helpers.sort((a, b) => (a.order || 0) - (b.order || 0));
+  helpers.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+  
+  // デバッグ: ヘルパーのorder確認
+  console.log('📋 ヘルパー順序:');
+  helpers.slice(0, 10).forEach(h => console.log(`  ${h.name}: order=${h.order}`));
+  
   console.log(`👥 ヘルパー数: ${helpers.length}`);
   
   const shiftsSnap = await db.collection('shifts').where('date', '==', dateStr).get();
@@ -73,7 +78,7 @@ function generateMessage(month, day, shifts, helpers) {
   const helperOrderMap = {};
   helpers.forEach(h => {
     helperMap[h.id] = h.name;
-    helperOrderMap[h.id] = h.order ?? 9999;
+    helperOrderMap[h.id] = Number(h.order) || 9999;
   });
   
   const byHelper = {};
@@ -82,10 +87,18 @@ function generateMessage(month, day, shifts, helpers) {
     byHelper[s.helperId].push(s);
   });
   
+  // デバッグ: ソート前のヘルパーID
+  console.log('🔍 シフトがあるヘルパー:');
+  Object.keys(byHelper).forEach(id => {
+    console.log(`  ID:${id} ${helperMap[id]}: order=${helperOrderMap[id]}`);
+  });
+  
   // ヘルパーのorder順でソート（シフト表の左から順）
   const sortedIds = Object.keys(byHelper).sort((a, b) => 
-    (helperOrderMap[a] ?? 9999) - (helperOrderMap[b] ?? 9999)
+    (helperOrderMap[a] || 9999) - (helperOrderMap[b] || 9999)
   );
+  
+  console.log('📊 ソート後の順序:', sortedIds.map(id => `${helperMap[id]}(${helperOrderMap[id]})`).join(' → '));
   
   for (const hid of sortedIds) {
     const name = helperMap[hid] || hid;
