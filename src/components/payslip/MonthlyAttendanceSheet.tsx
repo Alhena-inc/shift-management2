@@ -12,6 +12,10 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
   dailyAttendance,
   onChange
 }) => {
+  // 12月の給与計算は翌年1/1〜1/4を含めるが、勤怠表の表示は12/31までにする
+  const displayDailyAttendance =
+    month === 12 && dailyAttendance.length > 31 ? dailyAttendance.slice(0, 31) : dailyAttendance;
+
   const updateCell = (dayIndex: number, field: keyof HourlyDailyAttendance, value: number) => {
     const updated = [...dailyAttendance];
     updated[dayIndex] = {
@@ -31,7 +35,7 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
   };
 
   const calculateTotals = () => {
-    return dailyAttendance.reduce(
+    return displayDailyAttendance.reduce(
       (acc, day) => ({
         normalWork: acc.normalWork + day.normalWork,
         normalNight: acc.normalNight + day.normalNight,
@@ -81,7 +85,7 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
             </tr>
           </thead>
           <tbody>
-            {dailyAttendance.map((day, index) => (
+            {displayDailyAttendance.map((day, index) => (
               <tr key={index} className="hover:bg-gray-50" style={{ height: '20px', maxHeight: '20px' }}>
                 <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
                   {day.month || month}/{day.day}
