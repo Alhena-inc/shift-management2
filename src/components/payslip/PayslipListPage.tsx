@@ -375,6 +375,55 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
     }
   }, [payslips, selectedYear, selectedMonth]);
 
+  // 一括削除
+  const handleBulkDelete = useCallback(async () => {
+    if (payslips.length === 0) {
+      alert('削除する給与明細がありません');
+      return;
+    }
+
+    const confirmMessage = `${selectedYear}年${selectedMonth}月の給与明細を${payslips.length}件すべて削除しますか？\n\n⚠️ この操作は取り消せません。`;
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    // 二重確認
+    const doubleConfirm = prompt(`本当に削除しますか？\n確認のため「削除」と入力してください。`);
+    if (doubleConfirm !== '削除') {
+      alert('削除がキャンセルされました');
+      return;
+    }
+
+    setCreating(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    try {
+      for (const payslip of payslips) {
+        try {
+          await deletePayslip(payslip.id);
+          successCount++;
+        } catch (error) {
+          console.error(`${payslip.helperName}の削除エラー:`, error);
+          errorCount++;
+        }
+      }
+
+      await loadData();
+
+      if (errorCount === 0) {
+        alert(`${successCount}件の給与明細を削除しました`);
+      } else {
+        alert(`成功: ${successCount}件\n失敗: ${errorCount}件`);
+      }
+    } catch (error) {
+      console.error('一括削除エラー:', error);
+      alert('一括削除に失敗しました');
+    } finally {
+      setCreating(false);
+    }
+  }, [payslips, selectedYear, selectedMonth, loadData]);
+
   // ヘルパーごとの給与明細を取得
   const getPayslipForHelper = (helperId: string): Payslip | undefined => {
     return payslips.find(p => p.helperId === helperId);
@@ -469,6 +518,18 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               {generatingPdf ? `PDF生成中 (${pdfProgress.current}/${pdfProgress.total})` : '一括ダウンロード'}
+            </button>
+
+            {/* 一括削除ボタン */}
+            <button
+              onClick={handleBulkDelete}
+              disabled={creating || loading || payslips.length === 0}
+              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              一括削除
             </button>
           </div>
         </div>
