@@ -31,6 +31,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
   const [editingPayslip, setEditingPayslip] = useState<Payslip | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [selectedHelperIds, setSelectedHelperIds] = useState<Set<string>>(new Set());
   
   // PDF関連
   const [generatingPdf, setGeneratingPdf] = useState(false);
@@ -51,6 +52,8 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
       setPayslips(loadedPayslips);
       setHelpers(loadedHelpers);
       setShifts(loadedShifts);
+      // 年月切り替えや再読み込み時は選択をリセット
+      setSelectedHelperIds(new Set());
     } catch (error) {
       console.error('データ読み込みエラー:', error);
       alert('データの読み込みに失敗しました');
@@ -221,6 +224,79 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
     }
   }, [helpers, payslips, shifts, selectedYear, selectedMonth, loadData]);
 
+  // 選択したヘルパーの給与明細を一括作成（未作成は作成、作成済みは上書き再計算）
+  const handleBulkCreateSelectedPayslips = useCallback(async () => {
+    const selectedIds = Array.from(selectedHelperIds);
+    if (selectedIds.length === 0) {
+      alert('一括作成するヘルパーを選択してください');
+      return;
+    }
+
+    const selectedHelpers = helpers.filter(h => selectedHelperIds.has(h.id));
+    const existingCount = selectedHelpers.filter(h => payslips.some(p => p.helperId === h.id)).length;
+    const newCount = selectedHelpers.length - existingCount;
+
+    if (!confirm(
+      `${selectedHelpers.length}人分の給与明細を一括作成/更新しますか？\n` +
+      `未作成: ${newCount}人 / 既存上書き: ${existingCount}人\n` +
+      `${selectedYear}年${selectedMonth}月のシフトデータから自動生成します。`
+    )) {
+      return;
+    }
+
+    setCreating(true);
+    let successCount = 0;
+    let errorCount = 0;
+    const errors: string[] = [];
+
+    try {
+      for (const helper of selectedHelpers) {
+        try {
+          // 対象期間のシフトを抽出（12月のみ翌年1/4まで）
+          const helperShifts = shifts.filter(s => {
+            if (s.helperId !== helper.id) return false;
+            const shiftDate = new Date(s.date);
+            const periodStart = new Date(selectedYear, selectedMonth - 1, 1);
+            let periodEnd: Date;
+            if (selectedMonth === 12) {
+              periodEnd = new Date(selectedYear + 1, 0, 4, 23, 59, 59);
+            } else {
+              periodEnd = new Date(selectedYear, selectedMonth, 0, 23, 59, 59);
+            }
+            return shiftDate >= periodStart && shiftDate <= periodEnd;
+          });
+
+          const generated = generatePayslipFromShifts(helper, helperShifts, selectedYear, selectedMonth);
+
+          // 既存がある場合はIDを引き継いで上書き保存
+          const existing = payslips.find(p => p.helperId === helper.id);
+          if (existing?.id) {
+            generated.id = existing.id;
+          }
+
+          await savePayslip(generated);
+          successCount++;
+        } catch (error) {
+          console.error(`${helper.name}の給与明細作成/更新エラー:`, error);
+          errorCount++;
+          errors.push(helper.name);
+        }
+      }
+
+      await loadData();
+      if (errorCount === 0) {
+        alert(`${successCount}人分の給与明細を作成/更新しました`);
+      } else {
+        alert(`成功: ${successCount}人\n失敗: ${errorCount}人\n\n失敗したヘルパー:\n${errors.join(', ')}`);
+      }
+    } catch (error) {
+      console.error('選択一括作成エラー:', error);
+      alert('選択一括作成に失敗しました');
+    } finally {
+      setCreating(false);
+    }
+  }, [selectedHelperIds, helpers, payslips, shifts, selectedYear, selectedMonth, loadData]);
+
   // 給与明細を再計算
   const handleRecalculatePayslip = useCallback(async (helper: Helper, existingPayslip: Payslip) => {
     if (!confirm(`${helper.name}さんの給与明細を再計算しますか？\n最新のシフトデータから勤怠項目を再集計します。`)) {
@@ -322,18 +398,34 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
 
   // 一括PDFダウンロード
   const handleBulkPdfDownload = useCallback(async () => {
-    if (payslips.length === 0) {
+    const hasSelection = selectedHelperIds.size > 0;
+    const targetPayslips = hasSelection
+      ? payslips.filter(p => selectedHelperIds.has(p.helperId))
+      : payslips;
+
+    if (targetPayslips.length === 0) {
       alert('ダウンロードする給与明細がありません');
       return;
     }
 
-    if (!confirm(`${payslips.length}件の給与明細を一括でPDFダウンロードしますか？\n（処理に時間がかかる場合があります）`)) {
+    if (hasSelection) {
+      const selectedCount = selectedHelperIds.size;
+      const missingCount = selectedCount - targetPayslips.length;
+      if (missingCount > 0) {
+        alert(`選択した${selectedCount}人のうち、${missingCount}人分の給与明細が未作成です。\n先に「選択一括作成」を実行してください。`);
+        return;
+      }
+    }
+
+    const confirmCount = targetPayslips.length;
+    const confirmLabel = hasSelection ? '選択した給与明細' : '給与明細';
+    if (!confirm(`${confirmCount}件の${confirmLabel}を一括でPDFダウンロードしますか？\n（処理に時間がかかる場合があります）`)) {
       return;
     }
 
     setBulkPdfMode(true);
     setGeneratingPdf(true);
-    setPdfProgress({ current: 0, total: payslips.length });
+    setPdfProgress({ current: 0, total: confirmCount });
 
     let tempContainer: HTMLDivElement | null = null;
 
@@ -350,10 +442,10 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
       document.body.appendChild(tempContainer);
 
       // 各給与明細のPDFを順番に生成
-      for (let i = 0; i < payslips.length; i++) {
-        const payslip = payslips[i];
+      for (let i = 0; i < targetPayslips.length; i++) {
+        const payslip = targetPayslips[i];
         setPdfTargetPayslip(payslip);
-        setPdfProgress({ current: i + 1, total: payslips.length });
+        setPdfProgress({ current: i + 1, total: confirmCount });
 
         // レンダリングを待つ
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -414,7 +506,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
       setPdfTargetPayslip(null);
       setPdfProgress({ current: 0, total: 0 });
     }
-  }, [payslips, selectedYear, selectedMonth]);
+  }, [payslips, selectedHelperIds, selectedYear, selectedMonth]);
 
   // 一括削除
   const handleBulkDelete = useCallback(async () => {
@@ -468,6 +560,27 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
   // ヘルパーごとの給与明細を取得
   const getPayslipForHelper = (helperId: string): Payslip | undefined => {
     return payslips.find(p => p.helperId === helperId);
+  };
+
+  // 選択UI
+  const selectedCount = selectedHelperIds.size;
+  const isAllSelected = helpers.length > 0 && helpers.every(h => selectedHelperIds.has(h.id));
+
+  const toggleSelectHelper = (helperId: string) => {
+    setSelectedHelperIds(prev => {
+      const next = new Set(prev);
+      if (next.has(helperId)) next.delete(helperId);
+      else next.add(helperId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedHelperIds(new Set(helpers.map(h => h.id)));
+    } else {
+      setSelectedHelperIds(new Set());
+    }
   };
 
   // 給与タイプバッジの色
@@ -549,16 +662,29 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
               一括作成
             </button>
 
+            {/* 選択一括作成ボタン */}
+            <button
+              onClick={handleBulkCreateSelectedPayslips}
+              disabled={creating || loading || selectedCount === 0}
+              className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+              title="チェックしたヘルパーの給与明細を作成/更新"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              選択一括作成{selectedCount > 0 ? `(${selectedCount})` : ''}
+            </button>
+
             {/* PDF一括ダウンロードボタン */}
             <button
               onClick={handleBulkPdfDownload}
-              disabled={generatingPdf || loading || payslips.length === 0}
+              disabled={generatingPdf || loading || (selectedCount > 0 ? payslips.filter(p => selectedHelperIds.has(p.helperId)).length === 0 : payslips.length === 0)}
               className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              {generatingPdf ? `PDF生成中 (${pdfProgress.current}/${pdfProgress.total})` : '一括ダウンロード'}
+              {generatingPdf ? `PDF生成中 (${pdfProgress.current}/${pdfProgress.total})` : (selectedCount > 0 ? `選択ダウンロード(${selectedCount})` : '一括ダウンロード')}
             </button>
 
             {/* 一括削除ボタン */}
@@ -591,6 +717,15 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="bg-gray-100">
+                    <th className="border border-gray-300 px-2 py-2 text-sm font-medium text-center">
+                      <input
+                        type="checkbox"
+                        checked={isAllSelected}
+                        onChange={(e) => toggleSelectAll(e.target.checked)}
+                        className="w-4 h-4"
+                        title="全選択"
+                      />
+                    </th>
                     <th className="border border-gray-300 px-2 py-2 text-sm font-medium">No</th>
                     <th className="border border-gray-300 px-3 py-2 text-sm font-medium text-left">ヘルパー名</th>
                     <th className="border border-gray-300 px-2 py-2 text-sm font-medium">給与タイプ</th>
@@ -603,9 +738,18 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
                 <tbody>
                   {helpers.map((helper, index) => {
                     const payslip = getPayslipForHelper(helper.id);
+                    const isSelected = selectedHelperIds.has(helper.id);
 
                     return (
-                      <tr key={helper.id} className="hover:bg-gray-50">
+                      <tr key={helper.id} className={`hover:bg-gray-50 ${isSelected ? 'bg-emerald-50' : ''}`}>
+                        <td className="border border-gray-300 px-2 py-2 text-sm text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectHelper(helper.id)}
+                            className="w-4 h-4"
+                          />
+                        </td>
                         <td className="border border-gray-300 px-2 py-2 text-sm text-center">
                           {index + 1}
                         </td>
