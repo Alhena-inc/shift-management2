@@ -758,7 +758,10 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
           }}
         >
           <div ref={printViewRef}>
-            <PayslipPrintView payslip={pdfTargetPayslip} />
+            <PayslipPrintView
+              payslip={pdfTargetPayslip}
+              helper={helpers.find(h => h.id === pdfTargetPayslip.helperId)}
+            />
           </div>
         </div>
       )}
