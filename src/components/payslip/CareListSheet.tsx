@@ -14,6 +14,10 @@ const CareListSheet: React.FC<CareListSheetProps> = ({ month, careList, onChange
     return weekdays[date.getDay()];
   };
 
+  // 12月の給与計算は翌年1/1〜1/4を含めるが、ケア一覧表の表示は12/31までにする
+  // （12/31の後に12/1〜12/4が表示されてしまうのを防ぐ）
+  const displayCareList = month === 12 && careList.length > 31 ? careList.slice(0, 31) : careList;
+
   return (
     <div className="bg-white border border-gray-400 font-bold" style={{ flex: 1, width: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* 青ヘッダー */}
@@ -34,7 +38,7 @@ const CareListSheet: React.FC<CareListSheetProps> = ({ month, careList, onChange
             </tr>
           </thead>
           <tbody>
-            {careList.map((dayData, dayIndex) => {
+            {displayCareList.map((dayData, dayIndex) => {
               const weekday = getWeekday(dayData.day);
               const slots = dayData.slots || [];
 
