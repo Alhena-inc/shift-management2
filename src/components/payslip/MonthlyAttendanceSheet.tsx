@@ -63,6 +63,13 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
     return hours > 0 ? `${hours.toFixed(1)}時間` : '';
   };
 
+  const formatTotalCell = (hours: number): string => {
+    // 合計行は0でも表示して分かりやすくする
+    const fixed = Number(hours || 0).toFixed(1);
+    const trimmed = fixed.endsWith('.0') ? fixed.slice(0, -2) : fixed;
+    return `${trimmed}時間`;
+  };
+
   return (
     <div className="bg-white border border-gray-400 font-bold" style={{ width: '100%', minWidth: '100%' }}>
       {/* 青ヘッダー */}
@@ -184,69 +191,29 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
             ))}
             {/* 合計行 */}
             <tr className="bg-yellow-100 font-bold" style={{ height: '22px', maxHeight: '22px' }}>
-              <td className="text-center editable-cell" colSpan={2} style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
-                <input
-                  type="text"
-                  defaultValue="合計"
-                  className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold"
-                  style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '18px', backgroundColor: 'transparent' }}
-                />
+              <td className="text-center" colSpan={2} style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
+                合計
               </td>
-              <td className="text-right editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
-                <input
-                  type="text"
-                  defaultValue={`${totals.normalWork}時間`}
-                  className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold"
-                  style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '18px', backgroundColor: 'transparent' }}
-                />
+              <td className="text-right" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
+                {formatTotalCell(totals.normalWork)}
               </td>
-              <td className="text-right editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
-                <input
-                  type="text"
-                  defaultValue={`${totals.normalNight}時間`}
-                  className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold"
-                  style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '18px', backgroundColor: 'transparent' }}
-                />
+              <td className="text-right" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
+                {formatTotalCell(totals.normalNight)}
               </td>
-              <td className="text-right editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
-                <input
-                  type="text"
-                  defaultValue={`${totals.accompanyWork}時間`}
-                  className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold"
-                  style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '18px', backgroundColor: 'transparent' }}
-                />
+              <td className="text-right" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
+                {formatTotalCell(totals.accompanyWork)}
               </td>
-              <td className="text-right editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
-                <input
-                  type="text"
-                  defaultValue={`${totals.accompanyNight}時間`}
-                  className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold"
-                  style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '18px', backgroundColor: 'transparent' }}
-                />
+              <td className="text-right" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
+                {formatTotalCell(totals.accompanyNight)}
               </td>
-              <td className="text-right editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
-                <input
-                  type="text"
-                  defaultValue={`${totals.officeWork}時間`}
-                  className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold"
-                  style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '18px', backgroundColor: 'transparent' }}
-                />
+              <td className="text-right" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
+                {formatTotalCell(totals.officeWork)}
               </td>
-              <td className="text-right editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
-                <input
-                  type="text"
-                  defaultValue={`${totals.salesWork}時間`}
-                  className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold"
-                  style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '18px', backgroundColor: 'transparent' }}
-                />
+              <td className="text-right" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
+                {formatTotalCell(totals.salesWork)}
               </td>
-              <td className="text-right editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
-                <input
-                  type="text"
-                  defaultValue={`${totals.totalHours.toFixed(1)}時間`}
-                  className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold"
-                  style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '18px', backgroundColor: 'transparent' }}
-                />
+              <td className="text-right" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
+                {formatTotalCell(totals.totalHours)}
               </td>
             </tr>
           </tbody>
