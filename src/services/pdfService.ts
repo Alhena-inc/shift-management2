@@ -12,7 +12,7 @@ export async function generatePdfFromElement(
 ): Promise<Blob> {
   // html2canvasで要素をキャンバスに変換
   const canvas = await html2canvas(element, {
-    scale: 2, // 高解像度
+    scale: 1.5, // メモリ負荷軽減
     useCORS: true,
     logging: false,
     backgroundColor: '#ffffff'
@@ -25,7 +25,7 @@ export async function generatePdfFromElement(
 
   const imgWidth = pageWidth;
   const imgHeight = (canvas.height * imgWidth) / canvas.width;
-  const imgData = canvas.toDataURL('image/png');
+  const imgData = canvas.toDataURL('image/jpeg', 0.8);
 
   let heightLeft = imgHeight;
   let position = 0;
@@ -94,13 +94,13 @@ export async function downloadBulkPayslipPdf(
 
     // html2canvasでキャンバスに変換
     const canvas = await html2canvas(element, {
-      scale: 2,
+      scale: 1.5,
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff'
     });
 
-    const imgData = canvas.toDataURL('image/png');
+    const imgData = canvas.toDataURL('image/jpeg', 0.8);
     const imgHeight = (canvas.height * pageWidth) / canvas.width;
 
     // 最初のページ以外は新しいページを追加
