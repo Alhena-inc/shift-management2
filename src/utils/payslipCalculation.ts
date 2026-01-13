@@ -365,13 +365,22 @@ export function generateFixedPayslipFromShifts(
     insuranceTypes.push('employment');
   }
 
-  // 社会保険料の計算基準：課税対象の月給のみ（非課税手当は含めない）
-  const nonTaxableAmount = helper.otherAllowances
+  // 保険計算対象額（非課税は含めない）
+  // - その他手当のtaxExempt=true
+  // - 経費精算 / 交通費立替・手当（非課税扱い）
+  const nonTaxableOtherAllowances = helper.otherAllowances
     ? helper.otherAllowances
         .filter(a => a.taxExempt)
         .reduce((sum, a) => sum + a.amount, 0)
     : 0;
-  const taxableBaseSalary = payslip.totalSalary - nonTaxableAmount;
+  const insuranceBaseAmount =
+    (payslip.payments.basePay || 0) +
+    (payslip.payments.overtimePay || 0) +
+    (payslip.payments.emergencyAllowance || 0) +
+    (payslip.payments.nightAllowance || 0) +
+    (payslip.payments.otherAllowances || [])
+      .filter(a => !(a as any).taxExempt)
+      .reduce((sum, a) => sum + (a.amount || 0), 0);
 
   // 社会保険は加入がある場合のみ計算（未加入でも源泉/住民税は計算する）
   const insuranceResult =
@@ -379,8 +388,8 @@ export function generateFixedPayslipFromShifts(
       ? calculateInsurance(
           Number((helper as any).standardRemuneration) ||
             Number((helper as any).standardMonthlyRemuneration) ||
-            taxableBaseSalary,
-          payslip.totalSalary, // 非課税手当含む（雇用保険計算用）
+            insuranceBaseAmount,
+          insuranceBaseAmount, // 雇用保険も非課税は含めない
           age,
           insuranceTypes
         )
@@ -396,6 +405,12 @@ export function generateFixedPayslipFromShifts(
   payslip.deductions.socialInsuranceTotal = insuranceResult.total || 0;
 
   // 課税対象額を計算（課税月給 - 社会保険料）
+  // ※固定給の課税月給は「基本給＋処遇改善＋課税その他手当」
+  const taxableBaseSalary =
+    (payslip.payments.basePay || 0) +
+    (payslip.payments.otherAllowances || [])
+      .filter(a => !(a as any).taxExempt)
+      .reduce((sum, a) => sum + (a.amount || 0), 0);
   const taxableAmount = taxableBaseSalary - (insuranceResult.total || 0);
   payslip.deductions.taxableAmount = taxableAmount;
 
@@ -744,14 +759,15 @@ export function generateHourlyPayslipFromShifts(
     insuranceTypes.push('employment');
   }
 
-  // 社会保険料の計算基準：総支給額から非課税手当を除外
-  const nonTaxableAmount = helper.otherAllowances
+  // 保険計算対象額（非課税は含めない）
+  // ※時給の場合も、taxExempt=true の手当や交通費/経費精算は保険計算に含めない
+  const nonTaxableOtherAllowances = helper.otherAllowances
     ? helper.otherAllowances
         .filter(a => a.taxExempt)
         .reduce((sum, a) => sum + a.amount, 0)
     : 0;
 
-  // 社会保険料計算用：給与部分のみ（経費精算・交通費立替・緊急時対応加算を除外）
+  // 保険計算用：給与コア（交通費・経費精算など非課税は除外）
   const salaryCoreAmount =
     payslip.payments.normalWorkPay +
     payslip.payments.accompanyPay +
@@ -768,7 +784,7 @@ export function generateHourlyPayslipFromShifts(
           Number((helper as any).standardRemuneration) ||
             Number((helper as any).standardMonthlyRemuneration) ||
             salaryCoreAmount,
-          salaryCoreAmount + nonTaxableAmount, // 非課税手当含む
+          salaryCoreAmount, // 雇用保険も非課税は含めない
           age,
           insuranceTypes
         )

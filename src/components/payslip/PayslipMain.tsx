@@ -162,8 +162,9 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
         .filter((a: any) => a.taxExempt)
         .reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
 
-      // 月給合計（非課税手当含む、社会保険・雇用保険計算用）
-      monthlySalaryTotal = baseSalary + treatmentAllowance + taxableOther + nonTaxableOther;
+      // 月給合計（社会保険・雇用保険計算用）
+      // ※ 非課税手当（taxExempt=true）は保険計算に含めない
+      monthlySalaryTotal = baseSalary + treatmentAllowance + taxableOther;
       // 例: 144,900 + 144,900 + 0 + 4,200 = 294,000円
 
       // 課税対象の月給（源泉所得税計算用、非課税手当除く）
@@ -191,8 +192,9 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
         ((updated.payments as any)?.yearEndNewYearAllowance || 0) +
         taxableOther;
 
-      // 月給合計（非課税手当含む）
-      monthlySalaryTotal = salaryCoreAmount + nonTaxableOther;
+      // 月給合計（保険計算用）
+      // ※ 非課税手当（taxExempt=true）は保険計算に含めない
+      monthlySalaryTotal = salaryCoreAmount;
 
       // 課税対象の月給（非課税手当除く）
       taxableMonthlySalary = salaryCoreAmount;

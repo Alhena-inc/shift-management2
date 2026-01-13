@@ -71,14 +71,23 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
       insuranceTypes.push('care');
     }
 
-    // 標準報酬月額（設定されていない場合は総支給額を使用）
-    const standardRemuneration = newPayslip.standardRemuneration || newPayslip.payments.totalPayment;
+    // 標準報酬月額（設定されていない場合は「保険計算対象額」を使用）
+    // ※ 非課税（経費精算・交通費立替・taxExempt=true）は含めない
+    const nonTaxableOtherAllowances = (newPayslip.payments.otherAllowances || [])
+      .filter((a: any) => a.taxExempt)
+      .reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+    const insuranceBaseAmount =
+      (newPayslip.payments.totalPayment || 0) -
+      (newPayslip.payments.expenseReimbursement || 0) -
+      (newPayslip.payments.transportAllowance || 0) -
+      nonTaxableOtherAllowances;
+    const standardRemuneration = newPayslip.standardRemuneration || insuranceBaseAmount;
 
     console.log('保険種類:', insuranceTypes);
     console.log('標準報酬月額:', standardRemuneration);
     const insurance = calculateInsurance(
       standardRemuneration,              // 標準報酬月額
-      newPayslip.payments.totalPayment,  // 月給合計
+      insuranceBaseAmount,               // 月給合計（非課税除外）
       newPayslip.age || 0,               // 年齢
       insuranceTypes                     // 保険種類
     );
