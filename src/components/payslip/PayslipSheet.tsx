@@ -62,8 +62,9 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, helper, onChange }
     newPayslip.payments.nightAccompanyPay = Math.round(nightAccompanyHours * accompanyNightRate);
     newPayslip.payments.officePay = Math.round((officeHours + salesHours) * officeRate);
 
-    // その他手当の合計
-    const otherAllowancesTotal = newPayslip.payments.otherAllowances.reduce(
+    // その他手当の合計（配列が存在することを確認）
+    const otherAllowances = newPayslip.payments.otherAllowances || [];
+    const otherAllowancesTotal = otherAllowances.reduce(
       (sum, item) => sum + item.amount,
       0
     );

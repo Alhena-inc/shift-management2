@@ -718,13 +718,18 @@ export function generateHourlyPayslipFromShifts(
   payslip.payments.officePay = (payslip.attendance.officeHours + payslip.attendance.salesHours) * officeRate;
   payslip.payments.yearEndNewYearAllowance = Math.round(yearEndNewYearAllowance);
 
-  // その他手当をHelperマスタから取得
+  // その他手当を初期化（配列を確実に作成）
+  payslip.payments.otherAllowances = [];
+  
+  // ヘルパーマスタからその他手当を取得
   if (helper.otherAllowances && helper.otherAllowances.length > 0) {
-    payslip.payments.otherAllowances = helper.otherAllowances.map(allowance => ({
-      name: allowance.name,
-      amount: allowance.amount,
-      taxExempt: allowance.taxExempt
-    }));
+    helper.otherAllowances.forEach(allowance => {
+      payslip.payments.otherAllowances.push({
+        name: allowance.name,
+        amount: allowance.amount,
+        taxExempt: allowance.taxExempt
+      });
+    });
   }
 
   // 特別手当の計算（特定のヘルパー×利用者の組み合わせで時給差額を加算）
@@ -738,6 +743,10 @@ export function generateHourlyPayslipFromShifts(
     });
   }
 
+  // その他手当の合計を計算
+  const otherAllowancesTotal = payslip.payments.otherAllowances.reduce((sum, item) => sum + item.amount, 0);
+  console.log(`📊 その他手当合計: ${otherAllowancesTotal}円 (${payslip.payments.otherAllowances.map(a => `${a.name}:${a.amount}`).join(', ')})`);
+
   // 支給額合計
   payslip.payments.totalPayment =
     payslip.payments.normalWorkPay +
@@ -749,7 +758,7 @@ export function generateHourlyPayslipFromShifts(
     payslip.payments.expenseReimbursement +
     payslip.payments.transportAllowance +
     payslip.payments.emergencyAllowance +
-    payslip.payments.otherAllowances.reduce((sum, item) => sum + item.amount, 0);
+    otherAllowancesTotal;
 
   // 社会保険料の計算（時給制でも加入している場合）
   const age = helper.age || 0;
