@@ -117,22 +117,13 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
 
     setCreating(true);
     try {
-      // シフトデータから給与明細を生成
-      // 12月のみ翌年1/4までのデータも含める
+      // シフトデータから給与明細を生成（当月末まで）
       const helperShifts = shifts.filter(s => {
         if (s.helperId !== helper.id) return false;
 
         const shiftDate = new Date(s.date);
         const periodStart = new Date(selectedYear, selectedMonth - 1, 1);
-        let periodEnd: Date;
-
-        if (selectedMonth === 12) {
-          // 12月: 翌年1/4まで
-          periodEnd = new Date(selectedYear + 1, 0, 4, 23, 59, 59);
-        } else {
-          // それ以外: 月末まで
-          periodEnd = new Date(selectedYear, selectedMonth, 0, 23, 59, 59);
-        }
+        const periodEnd = new Date(selectedYear, selectedMonth, 0, 23, 59, 59);
 
         return shiftDate >= periodStart && shiftDate <= periodEnd;
       });
@@ -186,11 +177,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
             const periodStart = new Date(selectedYear, selectedMonth - 1, 1);
             let periodEnd: Date;
 
-            if (selectedMonth === 12) {
-              periodEnd = new Date(selectedYear + 1, 0, 4, 23, 59, 59);
-            } else {
-              periodEnd = new Date(selectedYear, selectedMonth, 0, 23, 59, 59);
-            }
+            periodEnd = new Date(selectedYear, selectedMonth, 0, 23, 59, 59);
 
             return shiftDate >= periodStart && shiftDate <= periodEnd;
           });
@@ -252,17 +239,13 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
     try {
       for (const helper of selectedHelpers) {
         try {
-          // 対象期間のシフトを抽出（12月のみ翌年1/4まで）
+          // 対象期間のシフトを抽出（当月末まで）
           const helperShifts = shifts.filter(s => {
             if (s.helperId !== helper.id) return false;
             const shiftDate = new Date(s.date);
             const periodStart = new Date(selectedYear, selectedMonth - 1, 1);
             let periodEnd: Date;
-            if (selectedMonth === 12) {
-              periodEnd = new Date(selectedYear + 1, 0, 4, 23, 59, 59);
-            } else {
-              periodEnd = new Date(selectedYear, selectedMonth, 0, 23, 59, 59);
-            }
+            periodEnd = new Date(selectedYear, selectedMonth, 0, 23, 59, 59);
             return shiftDate >= periodStart && shiftDate <= periodEnd;
           });
 
@@ -305,22 +288,13 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
 
     setCreating(true);
     try {
-      // 最新のシフトデータを取得
-      // 12月のみ翌年1/4までのデータも含める
+      // 最新のシフトデータを取得（当月末まで）
       const helperShifts = shifts.filter(s => {
         if (s.helperId !== helper.id) return false;
 
         const shiftDate = new Date(s.date);
         const periodStart = new Date(selectedYear, selectedMonth - 1, 1);
-        let periodEnd: Date;
-
-        if (selectedMonth === 12) {
-          // 12月: 翌年1/4まで
-          periodEnd = new Date(selectedYear + 1, 0, 4, 23, 59, 59);
-        } else {
-          // それ以外: 月末まで
-          periodEnd = new Date(selectedYear, selectedMonth, 0, 23, 59, 59);
-        }
+        const periodEnd = new Date(selectedYear, selectedMonth, 0, 23, 59, 59);
 
         return shiftDate >= periodStart && shiftDate <= periodEnd;
       });

@@ -213,26 +213,14 @@ export const createEmptyFixedPayslip = (
   const id = generatePayslipId(helper.id, year, month);
   const daysInMonth = new Date(year, month, 0).getDate();
 
-  // 12月のみ翌年1/1～1/4を追加（31日+4日=35日）
-  const totalDays = month === 12 ? daysInMonth + 4 : daysInMonth;
+  // 12月も含めて当月末まで（翌年分は含めない）
+  const totalDays = daysInMonth;
 
   // 勤怠項目のみ初期化（日付と曜日のみ設定、時間は0）
   const dailyAttendance = Array.from({ length: totalDays }, (_, i) => {
-    let day: number;
-    let date: Date;
-    let displayMonth: number;
-
-    if (i < daysInMonth) {
-      // 当月分（12/1～12/31）
-      day = i + 1;
-      date = new Date(year, month - 1, day);
-      displayMonth = month;
-    } else {
-      // 翌年1月分（1/1～1/4）
-      day = i - daysInMonth + 1;
-      date = new Date(year + 1, 0, day);
-      displayMonth = 1; // 1月
-    }
+    const day = i + 1;
+    const date = new Date(year, month - 1, day);
+    const displayMonth = month;
 
     const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -453,25 +441,13 @@ export const createEmptyHourlyPayslip = (
 
   const daysInMonth = new Date(year, month, 0).getDate();
 
-  // 12月のみ翌年1/1～1/4を追加（31日+4日=35日）
-  const totalDays = month === 12 ? daysInMonth + 4 : daysInMonth;
+  // 12月も含めて当月末まで（翌年分は含めない）
+  const totalDays = daysInMonth;
 
   const dailyAttendance = Array.from({ length: totalDays }, (_, i) => {
-    let day: number;
-    let date: Date;
-    let displayMonth: number;
-
-    if (i < daysInMonth) {
-      // 当月分（12/1～12/31）
-      day = i + 1;
-      date = new Date(year, month - 1, day);
-      displayMonth = month;
-    } else {
-      // 翌年1月分（1/1～1/4）
-      day = i - daysInMonth + 1;
-      date = new Date(year + 1, 0, day);
-      displayMonth = 1; // 1月
-    }
+    const day = i + 1;
+    const date = new Date(year, month - 1, day);
+    const displayMonth = month;
 
     const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -490,7 +466,7 @@ export const createEmptyHourlyPayslip = (
   });
 
   const careList = Array.from({ length: totalDays }, (_, i) => {
-    const day = i < daysInMonth ? i + 1 : i - daysInMonth + 1;
+    const day = i + 1;
     return {
       day,
       slots: [],

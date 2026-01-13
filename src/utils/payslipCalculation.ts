@@ -181,7 +181,7 @@ export function generateFixedPayslipFromShifts(
     payslip.payments.expenseReimbursement = monthlyData.advanceExpense || 0;
   }
 
-  // 給与計算期間のシフトをフィルタ（12月のみ翌年1/4まで、それ以外は当月末まで）
+  // 給与計算期間のシフトをフィルタ（当月末まで）
   const monthShifts = shifts.filter(s => {
     const shiftDate = new Date(s.date);
     if (isNaN(shiftDate.getTime())) {
@@ -190,29 +190,16 @@ export function generateFixedPayslipFromShifts(
     }
 
     const periodStart = new Date(year, month - 1, 1, 0, 0, 0);
-    let periodEnd: Date;
-
-    if (month === 12) {
-      // 12月のみ：翌年1月4日まで
-      periodEnd = new Date(year + 1, 0, 4, 23, 59, 59);
-    } else {
-      // それ以外：当月末日まで
-      periodEnd = new Date(year, month, 0, 23, 59, 59);
-    }
+    const periodEnd = new Date(year, month, 0, 23, 59, 59);
 
     return shiftDate >= periodStart && shiftDate <= periodEnd;
   });
 
-  if (month === 12) {
-    console.log(`✅ フィルタ後のシフト数: ${monthShifts.length}件 (対象: ${year}/12/1 〜 ${year + 1}/1/4)`);
-  } else {
-    console.log(`✅ フィルタ後のシフト数: ${monthShifts.length}件 (対象: ${year}/${month}/1 〜 ${year}/${month}/末)`);
-  }
+  console.log(`✅ フィルタ後のシフト数: ${monthShifts.length}件 (対象: ${year}/${month}/1 〜 ${year}/${month}/末)`);
 
   // シフトデータを日次に集計
   const daysInMonth = new Date(year, month, 0).getDate();
-  // 12月のみ翌年1/1～1/4も含める（35日）
-  const totalDays = month === 12 ? daysInMonth + 4 : daysInMonth;
+  const totalDays = daysInMonth;
   const workDaysSet = new Set<number>();
   const accompanyDaysSet = new Set<number>();
 
@@ -232,18 +219,8 @@ export function generateFixedPayslipFromShifts(
   attendance.totalWorkHours = 0;
 
   for (let dayIndex = 0; dayIndex < totalDays; dayIndex++) {
-    let targetDate: Date;
-    let day: number;
-
-    if (dayIndex < daysInMonth) {
-      // 当月分（12/1～12/31）
-      day = dayIndex + 1;
-      targetDate = new Date(year, month - 1, day);
-    } else {
-      // 翌年1月分（1/1～1/4）※12月のみ
-      day = dayIndex - daysInMonth + 1;
-      targetDate = new Date(year + 1, 0, day);
-    }
+    const day = dayIndex + 1;
+    const targetDate = new Date(year, month - 1, day);
 
     const dateStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
@@ -523,7 +500,7 @@ export function generateHourlyPayslipFromShifts(
     payslip.payments.expenseReimbursement = monthlyData.advanceExpense || 0;
   }
 
-  // 給与計算期間のシフトをフィルタ（12月のみ翌年1/4まで、それ以外は当月末まで）
+  // 給与計算期間のシフトをフィルタ（当月末まで）
   const monthShifts = shifts.filter(s => {
     const shiftDate = new Date(s.date);
     if (isNaN(shiftDate.getTime())) {
@@ -532,24 +509,12 @@ export function generateHourlyPayslipFromShifts(
     }
 
     const periodStart = new Date(year, month - 1, 1, 0, 0, 0);
-    let periodEnd: Date;
-
-    if (month === 12) {
-      // 12月のみ：翌年1月4日まで
-      periodEnd = new Date(year + 1, 0, 4, 23, 59, 59);
-    } else {
-      // それ以外：当月末日まで
-      periodEnd = new Date(year, month, 0, 23, 59, 59);
-    }
+    const periodEnd = new Date(year, month, 0, 23, 59, 59);
 
     return shiftDate >= periodStart && shiftDate <= periodEnd;
   });
 
-  if (month === 12) {
-    console.log(`✅ フィルタ後のシフト数: ${monthShifts.length}件 (対象: ${year}/12/1 〜 ${year + 1}/1/4)`);
-  } else {
-    console.log(`✅ フィルタ後のシフト数: ${monthShifts.length}件 (対象: ${year}/${month}/1 〜 ${year}/${month}/末)`);
-  }
+  console.log(`✅ フィルタ後のシフト数: ${monthShifts.length}件 (対象: ${year}/${month}/1 〜 ${year}/${month}/末)`);
 
   // 基本時給を設定（Helperマスタから取得）
   payslip.baseHourlyRate = helper.hourlyRate || 1200; // デフォルト1200円
@@ -566,24 +531,13 @@ export function generateHourlyPayslipFromShifts(
 
   // シフトデータを日次に集計
   const daysInMonth = new Date(year, month, 0).getDate();
-  // 12月のみ翌年1/1～1/4も含める（35日）
-  const totalDays = month === 12 ? daysInMonth + 4 : daysInMonth;
+  const totalDays = daysInMonth;
   const workDaysSet = new Set<number>();
   const accompanyDaysSet = new Set<number>();
 
   for (let dayIndex = 0; dayIndex < totalDays; dayIndex++) {
-    let targetDate: Date;
-    let day: number;
-
-    if (dayIndex < daysInMonth) {
-      // 当月分（12/1～12/31）
-      day = dayIndex + 1;
-      targetDate = new Date(year, month - 1, day);
-    } else {
-      // 翌年1月分（1/1～1/4）※12月のみ
-      day = dayIndex - daysInMonth + 1;
-      targetDate = new Date(year + 1, 0, day);
-    }
+    const day = dayIndex + 1;
+    const targetDate = new Date(year, month - 1, day);
 
     const dateStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
