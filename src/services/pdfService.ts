@@ -220,20 +220,24 @@ export async function generatePdfFromElement(
   });
   element.removeAttribute('data-pdf-capture');
 
-  // キャンバスと同じサイズのPDFページを作る（縮小なし）
-  const pageWmm = canvas.width * PX_TO_MM;
-  const pageHmm = canvas.height * PX_TO_MM;
-  const orientation = pageWmm >= pageHmm ? 'l' : 'p';
+  /**
+   * 罫線ズレ対策:
+   * mm換算して小数で貼ると微妙なスケーリングが入り、1px単位の罫線がズレて見えることがある。
+   * PDFの単位をpxにして、canvasを1:1で貼る（縮小・拡大なし）。
+   */
+  const pageW = canvas.width;
+  const pageH = canvas.height;
+  const orientation = pageW >= pageH ? 'l' : 'p';
 
   const pdf = new jsPDF({
     orientation,
-    unit: 'mm',
-    format: [pageWmm, pageHmm],
+    unit: 'px',
+    format: [pageW, pageH],
     compress: true,
   });
 
-  // base64文字列を作らず、canvasを直接渡してメモリ負荷を下げる
-  pdf.addImage(canvas as any, 'JPEG', 0, 0, pageWmm, pageHmm, undefined, 'FAST');
+  // canvasを直接貼り付け（罫線をシャープにするためPNG）
+  pdf.addImage(canvas as any, 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
 
   return pdf.output('blob');
 }
@@ -299,28 +303,28 @@ export async function downloadBulkPayslipPdf(
     });
     element.removeAttribute('data-pdf-capture');
 
-    const pageWmm = canvas.width * PX_TO_MM;
-    const pageHmm = canvas.height * PX_TO_MM;
-    const orientation = pageWmm >= pageHmm ? 'l' : 'p';
+    const pageW = canvas.width;
+    const pageH = canvas.height;
+    const orientation = pageW >= pageH ? 'l' : 'p';
 
     if (!pdf) {
       pdf = new jsPDF({
         orientation,
-        unit: 'mm',
-        format: [pageWmm, pageHmm],
+        unit: 'px',
+        format: [pageW, pageH],
         compress: true,
       });
     } else {
-      pdf.addPage([pageWmm, pageHmm], orientation as any);
+      pdf.addPage([pageW, pageH], orientation as any);
     }
 
     // 画像を追加（縮小なし）
-    pdf.addImage(canvas as any, 'JPEG', 0, 0, pageWmm, pageHmm, undefined, 'FAST');
+    pdf.addImage(canvas as any, 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
 
     // ヘルパー名をフッターに追加
-    pdf.setFontSize(8);
+    pdf.setFontSize(10);
     pdf.setTextColor(128, 128, 128);
-    pdf.text(`${payslip.helperName} - ${year}年${month}月`, 5, pageHmm - 3);
+    pdf.text(`${payslip.helperName} - ${year}年${month}月`, 8, pageH - 8);
   }
 
   if (!pdf) throw new Error('PDFの生成に失敗しました');
