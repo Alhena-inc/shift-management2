@@ -699,14 +699,22 @@ export function generateHourlyPayslipFromShifts(
     payslip.attendance.salesHours;
 
   // 給与計算
+  // 通常ケア時給（身体・重度・家事・通院・行動・移動）: 2000円
   const rate = payslip.totalHourlyRate;
   const nightRate = rate * 1.25; // 深夜割増（25%増）
-  const officeRate = helper.officeHourlyRate || 1000; // 事務作業時給（デフォルト1000円）
+  
+  // 同行時給: 1200円（処遇改善加算含む）
+  const accompanyBaseRate = 1200;
+  const accompanyRate = accompanyBaseRate;
+  const accompanyNightRate = accompanyRate * 1.25; // 深夜割増（25%増）
+  
+  // 事務・営業時給: 1200円
+  const officeRate = helper.officeHourlyRate || 1200;
 
   payslip.payments.normalWorkPay = payslip.attendance.normalHours * rate;
   payslip.payments.nightNormalPay = payslip.attendance.nightNormalHours * nightRate;
-  payslip.payments.accompanyPay = payslip.attendance.accompanyHours * rate;
-  payslip.payments.nightAccompanyPay = payslip.attendance.nightAccompanyHours * nightRate;
+  payslip.payments.accompanyPay = payslip.attendance.accompanyHours * accompanyRate;
+  payslip.payments.nightAccompanyPay = payslip.attendance.nightAccompanyHours * accompanyNightRate;
   payslip.payments.officePay = (payslip.attendance.officeHours + payslip.attendance.salesHours) * officeRate;
   payslip.payments.yearEndNewYearAllowance = Math.round(yearEndNewYearAllowance);
 
