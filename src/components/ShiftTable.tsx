@@ -1265,23 +1265,69 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         return;
       }
 
-      // ヘルパー名から ID を検索するマップを作成
+      // ヘルパー名から ID を検索するマップを作成（複数パターン対応）
       const helperNameToId = new Map<string, string>();
+      
+      // 名前の正規化関数（空白を除去）
+      const normalizeName = (name: string) => name.replace(/[\s　]/g, '');
+      
       helpers.forEach(helper => {
         // シフト表表示名（苗字）
         helperNameToId.set(helper.name, helper.id);
+        helperNameToId.set(normalizeName(helper.name), helper.id);
 
-        // フルネーム（苗字+名前）
+        // フルネーム（苗字+名前）- 空白なし
         if (helper.lastName && helper.firstName) {
           const fullName = `${helper.lastName}${helper.firstName}`;
           helperNameToId.set(fullName, helper.id);
+          helperNameToId.set(normalizeName(fullName), helper.id);
+          
+          // フルネーム - 空白あり
+          const fullNameWithSpace = `${helper.lastName} ${helper.firstName}`;
+          helperNameToId.set(fullNameWithSpace, helper.id);
+          
+          // フルネーム - 全角空白あり
+          const fullNameWithFullWidthSpace = `${helper.lastName}　${helper.firstName}`;
+          helperNameToId.set(fullNameWithFullWidthSpace, helper.id);
         }
 
         // 苗字のみ
         if (helper.lastName) {
           helperNameToId.set(helper.lastName, helper.id);
         }
+        
+        // シフト表表示名がフルネームの場合（例："田中 航揮"）
+        // 空白を除去したバージョンも登録
+        if (helper.name.includes(' ') || helper.name.includes('　')) {
+          helperNameToId.set(normalizeName(helper.name), helper.id);
+        }
       });
+      
+      // 検索時に名前を正規化してから検索するラッパー関数
+      const findHelperId = (name: string): string | undefined => {
+        // まず完全一致で検索
+        let helperId = helperNameToId.get(name);
+        if (helperId) return helperId;
+        
+        // 空白を除去して再検索
+        const normalized = normalizeName(name);
+        helperId = helperNameToId.get(normalized);
+        if (helperId) return helperId;
+        
+        // 部分一致で検索（苗字のみでマッチ）
+        for (const helper of helpers) {
+          // 入力名が苗字で始まる場合（例："田中" → "田中航揮"）
+          if (normalized.startsWith(helper.name) || normalized.startsWith(helper.lastName || '')) {
+            return helper.id;
+          }
+          // ヘルパー名が入力名で始まる場合
+          if (helper.name.startsWith(name) || helper.name.startsWith(normalized)) {
+            return helper.id;
+          }
+        }
+        
+        return undefined;
+      };
 
       console.log('👥 登録されているヘルパー:', Array.from(helperNameToId.keys()));
 
@@ -1295,7 +1341,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       // 上書き対象をチェック
       if (data.kotsuhi?.list) {
         data.kotsuhi.list.forEach((item: { name: string; amount: number }) => {
-          const helperId = helperNameToId.get(item.name);
+          const helperId = findHelperId(item.name);
           if (helperId) {
             const helperIndex = updatedHelpers.findIndex(h => h.id === helperId);
             if (helperIndex !== -1) {
@@ -1310,7 +1356,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
       if (data.keihi?.list) {
         data.keihi.list.forEach((item: { name: string; amount: number }) => {
-          const helperId = helperNameToId.get(item.name);
+          const helperId = findHelperId(item.name);
           if (helperId) {
             const helperIndex = updatedHelpers.findIndex(h => h.id === helperId);
             if (helperIndex !== -1) {
@@ -1336,7 +1382,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       if (data.kotsuhi?.list) {
         console.log('🚃 交通費データ:', data.kotsuhi.list);
         data.kotsuhi.list.forEach((item: { name: string; amount: number }) => {
-          const helperId = helperNameToId.get(item.name);
+          const helperId = findHelperId(item.name);
           if (helperId) {
             const helperIndex = updatedHelpers.findIndex(h => h.id === helperId);
             if (helperIndex !== -1) {
@@ -1372,7 +1418,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       if (data.keihi?.list) {
         console.log('📝 経費データ:', data.keihi.list);
         data.keihi.list.forEach((item: { name: string; amount: number }) => {
-          const helperId = helperNameToId.get(item.name);
+          const helperId = findHelperId(item.name);
           if (helperId) {
             const helperIndex = updatedHelpers.findIndex(h => h.id === helperId);
             if (helperIndex !== -1) {
