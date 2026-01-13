@@ -225,8 +225,10 @@ export async function generatePdfFromElement(
    * mm換算して小数で貼ると微妙なスケーリングが入り、1px単位の罫線がズレて見えることがある。
    * PDFの単位をpxにして、canvasを1:1で貼る（縮小・拡大なし）。
    */
-  const pageW = canvas.width;
-  const pageH = canvas.height;
+  // さらに「端のクリップ」で枠が欠け/ズレて見えることがあるため、数pxの余白を持たせる
+  const marginPx = 2;
+  const pageW = canvas.width + marginPx * 2;
+  const pageH = canvas.height + marginPx * 2;
   const orientation = pageW >= pageH ? 'l' : 'p';
 
   const pdf = new jsPDF({
@@ -237,7 +239,7 @@ export async function generatePdfFromElement(
   });
 
   // canvasを直接貼り付け（罫線をシャープにするためPNG）
-  pdf.addImage(canvas as any, 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
+  pdf.addImage(canvas as any, 'PNG', marginPx, marginPx, canvas.width, canvas.height, undefined, 'FAST');
 
   return pdf.output('blob');
 }
@@ -303,8 +305,9 @@ export async function downloadBulkPayslipPdf(
     });
     element.removeAttribute('data-pdf-capture');
 
-    const pageW = canvas.width;
-    const pageH = canvas.height;
+    const marginPx = 2;
+    const pageW = canvas.width + marginPx * 2;
+    const pageH = canvas.height + marginPx * 2;
     const orientation = pageW >= pageH ? 'l' : 'p';
 
     if (!pdf) {
@@ -319,7 +322,7 @@ export async function downloadBulkPayslipPdf(
     }
 
     // 画像を追加（縮小なし）
-    pdf.addImage(canvas as any, 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
+    pdf.addImage(canvas as any, 'PNG', marginPx, marginPx, canvas.width, canvas.height, undefined, 'FAST');
 
     // ヘルパー名をフッターに追加
     pdf.setFontSize(10);
