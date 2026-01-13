@@ -71,18 +71,30 @@ function replaceFormFieldsForCanvas(doc: Document) {
       return;
     }
 
-    const div = doc.createElement('div');
-    // valueが空でも高さが潰れないように
-    div.textContent = input.value ?? '';
-    copyComputedTextStyle(input, div, doc);
-    // inputは縦中央に見えることが多いので寄せる
-    div.style.display = 'flex';
-    div.style.alignItems = 'center';
-    div.style.justifyContent = (doc.defaultView?.getComputedStyle(input).textAlign === 'right')
-      ? 'flex-end'
-      : (doc.defaultView?.getComputedStyle(input).textAlign === 'center' ? 'center' : 'flex-start');
-    div.style.whiteSpace = 'pre-wrap';
-    input.parentNode?.replaceChild(div, input);
+    // text/number等: inputと同じ「高さ・行高」で描画（セルのoverflow hiddenでも切れないように）
+    const span = doc.createElement('span');
+    span.textContent = input.value ?? '';
+    copyComputedTextStyle(input, span, doc);
+
+    const cs = doc.defaultView?.getComputedStyle(input);
+    const h = cs?.height && cs.height !== 'auto' ? cs.height : `${input.clientHeight || 16}px`;
+    const lh = cs?.lineHeight && cs.lineHeight !== 'normal' ? cs.lineHeight : h;
+
+    span.style.display = 'block';
+    span.style.width = '100%';
+    span.style.height = h;
+    span.style.lineHeight = lh;
+    span.style.padding = '0';
+    span.style.margin = '0';
+    span.style.border = '0';
+    span.style.background = 'transparent';
+    span.style.whiteSpace = 'nowrap';
+    span.style.overflow = 'hidden';
+    span.style.textOverflow = 'clip';
+    // inputのtext-alignを尊重
+    if (cs?.textAlign) span.style.textAlign = cs.textAlign;
+
+    input.parentNode?.replaceChild(span, input);
   });
 
   // textarea
@@ -119,7 +131,7 @@ export async function generatePdfFromElement(
   // html2canvasで要素をキャンバスに変換
   const canvas = await html2canvas(element, {
     // 「画面そのまま」を優先（縮小はPDF側で行わない）
-    scale: 1,
+    scale: 2,
     useCORS: true,
     logging: false,
     backgroundColor: '#ffffff',
@@ -193,7 +205,7 @@ export async function downloadBulkPayslipPdf(
 
     // html2canvasでキャンバスに変換
     const canvas = await html2canvas(element, {
-      scale: 1,
+      scale: 2,
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
