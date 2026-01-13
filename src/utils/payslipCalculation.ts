@@ -287,11 +287,39 @@ export function generateFixedPayslipFromShifts(
     payslip.payments.emergencyAllowance +
     payslip.payments.nightAllowance;
 
-  // 社会保険料の自動計算（正社員・契約社員の場合）
+  // 社会保険料の自動計算（ヘルパー設定のチェックに従う）
   const age = helper.age || 0;
-  const insurances = helper.insurances || [];
+  const helperInsurances = helper.insurances || [];
+  const insuranceTypes: string[] = [];
 
-  if (insurances.length > 0) {
+  // 社会保険（健康保険・厚生年金）はセット扱い
+  const hasSocialInsurance =
+    helperInsurances.includes('health') ||
+    (helper as any).hasSocialInsurance === true ||
+    (helper as any).socialInsurance === true;
+  if (hasSocialInsurance) {
+    insuranceTypes.push('health', 'pension');
+  }
+
+  // 介護保険（40歳以上の場合は自動対象。明示チェックも許容）
+  const hasNursingInsurance =
+    helperInsurances.includes('care') ||
+    (helper as any).hasNursingInsurance === true ||
+    (helper as any).nursingInsurance === true;
+  if (hasNursingInsurance || age >= 40) {
+    insuranceTypes.push('care');
+  }
+
+  // 雇用保険
+  const hasEmploymentInsurance =
+    helperInsurances.includes('employment') ||
+    (helper as any).hasEmploymentInsurance === true ||
+    (helper as any).employmentInsurance === true;
+  if (hasEmploymentInsurance) {
+    insuranceTypes.push('employment');
+  }
+
+  if (insuranceTypes.length > 0) {
     // 社会保険料の計算基準：課税対象の月給のみ（非課税手当は含めない）
     const nonTaxableAmount = helper.otherAllowances
       ? helper.otherAllowances
@@ -299,11 +327,17 @@ export function generateFixedPayslipFromShifts(
           .reduce((sum, a) => sum + a.amount, 0)
       : 0;
     const taxableBaseSalary = payslip.totalSalary - nonTaxableAmount;
+    const standardRemuneration =
+      Number((helper as any).standardRemuneration) ||
+      Number((helper as any).standardMonthlyRemuneration) ||
+      taxableBaseSalary;
+    const monthlySalaryTotal = payslip.totalSalary; // 非課税手当含む（雇用保険計算用）
 
     const insuranceResult = calculateInsurance(
-      taxableBaseSalary,
+      standardRemuneration,
+      monthlySalaryTotal,
       age,
-      insurances
+      insuranceTypes
     );
 
     // 控除項目の個別フィールドに設定
@@ -631,9 +665,34 @@ export function generateHourlyPayslipFromShifts(
 
   // 社会保険料の計算（時給制でも加入している場合）
   const age = helper.age || 0;
-  const insurances = helper.insurances || [];
+  const helperInsurances = helper.insurances || [];
+  const insuranceTypes: string[] = [];
 
-  if (insurances.length > 0) {
+  const hasSocialInsurance =
+    helperInsurances.includes('health') ||
+    (helper as any).hasSocialInsurance === true ||
+    (helper as any).socialInsurance === true;
+  if (hasSocialInsurance) {
+    insuranceTypes.push('health', 'pension');
+  }
+
+  const hasNursingInsurance =
+    helperInsurances.includes('care') ||
+    (helper as any).hasNursingInsurance === true ||
+    (helper as any).nursingInsurance === true;
+  if (hasNursingInsurance || age >= 40) {
+    insuranceTypes.push('care');
+  }
+
+  const hasEmploymentInsurance =
+    helperInsurances.includes('employment') ||
+    (helper as any).hasEmploymentInsurance === true ||
+    (helper as any).employmentInsurance === true;
+  if (hasEmploymentInsurance) {
+    insuranceTypes.push('employment');
+  }
+
+  if (insuranceTypes.length > 0) {
     // 社会保険料の計算基準：総支給額から非課税手当を除外
     const nonTaxableAmount = helper.otherAllowances
       ? helper.otherAllowances
@@ -651,10 +710,17 @@ export function generateHourlyPayslipFromShifts(
       payslip.payments.nightAccompanyPay +
       payslip.payments.otherAllowances.filter(a => !a.taxExempt).reduce((sum, item) => sum + item.amount, 0);
 
+    const standardRemuneration =
+      Number((helper as any).standardRemuneration) ||
+      Number((helper as any).standardMonthlyRemuneration) ||
+      salaryCoreAmount;
+    const monthlySalaryTotal = salaryCoreAmount + nonTaxableAmount; // 非課税手当含む
+
     const insuranceResult = calculateInsurance(
-      salaryCoreAmount,
+      standardRemuneration,
+      monthlySalaryTotal,
       age,
-      insurances
+      insuranceTypes
     );
 
     // 控除項目の個別フィールドに設定

@@ -260,7 +260,8 @@ export const createEmptyFixedPayslip = (
   // その他手当をヘルパー情報から取得（課税・非課税含む）
   const otherAllowances = (helper.otherAllowances || []).map(allowance => ({
     name: allowance.name,
-    amount: allowance.amount
+    amount: allowance.amount,
+    taxExempt: allowance.taxExempt,
   }));
 
   // 年齢を計算
@@ -299,13 +300,9 @@ export const createEmptyFixedPayslip = (
     insuranceTypes.push('employment');
   }
 
-  // 契約社員で何も設定されていない場合は、デフォルトで全保険に加入
+  // 保険が未設定の場合は「未加入」として扱う（ヘルパー設定のチェックに従う）
   if (insuranceTypes.length === 0) {
-    console.warn('⚠️ 保険加入情報が設定されていません。デフォルトで全保険に加入します。');
-    insuranceTypes.push('health', 'pension', 'employment');
-    if (age >= 40) {
-      insuranceTypes.push('care');
-    }
+    console.warn('⚠️ 保険加入情報が未設定です（未加入として計算します）');
   }
 
   console.log('📋 保険加入状況（給与明細作成時）:', insuranceTypes);
@@ -518,7 +515,7 @@ export const createEmptyHourlyPayslip = (
     dependents: 0, // デフォルトは0人（必要に応じて変更）
     age,
     insuranceTypes,
-    standardRemuneration: helper.standardRemuneration || 0,  // 標準報酬月額
+    standardRemuneration: Number((helper as any).standardRemuneration) || Number((helper as any).standardMonthlyRemuneration) || 0,  // 標準報酬月額
     baseHourlyRate: 0,
     treatmentAllowance: 0,
     totalHourlyRate: 0,

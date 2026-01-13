@@ -38,6 +38,11 @@ interface BasePayslip {
 export interface DeductionItem {
   name: string;
   amount: number;
+  /**
+   * 主に「その他手当（支給）」で使用
+   * true: 非課税, false/undefined: 課税
+   */
+  taxExempt?: boolean;
 }
 
 export interface Deductions {

@@ -526,6 +526,65 @@ const HelperDetailPage: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* その他手当（時給でも設定可能にする） */}
+                  <div className="mt-6">
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="block text-sm font-medium text-gray-700">
+                        その他手当
+                      </label>
+                      <button
+                        onClick={addOtherAllowance}
+                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm font-medium"
+                      >
+                        + 手当を追加
+                      </button>
+                    </div>
+
+                    {(helper.otherAllowances || []).length === 0 && (
+                      <div className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-lg border border-gray-200">
+                        手当が登録されていません。「+ 手当を追加」ボタンから追加してください。
+                      </div>
+                    )}
+
+                    {(helper.otherAllowances || []).map((allowance, index) => (
+                      <div key={index} className="flex gap-3 mb-3 items-center">
+                        <input
+                          type="text"
+                          value={allowance.name}
+                          onChange={(e) => updateOtherAllowance(index, 'name', e.target.value)}
+                          className="flex-1 px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="手当名（例：交通費手当）"
+                        />
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            value={allowance.amount}
+                            onChange={(e) => updateOtherAllowance(index, 'amount', parseFloat(e.target.value) || 0)}
+                            className="w-32 px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="0"
+                          />
+                          <span className="text-sm text-gray-700 font-medium">円</span>
+                        </div>
+                        <label className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-300 cursor-pointer hover:bg-gray-100">
+                          <input
+                            type="checkbox"
+                            checked={allowance.taxExempt || false}
+                            onChange={(e) => updateOtherAllowance(index, 'taxExempt', e.target.checked)}
+                            className="w-4 h-4 text-blue-600 rounded"
+                          />
+                          <span className="text-sm text-gray-700">非課税</span>
+                        </label>
+                        <button
+                          onClick={() => removeOtherAllowance(index)}
+                          className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm font-medium"
+                          title="削除"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
                 </div>
               )}
 

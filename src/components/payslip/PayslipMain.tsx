@@ -32,6 +32,63 @@ const parseNumber = (value: string): number => {
 };
 
 const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) => {
+  // ヘルパー設定から給与明細用の保険種類へ変換
+  // - 社会保険(health)がONなら health + pension をセットで扱う
+  // - 介護保険(care)は 40歳以上は自動対象（明示ONも許容）
+  // - 雇用保険(employment)はヘルパーのチェックに従う
+  const deriveInsuranceTypesFromHelper = (h?: Helper): string[] => {
+    const current = (payslip as any)?.insuranceTypes || [];
+    if (!h) return current;
+
+    const ins = h.insurances || [];
+    const result: string[] = [];
+
+    const hasSocialInsurance =
+      ins.includes('health') ||
+      (h as any).hasSocialInsurance === true ||
+      (h as any).socialInsurance === true;
+    if (hasSocialInsurance) {
+      result.push('health', 'pension');
+    }
+
+    const age = Number((h as any).age) || 0;
+    const hasNursingInsurance =
+      ins.includes('care') ||
+      (h as any).hasNursingInsurance === true ||
+      (h as any).nursingInsurance === true;
+    if (hasNursingInsurance || age >= 40) {
+      result.push('care');
+    }
+
+    const hasEmploymentInsurance =
+      ins.includes('employment') ||
+      (h as any).hasEmploymentInsurance === true ||
+      (h as any).employmentInsurance === true;
+    if (hasEmploymentInsurance) {
+      result.push('employment');
+    }
+
+    return Array.from(new Set(result));
+  };
+
+  // その他手当の表示ラベル（入力した手当名を優先して表示）
+  const otherAllowances = (payslip as any)?.payments?.otherAllowances || [];
+  const nonTaxableAllowanceNames = otherAllowances
+    .filter((a: any) => a?.taxExempt)
+    .map((a: any) => (a?.name || '').trim())
+    .filter(Boolean);
+  const taxableAllowanceNames = otherAllowances
+    .filter((a: any) => !a?.taxExempt)
+    .map((a: any) => (a?.name || '').trim())
+    .filter(Boolean);
+
+  const nonTaxableAllowanceLabel = nonTaxableAllowanceNames.length > 0
+    ? nonTaxableAllowanceNames.join(' / ')
+    : 'その他支給(非課税)';
+  const taxableAllowanceLabel = taxableAllowanceNames.length > 0
+    ? taxableAllowanceNames.join(' / ')
+    : 'その他支給(課税)';
+
   // 合計額を自動計算する関数
   const recalculateTotals = (updated: any) => {
     // その他支給の合計を計算
@@ -230,6 +287,8 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
   // 初期表示時に合計を計算
   useEffect(() => {
     const updated = JSON.parse(JSON.stringify(payslip));
+    // ヘルパー設定の保険加入を給与明細へ同期（古い明細が「全員雇用保険」になっている対策）
+    updated.insuranceTypes = deriveInsuranceTypesFromHelper(helper);
     const recalculated = recalculateTotals(updated);
 
     // 値が変わった場合のみonChangeを呼ぶ
@@ -567,10 +626,10 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <input type="text" value={payslip.paymentLabels?.nightAllowanceLabel || '夜間手当'} onChange={(e) => updateField(['paymentLabels', 'nightAllowanceLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '9px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" defaultValue="その他支給(非課税)" readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={nonTaxableAllowanceLabel} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '9px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" defaultValue="その他支給(課税)" readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={taxableAllowanceLabel} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#fff2cc', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={payslip.paymentLabels?.totalPaymentLabel || '支給額合計'} onChange={(e) => updateField(['paymentLabels', 'totalPaymentLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
