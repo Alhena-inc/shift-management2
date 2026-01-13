@@ -88,72 +88,33 @@ function syncFormValuesFromOriginal(originalRoot: HTMLElement, clonedRoot: HTMLE
   }
 }
 
-function replaceFormFieldsForCanvas(doc: Document, root?: HTMLElement) {
-  const scope: ParentNode = root ?? doc;
-  // input
-  scope.querySelectorAll('input').forEach((el) => {
-    const input = el as HTMLInputElement;
-    const type = (input.getAttribute('type') || 'text').toLowerCase();
+function prepareCloneForCanvas(doc: Document, clonedRoot: HTMLElement, originalRoot: HTMLElement) {
+  // 最新の入力値をクローンへ同期
+  syncFormValuesFromOriginal(originalRoot, clonedRoot);
 
-    // checkbox / radio は記号化
-    if (type === 'checkbox' || type === 'radio') {
-      const span = doc.createElement('span');
-      span.textContent = input.checked ? '☑' : '☐';
-      copyComputedTextStyle(input, span, doc);
-      span.style.display = 'inline-flex';
-      span.style.alignItems = 'center';
-      span.style.justifyContent = 'center';
-      input.parentNode?.replaceChild(span, input);
-      return;
+  // html2canvasがinputの文字色を落とすケースがあるので強制（見た目は既存CSSを尊重）
+  const style = doc.createElement('style');
+  style.textContent = `
+    input, textarea, select {
+      -webkit-text-fill-color: currentColor !important;
+      color: inherit !important;
+      box-shadow: none !important;
+      outline: none !important;
     }
+    input { caret-color: transparent !important; }
+  `;
+  doc.head.appendChild(style);
 
-    // text/number等: inputと同じ「高さ・行高」で描画（セルのoverflow hiddenでも切れないように）
+  // checkbox / radio は記号化（確実に表示）
+  clonedRoot.querySelectorAll('input[type=\"checkbox\"], input[type=\"radio\"]').forEach((el) => {
+    const input = el as HTMLInputElement;
     const span = doc.createElement('span');
-    span.textContent = input.value ?? '';
+    span.textContent = input.checked ? '☑' : '☐';
     copyComputedTextStyle(input, span, doc);
-
-    const cs = doc.defaultView?.getComputedStyle(input);
-    const h = cs?.height && cs.height !== 'auto' ? cs.height : `${input.clientHeight || 16}px`;
-    const lh = cs?.lineHeight && cs.lineHeight !== 'normal' ? cs.lineHeight : h;
-
-    span.style.display = 'block';
-    span.style.width = '100%';
-    span.style.height = h;
-    span.style.lineHeight = lh;
-    span.style.padding = '0';
-    span.style.margin = '0';
-    span.style.border = '0';
-    span.style.background = 'transparent';
-    span.style.whiteSpace = 'nowrap';
-    span.style.overflow = 'hidden';
-    span.style.textOverflow = 'clip';
-    // inputのtext-alignを尊重
-    if (cs?.textAlign) span.style.textAlign = cs.textAlign;
-
+    span.style.display = 'inline-flex';
+    span.style.alignItems = 'center';
+    span.style.justifyContent = 'center';
     input.parentNode?.replaceChild(span, input);
-  });
-
-  // textarea
-  scope.querySelectorAll('textarea').forEach((el) => {
-    const ta = el as HTMLTextAreaElement;
-    const div = doc.createElement('div');
-    div.textContent = ta.value ?? '';
-    copyComputedTextStyle(ta, div, doc);
-    div.style.whiteSpace = 'pre-wrap';
-    ta.parentNode?.replaceChild(div, ta);
-  });
-
-  // select
-  scope.querySelectorAll('select').forEach((el) => {
-    const sel = el as HTMLSelectElement;
-    const div = doc.createElement('div');
-    const selected = sel.options?.[sel.selectedIndex];
-    div.textContent = selected ? selected.textContent || '' : '';
-    copyComputedTextStyle(sel, div, doc);
-    div.style.display = 'flex';
-    div.style.alignItems = 'center';
-    div.style.whiteSpace = 'pre-wrap';
-    sel.parentNode?.replaceChild(div, sel);
   });
 }
 
@@ -175,14 +136,9 @@ export async function generatePdfFromElement(
     logging: false,
     backgroundColor: '#ffffff',
     onclone: (clonedDoc) => {
-      // input等がcanvasに描画されず「空欄」になる問題の回避
       const clonedRoot = clonedDoc.querySelector(`[data-pdf-capture="${token}"]`) as HTMLElement | null;
       if (clonedRoot) {
-        // clone側に最新の入力値を同期してから置換
-        syncFormValuesFromOriginal(element, clonedRoot);
-        replaceFormFieldsForCanvas(clonedDoc, clonedRoot);
-      } else {
-        replaceFormFieldsForCanvas(clonedDoc);
+        prepareCloneForCanvas(clonedDoc, clonedRoot, element);
       }
     }
   });
@@ -261,10 +217,7 @@ export async function downloadBulkPayslipPdf(
       onclone: (clonedDoc) => {
         const clonedRoot = clonedDoc.querySelector(`[data-pdf-capture="${token}"]`) as HTMLElement | null;
         if (clonedRoot) {
-          syncFormValuesFromOriginal(element, clonedRoot);
-          replaceFormFieldsForCanvas(clonedDoc, clonedRoot);
-        } else {
-          replaceFormFieldsForCanvas(clonedDoc);
+          prepareCloneForCanvas(clonedDoc, clonedRoot, element);
         }
       }
     });
