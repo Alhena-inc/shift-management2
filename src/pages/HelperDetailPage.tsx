@@ -65,6 +65,77 @@ const HelperDetailPage: React.FC = () => {
     setHelper({ ...helper, otherAllowances: updatedAllowances });
   };
 
+  // 勤怠表テンプレの更新
+  const updateAttendanceTemplate = (patch: any) => {
+    if (!helper) return;
+    const current = helper.attendanceTemplate || {
+      enabled: false,
+      weekday: { startTime: '10:00', endTime: '19:00', breakMinutes: 60 },
+      excludeWeekends: true,
+      excludeHolidays: true,
+      excludedDateRanges: [],
+    };
+    setHelper({ ...helper, attendanceTemplate: { ...current, ...patch } });
+  };
+
+  const updateAttendanceTemplateWeekday = (patch: any) => {
+    if (!helper) return;
+    const current = helper.attendanceTemplate || {
+      enabled: false,
+      weekday: { startTime: '10:00', endTime: '19:00', breakMinutes: 60 },
+      excludeWeekends: true,
+      excludeHolidays: true,
+      excludedDateRanges: [],
+    };
+    setHelper({
+      ...helper,
+      attendanceTemplate: { ...current, weekday: { ...current.weekday, ...patch } },
+    });
+  };
+
+  const addExcludedRange = () => {
+    if (!helper) return;
+    const current = helper.attendanceTemplate || {
+      enabled: false,
+      weekday: { startTime: '10:00', endTime: '19:00', breakMinutes: 60 },
+      excludeWeekends: true,
+      excludeHolidays: true,
+      excludedDateRanges: [],
+    };
+    const next = [...(current.excludedDateRanges || []), { start: '', end: '' }];
+    setHelper({ ...helper, attendanceTemplate: { ...current, excludedDateRanges: next } });
+  };
+
+  const updateExcludedRange = (index: number, field: 'start' | 'end', value: string) => {
+    if (!helper) return;
+    const current = helper.attendanceTemplate;
+    if (!current) return;
+    const ranges = [...(current.excludedDateRanges || [])];
+    ranges[index] = { ...ranges[index], [field]: value };
+    setHelper({ ...helper, attendanceTemplate: { ...current, excludedDateRanges: ranges } });
+  };
+
+  const removeExcludedRange = (index: number) => {
+    if (!helper) return;
+    const current = helper.attendanceTemplate;
+    if (!current) return;
+    const ranges = (current.excludedDateRanges || []).filter((_, i) => i !== index);
+    setHelper({ ...helper, attendanceTemplate: { ...current, excludedDateRanges: ranges } });
+  };
+
+  const calculateTemplateWorkHours = (): { workHours: number; breakHours: number } => {
+    const t = helper?.attendanceTemplate;
+    if (!t?.weekday) return { workHours: 0, breakHours: 0 };
+    const [sh, sm] = (t.weekday.startTime || '0:0').split(':').map((v) => parseInt(v, 10));
+    const [eh, em] = (t.weekday.endTime || '0:0').split(':').map((v) => parseInt(v, 10));
+    const start = (Number.isNaN(sh) ? 0 : sh) * 60 + (Number.isNaN(sm) ? 0 : sm);
+    const end = (Number.isNaN(eh) ? 0 : eh) * 60 + (Number.isNaN(em) ? 0 : em);
+    const raw = Math.max(0, end - start);
+    const br = Math.max(0, Number(t.weekday.breakMinutes || 0));
+    const work = Math.max(0, raw - br);
+    return { workHours: work / 60, breakHours: br / 60 };
+  };
+
   const removeOtherAllowance = (index: number) => {
     if (!helper) return;
     const updatedAllowances = (helper.otherAllowances || []).filter((_, i) => i !== index);
@@ -698,6 +769,137 @@ const HelperDetailPage: React.FC = () => {
                       <div className="flex justify-between items-center pt-3 mt-2">
                         <span className="text-lg font-bold text-gray-800">月給合計</span>
                         <span className="text-2xl font-bold text-green-600">{calculateMonthlySalary().toLocaleString()}円</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 勤怠表テンプレ（固定給向け・任意） */}
+                  <div className="mt-8">
+                    <h2 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">勤怠表</h2>
+                    <div className="p-4 border border-gray-200 rounded-lg space-y-4">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={helper.attendanceTemplate?.enabled || false}
+                          onChange={(e) => updateAttendanceTemplate({ enabled: e.target.checked })}
+                          className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                        />
+                        <div>
+                          <span className="text-gray-700 font-medium">勤怠表設定を使う（シフト表ではなく勤怠表を出力）</span>
+                          <p className="text-xs text-gray-500">未チェックの場合は従来通りシフト表から勤怠を作成します</p>
+                        </div>
+                      </label>
+
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">平日 開始</label>
+                          <input
+                            type="time"
+                            value={helper.attendanceTemplate?.weekday?.startTime || '10:00'}
+                            onChange={(e) => updateAttendanceTemplateWeekday({ startTime: e.target.value })}
+                            disabled={!helper.attendanceTemplate?.enabled}
+                            className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">平日 終了</label>
+                          <input
+                            type="time"
+                            value={helper.attendanceTemplate?.weekday?.endTime || '19:00'}
+                            onChange={(e) => updateAttendanceTemplateWeekday({ endTime: e.target.value })}
+                            disabled={!helper.attendanceTemplate?.enabled}
+                            className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">休憩（分）</label>
+                          <input
+                            type="number"
+                            value={helper.attendanceTemplate?.weekday?.breakMinutes ?? 60}
+                            onChange={(e) => updateAttendanceTemplateWeekday({ breakMinutes: parseInt(e.target.value) || 0 })}
+                            disabled={!helper.attendanceTemplate?.enabled}
+                            className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
+                          />
+                        </div>
+                        <div className="flex items-end">
+                          <div className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+                            {(() => {
+                              const { workHours, breakHours } = calculateTemplateWorkHours();
+                              const wh = Number(workHours || 0).toFixed(1).replace(/\.0$/, '');
+                              const bh = Number(breakHours || 0).toFixed(1).replace(/\.0$/, '');
+                              return `実働 ${wh}時間 / 休憩 ${bh}時間`;
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={helper.attendanceTemplate?.excludeWeekends !== false}
+                            onChange={(e) => updateAttendanceTemplate({ excludeWeekends: e.target.checked })}
+                            disabled={!helper.attendanceTemplate?.enabled}
+                            className="w-4 h-4 text-blue-600 rounded"
+                          />
+                          <span className="text-sm text-gray-700">土日を休みにする</span>
+                        </label>
+                        <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={helper.attendanceTemplate?.excludeHolidays !== false}
+                            onChange={(e) => updateAttendanceTemplate({ excludeHolidays: e.target.checked })}
+                            disabled={!helper.attendanceTemplate?.enabled}
+                            className="w-4 h-4 text-blue-600 rounded"
+                          />
+                          <span className="text-sm text-gray-700">祝日を休みにする</span>
+                        </label>
+                      </div>
+
+                      <div className="mt-2">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-gray-700">休み期間（例：2026-01-05〜2026-01-11）</span>
+                          <button
+                            type="button"
+                            onClick={addExcludedRange}
+                            disabled={!helper.attendanceTemplate?.enabled}
+                            className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm font-medium disabled:bg-gray-300"
+                          >
+                            + 追加
+                          </button>
+                        </div>
+
+                        {(helper.attendanceTemplate?.excludedDateRanges || []).length === 0 && (
+                          <div className="text-xs text-gray-500">休み期間は未設定です</div>
+                        )}
+
+                        {(helper.attendanceTemplate?.excludedDateRanges || []).map((r, idx) => (
+                          <div key={idx} className="flex flex-col md:flex-row gap-3 items-start md:items-center mb-2">
+                            <input
+                              type="date"
+                              value={r.start || ''}
+                              onChange={(e) => updateExcludedRange(idx, 'start', e.target.value)}
+                              disabled={!helper.attendanceTemplate?.enabled}
+                              className="px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
+                            />
+                            <span className="text-sm text-gray-500">〜</span>
+                            <input
+                              type="date"
+                              value={r.end || ''}
+                              onChange={(e) => updateExcludedRange(idx, 'end', e.target.value)}
+                              disabled={!helper.attendanceTemplate?.enabled}
+                              className="px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeExcludedRange(idx)}
+                              disabled={!helper.attendanceTemplate?.enabled}
+                              className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm font-medium disabled:bg-gray-300"
+                            >
+                              削除
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>

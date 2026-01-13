@@ -6,6 +6,7 @@ import { createEmptyFixedPayslip, createEmptyHourlyPayslip } from '../services/p
 import { NIGHT_START, NIGHT_END } from '../types/payslip';
 import { calculateWithholdingTax } from './taxCalculator';
 import { calculateInsurance } from './insuranceCalculator';
+import { generateFixedDailyAttendanceFromTemplate } from './attendanceTemplate';
 
 /**
  * 特別手当の設定
@@ -181,127 +182,145 @@ export function generateFixedPayslipFromShifts(
     payslip.payments.expenseReimbursement = monthlyData.advanceExpense || 0;
   }
 
-  // 給与計算期間のシフトをフィルタ（当月末まで）
-  const monthShifts = shifts.filter(s => {
-    const shiftDate = new Date(s.date);
-    if (isNaN(shiftDate.getTime())) {
-      console.warn(`⚠️ 無効な日付: ${s.date}`);
-      return false;
-    }
-
-    const periodStart = new Date(year, month - 1, 1, 0, 0, 0);
-    const periodEnd = new Date(year, month, 0, 23, 59, 59);
-
-    return shiftDate >= periodStart && shiftDate <= periodEnd;
-  });
-
-  console.log(`✅ フィルタ後のシフト数: ${monthShifts.length}件 (対象: ${year}/${month}/1 〜 ${year}/${month}/末)`);
-
-  // シフトデータを日次に集計
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const totalDays = daysInMonth;
-  const workDaysSet = new Set<number>();
-  const accompanyDaysSet = new Set<number>();
-
-  // 勤怠項目を初期化
-  const attendance = payslip.attendance as any;
-  attendance.normalWorkDays = 0;
-  attendance.accompanyDays = 0;
-  attendance.absences = 0;
-  attendance.lateEarly = 0;
-  attendance.totalWorkDays = 0;
-  attendance.normalHours = 0;
-  attendance.accompanyHours = 0;
-  attendance.nightNormalHours = 0;
-  attendance.nightAccompanyHours = 0;
-  attendance.officeHours = 0;
-  attendance.salesHours = 0;
-  attendance.totalWorkHours = 0;
-
-  for (let dayIndex = 0; dayIndex < totalDays; dayIndex++) {
-    const day = dayIndex + 1;
-    const targetDate = new Date(year, month - 1, day);
-
-    const dateStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
-    // 実績が入力されているシフトのみを集計対象とする
-    // duration（実績時間）が0または未設定のものは除外
-    const allDayShifts = monthShifts.filter(s => s.date === dateStr && !s.deleted);
-    const excludedShifts = allDayShifts.filter(s => !s.duration || s.duration <= 0);
-    const dayShifts = allDayShifts.filter(s => s.duration && s.duration > 0);
-
-    // デバッグ：実績なしで除外されたシフトを表示
-    if (excludedShifts.length > 0) {
-      excludedShifts.forEach(s => {
-        const serviceLabel = s.serviceType ? (SERVICE_CONFIG[s.serviceType]?.label || s.serviceType) : '不明';
-        console.log(`⚠️ 除外（実績なし）: ${s.date} ${s.startTime}-${s.endTime} ${s.clientName} (${serviceLabel}) duration=${s.duration}`);
-      });
-    }
-
-    if (dayShifts.length === 0) continue;
-
-    let normalWork = 0;
-    let normalNight = 0;
-    let accompanyWork = 0;
-    let accompanyNight = 0;
-    let officeWork = 0;
-    let salesWork = 0;
-
-    dayShifts.forEach(shift => {
-      const { normalHours, nightHours } = calculateNormalAndNightHours(shift.startTime, shift.endTime);
-
-      // サービス種別ごとに分類
-      if (['shintai', 'judo', 'kaji', 'tsuin', 'ido', 'kodo_engo', 'shinya'].includes(shift.serviceType)) {
-        // 通常稼働
-        normalWork += normalHours;
-        normalNight += nightHours;
-        workDaysSet.add(dayIndex + 1); // ユニークな日付識別子として使用
-      } else if (['doko', 'shinya_doko'].includes(shift.serviceType)) {
-        // 同行稼働
-        accompanyWork += normalHours;
-        accompanyNight += nightHours;
-        accompanyDaysSet.add(dayIndex + 1);
-      } else if (shift.serviceType === 'jimu') {
-        // 事務稼働
-        officeWork += shift.duration || 0;
-      } else if (shift.serviceType === 'eigyo') {
-        // 営業稼働
-        salesWork += shift.duration || 0;
+  if (helper.attendanceTemplate?.enabled) {
+    const result = generateFixedDailyAttendanceFromTemplate(year, month, helper.attendanceTemplate);
+    payslip.dailyAttendance = result.dailyAttendance;
+    payslip.attendance.normalWorkDays = result.totals.normalWorkDays;
+    payslip.attendance.totalWorkDays = result.totals.totalWorkDays;
+    payslip.attendance.normalHours = result.totals.normalHours;
+    payslip.attendance.totalWorkHours = result.totals.totalWorkHours;
+    // 他の勤怠項目は0のまま
+    payslip.attendance.accompanyDays = 0;
+    payslip.attendance.absences = 0;
+    payslip.attendance.lateEarly = 0;
+    payslip.attendance.accompanyHours = 0;
+    payslip.attendance.nightNormalHours = 0;
+    payslip.attendance.nightAccompanyHours = 0;
+    payslip.attendance.officeHours = 0;
+    payslip.attendance.salesHours = 0;
+  } else {
+    // 給与計算期間のシフトをフィルタ（当月末まで）
+    const monthShifts = shifts.filter(s => {
+      const shiftDate = new Date(s.date);
+      if (isNaN(shiftDate.getTime())) {
+        console.warn(`⚠️ 無効な日付: ${s.date}`);
+        return false;
       }
+
+      const periodStart = new Date(year, month - 1, 1, 0, 0, 0);
+      const periodEnd = new Date(year, month, 0, 23, 59, 59);
+
+      return shiftDate >= periodStart && shiftDate <= periodEnd;
     });
 
-    // 日次勤怠表に記録（固定給用 - 時給と同じ詳細な形式）
-    payslip.dailyAttendance[dayIndex].normalWork = normalWork;
-    payslip.dailyAttendance[dayIndex].normalNight = normalNight;
-    payslip.dailyAttendance[dayIndex].accompanyWork = accompanyWork;
-    payslip.dailyAttendance[dayIndex].accompanyNight = accompanyNight;
-    payslip.dailyAttendance[dayIndex].officeWork = officeWork;
-    payslip.dailyAttendance[dayIndex].salesWork = salesWork;
-    payslip.dailyAttendance[dayIndex].totalHours =
-      normalWork + normalNight + accompanyWork + accompanyNight + officeWork + salesWork;
+    console.log(`✅ フィルタ後のシフト数: ${monthShifts.length}件 (対象: ${year}/${month}/1 〜 ${year}/${month}/末)`);
 
-    // 勤怠項目の集計
-    attendance.normalHours += normalWork;
-    attendance.nightNormalHours += normalNight;
-    attendance.accompanyHours += accompanyWork;
-    attendance.nightAccompanyHours += accompanyNight;
-    attendance.officeHours += officeWork;
-    attendance.salesHours += salesWork;
+    // シフトデータを日次に集計
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const totalDays = daysInMonth;
+    const workDaysSet = new Set<number>();
+    const accompanyDaysSet = new Set<number>();
+
+    // 勤怠項目を初期化
+    const attendance = payslip.attendance as any;
+    attendance.normalWorkDays = 0;
+    attendance.accompanyDays = 0;
+    attendance.absences = 0;
+    attendance.lateEarly = 0;
+    attendance.totalWorkDays = 0;
+    attendance.normalHours = 0;
+    attendance.accompanyHours = 0;
+    attendance.nightNormalHours = 0;
+    attendance.nightAccompanyHours = 0;
+    attendance.officeHours = 0;
+    attendance.salesHours = 0;
+    attendance.totalWorkHours = 0;
+
+    for (let dayIndex = 0; dayIndex < totalDays; dayIndex++) {
+      const day = dayIndex + 1;
+      const targetDate = new Date(year, month - 1, day);
+
+      const dateStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+      // 実績が入力されているシフトのみを集計対象とする
+      // duration（実績時間）が0または未設定のものは除外
+      const allDayShifts = monthShifts.filter(s => s.date === dateStr && !s.deleted);
+      const excludedShifts = allDayShifts.filter(s => !s.duration || s.duration <= 0);
+      const dayShifts = allDayShifts.filter(s => s.duration && s.duration > 0);
+
+      // デバッグ：実績なしで除外されたシフトを表示
+      if (excludedShifts.length > 0) {
+        excludedShifts.forEach(s => {
+          const serviceLabel = s.serviceType ? (SERVICE_CONFIG[s.serviceType]?.label || s.serviceType) : '不明';
+          console.log(`⚠️ 除外（実績なし）: ${s.date} ${s.startTime}-${s.endTime} ${s.clientName} (${serviceLabel}) duration=${s.duration}`);
+        });
+      }
+
+      if (dayShifts.length === 0) continue;
+
+      let normalWork = 0;
+      let normalNight = 0;
+      let accompanyWork = 0;
+      let accompanyNight = 0;
+      let officeWork = 0;
+      let salesWork = 0;
+
+      dayShifts.forEach(shift => {
+        const { normalHours, nightHours } = calculateNormalAndNightHours(shift.startTime, shift.endTime);
+
+        // サービス種別ごとに分類
+        if (['shintai', 'judo', 'kaji', 'tsuin', 'ido', 'kodo_engo', 'shinya'].includes(shift.serviceType)) {
+          // 通常稼働
+          normalWork += normalHours;
+          normalNight += nightHours;
+          workDaysSet.add(dayIndex + 1); // ユニークな日付識別子として使用
+        } else if (['doko', 'shinya_doko'].includes(shift.serviceType)) {
+          // 同行稼働
+          accompanyWork += normalHours;
+          accompanyNight += nightHours;
+          accompanyDaysSet.add(dayIndex + 1);
+        } else if (shift.serviceType === 'jimu') {
+          // 事務稼働
+          officeWork += shift.duration || 0;
+        } else if (shift.serviceType === 'eigyo') {
+          // 営業稼働
+          salesWork += shift.duration || 0;
+        }
+      });
+
+      // 日次勤怠表に記録（固定給用 - 時給と同じ詳細な形式）
+      payslip.dailyAttendance[dayIndex].normalWork = normalWork;
+      payslip.dailyAttendance[dayIndex].normalNight = normalNight;
+      payslip.dailyAttendance[dayIndex].accompanyWork = accompanyWork;
+      payslip.dailyAttendance[dayIndex].accompanyNight = accompanyNight;
+      payslip.dailyAttendance[dayIndex].officeWork = officeWork;
+      payslip.dailyAttendance[dayIndex].salesWork = salesWork;
+      payslip.dailyAttendance[dayIndex].totalHours =
+        normalWork + normalNight + accompanyWork + accompanyNight + officeWork + salesWork;
+
+      // 勤怠項目の集計
+      attendance.normalHours += normalWork;
+      attendance.nightNormalHours += normalNight;
+      attendance.accompanyHours += accompanyWork;
+      attendance.nightAccompanyHours += accompanyNight;
+      attendance.officeHours += officeWork;
+      attendance.salesHours += salesWork;
+    }
+
+    // 稼働日数
+    attendance.normalWorkDays = workDaysSet.size;
+    attendance.accompanyDays = accompanyDaysSet.size;
+    attendance.totalWorkDays = workDaysSet.size; // 重複を除く
+
+    // 合計稼働時間
+    attendance.totalWorkHours =
+      attendance.normalHours +
+      attendance.nightNormalHours +
+      attendance.accompanyHours +
+      attendance.nightAccompanyHours +
+      attendance.officeHours +
+      attendance.salesHours;
   }
-
-  // 稼働日数
-  attendance.normalWorkDays = workDaysSet.size;
-  attendance.accompanyDays = accompanyDaysSet.size;
-  attendance.totalWorkDays = workDaysSet.size; // 重複を除く
-
-  // 合計稼働時間
-  attendance.totalWorkHours =
-    attendance.normalHours +
-    attendance.nightNormalHours +
-    attendance.accompanyHours +
-    attendance.nightAccompanyHours +
-    attendance.officeHours +
-    attendance.salesHours;
 
   // 固定給の基本給を設定（Helperマスタから取得）
   payslip.baseSalary = helper.baseSalary || 0;

@@ -3,6 +3,7 @@ import { db } from '../lib/firebase';
 import { collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, Timestamp } from 'firebase/firestore';
 import type { Payslip, FixedPayslip, HourlyPayslip } from '../types/payslip';
 import type { Helper } from '../types';
+import { generateFixedDailyAttendanceFromTemplate } from '../utils/attendanceTemplate';
 
 // 生年月日から年齢を計算
 const calculateAge = (birthDate: string | undefined): number => {
@@ -217,7 +218,7 @@ export const createEmptyFixedPayslip = (
   const totalDays = daysInMonth;
 
   // 勤怠項目のみ初期化（日付と曜日のみ設定、時間は0）
-  const dailyAttendance = Array.from({ length: totalDays }, (_, i) => {
+  let dailyAttendance = Array.from({ length: totalDays }, (_, i) => {
     const day = i + 1;
     const date = new Date(year, month - 1, day);
     const displayMonth = month;
@@ -239,6 +240,12 @@ export const createEmptyFixedPayslip = (
       totalHours: 0,      // 合計勤務時間
     };
   });
+
+  // 勤怠表テンプレが有効な場合は、シフトではなくテンプレから勤怠を作成
+  if (helper.attendanceTemplate?.enabled) {
+    const result = generateFixedDailyAttendanceFromTemplate(year, month, helper.attendanceTemplate);
+    dailyAttendance = result.dailyAttendance;
+  }
 
   // ヘルパー情報から給与データを取得
   const baseSalary = helper.baseSalary || 0;
@@ -308,6 +315,14 @@ export const createEmptyFixedPayslip = (
   const otherAllowancesTotal = otherAllowances.reduce((sum, item) => sum + item.amount, 0);
   const totalPayment = baseSalary + treatmentAllowance + otherAllowancesTotal;
 
+  // 勤怠テンプレが有効な場合は、日次勤怠からサマリーも作成
+  const templateNormalWorkDays = helper.attendanceTemplate?.enabled
+    ? dailyAttendance.filter((d: any) => (d.normalWork || 0) > 0).length
+    : 0;
+  const templateNormalHours = helper.attendanceTemplate?.enabled
+    ? dailyAttendance.reduce((sum: number, d: any) => sum + (d.normalWork || 0), 0)
+    : 0;
+
   return {
     id,
     helperId: helper.id,
@@ -327,21 +342,21 @@ export const createEmptyFixedPayslip = (
     treatmentAllowance,                     // 処遇改善加算
     totalSalary,                            // 合計給与
 
-    // 勤怠情報（勤怠項目なので0で初期化）
+    // 勤怠情報（デフォは0。勤怠表テンプレが有効な場合はテンプレ勤怠を反映）
     attendance: {
-      normalWorkDays: 0,       // 通常稼働日数：0日
+      normalWorkDays: templateNormalWorkDays, // 通常稼働日数
       accompanyDays: 0,        // 同行稼働日数：0日
       absences: 0,             // 欠勤回数：0回
       lateEarly: 0,            // 遅刻・早退回数：0回
-      totalWorkDays: 0,        // 合計稼働日数：0日
+      totalWorkDays: templateNormalWorkDays, // 合計稼働日数
 
-      normalHours: 0,          // 通常稼働時間：0時間
+      normalHours: templateNormalHours,      // 通常稼働時間
       accompanyHours: 0,       // 同行時間：0時間
       nightNormalHours: 0,     // (深夜)稼働時間：0時間
       nightAccompanyHours: 0,  // (深夜)同行時間：0時間
       officeHours: 0,          // 事務稼働時間：0時間
       salesHours: 0,           // 営業稼働時間：0時間
-      totalWorkHours: 0,       // 合計勤務時間：0時間
+      totalWorkHours: templateNormalHours,   // 合計勤務時間
     },
 
     // 支給項目（ヘルパー情報から初期値を設定）

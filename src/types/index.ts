@@ -56,6 +56,34 @@ export interface Dependent {
   socialInsurance: boolean;
 }
 
+export interface AttendanceTemplateDateRange {
+  start: string; // YYYY-MM-DD
+  end: string;   // YYYY-MM-DD
+}
+
+/**
+ * 勤怠表テンプレ（ヘルパーごと）
+ * デフォルトは無効（= 従来どおりシフト表から勤怠を作成）
+ */
+export interface AttendanceTemplate {
+  enabled: boolean;
+  /**
+   * 平日（月〜金）の勤務設定
+   * 例: 10:00-19:00 (休憩60分) => 実働8時間
+   */
+  weekday: {
+    startTime: string;     // HH:mm
+    endTime: string;       // HH:mm
+    breakMinutes: number;  // 休憩（分）
+  };
+  /** 土日を休みにする */
+  excludeWeekends?: boolean;
+  /** 日本の祝日を休みにする */
+  excludeHolidays?: boolean;
+  /** 指定期間を休みにする（例: 2026-01-05〜2026-01-11） */
+  excludedDateRanges?: AttendanceTemplateDateRange[];
+}
+
 export interface Helper {
   id: string;
   name: string;           // 苗字（シフト表表示用）
@@ -85,6 +113,9 @@ export interface Helper {
   // 雇用形態
   employmentType?: 'fulltime' | 'parttime' | 'contract' | 'temporary' | 'outsourced';
   // fulltime=正社員, parttime=パート, contract=契約社員, temporary=派遣, outsourced=業務委託
+
+  // 勤怠表テンプレ（固定給で「シフト表ではなく、勤怠表設定に基づいて出力したい」場合に使用）
+  attendanceTemplate?: AttendanceTemplate;
 
   // 勤務情報
   hireDate?: string;       // 雇用日
