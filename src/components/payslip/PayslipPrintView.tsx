@@ -16,6 +16,7 @@ interface PayslipPrintViewProps {
 const PayslipPrintView: React.FC<PayslipPrintViewProps> = ({ payslip, helper }) => {
   return (
     <div
+      className="payslip-pdf-root"
       style={{
         width: '1600px',
         background: 'white',
@@ -23,6 +24,13 @@ const PayslipPrintView: React.FC<PayslipPrintViewProps> = ({ payslip, helper }) 
         pointerEvents: 'none', // PDF生成時に編集操作が走らないよう無効化
       }}
     >
+      <style>
+        {`
+          /* PDF用: h-full/overflow-auto のせいで切れるのを防ぐ */
+          .payslip-pdf-root .h-full { height: auto !important; }
+          .payslip-pdf-root .overflow-auto { overflow: visible !important; }
+        `}
+      </style>
       <PayslipSheet
         payslip={payslip}
         helper={helper}

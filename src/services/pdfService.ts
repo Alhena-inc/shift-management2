@@ -6,6 +6,109 @@ import type { Payslip } from '../types/payslip';
 // 96dpi想定: 1px = 0.26458mm
 const PX_TO_MM = 0.2645833333;
 
+function copyComputedTextStyle(fromEl: HTMLElement, toEl: HTMLElement, doc: Document) {
+  const win = doc.defaultView;
+  if (!win) return;
+  const cs = win.getComputedStyle(fromEl);
+  // 重要なものだけコピー（全部コピーすると重い/崩れることがある）
+  const props = [
+    'font',
+    'fontFamily',
+    'fontSize',
+    'fontWeight',
+    'fontStyle',
+    'lineHeight',
+    'letterSpacing',
+    'color',
+    'textAlign',
+    'whiteSpace',
+    'backgroundColor',
+    'padding',
+    'paddingTop',
+    'paddingRight',
+    'paddingBottom',
+    'paddingLeft',
+    'border',
+    'borderTop',
+    'borderRight',
+    'borderBottom',
+    'borderLeft',
+    'borderRadius',
+    'boxSizing',
+    'width',
+    'height',
+    'minWidth',
+    'minHeight',
+    'maxWidth',
+    'maxHeight',
+    'overflow',
+    'display',
+    'alignItems',
+    'justifyContent',
+    'verticalAlign',
+  ] as const;
+  props.forEach((p) => {
+    // @ts-ignore
+    toEl.style[p] = cs[p];
+  });
+}
+
+function replaceFormFieldsForCanvas(doc: Document) {
+  // input
+  doc.querySelectorAll('input').forEach((el) => {
+    const input = el as HTMLInputElement;
+    const type = (input.getAttribute('type') || 'text').toLowerCase();
+
+    // checkbox / radio は記号化
+    if (type === 'checkbox' || type === 'radio') {
+      const span = doc.createElement('span');
+      span.textContent = input.checked ? '☑' : '☐';
+      copyComputedTextStyle(input, span, doc);
+      span.style.display = 'inline-flex';
+      span.style.alignItems = 'center';
+      span.style.justifyContent = 'center';
+      input.parentNode?.replaceChild(span, input);
+      return;
+    }
+
+    const div = doc.createElement('div');
+    // valueが空でも高さが潰れないように
+    div.textContent = input.value ?? '';
+    copyComputedTextStyle(input, div, doc);
+    // inputは縦中央に見えることが多いので寄せる
+    div.style.display = 'flex';
+    div.style.alignItems = 'center';
+    div.style.justifyContent = (doc.defaultView?.getComputedStyle(input).textAlign === 'right')
+      ? 'flex-end'
+      : (doc.defaultView?.getComputedStyle(input).textAlign === 'center' ? 'center' : 'flex-start');
+    div.style.whiteSpace = 'pre-wrap';
+    input.parentNode?.replaceChild(div, input);
+  });
+
+  // textarea
+  doc.querySelectorAll('textarea').forEach((el) => {
+    const ta = el as HTMLTextAreaElement;
+    const div = doc.createElement('div');
+    div.textContent = ta.value ?? '';
+    copyComputedTextStyle(ta, div, doc);
+    div.style.whiteSpace = 'pre-wrap';
+    ta.parentNode?.replaceChild(div, ta);
+  });
+
+  // select
+  doc.querySelectorAll('select').forEach((el) => {
+    const sel = el as HTMLSelectElement;
+    const div = doc.createElement('div');
+    const selected = sel.options?.[sel.selectedIndex];
+    div.textContent = selected ? selected.textContent || '' : '';
+    copyComputedTextStyle(sel, div, doc);
+    div.style.display = 'flex';
+    div.style.alignItems = 'center';
+    div.style.whiteSpace = 'pre-wrap';
+    sel.parentNode?.replaceChild(div, sel);
+  });
+}
+
 /**
  * HTML要素をPDFに変換
  */
@@ -19,7 +122,11 @@ export async function generatePdfFromElement(
     scale: 1,
     useCORS: true,
     logging: false,
-    backgroundColor: '#ffffff'
+    backgroundColor: '#ffffff',
+    onclone: (clonedDoc) => {
+      // input等がcanvasに描画されず「空欄」になる問題の回避
+      replaceFormFieldsForCanvas(clonedDoc);
+    }
   });
 
   // キャンバスと同じサイズのPDFページを作る（縮小なし）
@@ -89,7 +196,10 @@ export async function downloadBulkPayslipPdf(
       scale: 1,
       useCORS: true,
       logging: false,
-      backgroundColor: '#ffffff'
+      backgroundColor: '#ffffff',
+      onclone: (clonedDoc) => {
+        replaceFormFieldsForCanvas(clonedDoc);
+      }
     });
 
     const pageWmm = canvas.width * PX_TO_MM;
