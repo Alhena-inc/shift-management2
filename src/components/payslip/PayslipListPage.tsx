@@ -335,8 +335,19 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
     setGeneratingPdf(true);
     setPdfProgress({ current: 0, total: payslips.length });
 
+    let tempContainer: HTMLDivElement | null = null;
+
     try {
       const payslipElements: { element: HTMLElement; payslip: Payslip }[] = [];
+      // クローンを一時的にDOMに追加してhtml2canvasが正しく描画できるようにする
+      tempContainer = document.createElement('div');
+      tempContainer.id = '__payslip_pdf_temp__';
+      tempContainer.style.position = 'fixed';
+      tempContainer.style.left = '-9999px';
+      tempContainer.style.top = '0';
+      tempContainer.style.width = '210mm';
+      tempContainer.style.background = 'white';
+      document.body.appendChild(tempContainer);
 
       // 各給与明細のPDFを順番に生成
       for (let i = 0; i < payslips.length; i++) {
@@ -348,8 +359,10 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
         await new Promise(resolve => setTimeout(resolve, 200));
 
         if (printViewRef.current) {
+          const clone = printViewRef.current.cloneNode(true) as HTMLElement;
+          tempContainer.appendChild(clone);
           payslipElements.push({
-            element: printViewRef.current.cloneNode(true) as HTMLElement,
+            element: clone,
             payslip
           });
         }
@@ -368,6 +381,10 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
       console.error('一括PDF生成エラー:', error);
       alert('PDFの一括生成に失敗しました');
     } finally {
+      // 一時コンテナを掃除
+      if (tempContainer && tempContainer.parentNode) {
+        tempContainer.parentNode.removeChild(tempContainer);
+      }
       setGeneratingPdf(false);
       setBulkPdfMode(false);
       setPdfTargetPayslip(null);
