@@ -3,6 +3,9 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import type { Payslip } from '../types/payslip';
 
+// 96dpi想定: 1px = 0.26458mm
+const PX_TO_MM = 0.2645833333;
+
 /**
  * HTML要素をPDFに変換
  */
@@ -12,37 +15,28 @@ export async function generatePdfFromElement(
 ): Promise<Blob> {
   // html2canvasで要素をキャンバスに変換
   const canvas = await html2canvas(element, {
-    scale: 1.5, // メモリ負荷軽減
+    // 「画面そのまま」を優先（縮小はPDF側で行わない）
+    scale: 1,
     useCORS: true,
     logging: false,
     backgroundColor: '#ffffff'
   });
 
-  // PDF: 横向きA3でゆとりを持たせて縮小を防ぐ
-  const pdf = new jsPDF('l', 'mm', 'a3');
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
+  // キャンバスと同じサイズのPDFページを作る（縮小なし）
+  const pageWmm = canvas.width * PX_TO_MM;
+  const pageHmm = canvas.height * PX_TO_MM;
+  const orientation = pageWmm >= pageHmm ? 'l' : 'p';
 
-  const imgWidth = pageWidth;
-  const imgHeight = (canvas.height * imgWidth) / canvas.width;
-  const imgData = canvas.toDataURL('image/jpeg', 0.8);
+  const pdf = new jsPDF({
+    orientation,
+    unit: 'mm',
+    format: [pageWmm, pageHmm],
+    compress: true,
+  });
 
-  let heightLeft = imgHeight;
-  let position = 0;
+  // base64文字列を作らず、canvasを直接渡してメモリ負荷を下げる
+  pdf.addImage(canvas as any, 'JPEG', 0, 0, pageWmm, pageHmm, undefined, 'FAST');
 
-  // 最初のページ
-  pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-  heightLeft -= pageHeight;
-
-  // 追加のページが必要な場合
-  while (heightLeft > 0) {
-    position = heightLeft - imgHeight;
-    pdf.addPage();
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-    heightLeft -= pageHeight;
-  }
-
-  // Blobとして返す
   return pdf.output('blob');
 }
 
@@ -80,9 +74,7 @@ export async function downloadBulkPayslipPdf(
     throw new Error('ダウンロードする給与明細がありません');
   }
 
-  const pdf = new jsPDF('l', 'mm', 'a3');
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
+  let pdf: jsPDF | null = null;
 
   for (let i = 0; i < payslipElements.length; i++) {
     const { element, payslip } = payslipElements[i];
@@ -94,28 +86,37 @@ export async function downloadBulkPayslipPdf(
 
     // html2canvasでキャンバスに変換
     const canvas = await html2canvas(element, {
-      scale: 1.5,
+      scale: 1,
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff'
     });
 
-    const imgData = canvas.toDataURL('image/jpeg', 0.8);
-    const imgHeight = (canvas.height * pageWidth) / canvas.width;
+    const pageWmm = canvas.width * PX_TO_MM;
+    const pageHmm = canvas.height * PX_TO_MM;
+    const orientation = pageWmm >= pageHmm ? 'l' : 'p';
 
-    // 最初のページ以外は新しいページを追加
-    if (i > 0) {
-      pdf.addPage();
+    if (!pdf) {
+      pdf = new jsPDF({
+        orientation,
+        unit: 'mm',
+        format: [pageWmm, pageHmm],
+        compress: true,
+      });
+    } else {
+      pdf.addPage([pageWmm, pageHmm], orientation as any);
     }
 
-    // 画像を追加
-    pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, Math.min(imgHeight, pageHeight));
+    // 画像を追加（縮小なし）
+    pdf.addImage(canvas as any, 'JPEG', 0, 0, pageWmm, pageHmm, undefined, 'FAST');
 
     // ヘルパー名をフッターに追加
     pdf.setFontSize(8);
     pdf.setTextColor(128, 128, 128);
-    pdf.text(`${payslip.helperName} - ${year}年${month}月`, 10, pageHeight - 5);
+    pdf.text(`${payslip.helperName} - ${year}年${month}月`, 5, pageHmm - 3);
   }
+
+  if (!pdf) throw new Error('PDFの生成に失敗しました');
 
   // ダウンロード
   const filename = `給与明細一括_${year}年${month}月.pdf`;
