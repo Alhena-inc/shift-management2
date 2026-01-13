@@ -53,9 +53,45 @@ function copyComputedTextStyle(fromEl: HTMLElement, toEl: HTMLElement, doc: Docu
   });
 }
 
-function replaceFormFieldsForCanvas(doc: Document) {
+function syncFormValuesFromOriginal(originalRoot: HTMLElement, clonedRoot: HTMLElement) {
+  const orig = originalRoot.querySelectorAll('input, textarea, select');
+  const cloned = clonedRoot.querySelectorAll('input, textarea, select');
+  const len = Math.min(orig.length, cloned.length);
+
+  for (let i = 0; i < len; i++) {
+    const o = orig[i] as any;
+    const c = cloned[i] as any;
+
+    const tag = (o.tagName || '').toLowerCase();
+    if (tag === 'input') {
+      const type = (o.getAttribute?.('type') || 'text').toLowerCase();
+      if (type === 'checkbox' || type === 'radio') {
+        c.checked = !!o.checked;
+      } else {
+        c.value = o.value ?? '';
+        // clone側の属性にも反映（後続cloneでも保持されやすい）
+        try { c.setAttribute?.('value', c.value); } catch { /* noop */ }
+      }
+    } else if (tag === 'textarea') {
+      c.value = o.value ?? '';
+      try { c.textContent = c.value; } catch { /* noop */ }
+    } else if (tag === 'select') {
+      c.selectedIndex = o.selectedIndex ?? 0;
+      // selected属性を付与（念のため）
+      try {
+        Array.from(c.options || []).forEach((opt: any, idx: number) => {
+          if (idx === c.selectedIndex) opt.setAttribute('selected', 'selected');
+          else opt.removeAttribute('selected');
+        });
+      } catch { /* noop */ }
+    }
+  }
+}
+
+function replaceFormFieldsForCanvas(doc: Document, root?: HTMLElement) {
+  const scope: ParentNode = root ?? doc;
   // input
-  doc.querySelectorAll('input').forEach((el) => {
+  scope.querySelectorAll('input').forEach((el) => {
     const input = el as HTMLInputElement;
     const type = (input.getAttribute('type') || 'text').toLowerCase();
 
@@ -98,7 +134,7 @@ function replaceFormFieldsForCanvas(doc: Document) {
   });
 
   // textarea
-  doc.querySelectorAll('textarea').forEach((el) => {
+  scope.querySelectorAll('textarea').forEach((el) => {
     const ta = el as HTMLTextAreaElement;
     const div = doc.createElement('div');
     div.textContent = ta.value ?? '';
@@ -108,7 +144,7 @@ function replaceFormFieldsForCanvas(doc: Document) {
   });
 
   // select
-  doc.querySelectorAll('select').forEach((el) => {
+  scope.querySelectorAll('select').forEach((el) => {
     const sel = el as HTMLSelectElement;
     const div = doc.createElement('div');
     const selected = sel.options?.[sel.selectedIndex];
@@ -128,6 +164,9 @@ export async function generatePdfFromElement(
   element: HTMLElement,
   filename: string
 ): Promise<Blob> {
+  const token = `pdfcap-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  element.setAttribute('data-pdf-capture', token);
+
   // html2canvasで要素をキャンバスに変換
   const canvas = await html2canvas(element, {
     // 「画面そのまま」を優先（縮小はPDF側で行わない）
@@ -137,9 +176,17 @@ export async function generatePdfFromElement(
     backgroundColor: '#ffffff',
     onclone: (clonedDoc) => {
       // input等がcanvasに描画されず「空欄」になる問題の回避
-      replaceFormFieldsForCanvas(clonedDoc);
+      const clonedRoot = clonedDoc.querySelector(`[data-pdf-capture="${token}"]`) as HTMLElement | null;
+      if (clonedRoot) {
+        // clone側に最新の入力値を同期してから置換
+        syncFormValuesFromOriginal(element, clonedRoot);
+        replaceFormFieldsForCanvas(clonedDoc, clonedRoot);
+      } else {
+        replaceFormFieldsForCanvas(clonedDoc);
+      }
     }
   });
+  element.removeAttribute('data-pdf-capture');
 
   // キャンバスと同じサイズのPDFページを作る（縮小なし）
   const pageWmm = canvas.width * PX_TO_MM;
@@ -197,6 +244,8 @@ export async function downloadBulkPayslipPdf(
 
   for (let i = 0; i < payslipElements.length; i++) {
     const { element, payslip } = payslipElements[i];
+    const token = `pdfcap-${Date.now()}-${i}-${Math.random().toString(16).slice(2)}`;
+    element.setAttribute('data-pdf-capture', token);
     
     // 進捗を通知
     if (onProgress) {
@@ -210,9 +259,16 @@ export async function downloadBulkPayslipPdf(
       logging: false,
       backgroundColor: '#ffffff',
       onclone: (clonedDoc) => {
-        replaceFormFieldsForCanvas(clonedDoc);
+        const clonedRoot = clonedDoc.querySelector(`[data-pdf-capture="${token}"]`) as HTMLElement | null;
+        if (clonedRoot) {
+          syncFormValuesFromOriginal(element, clonedRoot);
+          replaceFormFieldsForCanvas(clonedDoc, clonedRoot);
+        } else {
+          replaceFormFieldsForCanvas(clonedDoc);
+        }
       }
     });
+    element.removeAttribute('data-pdf-capture');
 
     const pageWmm = canvas.width * PX_TO_MM;
     const pageHmm = canvas.height * PX_TO_MM;

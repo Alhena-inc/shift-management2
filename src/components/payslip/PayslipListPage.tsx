@@ -359,6 +359,30 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
         await new Promise(resolve => setTimeout(resolve, 200));
 
         if (printViewRef.current) {
+          // cloneNodeはinputの「プロパティ値」を持たないことがあるので、属性へ退避してからクローン
+          printViewRef.current.querySelectorAll('input').forEach((n: any) => {
+            try {
+              const type = (n.getAttribute?.('type') || 'text').toLowerCase();
+              if (type === 'checkbox' || type === 'radio') {
+                if (n.checked) n.setAttribute('checked', 'checked');
+                else n.removeAttribute('checked');
+              } else {
+                n.setAttribute('value', n.value ?? '');
+              }
+            } catch { /* noop */ }
+          });
+          printViewRef.current.querySelectorAll('textarea').forEach((n: any) => {
+            try { n.textContent = n.value ?? ''; } catch { /* noop */ }
+          });
+          printViewRef.current.querySelectorAll('select').forEach((n: any) => {
+            try {
+              Array.from(n.options || []).forEach((opt: any, idx: number) => {
+                if (idx === n.selectedIndex) opt.setAttribute('selected', 'selected');
+                else opt.removeAttribute('selected');
+              });
+            } catch { /* noop */ }
+          });
+
           const clone = printViewRef.current.cloneNode(true) as HTMLElement;
           tempContainer.appendChild(clone);
           payslipElements.push({
