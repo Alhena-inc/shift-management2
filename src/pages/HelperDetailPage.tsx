@@ -808,18 +808,37 @@ const HelperDetailPage: React.FC = () => {
               {/* 源泉徴収設定（全雇用形態共通） */}
               <div className="mt-8">
                 <h2 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">源泉徴収設定</h2>
-                <label className="flex items-center gap-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={helper.hasWithholdingTax !== false}
-                    onChange={(e) => handleChange('hasWithholdingTax', e.target.checked)}
-                    className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                  />
-                  <div>
-                    <span className="text-gray-700 font-medium">源泉徴収する</span>
-                    <p className="text-xs text-gray-500">チェックを外すと源泉所得税を計算しません</p>
+                <div className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={helper.hasWithholdingTax !== false}
+                        onChange={(e) => handleChange('hasWithholdingTax', e.target.checked)}
+                        className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                      />
+                      <div>
+                        <span className="text-gray-700 font-medium">源泉徴収する</span>
+                        <p className="text-xs text-gray-500">チェックを外すと源泉所得税を計算しません</p>
+                      </div>
+                    </label>
+
+                    {/* 扶養人数（源泉徴収税計算に使用） */}
+                    <div className="flex items-center gap-3 md:justify-end">
+                      <span className="text-sm font-medium text-gray-700">扶養人数</span>
+                      <select
+                        value={helper.dependents || 0}
+                        onChange={(e) => handleChange('dependents', parseInt(e.target.value))}
+                        disabled={helper.hasWithholdingTax === false}
+                        className="px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
+                      >
+                        {[0, 1, 2, 3, 4, 5, 6, 7].map(num => (
+                          <option key={num} value={num}>{num}人</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                </label>
+                </div>
               </div>
             </div>
           )}
