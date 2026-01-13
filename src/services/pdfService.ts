@@ -68,12 +68,14 @@ function syncFormValuesFromOriginal(originalRoot: HTMLElement, clonedRoot: HTMLE
       if (type === 'checkbox' || type === 'radio') {
         c.checked = !!o.checked;
       } else {
-        c.value = o.value ?? '';
+        const v = (o.value ?? '') || (o.getAttribute?.('value') ?? '');
+        c.value = v;
         // clone側の属性にも反映（後続cloneでも保持されやすい）
         try { c.setAttribute?.('value', c.value); } catch { /* noop */ }
       }
     } else if (tag === 'textarea') {
-      c.value = o.value ?? '';
+      const v = (o.value ?? '') || (o.textContent ?? '');
+      c.value = v;
       try { c.textContent = c.value; } catch { /* noop */ }
     } else if (tag === 'select') {
       c.selectedIndex = o.selectedIndex ?? 0;
@@ -88,16 +90,96 @@ function syncFormValuesFromOriginal(originalRoot: HTMLElement, clonedRoot: HTMLE
   }
 }
 
+function relaxOverflow(clonedRoot: HTMLElement) {
+  // 固定高さ + overflow hidden が多く、文字が縦に見切れるため緩和
+  clonedRoot.querySelectorAll<HTMLElement>('*').forEach((el) => {
+    const style = (el as any).style;
+    if (style && style.overflow === 'hidden') style.overflow = 'visible';
+    if (style && style.overflowY === 'hidden') style.overflowY = 'visible';
+    if (style && style.overflowX === 'hidden') style.overflowX = 'visible';
+    // input置換後の行高見切れ対策
+    if (style && (style.maxHeight || '').includes('px')) style.maxHeight = 'none';
+  });
+}
+
+function replaceFormFieldsForCanvas(doc: Document, clonedRoot: HTMLElement) {
+  const win = doc.defaultView;
+  // input
+  clonedRoot.querySelectorAll('input').forEach((el) => {
+    const input = el as HTMLInputElement;
+    const type = (input.getAttribute('type') || 'text').toLowerCase();
+
+    // checkbox / radio は記号化（確実表示）
+    if (type === 'checkbox' || type === 'radio') {
+      const span = doc.createElement('span');
+      span.textContent = input.checked ? '☑' : '☐';
+      copyComputedTextStyle(input, span, doc);
+      span.style.display = 'inline-flex';
+      span.style.alignItems = 'center';
+      span.style.justifyContent = 'center';
+      input.parentNode?.replaceChild(span, input);
+      return;
+    }
+
+    const span = doc.createElement('span');
+    span.textContent = input.value ?? '';
+    copyComputedTextStyle(input, span, doc);
+
+    const cs = win?.getComputedStyle(input);
+    const h = cs?.height && cs.height !== 'auto' ? cs.height : `${input.clientHeight || 16}px`;
+    const lh = cs?.lineHeight && cs.lineHeight !== 'normal' ? cs.lineHeight : h;
+
+    span.style.display = 'block';
+    span.style.width = '100%';
+    span.style.height = h;
+    span.style.lineHeight = lh;
+    span.style.padding = '0';
+    span.style.margin = '0';
+    span.style.border = '0';
+    span.style.background = 'transparent';
+    span.style.whiteSpace = 'pre';
+    span.style.overflow = 'visible';
+    if (cs?.textAlign) span.style.textAlign = cs.textAlign;
+
+    input.parentNode?.replaceChild(span, input);
+  });
+
+  // textarea
+  clonedRoot.querySelectorAll('textarea').forEach((el) => {
+    const ta = el as HTMLTextAreaElement;
+    const div = doc.createElement('div');
+    div.textContent = ta.value ?? '';
+    copyComputedTextStyle(ta, div, doc);
+    div.style.whiteSpace = 'pre-wrap';
+    div.style.overflow = 'visible';
+    ta.parentNode?.replaceChild(div, ta);
+  });
+
+  // select
+  clonedRoot.querySelectorAll('select').forEach((el) => {
+    const sel = el as HTMLSelectElement;
+    const div = doc.createElement('div');
+    const selected = sel.options?.[sel.selectedIndex];
+    div.textContent = selected ? (selected.textContent || '') : '';
+    copyComputedTextStyle(sel, div, doc);
+    div.style.display = 'flex';
+    div.style.alignItems = 'center';
+    div.style.whiteSpace = 'pre';
+    div.style.overflow = 'visible';
+    sel.parentNode?.replaceChild(div, sel);
+  });
+}
+
 function prepareCloneForCanvas(doc: Document, clonedRoot: HTMLElement, originalRoot: HTMLElement) {
   // 最新の入力値をクローンへ同期
   syncFormValuesFromOriginal(originalRoot, clonedRoot);
 
-  // html2canvasがinputの文字色を落とすケースがあるので強制（見た目は既存CSSを尊重）
+  // html2canvasがinputの文字色を落とすケースがあるので強制
   const style = doc.createElement('style');
   style.textContent = `
     input, textarea, select {
-      -webkit-text-fill-color: currentColor !important;
-      color: inherit !important;
+      -webkit-text-fill-color: #000 !important;
+      color: #000 !important;
       box-shadow: none !important;
       outline: none !important;
     }
@@ -105,17 +187,11 @@ function prepareCloneForCanvas(doc: Document, clonedRoot: HTMLElement, originalR
   `;
   doc.head.appendChild(style);
 
-  // checkbox / radio は記号化（確実に表示）
-  clonedRoot.querySelectorAll('input[type=\"checkbox\"], input[type=\"radio\"]').forEach((el) => {
-    const input = el as HTMLInputElement;
-    const span = doc.createElement('span');
-    span.textContent = input.checked ? '☑' : '☐';
-    copyComputedTextStyle(input, span, doc);
-    span.style.display = 'inline-flex';
-    span.style.alignItems = 'center';
-    span.style.justifyContent = 'center';
-    input.parentNode?.replaceChild(span, input);
-  });
+  // 見切れ対策（overflow hidden を緩和）
+  relaxOverflow(clonedRoot);
+
+  // input/textarea/select をテキストへ置換して「見た目そのまま＋確実に文字表示」
+  replaceFormFieldsForCanvas(doc, clonedRoot);
 }
 
 /**
