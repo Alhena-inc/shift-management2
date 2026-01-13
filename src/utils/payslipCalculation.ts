@@ -388,83 +388,84 @@ export function generateFixedPayslipFromShifts(
     insuranceTypes.push('employment');
   }
 
-  if (insuranceTypes.length > 0) {
-    // 社会保険料の計算基準：課税対象の月給のみ（非課税手当は含めない）
-    const nonTaxableAmount = helper.otherAllowances
-      ? helper.otherAllowances
-          .filter(a => a.taxExempt)
-          .reduce((sum, a) => sum + a.amount, 0)
-      : 0;
-    const taxableBaseSalary = payslip.totalSalary - nonTaxableAmount;
-    const standardRemuneration =
-      Number((helper as any).standardRemuneration) ||
-      Number((helper as any).standardMonthlyRemuneration) ||
-      taxableBaseSalary;
-    const monthlySalaryTotal = payslip.totalSalary; // 非課税手当含む（雇用保険計算用）
+  // 社会保険料の計算基準：課税対象の月給のみ（非課税手当は含めない）
+  const nonTaxableAmount = helper.otherAllowances
+    ? helper.otherAllowances
+        .filter(a => a.taxExempt)
+        .reduce((sum, a) => sum + a.amount, 0)
+    : 0;
+  const taxableBaseSalary = payslip.totalSalary - nonTaxableAmount;
 
-    const insuranceResult = calculateInsurance(
-      standardRemuneration,
-      monthlySalaryTotal,
-      age,
-      insuranceTypes
-    );
+  // 社会保険は加入がある場合のみ計算（未加入でも源泉/住民税は計算する）
+  const insuranceResult =
+    insuranceTypes.length > 0
+      ? calculateInsurance(
+          Number((helper as any).standardRemuneration) ||
+            Number((helper as any).standardMonthlyRemuneration) ||
+            taxableBaseSalary,
+          payslip.totalSalary, // 非課税手当含む（雇用保険計算用）
+          age,
+          insuranceTypes
+        )
+      : { healthInsurance: 0, careInsurance: 0, pensionInsurance: 0, employmentInsurance: 0, total: 0 };
 
-    // 控除項目の個別フィールドに設定
-    payslip.deductions.healthInsurance = insuranceResult.healthInsurance || 0;
-    payslip.deductions.careInsurance = insuranceResult.careInsurance || 0;
-    payslip.deductions.pensionInsurance = insuranceResult.pensionInsurance || 0;
-    payslip.deductions.employmentInsurance = insuranceResult.employmentInsurance || 0;
+  // 控除項目の個別フィールドに設定
+  payslip.deductions.healthInsurance = insuranceResult.healthInsurance || 0;
+  payslip.deductions.careInsurance = insuranceResult.careInsurance || 0;
+  payslip.deductions.pensionInsurance = insuranceResult.pensionInsurance || 0;
+  payslip.deductions.employmentInsurance = insuranceResult.employmentInsurance || 0;
 
-    // 社会保険計
-    payslip.deductions.socialInsuranceTotal = insuranceResult.total || 0;
+  // 社会保険計
+  payslip.deductions.socialInsuranceTotal = insuranceResult.total || 0;
 
-    // 課税対象額を計算（基本給 + 処遇改善手当 + 課税その他手当 - 社会保険料）
-    // ※経費精算、交通費立替、緊急時対応加算、夜間手当は給与ではないため除外
-    // ※taxableBaseSalaryには既に課税対象の月給（非課税手当を除外済み）が入っている
-    const taxableAmount = taxableBaseSalary - insuranceResult.total;
-    payslip.deductions.taxableAmount = taxableAmount;
+  // 課税対象額を計算（課税月給 - 社会保険料）
+  const taxableAmount = taxableBaseSalary - (insuranceResult.total || 0);
+  payslip.deductions.taxableAmount = taxableAmount;
 
-    // 源泉徴収税の自動計算
+  // 源泉徴収税（ヘルパー設定がOFFの場合は0円）
+  if ((helper as any).hasWithholdingTax === false) {
+    payslip.deductions.incomeTax = 0;
+  } else {
     const dependents = helper.dependents || 0;
     const withholdingTax = calculateWithholdingTax(taxableAmount, dependents);
     payslip.deductions.incomeTax = withholdingTax || 0;
+  }
 
-    // 住民税
-    payslip.deductions.residentTax = helper.residentialTax || 0;
+  // 住民税
+  payslip.deductions.residentTax = helper.residentialTax || 0;
 
-    // 控除計（所得税+住民税+その他控除）
-    payslip.deductions.deductionTotal =
-      payslip.deductions.incomeTax +
-      payslip.deductions.residentTax +
-      (payslip.deductions.reimbursement || 0) +
-      (payslip.deductions.advancePayment || 0) +
-      (payslip.deductions.yearEndAdjustment || 0);
+  // 控除計（所得税+住民税+その他控除）
+  payslip.deductions.deductionTotal =
+    (payslip.deductions.incomeTax || 0) +
+    (payslip.deductions.residentTax || 0) +
+    (payslip.deductions.reimbursement || 0) +
+    (payslip.deductions.advancePayment || 0) +
+    (payslip.deductions.yearEndAdjustment || 0);
 
-    // 控除合計（社会保険計+控除計）
-    payslip.deductions.totalDeduction =
-      payslip.deductions.socialInsuranceTotal +
-      payslip.deductions.deductionTotal;
+  // 控除合計（社会保険計+控除計）
+  payslip.deductions.totalDeduction =
+    (payslip.deductions.socialInsuranceTotal || 0) +
+    (payslip.deductions.deductionTotal || 0);
 
-    // 後方互換性のためitemsにも追加
-    payslip.deductions.items = [];
-    if (payslip.deductions.healthInsurance > 0) {
-      payslip.deductions.items.push({ name: '健康保険', amount: payslip.deductions.healthInsurance });
-    }
-    if (payslip.deductions.careInsurance > 0) {
-      payslip.deductions.items.push({ name: '介護保険', amount: payslip.deductions.careInsurance });
-    }
-    if (payslip.deductions.pensionInsurance > 0) {
-      payslip.deductions.items.push({ name: '厚生年金', amount: payslip.deductions.pensionInsurance });
-    }
-    if (payslip.deductions.employmentInsurance > 0) {
-      payslip.deductions.items.push({ name: '雇用保険', amount: payslip.deductions.employmentInsurance });
-    }
-    if (payslip.deductions.incomeTax > 0) {
-      payslip.deductions.items.push({ name: '源泉所得税', amount: payslip.deductions.incomeTax });
-    }
-    if (payslip.deductions.residentTax > 0) {
-      payslip.deductions.items.push({ name: '住民税', amount: payslip.deductions.residentTax });
-    }
+  // 後方互換性のためitemsにも追加
+  payslip.deductions.items = [];
+  if (payslip.deductions.healthInsurance > 0) {
+    payslip.deductions.items.push({ name: '健康保険', amount: payslip.deductions.healthInsurance });
+  }
+  if (payslip.deductions.careInsurance > 0) {
+    payslip.deductions.items.push({ name: '介護保険', amount: payslip.deductions.careInsurance });
+  }
+  if (payslip.deductions.pensionInsurance > 0) {
+    payslip.deductions.items.push({ name: '厚生年金', amount: payslip.deductions.pensionInsurance });
+  }
+  if (payslip.deductions.employmentInsurance > 0) {
+    payslip.deductions.items.push({ name: '雇用保険', amount: payslip.deductions.employmentInsurance });
+  }
+  if ((payslip.deductions.incomeTax || 0) > 0) {
+    payslip.deductions.items.push({ name: '源泉所得税', amount: payslip.deductions.incomeTax });
+  }
+  if ((payslip.deductions.residentTax || 0) > 0) {
+    payslip.deductions.items.push({ name: '住民税', amount: payslip.deductions.residentTax });
   }
 
   // 差引支給額
@@ -789,92 +790,93 @@ export function generateHourlyPayslipFromShifts(
     insuranceTypes.push('employment');
   }
 
-  if (insuranceTypes.length > 0) {
-    // 社会保険料の計算基準：総支給額から非課税手当を除外
-    const nonTaxableAmount = helper.otherAllowances
-      ? helper.otherAllowances
-          .filter(a => a.taxExempt)
-          .reduce((sum, a) => sum + a.amount, 0)
-      : 0;
+  // 社会保険料の計算基準：総支給額から非課税手当を除外
+  const nonTaxableAmount = helper.otherAllowances
+    ? helper.otherAllowances
+        .filter(a => a.taxExempt)
+        .reduce((sum, a) => sum + a.amount, 0)
+    : 0;
 
-    // 社会保険料計算用：給与部分のみ（経費精算・交通費立替・緊急時対応加算を除外）
-    const salaryCoreAmount =
-      payslip.payments.normalWorkPay +
-      payslip.payments.accompanyPay +
-      payslip.payments.officePay +
-      payslip.payments.yearEndNewYearAllowance +
-      payslip.payments.nightNormalPay +
-      payslip.payments.nightAccompanyPay +
-      payslip.payments.otherAllowances.filter(a => !a.taxExempt).reduce((sum, item) => sum + item.amount, 0);
+  // 社会保険料計算用：給与部分のみ（経費精算・交通費立替・緊急時対応加算を除外）
+  const salaryCoreAmount =
+    payslip.payments.normalWorkPay +
+    payslip.payments.accompanyPay +
+    payslip.payments.officePay +
+    payslip.payments.yearEndNewYearAllowance +
+    payslip.payments.nightNormalPay +
+    payslip.payments.nightAccompanyPay +
+    payslip.payments.otherAllowances.filter(a => !a.taxExempt).reduce((sum, item) => sum + item.amount, 0);
 
-    const standardRemuneration =
-      Number((helper as any).standardRemuneration) ||
-      Number((helper as any).standardMonthlyRemuneration) ||
-      salaryCoreAmount;
-    const monthlySalaryTotal = salaryCoreAmount + nonTaxableAmount; // 非課税手当含む
+  // 社会保険は加入がある場合のみ計算（未加入でも源泉/住民税は計算する）
+  const insuranceResult =
+    insuranceTypes.length > 0
+      ? calculateInsurance(
+          Number((helper as any).standardRemuneration) ||
+            Number((helper as any).standardMonthlyRemuneration) ||
+            salaryCoreAmount,
+          salaryCoreAmount + nonTaxableAmount, // 非課税手当含む
+          age,
+          insuranceTypes
+        )
+      : { healthInsurance: 0, careInsurance: 0, pensionInsurance: 0, employmentInsurance: 0, total: 0 };
 
-    const insuranceResult = calculateInsurance(
-      standardRemuneration,
-      monthlySalaryTotal,
-      age,
-      insuranceTypes
-    );
+  // 控除項目の個別フィールドに設定
+  payslip.deductions.healthInsurance = insuranceResult.healthInsurance || 0;
+  payslip.deductions.careInsurance = insuranceResult.careInsurance || 0;
+  payslip.deductions.pensionInsurance = insuranceResult.pensionInsurance || 0;
+  payslip.deductions.employmentInsurance = insuranceResult.employmentInsurance || 0;
 
-    // 控除項目の個別フィールドに設定
-    payslip.deductions.healthInsurance = insuranceResult.healthInsurance || 0;
-    payslip.deductions.careInsurance = insuranceResult.careInsurance || 0;
-    payslip.deductions.pensionInsurance = insuranceResult.pensionInsurance || 0;
-    payslip.deductions.employmentInsurance = insuranceResult.employmentInsurance || 0;
+  // 社会保険計
+  payslip.deductions.socialInsuranceTotal = insuranceResult.total || 0;
 
-    // 社会保険計
-    payslip.deductions.socialInsuranceTotal = insuranceResult.total || 0;
+  // 源泉所得税の課税対象額（給与部分のみ - 社会保険料）
+  const taxableAmount = salaryCoreAmount - (insuranceResult.total || 0);
+  payslip.deductions.taxableAmount = taxableAmount;
 
-    // 源泉所得税の課税対象額を計算（給与部分のみ - 社会保険料）
-    // ※経費精算、交通費立替、緊急時対応加算は給与ではないため除外
-    const taxableAmount = salaryCoreAmount - insuranceResult.total;
-    payslip.deductions.taxableAmount = taxableAmount;
-
-    // 源泉徴収税の自動計算
+  // 源泉徴収税（ヘルパー設定がOFFの場合は0円）
+  if ((helper as any).hasWithholdingTax === false) {
+    payslip.deductions.incomeTax = 0;
+  } else {
     const dependents = helper.dependents || 0;
     const withholdingTax = calculateWithholdingTax(taxableAmount, dependents);
     payslip.deductions.incomeTax = withholdingTax || 0;
+  }
 
-    // 住民税
-    payslip.deductions.residentTax = helper.residentialTax || 0;
+  // 住民税
+  payslip.deductions.residentTax = helper.residentialTax || 0;
 
-    // 控除計（所得税+住民税+その他控除）
-    payslip.deductions.deductionTotal =
-      payslip.deductions.incomeTax +
-      payslip.deductions.residentTax +
-      (payslip.deductions.reimbursement || 0) +
-      (payslip.deductions.advancePayment || 0) +
-      (payslip.deductions.yearEndAdjustment || 0);
+  // 控除計（所得税+住民税+その他控除）
+  payslip.deductions.deductionTotal =
+    (payslip.deductions.incomeTax || 0) +
+    (payslip.deductions.residentTax || 0) +
+    (payslip.deductions.reimbursement || 0) +
+    (payslip.deductions.advancePayment || 0) +
+    (payslip.deductions.yearEndAdjustment || 0);
 
-    // 控除合計（社会保険計+控除計）
-    payslip.deductions.totalDeduction =
-      payslip.deductions.socialInsuranceTotal +
-      payslip.deductions.deductionTotal;
+  // 控除合計（社会保険計+控除計）
+  payslip.deductions.totalDeduction =
+    (payslip.deductions.socialInsuranceTotal || 0) +
+    (payslip.deductions.deductionTotal || 0);
 
-    // 後方互換性のためitemsにも追加
-    payslip.deductions.items = [];
-    if (payslip.deductions.healthInsurance > 0) {
-      payslip.deductions.items.push({ name: '健康保険', amount: payslip.deductions.healthInsurance });
-    }
-    if (payslip.deductions.careInsurance > 0) {
-      payslip.deductions.items.push({ name: '介護保険', amount: payslip.deductions.careInsurance });
-    }
-    if (payslip.deductions.pensionInsurance > 0) {
-      payslip.deductions.items.push({ name: '厚生年金', amount: payslip.deductions.pensionInsurance });
-    }
-    if (payslip.deductions.employmentInsurance > 0) {
-      payslip.deductions.items.push({ name: '雇用保険', amount: payslip.deductions.employmentInsurance });
-    }
-    if (payslip.deductions.incomeTax > 0) {
-      payslip.deductions.items.push({ name: '源泉所得税', amount: payslip.deductions.incomeTax });
-    }
-    if (payslip.deductions.residentTax > 0) {
-      payslip.deductions.items.push({ name: '住民税', amount: payslip.deductions.residentTax });
-    }
+  // 後方互換性のためitemsにも追加
+  payslip.deductions.items = [];
+  if (payslip.deductions.healthInsurance > 0) {
+    payslip.deductions.items.push({ name: '健康保険', amount: payslip.deductions.healthInsurance });
+  }
+  if (payslip.deductions.careInsurance > 0) {
+    payslip.deductions.items.push({ name: '介護保険', amount: payslip.deductions.careInsurance });
+  }
+  if (payslip.deductions.pensionInsurance > 0) {
+    payslip.deductions.items.push({ name: '厚生年金', amount: payslip.deductions.pensionInsurance });
+  }
+  if (payslip.deductions.employmentInsurance > 0) {
+    payslip.deductions.items.push({ name: '雇用保険', amount: payslip.deductions.employmentInsurance });
+  }
+  if ((payslip.deductions.incomeTax || 0) > 0) {
+    payslip.deductions.items.push({ name: '源泉所得税', amount: payslip.deductions.incomeTax });
+  }
+  if ((payslip.deductions.residentTax || 0) > 0) {
+    payslip.deductions.items.push({ name: '住民税', amount: payslip.deductions.residentTax });
   }
 
   // 差引支給額
