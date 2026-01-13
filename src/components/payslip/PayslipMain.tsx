@@ -138,7 +138,8 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       (updated.payments.transportAllowance || 0) +
       (updated.payments.emergencyAllowance || 0) +
       (updated.payments.nightAllowance || 0) +
-      (updated.payments.overtimePay || 0);
+      (updated.payments.overtimePay || 0) +
+      otherAllowancesTotal; // その他手当（特別手当含む）を合算
 
     // === 社会保険料と源泉所得税の自動計算 ===
 
