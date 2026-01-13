@@ -17,7 +17,7 @@ const PayslipPrintView: React.FC<PayslipPrintViewProps> = ({ payslip, helper }) 
   return (
     <div
       style={{
-        width: '1200px',
+        width: '1600px',
         background: 'white',
         padding: '8px',
         pointerEvents: 'none', // PDF生成時に編集操作が走らないよう無効化

@@ -345,7 +345,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
       tempContainer.style.position = 'fixed';
       tempContainer.style.left = '-9999px';
       tempContainer.style.top = '0';
-      tempContainer.style.width = '210mm';
+      tempContainer.style.width = '1600px';
       tempContainer.style.background = 'white';
       document.body.appendChild(tempContainer);
 

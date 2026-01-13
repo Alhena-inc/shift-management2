@@ -12,22 +12,21 @@ export async function generatePdfFromElement(
 ): Promise<Blob> {
   // html2canvasで要素をキャンバスに変換
   const canvas = await html2canvas(element, {
-    scale: 2,  // 高解像度
+    scale: 2, // 高解像度
     useCORS: true,
     logging: false,
     backgroundColor: '#ffffff'
   });
 
-  // キャンバスのサイズを取得
-  const imgWidth = 210;  // A4の幅(mm)
-  const pageHeight = 297;  // A4の高さ(mm)
-  const imgHeight = (canvas.height * imgWidth) / canvas.width;
+  // PDF: 横向きA3でゆとりを持たせて縮小を防ぐ
+  const pdf = new jsPDF('l', 'mm', 'a3');
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
 
-  // PDFを作成
-  const pdf = new jsPDF('p', 'mm', 'a4');
+  const imgWidth = pageWidth;
+  const imgHeight = (canvas.height * imgWidth) / canvas.width;
   const imgData = canvas.toDataURL('image/png');
 
-  // ページ分割が必要な場合は複数ページに分ける
   let heightLeft = imgHeight;
   let position = 0;
 
@@ -81,9 +80,9 @@ export async function downloadBulkPayslipPdf(
     throw new Error('ダウンロードする給与明細がありません');
   }
 
-  const pdf = new jsPDF('p', 'mm', 'a4');
-  const imgWidth = 210;
-  const pageHeight = 297;
+  const pdf = new jsPDF('l', 'mm', 'a3');
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
 
   for (let i = 0; i < payslipElements.length; i++) {
     const { element, payslip } = payslipElements[i];
@@ -102,7 +101,7 @@ export async function downloadBulkPayslipPdf(
     });
 
     const imgData = canvas.toDataURL('image/png');
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    const imgHeight = (canvas.height * pageWidth) / canvas.width;
 
     // 最初のページ以外は新しいページを追加
     if (i > 0) {
@@ -110,7 +109,7 @@ export async function downloadBulkPayslipPdf(
     }
 
     // 画像を追加
-    pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, Math.min(imgHeight, pageHeight));
+    pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, Math.min(imgHeight, pageHeight));
 
     // ヘルパー名をフッターに追加
     pdf.setFontSize(8);
