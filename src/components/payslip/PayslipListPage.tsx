@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Helper, Shift } from '../../types';
 import type { Payslip, HourlyPayslip } from '../../types/payslip';
 import { isHourlyPayslip } from '../../types/payslip';
@@ -11,7 +11,9 @@ import {
 import { loadHelpers, loadShiftsForMonth } from '../../services/firestoreService';
 import { sendPayslipToSheets } from '../../services/payrollSheetsService';
 import { generatePayslipFromShifts } from '../../utils/payslipCalculation';
+import { downloadPayslipPdf, downloadBulkPayslipPdf } from '../../services/pdfService';
 import PayslipSheet from './PayslipSheet';
+import PayslipPrintView from './PayslipPrintView';
 
 interface PayslipListPageProps {
   onClose: () => void;
@@ -29,6 +31,13 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
   const [editingPayslip, setEditingPayslip] = useState<Payslip | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [creating, setCreating] = useState(false);
+  
+  // PDF関連
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState({ current: 0, total: 0 });
+  const [pdfTargetPayslip, setPdfTargetPayslip] = useState<Payslip | null>(null);
+  const [bulkPdfMode, setBulkPdfMode] = useState(false);
+  const printViewRef = useRef<HTMLDivElement>(null);
 
   // 給与明細とヘルパー一覧を読み込み
   const loadData = useCallback(async () => {
@@ -285,6 +294,87 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
     }
   }, []);
 
+  // 個別PDF生成
+  const handleDownloadPdf = useCallback(async (payslip: Payslip) => {
+    setPdfTargetPayslip(payslip);
+    setBulkPdfMode(false);
+    setGeneratingPdf(true);
+  }, []);
+
+  // PDF生成実行（印刷ビューがレンダリングされた後に実行）
+  useEffect(() => {
+    if (generatingPdf && pdfTargetPayslip && printViewRef.current && !bulkPdfMode) {
+      const generatePdf = async () => {
+        try {
+          await downloadPayslipPdf(printViewRef.current!, pdfTargetPayslip);
+        } catch (error) {
+          console.error('PDF生成エラー:', error);
+          alert('PDFの生成に失敗しました');
+        } finally {
+          setGeneratingPdf(false);
+          setPdfTargetPayslip(null);
+        }
+      };
+      // 少し待ってからPDF生成（レンダリング完了を待つ）
+      setTimeout(generatePdf, 100);
+    }
+  }, [generatingPdf, pdfTargetPayslip, bulkPdfMode]);
+
+  // 一括PDFダウンロード
+  const handleBulkPdfDownload = useCallback(async () => {
+    if (payslips.length === 0) {
+      alert('ダウンロードする給与明細がありません');
+      return;
+    }
+
+    if (!confirm(`${payslips.length}件の給与明細を一括でPDFダウンロードしますか？\n（処理に時間がかかる場合があります）`)) {
+      return;
+    }
+
+    setBulkPdfMode(true);
+    setGeneratingPdf(true);
+    setPdfProgress({ current: 0, total: payslips.length });
+
+    try {
+      const payslipElements: { element: HTMLElement; payslip: Payslip }[] = [];
+
+      // 各給与明細のPDFを順番に生成
+      for (let i = 0; i < payslips.length; i++) {
+        const payslip = payslips[i];
+        setPdfTargetPayslip(payslip);
+        setPdfProgress({ current: i + 1, total: payslips.length });
+
+        // レンダリングを待つ
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        if (printViewRef.current) {
+          payslipElements.push({
+            element: printViewRef.current.cloneNode(true) as HTMLElement,
+            payslip
+          });
+        }
+      }
+
+      // 一括PDFを生成
+      await downloadBulkPayslipPdf(
+        payslipElements,
+        selectedYear,
+        selectedMonth,
+        (current, total) => setPdfProgress({ current, total })
+      );
+
+      alert('PDF一括ダウンロードが完了しました');
+    } catch (error) {
+      console.error('一括PDF生成エラー:', error);
+      alert('PDFの一括生成に失敗しました');
+    } finally {
+      setGeneratingPdf(false);
+      setBulkPdfMode(false);
+      setPdfTargetPayslip(null);
+      setPdfProgress({ current: 0, total: 0 });
+    }
+  }, [payslips, selectedYear, selectedMonth]);
+
   // ヘルパーごとの給与明細を取得
   const getPayslipForHelper = (helperId: string): Payslip | undefined => {
     return payslips.find(p => p.helperId === helperId);
@@ -367,6 +457,18 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
               </svg>
               一括作成
+            </button>
+
+            {/* PDF一括ダウンロードボタン */}
+            <button
+              onClick={handleBulkPdfDownload}
+              disabled={generatingPdf || loading || payslips.length === 0}
+              className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              {generatingPdf ? `PDF生成中 (${pdfProgress.current}/${pdfProgress.total})` : '一括ダウンロード'}
             </button>
           </div>
         </div>
@@ -561,6 +663,42 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
               >
                 保存
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PDF生成用の非表示プリントビュー */}
+      {generatingPdf && pdfTargetPayslip && (
+        <div 
+          style={{ 
+            position: 'fixed', 
+            left: '-9999px', 
+            top: '0',
+            width: '210mm',
+            background: 'white'
+          }}
+        >
+          <div ref={printViewRef}>
+            <PayslipPrintView payslip={pdfTargetPayslip} />
+          </div>
+        </div>
+      )}
+
+      {/* PDF生成中のオーバーレイ */}
+      {generatingPdf && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]">
+          <div className="bg-white rounded-lg p-6 shadow-xl">
+            <div className="flex items-center gap-4">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <div>
+                <p className="font-medium">PDF生成中...</p>
+                {bulkPdfMode && (
+                  <p className="text-sm text-gray-600">
+                    {pdfProgress.current} / {pdfProgress.total} 件処理中
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         </div>

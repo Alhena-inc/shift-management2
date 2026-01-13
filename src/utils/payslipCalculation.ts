@@ -8,6 +8,75 @@ import { calculateWithholdingTax } from './taxCalculator';
 import { calculateInsurance } from './insuranceCalculator';
 
 /**
+ * 特別手当の設定
+ * 特定のヘルパーが特定の利用者を担当した場合に、時給差額を特別手当として計算
+ */
+interface SpecialAllowanceRule {
+  helperName: string;       // ヘルパー名（部分一致）
+  clientName: string;       // 利用者名（部分一致）
+  normalRate: number;       // 通常時給
+  specialRate: number;      // 特別時給
+}
+
+const SPECIAL_ALLOWANCE_RULES: SpecialAllowanceRule[] = [
+  {
+    helperName: '東',       // 東 実穂
+    clientName: '田中絵梨',
+    normalRate: 2000,
+    specialRate: 3000
+  }
+];
+
+/**
+ * 特別手当を計算
+ * @param helperName ヘルパー名
+ * @param shifts シフトデータ
+ * @returns 特別手当の合計額
+ */
+function calculateSpecialAllowance(
+  helperName: string,
+  shifts: Shift[]
+): { amount: number; details: string } {
+  let totalAllowance = 0;
+  const details: string[] = [];
+
+  for (const rule of SPECIAL_ALLOWANCE_RULES) {
+    // ヘルパー名をチェック（部分一致）
+    if (!helperName.includes(rule.helperName)) continue;
+
+    // 該当する利用者のシフトをフィルタ
+    const matchingShifts = shifts.filter(s =>
+      s.clientName && s.clientName.includes(rule.clientName) &&
+      s.duration && s.duration > 0 &&
+      !s.deleted
+    );
+
+    if (matchingShifts.length === 0) continue;
+
+    // 差額を計算
+    const rateDiff = rule.specialRate - rule.normalRate;
+    let totalHours = 0;
+
+    matchingShifts.forEach(shift => {
+      const { normalHours, nightHours } = calculateNormalAndNightHours(shift.startTime, shift.endTime);
+      // 通常時間と深夜時間の合計（深夜は25%割増だが、特別手当は時間に対してのみ計算）
+      totalHours += normalHours + nightHours;
+    });
+
+    const allowance = Math.round(totalHours * rateDiff);
+    if (allowance > 0) {
+      totalAllowance += allowance;
+      details.push(`${rule.clientName}対応 ${totalHours}時間 × ${rateDiff}円`);
+    }
+  }
+
+  return {
+    amount: totalAllowance,
+    details: details.join(', ')
+  };
+}
+
+/**
  * 時間文字列をパースして分単位で返す
  * @param timeStr "HH:mm" 形式の時間文字列
  * @returns 分単位の時間
@@ -648,6 +717,17 @@ export function generateHourlyPayslipFromShifts(
       amount: allowance.amount,
       taxExempt: allowance.taxExempt
     }));
+  }
+
+  // 特別手当の計算（特定のヘルパー×利用者の組み合わせで時給差額を加算）
+  const specialAllowance = calculateSpecialAllowance(helper.name, monthShifts);
+  if (specialAllowance.amount > 0) {
+    console.log(`✨ 特別手当: ${helper.name} - ${specialAllowance.details} = ${specialAllowance.amount}円`);
+    payslip.payments.otherAllowances.push({
+      name: '特別手当',
+      amount: specialAllowance.amount,
+      taxExempt: false  // 課税対象
+    });
   }
 
   // 支給額合計
