@@ -80,15 +80,15 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
         <table className="w-full border-collapse sheet-table">
           <thead className="sticky top-0 bg-white" style={{ zIndex: 10 }}>
             <tr className="red-header" style={{ height: '24px' }}>
-              <th style={{ padding: '2px 4px', fontSize: '11px' }}>日付</th>
-              <th style={{ padding: '2px 4px', fontSize: '11px' }}>曜日</th>
-              <th style={{ padding: '2px 4px', fontSize: '11px' }}>通常稼働</th>
-              <th style={{ padding: '2px 4px', fontSize: '11px' }}>通常(深夜)</th>
-              <th style={{ padding: '2px 4px', fontSize: '11px' }}>同行稼働</th>
-              <th style={{ padding: '2px 4px', fontSize: '11px' }}>同行(深夜)</th>
-              <th style={{ padding: '2px 4px', fontSize: '11px' }}>事務稼働</th>
-              <th style={{ padding: '2px 4px', fontSize: '11px' }}>営業稼働</th>
-              <th style={{ padding: '2px 4px', fontSize: '11px' }}>合計勤務時間</th>
+              <th style={{ padding: '2px 4px', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap' }}>日付</th>
+              <th style={{ padding: '2px 4px', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap' }}>曜日</th>
+              <th style={{ padding: '2px 4px', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap' }}>通常稼働</th>
+              <th style={{ padding: '2px 4px', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap' }}>通常(深夜)</th>
+              <th style={{ padding: '2px 4px', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap' }}>同行稼働</th>
+              <th style={{ padding: '2px 4px', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap' }}>同行(深夜)</th>
+              <th style={{ padding: '2px 4px', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap' }}>事務稼働</th>
+              <th style={{ padding: '2px 4px', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap' }}>営業稼働</th>
+              <th style={{ padding: '2px 2px', fontSize: '9px', textAlign: 'center', whiteSpace: 'nowrap' }}>合計勤務時間</th>
             </tr>
           </thead>
           <tbody>
@@ -100,7 +100,7 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                 <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
                   {day.weekday}
                 </td>
-                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center' }}>
                   <div className="flex items-center justify-center">
                     <input
                       type="number"
@@ -108,13 +108,13 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                       min="0"
                       value={day.normalWork || ''}
                       onChange={(e) => updateCell(index, 'normalWork', Number(e.target.value) || 0)}
-                      className="text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                      className="text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
                       style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#000000' }}
                     />
                     {day.normalWork > 0 && <span style={{ fontSize: '9px', color: '#000000' }}>時間</span>}
                   </div>
                 </td>
-                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center' }}>
                   <div className="flex items-center justify-center">
                     <input
                       type="number"
@@ -122,13 +122,13 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                       min="0"
                       value={day.normalNight || ''}
                       onChange={(e) => updateCell(index, 'normalNight', Number(e.target.value) || 0)}
-                      className="text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                      className="text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
                       style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#000000' }}
                     />
                     {day.normalNight > 0 && <span style={{ fontSize: '9px', color: '#000000' }}>時間</span>}
                   </div>
                 </td>
-                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center' }}>
                   <div className="flex items-center justify-center">
                     <input
                       type="number"
@@ -136,13 +136,13 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                       min="0"
                       value={day.accompanyWork || ''}
                       onChange={(e) => updateCell(index, 'accompanyWork', Number(e.target.value) || 0)}
-                      className="text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                      className="text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
                       style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#000000' }}
                     />
                     {day.accompanyWork > 0 && <span style={{ fontSize: '9px', color: '#000000' }}>時間</span>}
                   </div>
                 </td>
-                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center' }}>
                   <div className="flex items-center justify-center">
                     <input
                       type="number"
@@ -150,13 +150,13 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                       min="0"
                       value={day.accompanyNight || ''}
                       onChange={(e) => updateCell(index, 'accompanyNight', Number(e.target.value) || 0)}
-                      className="text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                      className="text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
                       style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#000000' }}
                     />
                     {day.accompanyNight > 0 && <span style={{ fontSize: '9px', color: '#000000' }}>時間</span>}
                   </div>
                 </td>
-                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center' }}>
                   <div className="flex items-center justify-center">
                     <input
                       type="number"
@@ -164,13 +164,13 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                       min="0"
                       value={day.officeWork || ''}
                       onChange={(e) => updateCell(index, 'officeWork', Number(e.target.value) || 0)}
-                      className="text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                      className="text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
                       style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#000000' }}
                     />
                     {day.officeWork > 0 && <span style={{ fontSize: '9px', color: '#000000' }}>時間</span>}
                   </div>
                 </td>
-                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center' }}>
                   <div className="flex items-center justify-center">
                     <input
                       type="number"
@@ -178,7 +178,7 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                       min="0"
                       value={day.salesWork || ''}
                       onChange={(e) => updateCell(index, 'salesWork', Number(e.target.value) || 0)}
-                      className="text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                      className="text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
                       style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#000000' }}
                     />
                     {day.salesWork > 0 && <span style={{ fontSize: '9px', color: '#000000' }}>時間</span>}
