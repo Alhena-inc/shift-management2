@@ -425,8 +425,10 @@ export function generateFixedPayslipFromShifts(
 
   // 課税対象額を計算（課税月給 - 社会保険料）
   // ※固定給の課税月給は「基本給＋処遇改善＋課税その他手当」
+  // ★ 処遇改善手当（treatmentImprovement）も課税対象として含める
   const taxableBaseSalary =
     (payslip.payments.basePay || 0) +
+    (payslip.payments.treatmentImprovement || 0) +  // ★ 処遇改善手当を追加
     (payslip.payments.otherAllowances || [])
       .filter(a => !(a as any).taxExempt)
       .reduce((sum, a) => sum + (a.amount || 0), 0);
