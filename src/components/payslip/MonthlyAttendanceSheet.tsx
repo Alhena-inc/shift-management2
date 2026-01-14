@@ -109,9 +109,9 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                       value={day.normalWork || ''}
                       onChange={(e) => updateCell(index, 'normalWork', Number(e.target.value) || 0)}
                       className="text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
-                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#4b5563' }}
+                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#1f2937' }}
                     />
-                    {day.normalWork > 0 && <span style={{ fontSize: '9px', color: '#4b5563' }}>時間</span>}
+                    {day.normalWork > 0 && <span style={{ fontSize: '9px', color: '#1f2937' }}>時間</span>}
                   </div>
                 </td>
                 <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
@@ -123,9 +123,9 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                       value={day.normalNight || ''}
                       onChange={(e) => updateCell(index, 'normalNight', Number(e.target.value) || 0)}
                       className="text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
-                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#4b5563' }}
+                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#1f2937' }}
                     />
-                    {day.normalNight > 0 && <span style={{ fontSize: '9px', color: '#4b5563' }}>時間</span>}
+                    {day.normalNight > 0 && <span style={{ fontSize: '9px', color: '#1f2937' }}>時間</span>}
                   </div>
                 </td>
                 <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
@@ -137,9 +137,9 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                       value={day.accompanyWork || ''}
                       onChange={(e) => updateCell(index, 'accompanyWork', Number(e.target.value) || 0)}
                       className="text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
-                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#4b5563' }}
+                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#1f2937' }}
                     />
-                    {day.accompanyWork > 0 && <span style={{ fontSize: '9px', color: '#4b5563' }}>時間</span>}
+                    {day.accompanyWork > 0 && <span style={{ fontSize: '9px', color: '#1f2937' }}>時間</span>}
                   </div>
                 </td>
                 <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
@@ -151,9 +151,9 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                       value={day.accompanyNight || ''}
                       onChange={(e) => updateCell(index, 'accompanyNight', Number(e.target.value) || 0)}
                       className="text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
-                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#4b5563' }}
+                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#1f2937' }}
                     />
-                    {day.accompanyNight > 0 && <span style={{ fontSize: '9px', color: '#4b5563' }}>時間</span>}
+                    {day.accompanyNight > 0 && <span style={{ fontSize: '9px', color: '#1f2937' }}>時間</span>}
                   </div>
                 </td>
                 <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
@@ -165,9 +165,9 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                       value={day.officeWork || ''}
                       onChange={(e) => updateCell(index, 'officeWork', Number(e.target.value) || 0)}
                       className="text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
-                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#4b5563' }}
+                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#1f2937' }}
                     />
-                    {day.officeWork > 0 && <span style={{ fontSize: '9px', color: '#4b5563' }}>時間</span>}
+                    {day.officeWork > 0 && <span style={{ fontSize: '9px', color: '#1f2937' }}>時間</span>}
                   </div>
                 </td>
                 <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
@@ -179,12 +179,12 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                       value={day.salesWork || ''}
                       onChange={(e) => updateCell(index, 'salesWork', Number(e.target.value) || 0)}
                       className="text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
-                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#4b5563' }}
+                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#1f2937' }}
                     />
-                    {day.salesWork > 0 && <span style={{ fontSize: '9px', color: '#4b5563' }}>時間</span>}
+                    {day.salesWork > 0 && <span style={{ fontSize: '9px', color: '#1f2937' }}>時間</span>}
                   </div>
                 </td>
-                <td className="text-center bg-gray-50" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', color: '#4b5563' }}>
+                <td className="text-center bg-gray-50" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', color: '#1f2937' }}>
                   {formatHours(day.totalHours)}
                 </td>
               </tr>
@@ -194,25 +194,25 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
               <td className="text-center" colSpan={2} style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
                 合計
               </td>
-              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#4b5563' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#1f2937' }}>
                 {formatTotalCell(totals.normalWork)}
               </td>
-              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#4b5563' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#1f2937' }}>
                 {formatTotalCell(totals.normalNight)}
               </td>
-              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#4b5563' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#1f2937' }}>
                 {formatTotalCell(totals.accompanyWork)}
               </td>
-              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#4b5563' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#1f2937' }}>
                 {formatTotalCell(totals.accompanyNight)}
               </td>
-              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#4b5563' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#1f2937' }}>
                 {formatTotalCell(totals.officeWork)}
               </td>
-              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#4b5563' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#1f2937' }}>
                 {formatTotalCell(totals.salesWork)}
               </td>
-              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#4b5563' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#1f2937' }}>
                 {formatTotalCell(totals.totalHours)}
               </td>
             </tr>

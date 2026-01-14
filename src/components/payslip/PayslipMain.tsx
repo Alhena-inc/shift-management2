@@ -71,7 +71,7 @@ const amountInputStyle = {
   padding: '0px',
   lineHeight: '1.2',
   height: '16px',
-  color: '#4b5563',
+  color: '#1f2937',
 };
 
 const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) => {
