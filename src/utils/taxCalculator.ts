@@ -512,14 +512,16 @@ export function calculateWithholdingTaxByYear(
     }
   }
 
-  // パターンB: 月額表参照範囲（740,000円未満）
-  // ★ 計算式は使わず、必ずマスタデータ（早見表）から固定値を取得する
+  // ★★★ パターンB: 月額表参照範囲（740,000円未満）★★★
+  // 【重要】この範囲では計算式を絶対に使用しない！
+  // 国税庁の税額表に定義された固定値のみを返す。
+  // 税額表にない数値（計算で求めた値）は絶対に出力しない。
   if (salary < 740000) {
     return lookupTaxFromTable(salary, dependents, type, config);
   }
 
-  // パターンC: 高額給与（740,000円以上）
-  // ここのみ計算式（速算表）を使用する
+  // パターンC: 高額給与（740,000円以上）のみ速算式（計算式）を使用
+  // ※740,000円以上は税額表に記載がないため、計算式で算出する
   if (type === '乙') {
     return calculateOtsuHighIncomeTax(salary, config);
   } else {
@@ -530,7 +532,9 @@ export function calculateWithholdingTaxByYear(
 /**
  * 月額表から税額をルックアップ（740,000円未満用）
  * 
- * ★ 計算式は一切使用せず、マスタデータから該当行を検索して固定値を返す
+ * ★★★ 【重要】計算式は絶対に使用禁止 ★★★
+ * このメソッドは、国税庁の税額表に定義された固定値のみを返します。
+ * 税額表に存在しない数値（計算で求めた値など）は絶対に出力しません。
  */
 function lookupTaxFromTable(
   salary: number,
@@ -538,25 +542,38 @@ function lookupTaxFromTable(
   type: TaxType,
   config: YearConfig
 ): number {
-  // テーブルから該当する行を検索
+  // テーブルから該当する行を検索（範囲検索: min <= salary < max）
   const row = config.taxTable.find(r => salary >= r.min && salary < r.max);
   
   if (!row) {
-    // テーブルに該当がない場合（通常は発生しないが念のため）
-    // 最も近い行を使用
+    // ★ テーブルに該当がない場合 = 税額表の範囲外
+    // 通常は発生しないが、発生した場合は以下の処理を行う
+    
+    // 課税ライン未満（88,000円未満 or 105,000円未満）の場合は0円
+    if (salary < config.taxFreeThreshold) {
+      return 0;
+    }
+    
+    // テーブルの最後の行（737,000〜740,000円）を超えている場合
+    // → 740,000円以上は速算式を使用するので、ここには来ないはず
+    // 安全のため、最後の行の値を返す（計算式は使わない）
     const lastRow = config.taxTable[config.taxTable.length - 1];
     if (salary >= lastRow.min) {
+      console.warn(`[源泉徴収] テーブル範囲外: ${salary}円 - 最終行の値を使用`);
       return type === '乙' ? lastRow.otsu : getKouTaxFromRow(lastRow, dependents);
     }
+    
+    // それ以外の場合は0円（テーブルに存在しない範囲）
+    console.warn(`[源泉徴収] テーブルに該当なし: ${salary}円`);
     return 0;
   }
 
-  // 乙欄の場合
+  // ★ テーブルから固定値を返す（計算式は一切使用しない）
   if (type === '乙') {
-    return row.otsu;
+    return row.otsu;  // 乙欄の固定値
   }
 
-  // 甲欄の場合
+  // 甲欄の固定値
   return getKouTaxFromRow(row, dependents);
 }
 
