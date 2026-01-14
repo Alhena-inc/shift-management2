@@ -907,7 +907,7 @@ const HelperDetailPage: React.FC = () => {
                   {/* 税務情報（固定給のみ） */}
                   <div className="mt-8">
                     <h2 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">税務情報</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           扶養人数
@@ -924,18 +924,6 @@ const HelperDetailPage: React.FC = () => {
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                          住民税（月額・円）
-                        </label>
-                        <input
-                          type="number"
-                          value={helper.residentialTax || ''}
-                          onChange={(e) => handleChange('residentialTax', parseFloat(e.target.value) || 0)}
-                          className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          placeholder="5000"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
                           標準報酬月額（円）
                         </label>
                         <input
@@ -946,6 +934,75 @@ const HelperDetailPage: React.FC = () => {
                           placeholder="200000"
                         />
                       </div>
+                    </div>
+
+                    {/* 住民税徴収区分 */}
+                    <div className="mt-6">
+                      <label className="block text-sm font-medium text-gray-700 mb-3">
+                        住民税徴収区分
+                      </label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <label className="flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-blue-50"
+                          style={{
+                            borderColor: helper.residentTaxType === 'special' ? '#3b82f6' : '#d1d5db',
+                            backgroundColor: helper.residentTaxType === 'special' ? '#eff6ff' : 'white'
+                          }}
+                        >
+                          <input
+                            type="radio"
+                            name="residentTaxType"
+                            checked={helper.residentTaxType === 'special'}
+                            onChange={() => handleChange('residentTaxType', 'special')}
+                            className="w-5 h-5 text-blue-600"
+                          />
+                          <div className="flex-1">
+                            <div className="font-bold text-gray-800">特別徴収</div>
+                            <div className="text-sm text-gray-600 mt-1">
+                              給与から天引き（会社が代行納付）
+                            </div>
+                          </div>
+                        </label>
+
+                        <label className="flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
+                          style={{
+                            borderColor: helper.residentTaxType === 'normal' ? '#10b981' : '#d1d5db',
+                            backgroundColor: helper.residentTaxType === 'normal' ? '#f0fdf4' : 'white'
+                          }}
+                        >
+                          <input
+                            type="radio"
+                            name="residentTaxType"
+                            checked={helper.residentTaxType === 'normal'}
+                            onChange={() => handleChange('residentTaxType', 'normal')}
+                            className="w-5 h-5 text-green-600"
+                          />
+                          <div className="flex-1">
+                            <div className="font-bold text-gray-800">普通徴収</div>
+                            <div className="text-sm text-gray-600 mt-1">
+                              本人が直接納付（明細に記載しない）
+                            </div>
+                          </div>
+                        </label>
+                      </div>
+
+                      {/* 特別徴収の場合のみ金額入力を表示 */}
+                      {helper.residentTaxType === 'special' && (
+                        <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            住民税（月額・円）
+                          </label>
+                          <input
+                            type="number"
+                            value={helper.residentialTax || ''}
+                            onChange={(e) => handleChange('residentialTax', parseFloat(e.target.value) || 0)}
+                            className="w-full md:w-1/2 px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="5000"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            この金額が給与明細の住民税項目に反映されます
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
 

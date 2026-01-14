@@ -135,7 +135,8 @@ export interface Helper {
 
   // 税務情報（正社員・契約社員用）
   dependents?: number;                    // 扶養人数（0〜7人）
-  residentialTax?: number;                // 住民税
+  residentTaxType?: 'special' | 'normal'; // 住民税徴収区分（special=特別徴収、normal=普通徴収）
+  residentialTax?: number;                // 住民税（特別徴収時の月額）
   age?: number;                           // 年齢（介護保険判定用）
   standardRemuneration?: number;          // 標準報酬月額（社会保険料計算用）
   standardMonthlyRemuneration?: number;   // 標準報酬月額（別名、互換性のため）

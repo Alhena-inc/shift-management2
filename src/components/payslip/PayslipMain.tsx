@@ -31,6 +31,32 @@ const parseNumber = (value: string): number => {
   return isNaN(num) ? 0 : num;
 };
 
+// 共通セルスタイル
+const cellStyle = {
+  border: '1px solid black',
+  fontSize: '11px',
+  padding: '2px 4px',
+  lineHeight: '1.3',
+  height: '22px',
+  verticalAlign: 'middle' as const,
+  boxSizing: 'border-box' as const,
+};
+
+const headerCellStyle = {
+  ...cellStyle,
+  backgroundColor: '#e8f4f8',
+  fontWeight: 'bold' as const,
+  textAlign: 'center' as const,
+};
+
+const inputStyle = {
+  fontSize: '11px',
+  padding: '0px',
+  lineHeight: '1.3',
+  height: '18px',
+  verticalAlign: 'middle' as const,
+};
+
 const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) => {
   // ヘルパー設定から給与明細用の保険種類へ変換
   // - 社会保険(health)がONなら health + pension をセットで扱う
@@ -71,23 +97,12 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     return Array.from(new Set(result));
   };
 
-  // その他手当の表示ラベル（入力した手当名を優先して表示）
-  const otherAllowances = (payslip as any)?.payments?.otherAllowances || [];
-  const nonTaxableAllowanceNames = otherAllowances
-    .filter((a: any) => a?.taxExempt)
-    .map((a: any) => (a?.name || '').trim())
-    .filter(Boolean);
-  const taxableAllowanceNames = otherAllowances
-    .filter((a: any) => !a?.taxExempt)
-    .map((a: any) => (a?.name || '').trim())
-    .filter(Boolean);
+  // その他手当の表示ラベル（固定表示）
+  const nonTaxableAllowanceLabel = 'その他支給(非課税)';
+  const taxableAllowanceLabel = 'その他支給(課税)';
 
-  const nonTaxableAllowanceLabel = nonTaxableAllowanceNames.length > 0
-    ? nonTaxableAllowanceNames.join(' / ')
-    : 'その他支給(非課税)';
-  const taxableAllowanceLabel = taxableAllowanceNames.length > 0
-    ? taxableAllowanceNames.join(' / ')
-    : 'その他支給(課税)';
+  // 普通徴収かどうか（普通徴収の場合は住民税を表示しない）
+  const isNormalTaxCollection = helper?.residentTaxType === 'normal';
 
   // 合計額を自動計算する関数
   const recalculateTotals = (updated: any) => {
@@ -234,10 +249,12 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     updated.deductions.incomeTax = withholdingTax;
 
     // 5. 控除額合計を計算（社会保険料 + 源泉所得税 + その他控除）
+    // ※ 普通徴収の場合は住民税を0として計算
+    const residentTaxAmount = helper?.residentTaxType === 'normal' ? 0 : (updated.deductions.residentTax || 0);
     updated.deductions.totalDeduction =
       socialInsuranceTotal +
       withholdingTax +
-      (updated.deductions.residentTax || 0) +
+      residentTaxAmount +
       (updated.deductions.pensionFund || 0) +
       (updated.deductions.reimbursement || 0) +
       (updated.deductions.advancePayment || 0) +
@@ -303,9 +320,28 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
   const isHourly = payslip.employmentType === 'アルバイト';
 
   return (
-    <div className="bg-white font-bold" style={{ width: '100%', minWidth: '100%', border: '2px solid black' }}>
+    <div className="bg-white payslip-container" style={{ width: '100%', minWidth: '100%', border: '2px solid black', boxSizing: 'border-box', fontFamily: 'sans-serif' }}>
+      <style>{`
+        .payslip-container table {
+          border-collapse: collapse;
+          width: 100%;
+          table-layout: fixed;
+        }
+        .payslip-container td {
+          vertical-align: middle;
+          box-sizing: border-box;
+        }
+        .payslip-container input {
+          vertical-align: middle;
+          box-sizing: border-box;
+          font-family: inherit;
+        }
+        .payslip-container .editable-cell {
+          vertical-align: middle;
+        }
+      `}</style>
       {/* タイトル */}
-      <div className="text-center font-bold editable-cell" style={{ fontSize: '14px', padding: '2px', borderBottom: '2px solid black', backgroundColor: '#e8f4f8', height: '20px', lineHeight: '16px' }}>
+      <div className="text-center font-bold" style={{ fontSize: '14px', padding: '4px 2px', borderBottom: '2px solid black', backgroundColor: '#e8f4f8', height: '24px', lineHeight: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <input
           type="text"
           value={`賃金明細 ${payslip.year}年 ${payslip.month}月分(支払通知書)`}
@@ -715,8 +751,8 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={payslip.deductionLabels?.incomeTaxLabel || '源泉所得税'} onChange={(e) => updateField(['deductionLabels', 'incomeTaxLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
-            <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={payslip.deductionLabels?.residentTaxLabel || '住民税'} onChange={(e) => updateField(['deductionLabels', 'residentTaxLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+            <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: isNormalTaxCollection ? '#f3f4f6' : '#e8f4f8', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+              <input type="text" value={isNormalTaxCollection ? '-' : (payslip.deductionLabels?.residentTaxLabel || '住民税')} onChange={(e) => !isNormalTaxCollection && updateField(['deductionLabels', 'residentTaxLabel'], e.target.value)} readOnly={isNormalTaxCollection} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px', color: isNormalTaxCollection ? '#9ca3af' : 'inherit' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={payslip.deductionLabels?.advancePaymentLabel || '前払給与'} onChange={(e) => updateField(['deductionLabels', 'advancePaymentLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
@@ -732,8 +768,8 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={formatNumber(payslip.deductions.incomeTax || 0)} onChange={(e) => updateField(['deductions', 'incomeTax'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
-            <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatNumber(payslip.deductions.residentTax || 0)} onChange={(e) => updateField(['deductions', 'residentTax'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+            <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', backgroundColor: isNormalTaxCollection ? '#f3f4f6' : 'white' }}>
+              <input type="text" value={isNormalTaxCollection ? '-' : formatNumber(payslip.deductions.residentTax || 0)} onChange={(e) => !isNormalTaxCollection && updateField(['deductions', 'residentTax'], parseNumber(e.target.value))} readOnly={isNormalTaxCollection} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px', color: isNormalTaxCollection ? '#9ca3af' : 'inherit' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={formatNumber(payslip.deductions.advancePayment || 0)} onChange={(e) => updateField(['deductions', 'advancePayment'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
