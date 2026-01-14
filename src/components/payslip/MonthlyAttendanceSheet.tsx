@@ -100,91 +100,91 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                 <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
                   {day.weekday}
                 </td>
-                <td className="text-right editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-                  <div className="flex items-center justify-end">
+                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+                  <div className="flex items-center justify-center">
                     <input
                       type="number"
                       step="0.5"
                       min="0"
                       value={day.normalWork || ''}
                       onChange={(e) => updateCell(index, 'normalWork', Number(e.target.value) || 0)}
-                      className="text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
-                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '40px' }}
+                      className="text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#4b5563' }}
                     />
-                    {day.normalWork > 0 && <span style={{ fontSize: '9px', marginLeft: '2px' }}>時間</span>}
+                    {day.normalWork > 0 && <span style={{ fontSize: '9px', color: '#4b5563' }}>時間</span>}
                   </div>
                 </td>
-                <td className="text-right editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-                  <div className="flex items-center justify-end">
+                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+                  <div className="flex items-center justify-center">
                     <input
                       type="number"
                       step="0.5"
                       min="0"
                       value={day.normalNight || ''}
                       onChange={(e) => updateCell(index, 'normalNight', Number(e.target.value) || 0)}
-                      className="text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
-                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '40px' }}
+                      className="text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#4b5563' }}
                     />
-                    {day.normalNight > 0 && <span style={{ fontSize: '9px', marginLeft: '2px' }}>時間</span>}
+                    {day.normalNight > 0 && <span style={{ fontSize: '9px', color: '#4b5563' }}>時間</span>}
                   </div>
                 </td>
-                <td className="text-right editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-                  <div className="flex items-center justify-end">
+                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+                  <div className="flex items-center justify-center">
                     <input
                       type="number"
                       step="0.5"
                       min="0"
                       value={day.accompanyWork || ''}
                       onChange={(e) => updateCell(index, 'accompanyWork', Number(e.target.value) || 0)}
-                      className="text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
-                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '40px' }}
+                      className="text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#4b5563' }}
                     />
-                    {day.accompanyWork > 0 && <span style={{ fontSize: '9px', marginLeft: '2px' }}>時間</span>}
+                    {day.accompanyWork > 0 && <span style={{ fontSize: '9px', color: '#4b5563' }}>時間</span>}
                   </div>
                 </td>
-                <td className="text-right editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-                  <div className="flex items-center justify-end">
+                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+                  <div className="flex items-center justify-center">
                     <input
                       type="number"
                       step="0.5"
                       min="0"
                       value={day.accompanyNight || ''}
                       onChange={(e) => updateCell(index, 'accompanyNight', Number(e.target.value) || 0)}
-                      className="text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
-                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '40px' }}
+                      className="text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#4b5563' }}
                     />
-                    {day.accompanyNight > 0 && <span style={{ fontSize: '9px', marginLeft: '2px' }}>時間</span>}
+                    {day.accompanyNight > 0 && <span style={{ fontSize: '9px', color: '#4b5563' }}>時間</span>}
                   </div>
                 </td>
-                <td className="text-right editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-                  <div className="flex items-center justify-end">
+                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+                  <div className="flex items-center justify-center">
                     <input
                       type="number"
                       step="0.5"
                       min="0"
                       value={day.officeWork || ''}
                       onChange={(e) => updateCell(index, 'officeWork', Number(e.target.value) || 0)}
-                      className="text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
-                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '40px' }}
+                      className="text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#4b5563' }}
                     />
-                    {day.officeWork > 0 && <span style={{ fontSize: '9px', marginLeft: '2px' }}>時間</span>}
+                    {day.officeWork > 0 && <span style={{ fontSize: '9px', color: '#4b5563' }}>時間</span>}
                   </div>
                 </td>
-                <td className="text-right editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-                  <div className="flex items-center justify-end">
+                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+                  <div className="flex items-center justify-center">
                     <input
                       type="number"
                       step="0.5"
                       min="0"
                       value={day.salesWork || ''}
                       onChange={(e) => updateCell(index, 'salesWork', Number(e.target.value) || 0)}
-                      className="text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
-                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '40px' }}
+                      className="text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#4b5563' }}
                     />
-                    {day.salesWork > 0 && <span style={{ fontSize: '9px', marginLeft: '2px' }}>時間</span>}
+                    {day.salesWork > 0 && <span style={{ fontSize: '9px', color: '#4b5563' }}>時間</span>}
                   </div>
                 </td>
-                <td className="text-right bg-gray-50" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+                <td className="text-center bg-gray-50" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', color: '#4b5563' }}>
                   {formatHours(day.totalHours)}
                 </td>
               </tr>
@@ -194,25 +194,25 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
               <td className="text-center" colSpan={2} style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
                 合計
               </td>
-              <td className="text-right" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#4b5563' }}>
                 {formatTotalCell(totals.normalWork)}
               </td>
-              <td className="text-right" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#4b5563' }}>
                 {formatTotalCell(totals.normalNight)}
               </td>
-              <td className="text-right" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#4b5563' }}>
                 {formatTotalCell(totals.accompanyWork)}
               </td>
-              <td className="text-right" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#4b5563' }}>
                 {formatTotalCell(totals.accompanyNight)}
               </td>
-              <td className="text-right" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#4b5563' }}>
                 {formatTotalCell(totals.officeWork)}
               </td>
-              <td className="text-right" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#4b5563' }}>
                 {formatTotalCell(totals.salesWork)}
               </td>
-              <td className="text-right" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#4b5563' }}>
                 {formatTotalCell(totals.totalHours)}
               </td>
             </tr>

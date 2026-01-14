@@ -3329,37 +3329,44 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           delete restoredShift.cancelStatus;
           delete restoredShift.canceledAt;
 
-          // remove_timeの場合、時間情報を復元
-          if (existingShift.cancelStatus === 'remove_time') {
-            // 既存のstartTime/endTimeを使用（Firestoreに保存されている）
-            const startTime = existingShift.startTime || '';
-            const endTime = existingShift.endTime || '';
-            
-            if (startTime && endTime) {
-              const timeRange = `${startTime}-${endTime}`;
-              const duration = calculateTimeDuration(timeRange);
+          // 時間情報を復元（remove_time/keep_time両方に対応）
+          // ※ 既存のstartTime/endTimeを使用（Firestoreに保存されている）
+          const startTime = existingShift.startTime || '';
+          const endTime = existingShift.endTime || '';
+          
+          // DOM要素の参照を取得
+          const timeCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="0"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
+          const durationCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="2"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
+          
+          // 1行目から時間を読み取る（DOM優先、なければFirestore）
+          const timeCellText = timeCell?.textContent?.trim() || '';
+          const timeMatch = timeCellText.match(/(\d{1,2}:\d{2})\s*[-~]\s*(\d{1,2}:\d{2})/);
+          const actualStartTime = timeMatch ? timeMatch[1] : startTime;
+          const actualEndTime = timeMatch ? timeMatch[2] : endTime;
+          
+          if (actualStartTime && actualEndTime) {
+            const timeRange = `${actualStartTime}-${actualEndTime}`;
+            const duration = calculateTimeDuration(timeRange);
 
-              restoredShift.duration = parseFloat(duration || '0');
-              restoredShift.startTime = startTime;
-              restoredShift.endTime = endTime;
+            restoredShift.duration = parseFloat(duration || '0');
+            restoredShift.startTime = actualStartTime;
+            restoredShift.endTime = actualEndTime;
 
-              // DOM要素にも時間を復元（1行目と3行目）
-              const timeCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="0"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
-              const durationCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="2"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
-              
-              if (timeCell) {
-                timeCell.textContent = timeRange;
-                console.log(`✅ 1行目に時間範囲を復元: ${timeRange}`);
-              }
-              if (durationCell) {
-                durationCell.textContent = duration || '';
-                console.log(`✅ 3行目にdurationを復元: ${duration}`);
-              }
-
-              console.log(`✅ 時間を復元完了: ${timeRange}, duration: ${duration}`);
-            } else {
-              console.warn(`⚠️ 時間情報がありません: startTime=${startTime}, endTime=${endTime}`);
+            // DOM要素にも時間を復元（1行目と3行目）
+            if (timeCell && !timeCellText) {
+              // 1行目が空の場合のみ復元
+              timeCell.textContent = timeRange;
+              console.log(`✅ 1行目に時間範囲を復元: ${timeRange}`);
             }
+            if (durationCell) {
+              // 3行目は常に復元
+              durationCell.textContent = duration || '';
+              console.log(`✅ 3行目にdurationを復元: ${duration}`);
+            }
+
+            console.log(`✅ 時間を復元完了: ${timeRange}, duration: ${duration}`);
+          } else {
+            console.warn(`⚠️ 時間情報がありません: startTime=${actualStartTime}, endTime=${actualEndTime}`);
           }
 
           // 給与を再計算（日付を渡して年末年始判定）
