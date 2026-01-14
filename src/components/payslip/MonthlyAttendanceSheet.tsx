@@ -94,14 +94,14 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
           <tbody>
             {displayDailyAttendance.map((day, index) => (
               <tr key={index} className="hover:bg-gray-50" style={{ height: '20px', maxHeight: '20px' }}>
-                <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+                <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                   {day.month || month}/{day.day}
                 </td>
-                <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+                <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                   {day.weekday}
                 </td>
-                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center' }}>
-                  <div className="flex items-center justify-center">
+                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center', verticalAlign: 'middle' }}>
+                  <div className="flex items-center justify-center" style={{ whiteSpace: 'nowrap' }}>
                     <input
                       type="number"
                       step="0.5"
@@ -114,8 +114,8 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                     {day.normalWork > 0 && <span style={{ fontSize: '9px', color: '#000000' }}>時間</span>}
                   </div>
                 </td>
-                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center' }}>
-                  <div className="flex items-center justify-center">
+                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center', verticalAlign: 'middle' }}>
+                  <div className="flex items-center justify-center" style={{ whiteSpace: 'nowrap' }}>
                     <input
                       type="number"
                       step="0.5"
@@ -128,8 +128,8 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                     {day.normalNight > 0 && <span style={{ fontSize: '9px', color: '#000000' }}>時間</span>}
                   </div>
                 </td>
-                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center' }}>
-                  <div className="flex items-center justify-center">
+                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center', verticalAlign: 'middle' }}>
+                  <div className="flex items-center justify-center" style={{ whiteSpace: 'nowrap' }}>
                     <input
                       type="number"
                       step="0.5"
@@ -142,8 +142,8 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                     {day.accompanyWork > 0 && <span style={{ fontSize: '9px', color: '#000000' }}>時間</span>}
                   </div>
                 </td>
-                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center' }}>
-                  <div className="flex items-center justify-center">
+                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center', verticalAlign: 'middle' }}>
+                  <div className="flex items-center justify-center" style={{ whiteSpace: 'nowrap' }}>
                     <input
                       type="number"
                       step="0.5"
@@ -156,8 +156,8 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                     {day.accompanyNight > 0 && <span style={{ fontSize: '9px', color: '#000000' }}>時間</span>}
                   </div>
                 </td>
-                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center' }}>
-                  <div className="flex items-center justify-center">
+                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center', verticalAlign: 'middle' }}>
+                  <div className="flex items-center justify-center" style={{ whiteSpace: 'nowrap' }}>
                     <input
                       type="number"
                       step="0.5"
@@ -170,8 +170,8 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                     {day.officeWork > 0 && <span style={{ fontSize: '9px', color: '#000000' }}>時間</span>}
                   </div>
                 </td>
-                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center' }}>
-                  <div className="flex items-center justify-center">
+                <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center', verticalAlign: 'middle' }}>
+                  <div className="flex items-center justify-center" style={{ whiteSpace: 'nowrap' }}>
                     <input
                       type="number"
                       step="0.5"
@@ -184,35 +184,35 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                     {day.salesWork > 0 && <span style={{ fontSize: '9px', color: '#000000' }}>時間</span>}
                   </div>
                 </td>
-                <td className="text-center bg-gray-50" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', color: '#000000' }}>
+                <td className="text-center bg-gray-50" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', color: '#000000', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                   {formatHours(day.totalHours)}
                 </td>
               </tr>
             ))}
             {/* 合計行 */}
             <tr className="bg-yellow-100 font-bold" style={{ height: '22px', maxHeight: '22px' }}>
-              <td className="text-center" colSpan={2} style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden' }}>
+              <td className="text-center" colSpan={2} style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                 合計
               </td>
-              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#000000' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#000000', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                 {formatTotalCell(totals.normalWork)}
               </td>
-              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#000000' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#000000', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                 {formatTotalCell(totals.normalNight)}
               </td>
-              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#000000' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#000000', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                 {formatTotalCell(totals.accompanyWork)}
               </td>
-              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#000000' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#000000', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                 {formatTotalCell(totals.accompanyNight)}
               </td>
-              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#000000' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#000000', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                 {formatTotalCell(totals.officeWork)}
               </td>
-              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#000000' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#000000', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                 {formatTotalCell(totals.salesWork)}
               </td>
-              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#000000' }}>
+              <td className="text-center" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '22px', maxHeight: '22px', overflow: 'hidden', color: '#000000', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                 {formatTotalCell(totals.totalHours)}
               </td>
             </tr>
