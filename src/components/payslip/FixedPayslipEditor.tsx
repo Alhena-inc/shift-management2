@@ -3,7 +3,7 @@ import type { FixedPayslip } from '../../types/payslip';
 import type { Helper } from '../../types';
 import { COMPANY_INFO } from '../../types/payslip';
 import { savePayslip } from '../../services/payslipService';
-import { calculateWithholdingTax } from '../../utils/taxCalculator';
+import { calculateWithholdingTaxByYear } from '../../utils/taxCalculator';
 import { calculateInsurance } from '../../utils/insuranceCalculator';
 
 interface FixedPayslipEditorProps {
@@ -136,20 +136,25 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
     console.log('  社会保険料控除後:', newPayslip.deductions.taxableAmount);
 
     // 源泉所得税を計算
+    // ★給与明細の年を使用して令和7年/令和8年の税率を適用
     const dependents = newPayslip.dependents || 0;
+    const payslipYear = newPayslip.year || new Date().getFullYear();
 
     // ★源泉徴収フラグがfalseの場合は0円
     if (helper?.hasWithholdingTax === false) {
       console.log('  源泉徴収なし: 0円');
       newPayslip.deductions.incomeTax = 0;
     } else {
-      newPayslip.deductions.incomeTax = calculateWithholdingTax(
+      newPayslip.deductions.incomeTax = calculateWithholdingTaxByYear(
+        payslipYear,
         newPayslip.deductions.taxableAmount,
-        dependents
+        dependents,
+        '甲'
       );
     }
 
     console.log('  扶養人数:', dependents);
+    console.log('  対象年:', payslipYear);
     console.log('  源泉徴収フラグ:', helper?.hasWithholdingTax !== false ? 'あり' : 'なし');
     console.log('  源泉所得税:', newPayslip.deductions.incomeTax);
 

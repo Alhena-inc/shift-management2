@@ -4,7 +4,7 @@ import { SERVICE_CONFIG } from '../types';
 import type { FixedPayslip, HourlyPayslip, Payslip } from '../types/payslip';
 import { createEmptyFixedPayslip, createEmptyHourlyPayslip } from '../services/payslipService';
 import { NIGHT_START, NIGHT_END } from '../types/payslip';
-import { calculateWithholdingTax } from './taxCalculator';
+import { calculateWithholdingTaxByYear } from './taxCalculator';
 import { calculateInsurance } from './insuranceCalculator';
 import { generateFixedDailyAttendanceFromTemplate } from './attendanceTemplate';
 
@@ -434,11 +434,13 @@ export function generateFixedPayslipFromShifts(
   payslip.deductions.taxableAmount = taxableAmount;
 
   // 源泉徴収税（ヘルパー設定がOFFの場合は0円）
+  // ★給与明細の年を使用して令和7年/令和8年の税率を適用
   if ((helper as any).hasWithholdingTax === false) {
     payslip.deductions.incomeTax = 0;
   } else {
     const dependents = helper.dependents || 0;
-    const withholdingTax = calculateWithholdingTax(taxableAmount, dependents);
+    const payslipYear = payslip.year || new Date().getFullYear();
+    const withholdingTax = calculateWithholdingTaxByYear(payslipYear, taxableAmount, dependents, '甲');
     payslip.deductions.incomeTax = withholdingTax || 0;
   }
 
@@ -823,11 +825,13 @@ export function generateHourlyPayslipFromShifts(
   payslip.deductions.taxableAmount = taxableAmount;
 
   // 源泉徴収税（ヘルパー設定がOFFの場合は0円）
+  // ★給与明細の年を使用して令和7年/令和8年の税率を適用
   if ((helper as any).hasWithholdingTax === false) {
     payslip.deductions.incomeTax = 0;
   } else {
     const dependents = helper.dependents || 0;
-    const withholdingTax = calculateWithholdingTax(taxableAmount, dependents);
+    const payslipYear = payslip.year || new Date().getFullYear();
+    const withholdingTax = calculateWithholdingTaxByYear(payslipYear, taxableAmount, dependents, '甲');
     payslip.deductions.incomeTax = withholdingTax || 0;
   }
 

@@ -3,7 +3,7 @@ import React, { useEffect } from 'react';
 import type { Payslip, HourlyPayslip, isHourlyPayslip } from '../../types/payslip';
 import type { Helper } from '../../types';
 import { calculateInsurance } from '../../utils/insuranceCalculator';
-import { calculateWithholdingTax } from '../../utils/taxCalculator';
+import { calculateWithholdingTaxByYear } from '../../utils/taxCalculator';
 
 interface PayslipMainProps {
   payslip: Payslip;
@@ -242,9 +242,11 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
 
     // 4. 源泉所得税を計算（課税対象額と扶養人数から）
     // ★源泉徴収フラグがfalseの場合は0円
+    // ★給与明細の年を使用して令和7年/令和8年の税率を適用
     let withholdingTax = 0;
     if (helper?.hasWithholdingTax !== false) {
-      withholdingTax = calculateWithholdingTax(taxableAmount, dependents);
+      const payslipYear = updated.year || new Date().getFullYear();
+      withholdingTax = calculateWithholdingTaxByYear(payslipYear, taxableAmount, dependents, '甲');
     }
     updated.deductions.incomeTax = withholdingTax;
 
