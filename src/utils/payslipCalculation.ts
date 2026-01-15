@@ -429,23 +429,29 @@ export function generateFixedPayslipFromShifts(
   // 課税対象額を計算（課税月給 - 社会保険料）
   // ※固定給の課税月給は「基本給＋処遇改善＋課税その他手当」
   // ★ 処遇改善手当（treatmentImprovement）も課税対象として含める
+  // ★ 通勤手当（非課税）は除外されている（taxExempt=trueの手当は除外）
   const taxableBaseSalary =
     (payslip.payments.basePay || 0) +
     (payslip.payments.treatmentImprovement || 0) +  // ★ 処遇改善手当を追加
     (payslip.payments.otherAllowances || [])
       .filter(a => !(a as any).taxExempt)
       .reduce((sum, a) => sum + (a.amount || 0), 0);
+  // 参照用金額 = 課税支給額 - 社会保険料計
   const taxableAmount = taxableBaseSalary - (insuranceResult.total || 0);
   payslip.deductions.taxableAmount = taxableAmount;
 
   // 源泉徴収税（ヘルパー設定がOFFの場合は0円）
-  // ★給与明細の年を使用して令和7年/令和8年の税率を適用
+  // ★支給月が1月の場合は令和8年分（2026年）の税額表を適用
+  // ★その他の月は給与明細の年を使用して令和7年/令和8年の税率を適用
   if ((helper as any).hasWithholdingTax === false) {
     payslip.deductions.incomeTax = 0;
   } else {
     const dependents = helper.dependents || 0;
     const payslipYear = payslip.year || new Date().getFullYear();
-    const withholdingTax = calculateWithholdingTaxByYear(payslipYear, taxableAmount, dependents, '甲');
+    const payslipMonth = payslip.month || new Date().getMonth() + 1;
+    // 支給月が1月の場合は令和8年分（2026年）の税額表を使用
+    const taxYear = payslipMonth === 1 ? 2026 : payslipYear;
+    const withholdingTax = calculateWithholdingTaxByYear(taxYear, taxableAmount, dependents, '甲');
     payslip.deductions.incomeTax = withholdingTax || 0;
   }
 
@@ -829,17 +835,23 @@ export function generateHourlyPayslipFromShifts(
   payslip.deductions.socialInsuranceTotal = insuranceResult.total || 0;
 
   // 源泉所得税の課税対象額（給与部分のみ - 社会保険料）
+  // ★ 通勤手当（非課税）は除外されている（salaryCoreAmountに含まれていない）
+  // 参照用金額 = 課税支給額 - 社会保険料計
   const taxableAmount = salaryCoreAmount - (insuranceResult.total || 0);
   payslip.deductions.taxableAmount = taxableAmount;
 
   // 源泉徴収税（ヘルパー設定がOFFの場合は0円）
-  // ★給与明細の年を使用して令和7年/令和8年の税率を適用
+  // ★支給月が1月の場合は令和8年分（2026年）の税額表を適用
+  // ★その他の月は給与明細の年を使用して令和7年/令和8年の税率を適用
   if ((helper as any).hasWithholdingTax === false) {
     payslip.deductions.incomeTax = 0;
   } else {
     const dependents = helper.dependents || 0;
     const payslipYear = payslip.year || new Date().getFullYear();
-    const withholdingTax = calculateWithholdingTaxByYear(payslipYear, taxableAmount, dependents, '甲');
+    const payslipMonth = payslip.month || new Date().getMonth() + 1;
+    // 支給月が1月の場合は令和8年分（2026年）の税額表を使用
+    const taxYear = payslipMonth === 1 ? 2026 : payslipYear;
+    const withholdingTax = calculateWithholdingTaxByYear(taxYear, taxableAmount, dependents, '甲');
     payslip.deductions.incomeTax = withholdingTax || 0;
   }
 
