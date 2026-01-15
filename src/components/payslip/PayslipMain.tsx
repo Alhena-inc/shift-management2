@@ -292,7 +292,9 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
 
     // 2. 社会保険料を計算
     // 標準報酬月額（健康・介護・年金用）と月給合計（雇用保険用）を使用
-    const insurance = calculateInsurance(standardRemuneration, monthlySalaryTotal, age, insuranceTypes);
+    // 雇用保険料計算には非課税通勤手当（交通費立替・手当 + 非課税その他手当）を含める
+    const nonTaxableTransportAllowance = (updated.payments?.transportAllowance || 0) + nonTaxableOtherAllowances;
+    const insurance = calculateInsurance(standardRemuneration, monthlySalaryTotal, age, insuranceTypes, nonTaxableTransportAllowance);
     
     // 手動入力された控除項目がある場合はそれを優先、なければ自動計算値を使用
     if (updated.deductions.manualHealthInsurance === undefined) {

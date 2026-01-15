@@ -176,7 +176,13 @@ export function calculateSalary(params: SalaryCalculationParams): SalaryCalculat
   // 社会保険料の計算
   const age = params.age || 0;
   const insurances = params.insurances || [];
-  const insuranceDeductions = calculateInsurance(grossPay, age, insurances);
+  // 雇用保険料計算用：非課税通勤手当（非課税その他手当の合計）
+  const nonTaxableTransportAllowance = taxExemptTotal;
+  // 標準報酬月額は総支給額をそのまま使用（簡易計算）
+  const standardRemuneration = grossPay;
+  // 雇用保険用の課税支給額（非課税手当を除く）
+  const monthlySalaryTotal = grossPay - taxExemptTotal;
+  const insuranceDeductions = calculateInsurance(standardRemuneration, monthlySalaryTotal, age, insurances, nonTaxableTransportAllowance);
 
   // 課税対象額（総支給額 - 非課税手当 - 社会保険料）
   const taxableAmount = grossPay - taxExemptTotal - insuranceDeductions.total;

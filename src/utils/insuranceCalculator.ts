@@ -150,16 +150,18 @@ export function getPensionStandardRemuneration(grossPay: number): number {
  * 社会保険料を計算（定義書準拠版）
  *
  * @param standardRemuneration - 標準報酬月額（健康・介護・年金用）
- * @param monthlySalaryTotal - 月給合計（雇用保険用、非課税手当含む）
+ * @param monthlySalaryTotal - 月給合計（雇用保険用、課税支給額）
  * @param age - 年齢（介護保険判定用）
  * @param insuranceTypes - 加入保険種類の配列 ['health', 'care', 'pension', 'employment']
+ * @param nonTaxableTransportAllowance - 非課税通勤手当（雇用保険料計算に含める）
  * @returns 各保険料と合計
  */
 export function calculateInsurance(
   standardRemuneration: number,
   monthlySalaryTotal: number,
   age: number = 0,
-  insuranceTypes: string[] = []
+  insuranceTypes: string[] = [],
+  nonTaxableTransportAllowance: number = 0
 ): {
   healthInsurance: number;
   careInsurance: number;
@@ -189,9 +191,10 @@ export function calculateInsurance(
     pensionInsurance = Math.round(standardRemuneration * INSURANCE_RATES.pension);
   }
 
-  // 雇用保険（月給合計で計算、端数は切り捨て）
+  // 雇用保険（雇用保険法に基づき、課税支給額 + 非課税通勤手当で計算、端数は切り捨て）
   if (insuranceTypes.includes('employment')) {
-    employmentInsurance = Math.floor(monthlySalaryTotal * INSURANCE_RATES.employment);
+    const employmentInsuranceBase = monthlySalaryTotal + nonTaxableTransportAllowance;
+    employmentInsurance = Math.floor(employmentInsuranceBase * INSURANCE_RATES.employment);
   }
 
   const total = healthInsurance + careInsurance + pensionInsurance + employmentInsurance;
@@ -212,9 +215,10 @@ export function formatInsuranceBreakdown(
   standardRemuneration: number,
   monthlySalaryTotal: number,
   age: number,
-  insuranceTypes: string[]
+  insuranceTypes: string[],
+  nonTaxableTransportAllowance: number = 0
 ): string {
-  const insurance = calculateInsurance(standardRemuneration, monthlySalaryTotal, age, insuranceTypes);
+  const insurance = calculateInsurance(standardRemuneration, monthlySalaryTotal, age, insuranceTypes, nonTaxableTransportAllowance);
 
   const lines: string[] = [
     `標準報酬月額: ${standardRemuneration.toLocaleString()}円`,
