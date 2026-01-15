@@ -117,8 +117,8 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
 
   // その他手当の表示ラベル（固定表示）
   // ラベルはヘルパー設定優先。未設定なら(非課税)/(課税)を表示
-  const nonTaxableAllowanceLabel = (helper as any)?.nonTaxableAllowanceLabel || '(非課税)';
-  const taxableAllowanceLabel = (helper as any)?.taxableAllowanceLabel || '(課税)';
+  const nonTaxableAllowanceLabel = (helper as any)?.nonTaxableAllowanceLabel || '（非課税）';
+  const taxableAllowanceLabel = (helper as any)?.taxableAllowanceLabel || '（課税）';
 
   // 普通徴収かどうか（普通徴収の場合は住民税を表示しない）
   const isNormalTaxCollection = helper?.residentTaxType === 'normal';
@@ -559,10 +559,15 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <input type="text" value={payslip.employmentType} onChange={(e) => updateField(['employmentType'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '11px', padding: '2px 4px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <span className="w-full text-left block font-bold" style={{ fontSize: '11px', lineHeight: '1.2' }}></span>
+              <span className="w-full text-left block font-bold" style={{ fontSize: '11px', lineHeight: '1.2' }}>{nonTaxableAllowanceLabel}</span>
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={''} readOnly className="w-full text-right border-0 bg-transparent" style={{ ...amountInputStyle }} />
+              <input type="text" value={formatYen((payslip.payments as any)?.manualNonTaxableAllowance !== undefined 
+                ? (payslip.payments as any).manualNonTaxableAllowance 
+                : (() => {
+                const allowances = payslip.payments?.otherAllowances || [];
+                return allowances.filter((a: any) => a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+              })())} onChange={(e) => updateField(['payments', 'manualNonTaxableAllowance'], parseNumber(e.target.value.replace(/[¥￥,]/g, '')))} className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ ...amountInputStyle }} />
             </td>
           </tr>
 
@@ -570,10 +575,15 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
           <tr style={{ height: '20px', maxHeight: '20px' }}>
             <td colSpan={3} style={{ border: '1px solid black', height: '20px' }}></td>
             <td style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '11px', padding: '2px 4px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <span className="w-full text-left block font-bold" style={{ fontSize: '11px', lineHeight: '1.2' }}></span>
+              <span className="w-full text-left block font-bold" style={{ fontSize: '11px', lineHeight: '1.2' }}>{taxableAllowanceLabel}</span>
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={''} readOnly className="w-full text-right border-0 bg-transparent" style={{ ...amountInputStyle }} />
+              <input type="text" value={formatYen((payslip.payments as any)?.manualTaxableAllowance !== undefined 
+                ? (payslip.payments as any).manualTaxableAllowance 
+                : (() => {
+                const allowances = payslip.payments?.otherAllowances || [];
+                return allowances.filter((a: any) => !a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+              })())} onChange={(e) => updateField(['payments', 'manualTaxableAllowance'], parseNumber(e.target.value.replace(/[¥￥,]/g, '')))} className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ ...amountInputStyle }} />
             </td>
           </tr>
 
