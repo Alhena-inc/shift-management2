@@ -116,9 +116,19 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
 
 
   // その他手当の表示ラベル（固定表示）
-  // ラベルはヘルパー設定優先。未設定なら(非課税)/(課税)を表示
-  const basicNonTaxableLabel = `${(helper as any)?.nonTaxableAllowanceLabel || ''}（非課税）`;
-  const basicTaxableLabel = `${(helper as any)?.taxableAllowanceLabel || ''}（課税）`;
+  // その他手当ラベルを決定（優先度：明細の名称 -> ヘルパー設定 -> デフォルト）
+  const otherAllowances = payslip.payments?.otherAllowances || [];
+  const firstNonTaxName =
+    otherAllowances.find((a: any) => a.taxExempt)?.name ||
+    (helper as any)?.nonTaxableAllowanceLabel ||
+    '';
+  const firstTaxName =
+    otherAllowances.find((a: any) => !a.taxExempt)?.name ||
+    (helper as any)?.taxableAllowanceLabel ||
+    '';
+
+  const basicNonTaxableLabel = `${firstNonTaxName}（非課税）`.trim();
+  const basicTaxableLabel = `${firstTaxName}（課税）`.trim();
   // 支給項目のヘッダーは非表示（セル維持のみ）
   const paymentNonTaxableLabel = '';
   const paymentTaxableLabel = '';
@@ -789,20 +799,10 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <input type="text" value={formatNumber(payslip.payments.nightAllowance || 0)} onChange={(e) => updateField(['payments', 'nightAllowance'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatNumber((payslip.payments as any)?.manualNonTaxableAllowance !== undefined 
-                ? (payslip.payments as any).manualNonTaxableAllowance 
-                : (() => {
-                const allowances = payslip.payments?.otherAllowances || [];
-                return allowances.filter((a: any) => a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-              })())} onChange={(e) => updateField(['payments', 'manualNonTaxableAllowance'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={''} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatNumber((payslip.payments as any)?.manualTaxableAllowance !== undefined 
-                ? (payslip.payments as any).manualTaxableAllowance 
-                : (() => {
-                const allowances = payslip.payments?.otherAllowances || [];
-                return allowances.filter((a: any) => !a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-              })())} onChange={(e) => updateField(['payments', 'manualTaxableAllowance'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={''} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#fff2cc', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={formatNumber(payslip.payments.totalPayment || 0)} onChange={(e) => updateField(['payments', 'totalPayment'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
