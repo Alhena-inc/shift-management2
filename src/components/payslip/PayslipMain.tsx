@@ -116,9 +116,9 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
 
 
   // その他手当の表示ラベル（固定表示）
-  // ラベル非表示（セルを保つため空文字）
-  const nonTaxableAllowanceLabel = '';
-  const taxableAllowanceLabel = '';
+  // ラベルはヘルパー設定優先。未設定なら(非課税)/(課税)を表示
+  const nonTaxableAllowanceLabel = (helper as any)?.nonTaxableAllowanceLabel || '(非課税)';
+  const taxableAllowanceLabel = (helper as any)?.taxableAllowanceLabel || '(課税)';
 
   // 普通徴収かどうか（普通徴収の場合は住民税を表示しない）
   const isNormalTaxCollection = helper?.residentTaxType === 'normal';
