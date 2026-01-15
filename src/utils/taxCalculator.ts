@@ -3,7 +3,7 @@
  *
  * 【重要】740,000円未満は計算式を使わず、必ずマスタデータ（早見表）から固定値を取得する。
  * 740,000円以上のみ計算式（速算表）を使用する。
- * 
+ *
  * 甲欄：主たる給与（1か所のみの勤務先で、扶養控除等申告書を提出している場合）
  * 乙欄：従たる給与（2か所以上の勤務先がある場合など）
  * 
@@ -584,12 +584,12 @@ function getKouTaxFromRow(row: TaxTableRow, dependents: number): number {
   // 扶養人数は0〜7人、8人以上は7人として計算後に減額
   const dependentsForTable = Math.min(dependents, 7);
   const extraDependents = Math.max(0, dependents - 7);
-  
+
   const baseTax = row.kou[dependentsForTable] || 0;
-  
+
   // 8人以上の扶養がある場合、1人につき1,610円減額
   const extraDeduction = extraDependents * 1610;
-  
+
   return Math.max(0, baseTax - extraDeduction);
 }
 
@@ -626,7 +626,7 @@ function calculateKouHighIncomeTax(salary: number, dependents: number, config: Y
   
   // 8人以上の扶養がある場合、1人につき1,610円減額
   const extraDeduction = extraDependents * 1610;
-  
+
   return Math.max(0, totalTax - extraDeduction);
 }
 
