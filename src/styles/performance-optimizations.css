@@ -1,0 +1,118 @@
+/* Performance Optimizations for Shift Table */
+
+/* Apply CSS containment for better rendering performance */
+.shift-table-container {
+  contain: layout style;
+  will-change: scroll-position;
+}
+
+.shift-table-week {
+  contain: layout;
+  isolation: isolate;
+}
+
+.shift-table-cell {
+  contain: strict;
+  content-visibility: auto;
+}
+
+.shift-table-row {
+  contain: layout style;
+}
+
+.shift-table-header {
+  contain: layout style paint;
+}
+
+/* Optimize scrolling performance */
+.shift-table-scroll {
+  -webkit-overflow-scrolling: touch;
+  overflow-anchor: none;
+  will-change: transform;
+}
+
+/* Prevent layout thrashing */
+.editable-cell {
+  contain: layout style;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+/* GPU acceleration for dragging */
+.dragging {
+  will-change: transform, opacity;
+  transform: translateZ(0);
+}
+
+/* Optimize table rendering */
+table.shift-table {
+  table-layout: fixed;
+  backface-visibility: hidden;
+  contain: layout;
+}
+
+/* Reduce paint areas for selections */
+.cell-selected {
+  contain: layout style paint;
+}
+
+/* Optimize sticky elements */
+.sticky-header {
+  contain: layout style paint;
+  will-change: transform;
+}
+
+/* Prevent unnecessary repaints on hover */
+.shift-cell:hover {
+  contain: layout style paint;
+}
+
+/* Optimize context menus */
+.context-menu {
+  contain: layout style paint;
+  will-change: transform, opacity;
+}
+
+/* Virtual scrolling container */
+.virtual-scroll-container {
+  contain: strict;
+  overflow: auto;
+  height: 100%;
+}
+
+/* Reduce repaint areas for highlights */
+.highlight-effect {
+  contain: paint;
+  will-change: background-color;
+}
+
+/* Optimize modal dialogs */
+.modal-overlay {
+  contain: layout style paint;
+  will-change: opacity;
+}
+
+/* Performance hints for animations */
+@media (prefers-reduced-motion: no-preference) {
+  .animated-element {
+    will-change: transform, opacity;
+  }
+}
+
+/* Prevent layout shift */
+.no-layout-shift {
+  contain: size layout;
+}
+
+/* Optimize large lists */
+.list-container {
+  contain: layout;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Reduce composite layers */
+.composite-layer-optimized {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
