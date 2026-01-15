@@ -828,11 +828,8 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
         <colgroup><col style={{ width: '11%' }} /><col style={{ width: '18%' }} /><col style={{ width: '18%' }} /><col style={{ width: '18%' }} /><col style={{ width: '18%' }} /><col style={{ width: '17%' }} /></colgroup>
         <tbody>
           <tr style={{ height: '20px', maxHeight: '20px' }}>
-            <td rowSpan={5} className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', verticalAlign: 'top' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'flex-start' }}>
-                <input type="text" value={payslip.deductionLabels?.title || '控除項目'} onChange={(e) => updateField(['deductionLabels', 'title'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', marginBottom: '2px' }} />
-                <input type="text" value={formatNumber(payslip.deductions.totalDeduction || 0)} onChange={(e) => updateField(['deductions', 'totalDeduction'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2' }} />
-              </div>
+            <td rowSpan={6} className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', verticalAlign: 'middle' }}>
+              <input type="text" value={payslip.deductionLabels?.title || '控除項目'} onChange={(e) => updateField(['deductionLabels', 'title'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={payslip.deductionLabels?.healthInsuranceLabel || '健康保険'} onChange={(e) => updateField(['deductionLabels', 'healthInsuranceLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
