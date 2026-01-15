@@ -278,13 +278,27 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     // 2. 社会保険料を計算
     // 標準報酬月額（健康・介護・年金用）と月給合計（雇用保険用）を使用
     const insurance = calculateInsurance(standardRemuneration, monthlySalaryTotal, age, insuranceTypes);
-    updated.deductions.healthInsurance = insurance.healthInsurance;
-    updated.deductions.careInsurance = insurance.careInsurance;
-    updated.deductions.pensionInsurance = insurance.pensionInsurance;
-    updated.deductions.employmentInsurance = insurance.employmentInsurance;
+    
+    // 手動入力された控除項目がある場合はそれを優先、なければ自動計算値を使用
+    if (updated.deductions.manualHealthInsurance === undefined) {
+      updated.deductions.healthInsurance = insurance.healthInsurance;
+    }
+    if (updated.deductions.manualCareInsurance === undefined) {
+      updated.deductions.careInsurance = insurance.careInsurance;
+    }
+    if (updated.deductions.manualPensionInsurance === undefined) {
+      updated.deductions.pensionInsurance = insurance.pensionInsurance;
+    }
+    if (updated.deductions.manualEmploymentInsurance === undefined) {
+      updated.deductions.employmentInsurance = insurance.employmentInsurance;
+    }
 
-    // 社会保険料合計
-    const socialInsuranceTotal = insurance.total;
+    // 社会保険料合計（手動入力値がある場合はそれを使用）
+    const socialInsuranceTotal = 
+      (updated.deductions.healthInsurance || 0) +
+      (updated.deductions.careInsurance || 0) +
+      (updated.deductions.pensionInsurance || 0) +
+      (updated.deductions.employmentInsurance || 0);
     updated.deductions.socialInsuranceTotal = socialInsuranceTotal;
 
     // 3. 源泉所得税の課税対象額 = 課税対象の月給 - 社会保険料
@@ -296,12 +310,15 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     // 4. 源泉所得税を計算（課税対象額と扶養人数から）
     // ★源泉徴収フラグがfalseの場合は0円
     // ★給与明細の年を使用して令和7年/令和8年の税率を適用
+    // ★手動入力された場合はそれを優先
     let withholdingTax = 0;
-    if (helper?.hasWithholdingTax !== false) {
+    if (updated.deductions.manualIncomeTax !== undefined) {
+      withholdingTax = updated.deductions.incomeTax || 0;
+    } else if (helper?.hasWithholdingTax !== false) {
       const payslipYear = updated.year || new Date().getFullYear();
       withholdingTax = calculateWithholdingTaxByYear(payslipYear, taxableAmount, dependents, '甲');
+      updated.deductions.incomeTax = withholdingTax;
     }
-    updated.deductions.incomeTax = withholdingTax;
 
     // 5. 控除額合計を計算（社会保険料 + 源泉所得税 + その他控除）
     // ※ 普通徴収の場合は住民税を0として計算
@@ -340,15 +357,24 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     }
 
     // 合計値を直接編集した場合は自動計算をスキップ（手動入力を優先）
-    const isDirectTotalEdit = 
+    // 控除項目を直接編集した場合、手動入力フラグを設定
+    if (path[0] === 'deductions') {
+      const deductionField = path[1];
+      if (['healthInsurance', 'careInsurance', 'pensionInsurance', 'employmentInsurance', 'incomeTax'].includes(deductionField)) {
+        updated.deductions[`manual${deductionField.charAt(0).toUpperCase() + deductionField.slice(1)}`] = true;
+      }
+    }
+
+    const isDirectTotalEdit =
       (path[0] === 'payments' && path[1] === 'totalPayment') ||
       (path[0] === 'deductions' && path[1] === 'totalDeduction') ||
       (path[0] === 'totals' && path[1] === 'netPayment') ||
       (path[0] === 'payments' && path[1] === 'manualNonTaxableAllowance') ||
-      (path[0] === 'payments' && path[1] === 'manualTaxableAllowance');
+      (path[0] === 'payments' && path[1] === 'manualTaxableAllowance') ||
+      (path[0] === 'deductions' && ['healthInsurance', 'careInsurance', 'pensionInsurance', 'employmentInsurance', 'incomeTax'].includes(path[1]));
 
     // 支給項目、控除項目、または関連フィールドが変更された場合、合計を再計算
-    // ただし、合計値を直接編集した場合は再計算しない
+    // ただし、合計値や控除項目を直接編集した場合は再計算しない
     const needsRecalculation =
       !isDirectTotalEdit && (
         path[0] === 'payments' ||
