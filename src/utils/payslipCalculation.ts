@@ -441,7 +441,7 @@ export function generateFixedPayslipFromShifts(
   payslip.deductions.taxableAmount = taxableAmount;
 
   // 源泉徴収税（ヘルパー設定がOFFの場合は0円）
-  // ★支給月が1月の場合は令和8年分（2026年）の税額表を適用
+  // ★支給月が1月、または2025年12月分（翌年1月支給）の場合は令和8年分（2026年）の税額表を適用
   // ★その他の月は給与明細の年を使用して令和7年/令和8年の税率を適用
   if ((helper as any).hasWithholdingTax === false) {
     payslip.deductions.incomeTax = 0;
@@ -449,8 +449,8 @@ export function generateFixedPayslipFromShifts(
     const dependents = helper.dependents || 0;
     const payslipYear = payslip.year || new Date().getFullYear();
     const payslipMonth = payslip.month || new Date().getMonth() + 1;
-    // 支給月が1月の場合は令和8年分（2026年）の税額表を使用
-    const taxYear = payslipMonth === 1 ? 2026 : payslipYear;
+    // 支給月が1月、または2025年12月分（翌年1月支給）の場合は令和8年分（2026年）の税額表を使用
+    const taxYear = (payslipMonth === 1 || (payslipYear === 2025 && payslipMonth === 12)) ? 2026 : payslipYear;
     const withholdingTax = calculateWithholdingTaxByYear(taxYear, taxableAmount, dependents, '甲');
     payslip.deductions.incomeTax = withholdingTax || 0;
   }
@@ -841,7 +841,7 @@ export function generateHourlyPayslipFromShifts(
   payslip.deductions.taxableAmount = taxableAmount;
 
   // 源泉徴収税（ヘルパー設定がOFFの場合は0円）
-  // ★支給月が1月の場合は令和8年分（2026年）の税額表を適用
+  // ★支給月が1月、または2025年12月分（翌年1月支給）の場合は令和8年分（2026年）の税額表を適用
   // ★その他の月は給与明細の年を使用して令和7年/令和8年の税率を適用
   if ((helper as any).hasWithholdingTax === false) {
     payslip.deductions.incomeTax = 0;
@@ -849,8 +849,8 @@ export function generateHourlyPayslipFromShifts(
     const dependents = helper.dependents || 0;
     const payslipYear = payslip.year || new Date().getFullYear();
     const payslipMonth = payslip.month || new Date().getMonth() + 1;
-    // 支給月が1月の場合は令和8年分（2026年）の税額表を使用
-    const taxYear = payslipMonth === 1 ? 2026 : payslipYear;
+    // 支給月が1月、または2025年12月分（翌年1月支給）の場合は令和8年分（2026年）の税額表を使用
+    const taxYear = (payslipMonth === 1 || (payslipYear === 2025 && payslipMonth === 12)) ? 2026 : payslipYear;
     const withholdingTax = calculateWithholdingTaxByYear(taxYear, taxableAmount, dependents, '甲');
     payslip.deductions.incomeTax = withholdingTax || 0;
   }
