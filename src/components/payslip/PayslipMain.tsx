@@ -123,10 +123,30 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
 
   // 合計額を自動計算する関数
   const recalculateTotals = (updated: any) => {
-    // その他支給の合計を計算
-    const otherAllowancesTotal = updated.payments?.otherAllowances
+    // その他支給の合計を計算（手動入力値があればそれを優先）
+    const calculatedOtherAllowancesTotal = updated.payments?.otherAllowances
       ? updated.payments.otherAllowances.reduce((sum: number, item: any) => sum + (item.amount || 0), 0)
       : 0;
+    
+    // 手動入力された非課税・課税その他支給を取得
+    const manualNonTaxable = (updated.payments as any)?.manualNonTaxableAllowance;
+    const manualTaxable = (updated.payments as any)?.manualTaxableAllowance;
+    
+    // 手動入力値がある場合はそれを合計、なければ計算値を使用
+    let otherAllowancesTotal = calculatedOtherAllowancesTotal;
+    if (manualNonTaxable !== undefined || manualTaxable !== undefined) {
+      // 手動入力値がある場合は、計算された課税/非課税を取得して手動値で上書き
+      const calcNonTaxable = updated.payments?.otherAllowances
+        ? updated.payments.otherAllowances.filter((a: any) => a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0)
+        : 0;
+      const calcTaxable = updated.payments?.otherAllowances
+        ? updated.payments.otherAllowances.filter((a: any) => !a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0)
+        : 0;
+      
+      otherAllowancesTotal = 
+        (manualNonTaxable !== undefined ? manualNonTaxable : calcNonTaxable) +
+        (manualTaxable !== undefined ? manualTaxable : calcTaxable);
+    }
 
     // 月給合計（基本給 + 処遇改善加算 + その他支給）を計算
     if (updated.baseSalary !== undefined) {
@@ -185,14 +205,22 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       const baseSalary = updated.baseSalary || 0;
       const treatmentAllowance = updated.treatmentAllowance || 0;
 
-      // その他手当を課税/非課税で分ける
+      // その他手当を課税/非課税で分ける（手動入力値があればそれを優先）
       const otherAllowances = updated.payments?.otherAllowances || [];
-      const taxableOther = otherAllowances
+      const calculatedTaxableOther = otherAllowances
         .filter((a: any) => !a.taxExempt)
         .reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-      const nonTaxableOther = otherAllowances
+      const calculatedNonTaxableOther = otherAllowances
         .filter((a: any) => a.taxExempt)
         .reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+
+      // 手動入力値があればそれを使用、なければ計算値を使用
+      const taxableOther = (updated.payments as any)?.manualTaxableAllowance !== undefined
+        ? (updated.payments as any).manualTaxableAllowance
+        : calculatedTaxableOther;
+      const nonTaxableOther = (updated.payments as any)?.manualNonTaxableAllowance !== undefined
+        ? (updated.payments as any).manualNonTaxableAllowance
+        : calculatedNonTaxableOther;
 
       // 月給合計（社会保険・雇用保険計算用）
       // ※ 非課税手当（taxExempt=true）は保険計算に含めない
@@ -207,12 +235,20 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     } else {
       // 時給の場合は給与部分のみを計算（経費精算・交通費立替・緊急時対応加算を除外）
       const otherAllowances = updated.payments?.otherAllowances || [];
-      const taxableOther = otherAllowances
+      const calculatedTaxableOther = otherAllowances
         .filter((a: any) => !a.taxExempt)
         .reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-      const nonTaxableOther = otherAllowances
+      const calculatedNonTaxableOther = otherAllowances
         .filter((a: any) => a.taxExempt)
         .reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+
+      // 手動入力値があればそれを使用、なければ計算値を使用
+      const taxableOther = (updated.payments as any)?.manualTaxableAllowance !== undefined
+        ? (updated.payments as any).manualTaxableAllowance
+        : calculatedTaxableOther;
+      const nonTaxableOther = (updated.payments as any)?.manualNonTaxableAllowance !== undefined
+        ? (updated.payments as any).manualNonTaxableAllowance
+        : calculatedNonTaxableOther;
 
       // 給与コア部分（稼働報酬 + 事務・営業報酬 + 手当）
       const salaryCoreAmount =
@@ -303,13 +339,24 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       updated.totals.cashPayment = Math.max(0, updated.totals.netPayment - value);
     }
 
+    // 合計値を直接編集した場合は自動計算をスキップ（手動入力を優先）
+    const isDirectTotalEdit = 
+      (path[0] === 'payments' && path[1] === 'totalPayment') ||
+      (path[0] === 'deductions' && path[1] === 'totalDeduction') ||
+      (path[0] === 'totals' && path[1] === 'netPayment') ||
+      (path[0] === 'payments' && path[1] === 'manualNonTaxableAllowance') ||
+      (path[0] === 'payments' && path[1] === 'manualTaxableAllowance');
+
     // 支給項目、控除項目、または関連フィールドが変更された場合、合計を再計算
+    // ただし、合計値を直接編集した場合は再計算しない
     const needsRecalculation =
-      path[0] === 'payments' ||
-      path[0] === 'deductions' ||
-      path[0] === 'baseSalary' ||
-      path[0] === 'baseHourlyRate' ||
-      path[0] === 'treatmentAllowance';
+      !isDirectTotalEdit && (
+        path[0] === 'payments' ||
+        path[0] === 'deductions' ||
+        path[0] === 'baseSalary' ||
+        path[0] === 'baseHourlyRate' ||
+        path[0] === 'treatmentAllowance'
+      );
 
     if (needsRecalculation) {
       const recalculated = recalculateTotals(updated);
@@ -487,10 +534,12 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <span className="w-full text-left block font-bold" style={{ fontSize: '11px', lineHeight: '1.2' }}>その他支給(非課税)</span>
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatYen((() => {
+              <input type="text" value={formatYen((payslip.payments as any)?.manualNonTaxableAllowance !== undefined 
+                ? (payslip.payments as any).manualNonTaxableAllowance 
+                : (() => {
                 const allowances = payslip.payments?.otherAllowances || [];
                 return allowances.filter((a: any) => a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-              })())} readOnly className="w-full text-right border-0 bg-transparent" style={{ ...amountInputStyle }} />
+              })())} onChange={(e) => updateField(['payments', 'manualNonTaxableAllowance'], parseNumber(e.target.value.replace(/[¥￥,]/g, '')))} className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ ...amountInputStyle }} />
             </td>
           </tr>
 
@@ -501,10 +550,12 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <span className="w-full text-left block font-bold" style={{ fontSize: '11px', lineHeight: '1.2' }}>その他支給(課税)</span>
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatYen((() => {
+              <input type="text" value={formatYen((payslip.payments as any)?.manualTaxableAllowance !== undefined 
+                ? (payslip.payments as any).manualTaxableAllowance 
+                : (() => {
                 const allowances = payslip.payments?.otherAllowances || [];
                 return allowances.filter((a: any) => !a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-              })())} readOnly className="w-full text-right border-0 bg-transparent" style={{ ...amountInputStyle }} />
+              })())} onChange={(e) => updateField(['payments', 'manualTaxableAllowance'], parseNumber(e.target.value.replace(/[¥￥,]/g, '')))} className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ ...amountInputStyle }} />
             </td>
           </tr>
 
@@ -707,19 +758,23 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <input type="text" value={formatNumber(payslip.payments.nightAllowance || 0)} onChange={(e) => updateField(['payments', 'nightAllowance'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatNumber((() => {
+              <input type="text" value={formatNumber((payslip.payments as any)?.manualNonTaxableAllowance !== undefined 
+                ? (payslip.payments as any).manualNonTaxableAllowance 
+                : (() => {
                 const allowances = payslip.payments?.otherAllowances || [];
                 return allowances.filter((a: any) => a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-              })())} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              })())} onChange={(e) => updateField(['payments', 'manualNonTaxableAllowance'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatNumber((() => {
+              <input type="text" value={formatNumber((payslip.payments as any)?.manualTaxableAllowance !== undefined 
+                ? (payslip.payments as any).manualTaxableAllowance 
+                : (() => {
                 const allowances = payslip.payments?.otherAllowances || [];
                 return allowances.filter((a: any) => !a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-              })())} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              })())} onChange={(e) => updateField(['payments', 'manualTaxableAllowance'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#fff2cc', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatNumber(payslip.payments.totalPayment || 0)} readOnly className="w-full text-center border-0 bg-transparent font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={formatNumber(payslip.payments.totalPayment || 0)} onChange={(e) => updateField(['payments', 'totalPayment'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
           </tr>
         </tbody>
@@ -797,7 +852,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <input type="text" value={formatNumber(payslip.deductions.yearEndAdjustment || 0)} onChange={(e) => updateField(['deductions', 'yearEndAdjustment'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#fff2cc', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatNumber(payslip.deductions.totalDeduction || 0)} readOnly className="w-full text-center border-0 bg-transparent font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={formatNumber(payslip.deductions.totalDeduction || 0)} onChange={(e) => updateField(['deductions', 'totalDeduction'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
           </tr>
         </tbody>
@@ -829,7 +884,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <input type="text" value={formatNumber(payslip.totals.cashPayment || 0)} onChange={(e) => updateField(['totals', 'cashPayment'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatNumber(payslip.totals.netPayment || 0)} readOnly className="w-full text-center border-0 bg-transparent font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={formatNumber(payslip.totals.netPayment || 0)} onChange={(e) => updateField(['totals', 'netPayment'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
           </tr>
         </tbody>
