@@ -345,8 +345,11 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     // 5. 控除計（社会保険料 + 源泉所得税 + 住民税 + 年金基金）を計算
     // ※ 普通徴収の場合は住民税を0として計算
     const residentTaxAmount = helper?.residentTaxType === 'normal' ? 0 : (updated.deductions.residentTax || 0);
+    const reimbursementAmount = updated.deductions.reimbursement || 0;
+    const reimbursementAdjustment = reimbursementAmount < 0 ? reimbursementAmount : 0;
     const deductionTotal =
       socialInsuranceTotal +
+      reimbursementAdjustment +
       withholdingTax +
       residentTaxAmount +
       (updated.deductions.pensionFund || 0);
@@ -355,7 +358,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     // 6. 控除合計（控除計 + その他控除）
     updated.deductions.totalDeduction =
       deductionTotal +
-      (updated.deductions.reimbursement || 0) +
+      (reimbursementAmount < 0 ? 0 : reimbursementAmount) +
       (updated.deductions.advancePayment || 0) +
       (updated.deductions.yearEndAdjustment || 0) +
       ((updated.deductions as any).otherDeduction1 || 0) +
