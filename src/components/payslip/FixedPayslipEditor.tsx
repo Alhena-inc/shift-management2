@@ -85,8 +85,8 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
 
     console.log('保険種類:', insuranceTypes);
     console.log('標準報酬月額:', standardRemuneration);
-    // 雇用保険料計算用：非課税通勤手当（交通費立替・手当 + 非課税その他手当）
-    const nonTaxableTransportAllowance = (newPayslip.payments.transportAllowance || 0) + nonTaxableOtherAllowances;
+    // 雇用保険料計算用：非課税その他手当のみ（交通費立替・手当は除外）
+    const nonTaxableTransportAllowance = nonTaxableOtherAllowances;
     const insurance = calculateInsurance(
       standardRemuneration,              // 標準報酬月額
       insuranceBaseAmount,               // 月給合計（非課税除外）

@@ -402,8 +402,8 @@ export function generateFixedPayslipFromShifts(
       .reduce((sum, a) => sum + (a.amount || 0), 0);
 
   // 社会保険は加入がある場合のみ計算（未加入でも源泉/住民税は計算する）
-  // 雇用保険料計算用：非課税通勤手当（交通費立替・手当 + 非課税その他手当）
-  const nonTaxableTransportAllowance = (payslip.payments.transportAllowance || 0) + nonTaxableOtherAllowances;
+  // 雇用保険料計算用：非課税その他手当のみ（交通費立替・手当は除外）
+  const nonTaxableTransportAllowance = nonTaxableOtherAllowances;
   const insuranceResult =
     insuranceTypes.length > 0
       ? calculateInsurance(
@@ -413,7 +413,7 @@ export function generateFixedPayslipFromShifts(
           insuranceBaseAmount, // 雇用保険用の課税支給額
           age,
           insuranceTypes,
-          nonTaxableTransportAllowance // 非課税通勤手当（雇用保険料計算用）
+          nonTaxableTransportAllowance // 非課税その他手当（雇用保険料計算用、交通費立替・手当は除外）
         )
       : { healthInsurance: 0, careInsurance: 0, pensionInsurance: 0, employmentInsurance: 0, total: 0 };
 
@@ -804,8 +804,8 @@ export function generateHourlyPayslipFromShifts(
     payslip.payments.otherAllowances.filter(a => !a.taxExempt).reduce((sum, item) => sum + item.amount, 0);
 
   // 社会保険は加入がある場合のみ計算（未加入でも源泉/住民税は計算する）
-  // 雇用保険料計算用：非課税通勤手当（交通費立替・手当 + 非課税その他手当）
-  const nonTaxableTransportAllowance = (payslip.payments.transportAllowance || 0) + nonTaxableOtherAllowances;
+  // 雇用保険料計算用：非課税その他手当のみ（交通費立替・手当は除外）
+  const nonTaxableTransportAllowance = nonTaxableOtherAllowances;
   const insuranceResult =
     insuranceTypes.length > 0
       ? calculateInsurance(
@@ -815,7 +815,7 @@ export function generateHourlyPayslipFromShifts(
           salaryCoreAmount, // 雇用保険用の課税支給額
           age,
           insuranceTypes,
-          nonTaxableTransportAllowance // 非課税通勤手当（雇用保険料計算用）
+          nonTaxableTransportAllowance // 非課税その他手当（雇用保険料計算用、交通費立替・手当は除外）
         )
       : { healthInsurance: 0, careInsurance: 0, pensionInsurance: 0, employmentInsurance: 0, total: 0 };
 
