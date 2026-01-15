@@ -117,8 +117,11 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
 
   // その他手当の表示ラベル（固定表示）
   // ラベルはヘルパー設定優先。未設定なら(非課税)/(課税)を表示
-  const nonTaxableAllowanceLabel = (helper as any)?.nonTaxableAllowanceLabel || '（非課税）';
-  const taxableAllowanceLabel = (helper as any)?.taxableAllowanceLabel || '（課税）';
+  const basicNonTaxableLabel = `${(helper as any)?.nonTaxableAllowanceLabel || ''}（非課税）`;
+  const basicTaxableLabel = `${(helper as any)?.taxableAllowanceLabel || ''}（課税）`;
+  // 支給項目のヘッダーは非表示（セル維持のみ）
+  const paymentNonTaxableLabel = '';
+  const paymentTaxableLabel = '';
 
   // 普通徴収かどうか（普通徴収の場合は住民税を表示しない）
   const isNormalTaxCollection = helper?.residentTaxType === 'normal';
@@ -550,7 +553,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
             </td>
           </tr>
 
-          {/* 行3: 雇用形態 | 契約社員 | (空) | その他支給(非課税) | 0円 */}
+          {/* 行3: 雇用形態 | 契約社員 | (空) | その他支給(課税) | ○円 */}
           <tr style={{ height: '20px', maxHeight: '20px' }}>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={isHourly ? ((payslip as HourlyPayslip).employmentTypeLabel || '雇用形態') : '雇用形態'} onChange={(e) => isHourly && updateField(['employmentTypeLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
@@ -559,23 +562,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <input type="text" value={payslip.employmentType} onChange={(e) => updateField(['employmentType'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '11px', padding: '2px 4px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <span className="w-full text-left block font-bold" style={{ fontSize: '11px', lineHeight: '1.2' }}>{nonTaxableAllowanceLabel}</span>
-            </td>
-            <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatYen((payslip.payments as any)?.manualNonTaxableAllowance !== undefined 
-                ? (payslip.payments as any).manualNonTaxableAllowance 
-                : (() => {
-                const allowances = payslip.payments?.otherAllowances || [];
-                return allowances.filter((a: any) => a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-              })())} onChange={(e) => updateField(['payments', 'manualNonTaxableAllowance'], parseNumber(e.target.value.replace(/[¥￥,]/g, '')))} className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ ...amountInputStyle }} />
-            </td>
-          </tr>
-
-          {/* 行4: (空、colSpan=3) | その他支給(課税) | 4,200円 */}
-          <tr style={{ height: '20px', maxHeight: '20px' }}>
-            <td colSpan={3} style={{ border: '1px solid black', height: '20px' }}></td>
-            <td style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '11px', padding: '2px 4px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <span className="w-full text-left block font-bold" style={{ fontSize: '11px', lineHeight: '1.2' }}>{taxableAllowanceLabel}</span>
+              <span className="w-full text-left block font-bold" style={{ fontSize: '11px', lineHeight: '1.2' }}>{basicTaxableLabel}</span>
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={formatYen((payslip.payments as any)?.manualTaxableAllowance !== undefined 
@@ -584,6 +571,22 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
                 const allowances = payslip.payments?.otherAllowances || [];
                 return allowances.filter((a: any) => !a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
               })())} onChange={(e) => updateField(['payments', 'manualTaxableAllowance'], parseNumber(e.target.value.replace(/[¥￥,]/g, '')))} className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ ...amountInputStyle }} />
+            </td>
+          </tr>
+
+          {/* 行4: (空、colSpan=3) | その他支給(非課税) | ○円 */}
+          <tr style={{ height: '20px', maxHeight: '20px' }}>
+            <td colSpan={3} style={{ border: '1px solid black', height: '20px' }}></td>
+            <td style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '11px', padding: '2px 4px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+              <span className="w-full text-left block font-bold" style={{ fontSize: '11px', lineHeight: '1.2' }}>{basicNonTaxableLabel}</span>
+            </td>
+            <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+              <input type="text" value={formatYen((payslip.payments as any)?.manualNonTaxableAllowance !== undefined 
+                ? (payslip.payments as any).manualNonTaxableAllowance 
+                : (() => {
+                const allowances = payslip.payments?.otherAllowances || [];
+                return allowances.filter((a: any) => a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+              })())} onChange={(e) => updateField(['payments', 'manualNonTaxableAllowance'], parseNumber(e.target.value.replace(/[¥￥,]/g, '')))} className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ ...amountInputStyle }} />
             </td>
           </tr>
 
@@ -763,10 +766,10 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <input type="text" value={payslip.paymentLabels?.nightAllowanceLabel || '夜間手当'} onChange={(e) => updateField(['paymentLabels', 'nightAllowanceLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '9px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={nonTaxableAllowanceLabel} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={paymentNonTaxableLabel} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '9px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={taxableAllowanceLabel} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={paymentTaxableLabel} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#fff2cc', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={payslip.paymentLabels?.totalPaymentLabel || '支給額合計'} onChange={(e) => updateField(['paymentLabels', 'totalPaymentLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
@@ -786,10 +789,20 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <input type="text" value={formatNumber(payslip.payments.nightAllowance || 0)} onChange={(e) => updateField(['payments', 'nightAllowance'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={''} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={formatNumber((payslip.payments as any)?.manualNonTaxableAllowance !== undefined 
+                ? (payslip.payments as any).manualNonTaxableAllowance 
+                : (() => {
+                const allowances = payslip.payments?.otherAllowances || [];
+                return allowances.filter((a: any) => a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+              })())} onChange={(e) => updateField(['payments', 'manualNonTaxableAllowance'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={''} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={formatNumber((payslip.payments as any)?.manualTaxableAllowance !== undefined 
+                ? (payslip.payments as any).manualTaxableAllowance 
+                : (() => {
+                const allowances = payslip.payments?.otherAllowances || [];
+                return allowances.filter((a: any) => !a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+              })())} onChange={(e) => updateField(['payments', 'manualTaxableAllowance'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#fff2cc', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={formatNumber(payslip.payments.totalPayment || 0)} onChange={(e) => updateField(['payments', 'totalPayment'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
