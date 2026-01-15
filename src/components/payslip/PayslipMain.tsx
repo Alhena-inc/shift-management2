@@ -883,15 +883,15 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <input type="text" value={isNormalTaxCollection ? '-' : (payslip.deductionLabels?.residentTaxLabel || '住民税')} onChange={(e) => !isNormalTaxCollection && updateField(['deductionLabels', 'residentTaxLabel'], e.target.value)} readOnly={isNormalTaxCollection} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px', color: isNormalTaxCollection ? '#9ca3af' : '#000000' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={''} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={payslip.deductionLabels?.blankLabel1 || ''} onChange={(e) => updateField(['deductionLabels', 'blankLabel1'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
           </tr>
           <tr style={{ height: '20px', maxHeight: '20px' }}>
-            <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', backgroundColor: '#f3f4f6' }}>
-              <input type="text" value={formatNumber(payslip.deductions.socialInsuranceTotal || 0)} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px', color: '#374151' }} />
+            <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', backgroundColor: 'white' }}>
+              <input type="text" value={formatNumber(payslip.deductions.socialInsuranceTotal || 0)} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px', color: 'inherit' }} />
             </td>
-            <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', backgroundColor: '#f3f4f6' }}>
-              <input type="text" value={formatNumber(payslip.deductions.taxableAmount || 0)} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px', color: '#374151' }} />
+            <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', backgroundColor: 'white' }}>
+              <input type="text" value={formatNumber(payslip.deductions.taxableAmount || 0)} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px', color: 'inherit' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={formatNumber(payslip.deductions.incomeTax || 0)} onChange={(e) => updateField(['deductions', 'incomeTax'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
@@ -911,10 +911,10 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <input type="text" value={payslip.deductionLabels?.yearEndAdjustmentLabel || '年末調整'} onChange={(e) => updateField(['deductionLabels', 'yearEndAdjustmentLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px', color: '#000000' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={payslip.deductionLabels?.deductionTotalLabel || '控除計'} onChange={(e) => updateField(['deductionLabels', 'deductionTotalLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px', color: '#000000' }} />
+              <input type="text" value={payslip.deductionLabels?.deductionTotalLabel || ''} onChange={(e) => updateField(['deductionLabels', 'deductionTotalLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px', color: '#000000' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={''} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={payslip.deductionLabels?.blankLabel2 || ''} onChange={(e) => updateField(['deductionLabels', 'blankLabel2'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#fff2cc', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={payslip.deductionLabels?.totalDeductionLabel || '控除合計'} onChange={(e) => updateField(['deductionLabels', 'totalDeductionLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
@@ -927,8 +927,8 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={formatNumber(payslip.deductions.yearEndAdjustment || 0)} onChange={(e) => updateField(['deductions', 'yearEndAdjustment'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
-            <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', backgroundColor: '#f3f4f6' }}>
-              <input type="text" value={formatNumber(payslip.deductions.deductionTotal || 0)} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px', color: '#374151' }} />
+            <td className="editable-cell" style={{ border: '1px solid black', height: '20px', maxHeight: '20px', overflow: 'hidden', padding: '2px 2px' }}>
+              <input type="text" value={''} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', height: '20px', maxHeight: '20px', overflow: 'hidden', padding: '2px 2px' }}>
               <input type="text" value={''} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
