@@ -197,6 +197,10 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       basePay = updated.payments.basePay || 0;
     }
 
+    // 固定給の場合：basePay（月給合計）には既に otherAllowancesTotal が含まれているので加算しない
+    // 時給の場合：basePay は 0 なので otherAllowancesTotal を加算する
+    const shouldAddOtherAllowances = updated.baseSalary === undefined;
+    
     updated.payments.totalPayment =
       basePay +
       (updated.payments.normalWorkPay || 0) +
@@ -210,7 +214,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       (updated.payments.emergencyAllowance || 0) +
       (updated.payments.nightAllowance || 0) +
       (updated.payments.overtimePay || 0) +
-      otherAllowancesTotal; // その他手当（特別手当含む）を合算
+      (shouldAddOtherAllowances ? otherAllowancesTotal : 0);
 
     // === 社会保険料と源泉所得税の自動計算 ===
 
