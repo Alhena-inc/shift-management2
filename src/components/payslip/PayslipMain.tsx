@@ -446,28 +446,29 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     }
   };
 
-  // 初期表示時・明細変更時に合計を計算（経費精算・交通費立替を含む差引支給額を確実に再計算）
+  // 初期表示時に合計を計算（経費精算・交通費立替を含む差引支給額を確実に再計算）
   useEffect(() => {
-    const updated = JSON.parse(JSON.stringify(payslip));
-    // ヘルパー設定の保険加入を給与明細へ同期（古い明細が「全員雇用保険」になっている対策）
-    updated.insuranceTypes = deriveInsuranceTypesFromHelper(helper);
-    const recalculated = recalculateTotals(updated);
-
-    // 差引支給額と振込支給額が正しく計算されているか確認
-    const expenseReimbursement = recalculated.payments.expenseReimbursement || 0;
-    const transportAllowance = recalculated.payments.transportAllowance || 0;
-    const expectedNetPayment = recalculated.payments.totalPayment - recalculated.deductions.totalDeduction + expenseReimbursement + transportAllowance;
-    
-    // 常に正しい値に更新
-    recalculated.totals.netPayment = expectedNetPayment;
-    recalculated.totals.bankTransfer = expectedNetPayment;
-    
-    // 差引支給額が期待値と異なる場合、または値が変わった場合はonChangeを呼ぶ
+    // 経費精算と交通費の期待値を計算
+    const expenseReimbursement = payslip.payments?.expenseReimbursement || 0;
+    const transportAllowance = payslip.payments?.transportAllowance || 0;
+    const totalPayment = payslip.payments?.totalPayment || 0;
+    const totalDeduction = payslip.deductions?.totalDeduction || 0;
+    const expectedNetPayment = totalPayment - totalDeduction + expenseReimbursement + transportAllowance;
     const currentNetPayment = payslip.totals?.netPayment || 0;
-    if (currentNetPayment !== expectedNetPayment || JSON.stringify(recalculated) !== JSON.stringify(payslip)) {
+    
+    // 差引支給額が期待値と異なる場合は再計算
+    if (Math.abs(currentNetPayment - expectedNetPayment) > 1) {
+      const updated = JSON.parse(JSON.stringify(payslip));
+      updated.insuranceTypes = deriveInsuranceTypesFromHelper(helper);
+      const recalculated = recalculateTotals(updated);
+      
+      // 差引支給額を強制的に更新
+      recalculated.totals.netPayment = expectedNetPayment;
+      recalculated.totals.bankTransfer = expectedNetPayment;
+      
       onChange(recalculated);
     }
-  }, [payslip.id, payslip.payments?.expenseReimbursement, payslip.payments?.transportAllowance]); // 明細ID、経費精算、交通費が変わったときに再実行
+  }, [payslip.id]); // 明細IDが変わったときのみ実行
 
   const isHourly = payslip.employmentType === 'アルバイト';
 
