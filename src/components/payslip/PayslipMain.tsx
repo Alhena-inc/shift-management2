@@ -940,17 +940,20 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
                 value={reimbursementDisplay}
                 onChange={(e) => {
                   const raw = e.target.value.replace(/[¥￥,]/g, '');
-                  // 入力中の文字列を保持
-                  updateField(['deductions', 'reimbursementRaw'], raw);
-                  // 数値として有効な場合のみ数値フィールドを更新
+                  // 両方のフィールドを一度に更新（2回updateFieldを呼ぶと上書きされるため）
+                  const updated = JSON.parse(JSON.stringify(payslip));
+                  if (!updated.deductions) updated.deductions = {};
+                  updated.deductions.reimbursementRaw = raw;
                   if (raw === '' || raw === '-') {
-                    updateField(['deductions', 'reimbursement'], 0);
+                    updated.deductions.reimbursement = 0;
                   } else {
                     const num = Number(raw);
                     if (!isNaN(num)) {
-                      updateField(['deductions', 'reimbursement'], num);
+                      updated.deductions.reimbursement = num;
                     }
                   }
+                  const recalculated = recalculateTotals(updated);
+                  onChange(recalculated);
                 }}
                 onBlur={() => {
                   // フォーカスを外した時に入力文字列をクリア（数値のみ保持）
