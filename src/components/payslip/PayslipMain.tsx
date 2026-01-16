@@ -446,15 +446,22 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     }
   };
 
-  // 初期表示時に合計を計算
+  // 初期表示時に合計を計算（経費精算・交通費立替を含む差引支給額を確実に再計算）
   useEffect(() => {
     const updated = JSON.parse(JSON.stringify(payslip));
     // ヘルパー設定の保険加入を給与明細へ同期（古い明細が「全員雇用保険」になっている対策）
     updated.insuranceTypes = deriveInsuranceTypesFromHelper(helper);
     const recalculated = recalculateTotals(updated);
 
-    // 値が変わった場合のみonChangeを呼ぶ
-    if (JSON.stringify(recalculated) !== JSON.stringify(payslip)) {
+    // 差引支給額と振込支給額が正しく計算されているか確認し、常に更新
+    const expenseReimbursement = recalculated.payments.expenseReimbursement || 0;
+    const transportAllowance = recalculated.payments.transportAllowance || 0;
+    const expectedNetPayment = recalculated.payments.totalPayment - recalculated.deductions.totalDeduction + expenseReimbursement + transportAllowance;
+    
+    // 差引支給額が期待値と異なる場合、または値が変わった場合はonChangeを呼ぶ
+    if (recalculated.totals.netPayment !== expectedNetPayment || JSON.stringify(recalculated) !== JSON.stringify(payslip)) {
+      recalculated.totals.netPayment = expectedNetPayment;
+      recalculated.totals.bankTransfer = expectedNetPayment;
       onChange(recalculated);
     }
   }, []); // 空の依存配列でマウント時のみ実行
