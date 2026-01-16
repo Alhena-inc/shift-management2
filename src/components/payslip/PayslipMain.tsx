@@ -833,10 +833,22 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
           </tr>
           <tr style={{ height: '20px', maxHeight: '20px' }}>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatNumber(payslip.payments.expenseReimbursement || 0)} onChange={(e) => updateField(['payments', 'expenseReimbursement'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={formatNumber(payslip.payments.expenseReimbursement || 0)} onChange={(e) => {
+                const updated = JSON.parse(JSON.stringify(payslip));
+                if (!updated.payments) updated.payments = {};
+                updated.payments.expenseReimbursement = parseNumber(e.target.value);
+                const recalculated = recalculateTotals(updated);
+                onChange(recalculated);
+              }} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatNumber(payslip.payments.transportAllowance || 0)} onChange={(e) => updateField(['payments', 'transportAllowance'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={formatNumber(payslip.payments.transportAllowance || 0)} onChange={(e) => {
+                const updated = JSON.parse(JSON.stringify(payslip));
+                if (!updated.payments) updated.payments = {};
+                updated.payments.transportAllowance = parseNumber(e.target.value);
+                const recalculated = recalculateTotals(updated);
+                onChange(recalculated);
+              }} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={formatNumber(payslip.payments.emergencyAllowance || 0)} onChange={(e) => updateField(['payments', 'emergencyAllowance'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
