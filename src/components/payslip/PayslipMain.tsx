@@ -412,16 +412,13 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       }
     }
 
+    // 合計値を直接編集した場合のみ再計算をスキップ
     const isDirectTotalEdit =
       (path[0] === 'payments' && path[1] === 'totalPayment') ||
       (path[0] === 'deductions' && path[1] === 'totalDeduction') ||
-      (path[0] === 'totals' && path[1] === 'netPayment') ||
-      (path[0] === 'payments' && path[1] === 'manualNonTaxableAllowance') ||
-      (path[0] === 'payments' && path[1] === 'manualTaxableAllowance') ||
-      (path[0] === 'deductions' && ['healthInsurance', 'careInsurance', 'pensionInsurance', 'employmentInsurance', 'incomeTax'].includes(path[1]));
+      (path[0] === 'totals' && path[1] === 'netPayment');
 
     // 支給項目、控除項目、または関連フィールドが変更された場合、合計を再計算
-    // ただし、合計値や控除項目を直接編集した場合は再計算しない
     const needsRecalculation =
       !isDirectTotalEdit && (
         path[0] === 'payments' ||
