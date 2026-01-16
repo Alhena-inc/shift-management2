@@ -370,11 +370,9 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       ((updated.deductions as any).otherDeduction4 || 0) +
       ((updated.deductions as any).otherDeduction5 || 0);
 
-    // 差引支給額を計算（経費精算と交通費立替・手当を追加）
-    const expenseReimbursement = updated.payments.expenseReimbursement || 0;
-    const transportAllowance = updated.payments.transportAllowance || 0;
+    // 差引支給額を計算
     updated.totals.netPayment =
-      updated.payments.totalPayment - updated.deductions.totalDeduction + expenseReimbursement + transportAllowance;
+      updated.payments.totalPayment - updated.deductions.totalDeduction;
 
     // 振込支給額を差引支給額と同じに設定
     updated.totals.bankTransfer = updated.totals.netPayment;
