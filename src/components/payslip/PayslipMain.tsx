@@ -201,6 +201,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     // 時給の場合：basePay は 0 なので otherAllowancesTotal を加算する
     const shouldAddOtherAllowances = updated.baseSalary === undefined;
     
+    // 経費精算と交通費立替は立替金の返金なので支給額合計には含めない（保険料計算に含めないため）
     updated.payments.totalPayment =
       basePay +
       (updated.payments.normalWorkPay || 0) +
@@ -209,8 +210,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       (updated.payments.nightAccompanyPay || 0) +
       (updated.payments.officePay || 0) +
       ((updated.payments as any).yearEndNewYearAllowance || 0) +
-      (updated.payments.expenseReimbursement || 0) +
-      (updated.payments.transportAllowance || 0) +
+      // 経費精算と交通費立替は除外
       (updated.payments.emergencyAllowance || 0) +
       (updated.payments.nightAllowance || 0) +
       (updated.payments.overtimePay || 0) +
@@ -370,9 +370,11 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       ((updated.deductions as any).otherDeduction4 || 0) +
       ((updated.deductions as any).otherDeduction5 || 0);
 
-    // 差引支給額を計算
+    // 差引支給額を計算（経費精算と交通費立替は立替金の返金として追加）
+    const expenseReimbursement = updated.payments.expenseReimbursement || 0;
+    const transportAllowance = updated.payments.transportAllowance || 0;
     updated.totals.netPayment =
-      updated.payments.totalPayment - updated.deductions.totalDeduction;
+      updated.payments.totalPayment - updated.deductions.totalDeduction + expenseReimbursement + transportAllowance;
 
     // 振込支給額を差引支給額と同じに設定
     updated.totals.bankTransfer = updated.totals.netPayment;
