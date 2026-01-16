@@ -54,6 +54,7 @@ export const savePayslip = async (payslip: Payslip): Promise<void> => {
     const cleanedPayslip = { ...payslip };
     if (cleanedPayslip.deductions) {
       delete (cleanedPayslip.deductions as any).reimbursementRaw;
+      delete (cleanedPayslip.deductions as any).yearEndAdjustmentRaw;
     }
 
     // undefinedフィールドを削除（Firestoreは undefined を保存できないため）

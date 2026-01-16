@@ -140,6 +140,11 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
   const reimbursementValue = payslip.deductions.reimbursement || 0;
   const reimbursementDisplay = reimbursementRaw !== undefined ? reimbursementRaw : (reimbursementValue !== 0 ? String(reimbursementValue) : '');
 
+  // 年末調整の表示：入力中の文字列を保持
+  const yearEndAdjustmentRaw = (payslip.deductions as any).yearEndAdjustmentRaw;
+  const yearEndAdjustmentValue = payslip.deductions.yearEndAdjustment || 0;
+  const yearEndAdjustmentDisplay = yearEndAdjustmentRaw !== undefined ? yearEndAdjustmentRaw : (yearEndAdjustmentValue !== 0 ? String(yearEndAdjustmentValue) : '');
+
   // 合計額を自動計算する関数
   const recalculateTotals = (updated: any) => {
     // その他支給の合計を計算（手動入力値があればそれを優先）
@@ -350,20 +355,21 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       updated.deductions.incomeTax = withholdingTax;
     }
 
-    // 5. 控除計（源泉所得税 + 立替金）を計算
+    // 5. 控除計（源泉所得税 + 立替金 + 年末調整）を計算
     const residentTaxAmount = helper?.residentTaxType === 'normal' ? 0 : (updated.deductions.residentTax || 0);
     const reimbursementAmount = updated.deductions.reimbursement || 0;
-    const deductionTotal = withholdingTax + reimbursementAmount;
+    const yearEndAdjustmentAmount = updated.deductions.yearEndAdjustment || 0;
+    const deductionTotal = withholdingTax + reimbursementAmount + yearEndAdjustmentAmount;
     updated.deductions.deductionTotal = deductionTotal;
 
-    // 6. 控除合計（社会保険計 + 年金基金 + 控除計 + 住民税 + 年末調整 + その他控除）
+    // 6. 控除合計（社会保険計 + 年金基金 + 控除計 + 住民税 + その他控除）
+    // 年末調整は控除計に含まれているので除外
     updated.deductions.totalDeduction =
       socialInsuranceTotal +
       (updated.deductions.pensionFund || 0) +
-      deductionTotal +  // 源泉所得税 + 立替金
+      deductionTotal +  // 源泉所得税 + 立替金 + 年末調整
       residentTaxAmount +
       (updated.deductions.advancePayment || 0) +
-      (updated.deductions.yearEndAdjustment || 0) +
       ((updated.deductions as any).otherDeduction1 || 0) +
       ((updated.deductions as any).otherDeduction2 || 0) +
       ((updated.deductions as any).otherDeduction3 || 0) +
@@ -966,7 +972,33 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatNumber(payslip.deductions.yearEndAdjustment || 0)} onChange={(e) => updateField(['deductions', 'yearEndAdjustment'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input
+                type="text"
+                value={yearEndAdjustmentDisplay}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[¥￥,]/g, '');
+                  // 両方のフィールドを一度に更新
+                  const updated = JSON.parse(JSON.stringify(payslip));
+                  if (!updated.deductions) updated.deductions = {};
+                  updated.deductions.yearEndAdjustmentRaw = raw;
+                  if (raw === '' || raw === '-') {
+                    updated.deductions.yearEndAdjustment = 0;
+                  } else {
+                    const num = Number(raw);
+                    if (!isNaN(num)) {
+                      updated.deductions.yearEndAdjustment = num;
+                    }
+                  }
+                  const recalculated = recalculateTotals(updated);
+                  onChange(recalculated);
+                }}
+                onBlur={() => {
+                  updateField(['deductions', 'yearEndAdjustmentRaw'], undefined);
+                }}
+                placeholder="0"
+                className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }}
+              />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={formatNumber(payslip.deductions.deductionTotal || 0)} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
