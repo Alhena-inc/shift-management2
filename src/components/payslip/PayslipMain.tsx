@@ -374,6 +374,9 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     updated.totals.netPayment =
       updated.payments.totalPayment - updated.deductions.totalDeduction;
 
+    // 振込支給額を差引支給額と同じに設定
+    updated.totals.bankTransfer = updated.totals.netPayment;
+
     return updated;
   };
 
