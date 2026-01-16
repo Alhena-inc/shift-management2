@@ -135,9 +135,10 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
 
   // 普通徴収かどうか（普通徴収の場合は住民税を表示しない）
   const isNormalTaxCollection = helper?.residentTaxType === 'normal';
-  // 立替金の表示：マイナス値も含めて表示
+  // 立替金の表示：入力中の文字列を保持
+  const reimbursementRaw = (payslip.deductions as any).reimbursementRaw;
   const reimbursementValue = payslip.deductions.reimbursement || 0;
-  const reimbursementDisplay = reimbursementValue !== 0 ? String(reimbursementValue) : '';
+  const reimbursementDisplay = reimbursementRaw !== undefined ? reimbursementRaw : (reimbursementValue !== 0 ? String(reimbursementValue) : '');
 
   // 合計額を自動計算する関数
   const recalculateTotals = (updated: any) => {
@@ -381,6 +382,10 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     const updated = JSON.parse(JSON.stringify(payslip));
     let current: any = updated;
     for (let i = 0; i < path.length - 1; i++) {
+      // ネストしたオブジェクトが存在しない場合は作成
+      if (current[path[i]] === undefined || current[path[i]] === null) {
+        current[path[i]] = {};
+      }
       current = current[path[i]];
     }
     current[path[path.length - 1]] = value;
@@ -935,7 +940,9 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
                 value={reimbursementDisplay}
                 onChange={(e) => {
                   const raw = e.target.value.replace(/[¥￥,]/g, '');
-                  // 空文字、マイナス記号のみ、または数値として有効な場合のみ更新
+                  // 入力中の文字列を保持
+                  updateField(['deductions', 'reimbursementRaw'], raw);
+                  // 数値として有効な場合のみ数値フィールドを更新
                   if (raw === '' || raw === '-') {
                     updateField(['deductions', 'reimbursement'], 0);
                   } else {
@@ -944,6 +951,10 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
                       updateField(['deductions', 'reimbursement'], num);
                     }
                   }
+                }}
+                onBlur={() => {
+                  // フォーカスを外した時に入力文字列をクリア（数値のみ保持）
+                  updateField(['deductions', 'reimbursementRaw'], undefined);
                 }}
                 placeholder="0"
                 className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
