@@ -462,11 +462,12 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     recalculated.totals.netPayment = expectedNetPayment;
     recalculated.totals.bankTransfer = expectedNetPayment;
     
-    // 値が変わった場合はonChangeを呼ぶ
-    if (JSON.stringify(recalculated) !== JSON.stringify(payslip)) {
+    // 差引支給額が期待値と異なる場合、または値が変わった場合はonChangeを呼ぶ
+    const currentNetPayment = payslip.totals?.netPayment || 0;
+    if (currentNetPayment !== expectedNetPayment || JSON.stringify(recalculated) !== JSON.stringify(payslip)) {
       onChange(recalculated);
     }
-  }, [payslip.id]); // 明細IDが変わったときに再実行
+  }, [payslip.id, payslip.payments?.expenseReimbursement, payslip.payments?.transportAllowance]); // 明細ID、経費精算、交通費が変わったときに再実行
 
   const isHourly = payslip.employmentType === 'アルバイト';
 
