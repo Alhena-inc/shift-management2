@@ -376,14 +376,17 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       ((updated.deductions as any).otherDeduction4 || 0) +
       ((updated.deductions as any).otherDeduction5 || 0);
 
-    // 差引支給額を計算（経費精算と交通費立替は立替金の返金として追加）
+    // 差引支給額を計算（経費精算と交通費は含めない）
+    updated.totals.netPayment =
+      updated.payments.totalPayment - updated.deductions.totalDeduction;
+
+    // 差引支給額(経費あり) = 差引支給額 + 経費精算 + 交通費
     const expenseReimbursement = updated.payments.expenseReimbursement || 0;
     const transportAllowance = updated.payments.transportAllowance || 0;
-    updated.totals.netPayment =
-      updated.payments.totalPayment - updated.deductions.totalDeduction + expenseReimbursement + transportAllowance;
+    updated.totals.netPaymentWithExpense = updated.totals.netPayment + expenseReimbursement + transportAllowance;
 
-    // 振込支給額を差引支給額と同じに設定
-    updated.totals.bankTransfer = updated.totals.netPayment;
+    // 振込支給額を差引支給額(経費あり)と同じに設定
+    updated.totals.bankTransfer = updated.totals.netPaymentWithExpense;
 
     return updated;
   };
@@ -1053,10 +1056,10 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <input type="text" value={formatNumber(payslip.totals.cashPayment || 0)} onChange={(e) => updateField(['totals', 'cashPayment'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatNumber((payslip.payments.totalPayment || 0) - (payslip.deductions.totalDeduction || 0))} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={formatNumber(payslip.totals.netPayment || 0)} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#fff2cc', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatNumber(payslip.totals.netPayment || 0)} onChange={(e) => updateField(['totals', 'netPayment'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={formatNumber((payslip.totals as any).netPaymentWithExpense || payslip.totals.netPayment || 0)} readOnly className="w-full text-center border-0 bg-transparent font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
           </tr>
         </tbody>
