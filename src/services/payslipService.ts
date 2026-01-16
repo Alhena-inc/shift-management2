@@ -29,16 +29,39 @@ const getInsuranceTypes = (employmentType: string | undefined): string[] => {
   return [];
 };
 
+// undefinedフィールドを削除する関数
+const removeUndefinedFields = (obj: any): any => {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(removeUndefinedFields);
+  }
+  const cleaned: any = {};
+  for (const key in obj) {
+    if (obj[key] !== undefined) {
+      cleaned[key] = removeUndefinedFields(obj[key]);
+    }
+  }
+  return cleaned;
+};
+
 // 給与明細を保存（作成・更新）
 export const savePayslip = async (payslip: Payslip): Promise<void> => {
   try {
     const docRef = doc(db, 'payslips', payslip.id);
 
-    const data = {
-      ...payslip,
+    // 一時的なフィールドを削除
+    const cleanedPayslip = { ...payslip };
+    if (cleanedPayslip.deductions) {
+      delete (cleanedPayslip.deductions as any).reimbursementRaw;
+    }
+
+    // undefinedフィールドを削除（Firestoreは undefined を保存できないため）
+    const data = removeUndefinedFields({
+      ...cleanedPayslip,
       updatedAt: Timestamp.now(),
       createdAt: payslip.createdAt || Timestamp.now(),
-    };
+    });
 
     await setDoc(docRef, data);
     console.log(`💰 給与明細を保存しました: ${payslip.helperName} (${payslip.year}年${payslip.month}月)`);
