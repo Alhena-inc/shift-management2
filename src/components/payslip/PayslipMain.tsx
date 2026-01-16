@@ -349,8 +349,8 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     } else if (helper?.hasWithholdingTax !== false) {
       const payslipYear = updated.year || new Date().getFullYear();
       const payslipMonth = updated.month || new Date().getMonth() + 1;
-      // 支給月が1月、または2025年12月分（翌年1月支給）の場合は令和8年分（2026年）の税額表を使用
-      const taxYear = (payslipMonth === 1 || (payslipYear === 2025 && payslipMonth === 12)) ? 2026 : payslipYear;
+      // 12月分の給与は翌年1月支給なので、翌年の税額表を使用
+      const taxYear = payslipMonth === 12 ? payslipYear + 1 : payslipYear;
       withholdingTax = calculateWithholdingTaxByYear(taxYear, taxableAmount, dependents, '甲');
       updated.deductions.incomeTax = withholdingTax;
     }
