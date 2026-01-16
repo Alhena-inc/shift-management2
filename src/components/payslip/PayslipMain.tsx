@@ -135,9 +135,9 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
 
   // 普通徴収かどうか（普通徴収の場合は住民税を表示しない）
   const isNormalTaxCollection = helper?.residentTaxType === 'normal';
-  const reimbursementInput = (payslip.deductions as any)?.reimbursementInput;
-  const reimbursementDisplay =
-    reimbursementInput !== undefined ? reimbursementInput : formatNumber(payslip.deductions.reimbursement || 0);
+  // 立替金の表示：マイナス値も含めて表示
+  const reimbursementValue = payslip.deductions.reimbursement || 0;
+  const reimbursementDisplay = reimbursementValue !== 0 ? String(reimbursementValue) : '';
 
   // 合計額を自動計算する関数
   const recalculateTotals = (updated: any) => {
@@ -935,15 +935,17 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
                 value={reimbursementDisplay}
                 onChange={(e) => {
                   const raw = e.target.value.replace(/[¥￥,]/g, '');
-                  updateField(['deductions', 'reimbursementInput'], raw);
+                  // 空文字、マイナス記号のみ、または数値として有効な場合のみ更新
                   if (raw === '' || raw === '-') {
                     updateField(['deductions', 'reimbursement'], 0);
-                    return;
-                  }
-                  if (!isNaN(Number(raw))) {
-                    updateField(['deductions', 'reimbursement'], Number(raw));
+                  } else {
+                    const num = Number(raw);
+                    if (!isNaN(num)) {
+                      updateField(['deductions', 'reimbursement'], num);
+                    }
                   }
                 }}
+                placeholder="0"
                 className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
                 style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }}
               />
