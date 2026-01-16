@@ -1037,7 +1037,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
 
       {/* 合計テーブル */}
       <table className="w-full border-collapse" style={{ tableLayout: 'fixed' }}>
-        <colgroup><col style={{ width: '11%' }} /><col style={{ width: '22%' }} /><col style={{ width: '22%' }} /><col style={{ width: '22%' }} /><col style={{ width: '23%' }} /></colgroup>
+        <colgroup><col style={{ width: '11%' }} /><col style={{ width: '24%' }} /><col style={{ width: '24%' }} /><col style={{ width: '24%' }} /><col style={{ width: '17%' }} /></colgroup>
         <tbody>
           <tr style={{ height: '20px', maxHeight: '20px' }}>
             <td rowSpan={2} className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', verticalAlign: 'middle' }}>
