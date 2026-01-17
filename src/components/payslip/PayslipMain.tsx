@@ -138,12 +138,12 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
   // 立替金の表示：入力中の文字列を保持
   const reimbursementRaw = (payslip.deductions as any).reimbursementRaw;
   const reimbursementValue = payslip.deductions.reimbursement || 0;
-  const reimbursementDisplay = reimbursementRaw !== undefined ? reimbursementRaw : (reimbursementValue !== 0 ? String(reimbursementValue) : '');
+  const reimbursementDisplay = reimbursementRaw !== undefined ? reimbursementRaw : (reimbursementValue !== 0 ? (reimbursementValue > 0 ? '+' + formatNumber(reimbursementValue) : formatNumber(reimbursementValue)) : '');
 
   // 年末調整の表示：入力中の文字列を保持
   const yearEndAdjustmentRaw = (payslip.deductions as any).yearEndAdjustmentRaw;
   const yearEndAdjustmentValue = payslip.deductions.yearEndAdjustment || 0;
-  const yearEndAdjustmentDisplay = yearEndAdjustmentRaw !== undefined ? yearEndAdjustmentRaw : (yearEndAdjustmentValue !== 0 ? String(yearEndAdjustmentValue) : '');
+  const yearEndAdjustmentDisplay = yearEndAdjustmentRaw !== undefined ? yearEndAdjustmentRaw : (yearEndAdjustmentValue !== 0 ? (yearEndAdjustmentValue > 0 ? '+' + formatNumber(yearEndAdjustmentValue) : formatNumber(yearEndAdjustmentValue)) : '');
 
   // 合計額を自動計算する関数
   const recalculateTotals = (updated: any) => {
@@ -920,10 +920,10 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <input type="text" value={formatNumber(payslip.deductions.taxableAmount || 0)} onChange={(e) => updateField(['deductions', 'taxableAmount'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px', color: 'inherit' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatNumber(payslip.deductions.incomeTax || 0)} onChange={(e) => updateField(['deductions', 'incomeTax'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={payslip.deductions.incomeTax !== 0 ? (payslip.deductions.incomeTax > 0 ? '+' + formatNumber(payslip.deductions.incomeTax) : formatNumber(payslip.deductions.incomeTax)) : '0'} onChange={(e) => updateField(['deductions', 'incomeTax'], parseNumber(e.target.value.replace(/[+¥￥,]/g, '')))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', backgroundColor: 'white' }}>
-              <input type="text" value={formatNumber(payslip.deductions.residentTax || 0)} onChange={(e) => updateField(['deductions', 'residentTax'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px', color: 'inherit' }} />
+              <input type="text" value={payslip.deductions.residentTax !== 0 ? (payslip.deductions.residentTax > 0 ? '+' + formatNumber(payslip.deductions.residentTax) : formatNumber(payslip.deductions.residentTax)) : '0'} onChange={(e) => updateField(['deductions', 'residentTax'], parseNumber(e.target.value.replace(/[+¥￥,]/g, '')))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px', color: 'inherit' }} />
             </td>
 
             <td className="editable-cell" style={{ border: '1px solid black', height: '20px', maxHeight: '20px', overflow: 'hidden', padding: '2px 2px' }}>
@@ -938,7 +938,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <input type="text" value={payslip.deductionLabels?.yearEndAdjustmentLabel ?? '年末調整'} onChange={(e) => updateField(['deductionLabels', 'yearEndAdjustmentLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px', color: '#000000' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={payslip.deductionLabels?.deductionTotalLabel ?? '控除計'} onChange={(e) => updateField(['deductionLabels', 'deductionTotalLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px', color: '#000000' }} />
+              <input type="text" value={payslip.deductionLabels?.deductionTotalLabel ?? ''} onChange={(e) => updateField(['deductionLabels', 'deductionTotalLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px', color: '#000000' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={payslip.deductionLabels?.blankLabel2 ?? ''} onChange={(e) => updateField(['deductionLabels', 'blankLabel2'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
@@ -1008,13 +1008,13 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatNumber(payslip.deductions.deductionTotal || 0)} onChange={(e) => updateField(['deductions', 'deductionTotal'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={''} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', height: '20px', maxHeight: '20px', overflow: 'hidden', padding: '2px 2px' }}>
               <input type="text" value={''} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#fff2cc', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatNumber(payslip.deductions.totalDeduction || 0)} onChange={(e) => updateField(['deductions', 'totalDeduction'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={payslip.deductions.totalDeduction !== 0 ? (payslip.deductions.totalDeduction > 0 ? formatNumber(payslip.deductions.totalDeduction) : formatNumber(payslip.deductions.totalDeduction)) : '0'} onChange={(e) => updateField(['deductions', 'totalDeduction'], parseNumber(e.target.value.replace(/[+¥￥,]/g, '')))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
           </tr>
         </tbody>
