@@ -1695,7 +1695,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                   (serviceType as string) !== 'other' &&
                   (clientName || startTime || endTime);
 
-                if (cancelStatus === 'keep_time' || cancelStatus === 'remove_time') {
+                const cs = shift.cancelStatus as string;
+                if (cs === 'keep_time' || cs === 'remove_time' || cs === 'canceled_with_time' || cs === 'canceled_without_time') {
                   bgColor = '#f87171';  // キャンセル状態は赤
                 } else if (isScheduledDayOff || (serviceType as string) === 'shitei_kyuu') {
                   bgColor = '#22c55e';  // 指定休は緑色
@@ -3505,7 +3506,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         redoStackRef.length = 0;
 
         // shifts配列も更新（復元されたシフトで置き換え）
-        const updatedShifts = shifts.map(s => {
+        const updatedShifts = shiftsRef.current.map(s => {
           const restoredShift = restoredShifts.find(rs => rs.id === s.id);
           if (restoredShift) {
             return restoredShift;
@@ -3743,7 +3744,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       // 既存のシフトを置き換え、新規シフトを追加
       const canceledIds = new Set(canceledShifts.map(cs => cs.id));
       const updatedShifts = [
-        ...shifts.filter(s => !canceledIds.has(s.id)),
+        ...shiftsRef.current.filter(s => !canceledIds.has(s.id)),
         ...canceledShifts
       ];
       onUpdateShifts(updatedShifts);
@@ -3986,7 +3987,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       // 既存のシフトを置き換え、新規シフトを追加
       const canceledIds = new Set(canceledShifts.map(cs => cs.id));
       const updatedShifts = [
-        ...shifts.filter(s => !canceledIds.has(s.id)),
+        ...shiftsRef.current.filter(s => !canceledIds.has(s.id)),
         ...canceledShifts
       ];
       onUpdateShifts(updatedShifts);
