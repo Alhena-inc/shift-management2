@@ -1023,5 +1023,6 @@ export const HourlyPayslipEditor: React.FC<HourlyPayslipEditorProps> = ({
           </div>
         </div>
       </div>
-      );
+    </div>
+  );
 };
