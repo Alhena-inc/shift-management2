@@ -8,6 +8,7 @@ import {
   getDocs,
   query,
   where,
+  orderBy,
   deleteDoc,
   deleteField,
   onSnapshot
@@ -132,6 +133,19 @@ export const deleteHelper = async (helperId: string): Promise<void> => {
     console.error('ヘルパー削除エラー:', error);
     throw error;
   }
+};
+
+// ヘルパーのリアルタイム監視
+export const subscribeToHelpers = (onUpdate: (helpers: Helper[]) => void) => {
+  const q = query(collection(db, HELPERS_COLLECTION), orderBy('order', 'asc'));
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const helpers = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Helper));
+    // 論理削除されていないデータのみ（deletedプロパティがない場合は表示対象）
+    onUpdate(helpers.filter(h => h.deleted !== true));
+  }, (error) => {
+    console.error('ヘルパー監視エラー:', error);
+  });
+  return unsubscribe;
 };
 
 // ヘルパーを論理削除（推奨：データは残る）
@@ -382,10 +396,15 @@ export const subscribeToShiftsForMonth = (
 ): (() => void) => {
   try {
     // その月の開始日と終了日を作成
-    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    let startDate = `${year}-${String(month).padStart(2, '0')}-01`;
     const lastDay = new Date(year, month, 0).getDate();
-    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    let endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
+    if (month === 12) {
+      endDate = `${year + 1}-01-04`;
+    } else if (month === 1) {
+      startDate = `${year - 1}-12-29`;
+    }
     // その月のシフトをクエリ
     const shiftsQuery = query(
       collection(db, SHIFTS_COLLECTION),

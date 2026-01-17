@@ -236,17 +236,27 @@ export function PersonalShift({ token }: Props) {
 
     console.log('📥 Firestoreからデータ取得開始:', helper.name, `(helperId: ${helper.id}, 型: ${typeof helper.id})`);
 
-    // Firestoreからシフトを取得（リアルタイム監視）
-    const shiftsRef = collection(db, 'shifts');
+    // 現在の月の開始日と終了日を計算（読み取り回数削減のため）
+    const startDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+    const lastDay = new Date(currentYear, currentMonth, 0).getDate();
+    let endDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    // 12月の場合は翌年1/4まで含める
+    if (currentMonth === 12) {
+      endDate = `${currentYear + 1}-01-04`;
+    }
 
     // helperIdを文字列に正規化（数値の場合は文字列に変換）
     const normalizedHelperId = String(helper.id);
 
-    // シンプルなクエリに戻す（日付範囲なし）
+    const shiftsRef = collection(db, 'shifts');
+
+    // クエリを特定の月に絞る（爆発的な読み取りを防ぐ）
     const q = query(
       shiftsRef,
-      where('helperId', '==', normalizedHelperId)
-      // deleted条件を削除（古いデータにdeletedフィールドがない可能性があるため）
+      where('helperId', '==', normalizedHelperId),
+      where('date', '>=', startDate),
+      where('date', '<=', endDate)
     );
 
     console.log('🔍 クエリ条件:', {

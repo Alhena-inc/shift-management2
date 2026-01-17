@@ -2,7 +2,7 @@ import { useMemo, useCallback, useEffect, memo, useState, useRef } from 'react';
 import type { Helper, Shift, ServiceType } from '../types';
 import { useScrollDetection } from '../hooks/useScrollDetection';
 import { SERVICE_CONFIG } from '../types';
-import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts } from '../services/firestoreService';
+import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts, subscribeToDayOffRequestsMap, subscribeToDisplayTextsMap, subscribeToShiftsForMonth } from '../services/firestoreService';
 import { Timestamp } from 'firebase/firestore';
 import { auth } from '../lib/firebase';
 import { calculateNightHours, calculateRegularHours, calculateTimeDuration } from '../utils/timeCalculations';
@@ -835,7 +835,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           }
 
           const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
-          const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+          const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*[-~〜]\s*(\d{1,2}:\d{2})/);
           const startTime = timeMatch ? timeMatch[1] : '';
           const endTime = timeMatch ? timeMatch[2] : '';
           const payCalculation = calculateShiftPay(serviceType, timeRange, date);
@@ -1013,7 +1013,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         }
 
         const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
-        const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+        const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*[-~〜]\s*(\d{1,2}:\d{2})/);
         const startTime = timeMatch ? timeMatch[1] : '';
         const endTime = timeMatch ? timeMatch[2] : '';
 
@@ -1063,82 +1063,62 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     });
   }, [redoStackRef, undoStackRef, updateTotalsForHelperAndDate, year, month, shifts, onUpdateShifts]);
 
-  // 休み希望を読み込み
+  // 休み希望を読み込み（リアルタイム）
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        // 12月の場合は翌年1月のデータも読み込む
-        if (month === 12) {
-          const nextYear = year + 1;
-          const [requests, nextMonthRequests] = await Promise.all([
-            loadDayOffRequests(year, month),
-            loadDayOffRequests(nextYear, 1)
-          ]);
-          const combinedRequests = new Map([...requests, ...nextMonthRequests]);
-          setDayOffRequests(combinedRequests);
-          console.log(`🏖️ 休み希望を読み込みました: ${year}年${month}月 (${requests.size}件) + ${nextYear}年1月 (${nextMonthRequests.size}件)`);
-        } else {
-          const requests = await loadDayOffRequests(year, month);
-          setDayOffRequests(requests);
-          console.log(`🏖️ 休み希望を読み込みました: ${year}年${month}月 (${requests.size}件)`);
+    let unsubscribeCurrent = () => { };
+    let unsubscribeNext = () => { };
+
+    const handleUpdate = (requests: Map<string, string>, isNextMonth: boolean) => {
+      setDayOffRequests(prev => {
+        const newMap = new Map(prev);
+        const monthPrefix = isNextMonth
+          ? `${month === 12 ? year + 1 : year}-${String(month === 12 ? 1 : month + 1).padStart(2, '0')}`
+          : `${year}-${String(month).padStart(2, '0')}`;
+
+        // 現在表示している月のデータ以外を一度消してマージ（または月ごとに管理）
+        // ここでは単純化のため、全データをスプレッドしてマージ
+        for (const [key, value] of requests.entries()) {
+          newMap.set(key, value);
         }
-      } catch (error) {
-        console.error('休み希望の読み込みエラー:', error);
-      }
+        return newMap;
+      });
     };
-    loadData();
+
+    unsubscribeCurrent = subscribeToDayOffRequestsMap(year, month, (reqs) => handleUpdate(reqs, false));
+    if (month === 12) {
+      unsubscribeNext = subscribeToDayOffRequestsMap(year + 1, 1, (reqs) => handleUpdate(reqs, true));
+    }
+
+    return () => {
+      unsubscribeCurrent();
+      unsubscribeNext();
+    };
   }, [year, month]);
 
-  // 指定休を読み込み
+  // 表示テキストを読み込み（リアルタイム）
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        // 12月の場合は翌年1月のデータも読み込む
-        if (month === 12) {
-          const nextYear = year + 1;
-          const [scheduledDayOffsData, nextMonthScheduled] = await Promise.all([
-            loadScheduledDayOffs(year, month),
-            loadScheduledDayOffs(nextYear, 1)
-          ]);
-          const combinedScheduled = new Map([...scheduledDayOffsData, ...nextMonthScheduled]);
-          setScheduledDayOffs(combinedScheduled);
-          console.log(`🟢 指定休を読み込みました: ${year}年${month}月 (${scheduledDayOffsData.size}件) + ${nextYear}年1月 (${nextMonthScheduled.size}件)`);
-        } else {
-          const scheduledDayOffsData = await loadScheduledDayOffs(year, month);
-          setScheduledDayOffs(scheduledDayOffsData);
-          console.log(`🟢 指定休を読み込みました: ${year}年${month}月 (${scheduledDayOffsData.size}件)`);
-        }
-      } catch (error) {
-        console.error('指定休の読み込みエラー:', error);
-      }
-    };
-    loadData();
-  }, [year, month]);
+    let unsubscribeCurrent = () => { };
+    let unsubscribeNext = () => { };
 
-  // 表示テキストを読み込み
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        // 12月の場合は翌年1月のデータも読み込む
-        if (month === 12) {
-          const nextYear = year + 1;
-          const [textsData, nextMonthTexts] = await Promise.all([
-            loadDisplayTexts(year, month),
-            loadDisplayTexts(nextYear, 1)
-          ]);
-          const combinedTexts = new Map([...textsData, ...nextMonthTexts]);
-          setDisplayTexts(combinedTexts);
-          console.log(`📝 表示テキストを読み込みました: ${year}年${month}月 (${textsData.size}件) + ${nextYear}年1月 (${nextMonthTexts.size}件)`);
-        } else {
-          const textsData = await loadDisplayTexts(year, month);
-          setDisplayTexts(textsData);
-          console.log(`📝 表示テキストを読み込みました: ${year}年${month}月 (${textsData.size}件)`);
+    const handleUpdate = (texts: Map<string, string>, isNextMonth: boolean) => {
+      setDisplayTexts(prev => {
+        const newMap = new Map(prev);
+        for (const [key, value] of texts.entries()) {
+          newMap.set(key, value);
         }
-      } catch (error) {
-        console.error('表示テキストの読み込みエラー:', error);
-      }
+        return newMap;
+      });
     };
-    loadData();
+
+    unsubscribeCurrent = subscribeToDisplayTextsMap(year, month, (texts) => handleUpdate(texts, false));
+    if (month === 12) {
+      unsubscribeNext = subscribeToDisplayTextsMap(year + 1, 1, (texts) => handleUpdate(texts, true));
+    }
+
+    return () => {
+      unsubscribeCurrent();
+      unsubscribeNext();
+    };
   }, [year, month]);
 
   // 休み希望を保存する関数
@@ -1514,7 +1494,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
       return () => clearTimeout(timer);
     }
-  }, [year, month, helpers.length, fetchAndUpdateExpenseData]);
+  }, [year, month, helpers.length]);
 
   // 給与データを更新・保存する関数（デバウンス付き）
   const updateMonthlyPayment = useCallback((
@@ -2021,14 +2001,20 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         }
 
         const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
-        const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+        // ハイフンまたは波線に対応
+        const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*[-~〜]\s*(\d{1,2}:\d{2})/);
         const startTime = timeMatch ? timeMatch[1] : '';
         const endTime = timeMatch ? timeMatch[2] : '';
 
-        const shift: Shift = {
+        // 給与を計算（会議とその他は計算しない）
+        const payCalculation = (serviceType === 'kaigi' || serviceType === 'other' || serviceType === 'yotei')
+          ? { regularHours: 0, nightHours: 0, regularPay: 0, nightPay: 0, totalPay: 0 }
+          : calculateShiftPay(serviceType, timeRange, date);
+
+        const newShift: Shift = {
           id: `shift-${helperId}-${date}-${rowIndex}`,
           date,
-          helperId: String(helperId), // helperIdを文字列に統一
+          helperId: String(helperId),
           clientName,
           serviceType,
           startTime,
@@ -2036,15 +2022,23 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           duration: parseFloat(durationStr) || 0,
           area,
           rowIndex,
-          // コピー元のcancelStatusとcanceledAtを引き継ぐ
           cancelStatus: copyBufferRef.cancelStatus,
           canceledAt: copyBufferRef.canceledAt,
-          deleted: false  // 削除フラグを明示的にfalseに設定
+          regularHours: payCalculation.regularHours,
+          nightHours: payCalculation.nightHours,
+          regularPay: payCalculation.regularPay,
+          nightPay: payCalculation.nightPay,
+          totalPay: payCalculation.totalPay,
+          deleted: false
         };
 
-        await saveShiftWithCorrectYearMonth(shift);
+        // Reactステートを即座に更新（これが抜けていたため、再レンダリングで消えていた）
+        const updatedShifts = [...shifts.filter(s => s.id !== newShift.id), newShift];
+        onUpdateShifts(updatedShifts);
 
-        console.log('✅ ペースト保存完了:', shift);
+        // Firestoreに保存
+        await saveShiftWithCorrectYearMonth(newShift);
+        console.log('✅ ペースト保存完了:', newShift);
       }
     };
 
@@ -2132,8 +2126,12 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
           // 保存
           try {
+            // Reactステートを先に更新してUIを即座に反映
+            const updatedShifts = [...shifts.filter(s => !shiftsToSave.some(newS => newS.id === s.id)), ...shiftsToSave];
+            onUpdateShifts(updatedShifts);
+
+            // Firestoreに保存
             await saveShiftsByYearMonth(shiftsToSave);
-            onUpdateShifts([...shifts.filter(s => !(s.helperId === targetCell.helperId && s.date === targetCell.date && s.rowIndex === targetCell.rowIndex)), ...shiftsToSave]);
             console.log(`${shiftsToSave.length}件のケアをペーストしました`);
           } catch (error: unknown) {
             console.error('ペーストエラー:', error);
@@ -2307,7 +2305,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     }
 
                     const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
-                    const timeMatch = timeRange.match(/(\d{1,2}:\d{2})(?:\s*[-~]\s*(\d{1,2}:\d{2}))?/);
+                    const timeMatch = timeRange.match(/(\d{1,2}:\d{2})(?:\s*[-~〜]\s*(\d{1,2}:\d{2}))?/);
                     const startTime = timeMatch ? timeMatch[1] : '';
                     const endTime = timeMatch && timeMatch[2] ? timeMatch[2] : '';
 
@@ -5447,7 +5445,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                         }
 
                                         const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
-                                        const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+                                        const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*[-~〜]\s*(\d{1,2}:\d{2})/);
                                         const startTime = timeMatch ? timeMatch[1] : '';
                                         const endTime = timeMatch ? timeMatch[2] : '';
 
@@ -5681,7 +5679,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                             }
 
                                             const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
-                                            const timeMatch = timeRange.match(/(\d{1,2}:\d{2})(?:\s*-\s*(\d{1,2}:\d{2}))?/);
+                                            const timeMatch = timeRange.match(/(\d{1,2}:\d{2})(?:\s*[-~〜]\s*(\d{1,2}:\d{2}))?/);
                                             const startTime = timeMatch ? timeMatch[1] : '';
                                             const endTime = timeMatch && timeMatch[2] ? timeMatch[2] : '';
 

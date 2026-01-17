@@ -16,7 +16,7 @@ import RangeSelectionDemo from './pages/RangeSelectionDemo';
 import { helpers as initialHelpers } from './data/mockData';
 import { SERVICE_CONFIG } from './types';
 import type { Helper, Shift } from './types';
-import { saveHelpers, loadHelpers, loadShiftsForMonth } from './services/firestoreService';
+import { saveHelpers, loadHelpers, loadShiftsForMonth, subscribeToShiftsForMonth, subscribeToHelpers } from './services/firestoreService';
 import { cleanupDuplicateShifts } from './utils/cleanupDuplicateShifts';
 import { testFirebaseConnection } from './lib/firebase';
 
@@ -146,73 +146,36 @@ function App() {
     testFirebaseConnection();
   }, []);
 
-  // ヘルパー情報を読み込み（初回のみ）
+  // ヘルパー情報を読み込み（リアルタイム監視）
   useEffect(() => {
-    const fetchHelpers = async () => {
-      const loadedHelpers = await loadHelpers();
+    console.log('📡 ヘルパーのリアルタイム監視を開始');
+    const unsubscribe = subscribeToHelpers(async (loadedHelpers) => {
       if (loadedHelpers.length > 0) {
         setHelpers(loadedHelpers);
       } else {
         // Firestoreが空の場合のみ、初期データを一度だけ保存
         await saveHelpers(initialHelpers);
-        setHelpers(initialHelpers);
       }
       setIsInitialized(true);
+    });
+
+    return () => {
+      console.log('🔌 ヘルパー監視を解除');
+      unsubscribe();
     };
-    fetchHelpers();
   }, []);
 
-  // シフト情報を読み込み（月が変わるたびに）
+  // シフト情報を読み込み（リアルタイム監視）
   useEffect(() => {
-    const fetchShifts = async () => {
-      const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth);
-
-      let additionalShifts: Shift[] = [];
-
-      // 12月の場合は翌年1月1-4日のシフトも読み込む
-      if (currentMonth === 12) {
-        const nextYear = currentYear + 1;
-        const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1);
-
-        // 1月1日〜4日のみをフィルター
-        additionalShifts = allJanuaryShifts.filter(shift => {
-          const day = parseInt(shift.date.split('-')[2]);
-          return day >= 1 && day <= 4;
-        });
-      }
-
-      // 1月の場合は前年12月29-31日のシフトも読み込む（年末年始給与計算のため）
-      if (currentMonth === 1) {
-        const prevYear = currentYear - 1;
-        const allDecemberShifts = await loadShiftsForMonth(prevYear, 12);
-
-        // 12月29日〜31日のみをフィルター
-        additionalShifts = allDecemberShifts.filter(shift => {
-          const day = parseInt(shift.date.split('-')[2]);
-          return day >= 29 && day <= 31;
-        });
-      }
-
-      const allShifts = [...loadedShifts, ...additionalShifts];
-
-      // キャンセル済みシフトのログ
-      const canceledShifts = allShifts.filter(s => s.cancelStatus);
-      if (canceledShifts.length > 0) {
-        console.log(`🔴 App.tsx: キャンセル済みシフト ${canceledShifts.length}件を設定:`,
-          canceledShifts.map(s => ({
-            id: s.id,
-            date: s.date,
-            helperId: s.helperId,
-            clientName: s.clientName,
-            cancelStatus: s.cancelStatus,
-            rowIndex: s.rowIndex
-          }))
-        );
-      }
-
+    console.log(`📡 シフトのリアルタイム監視を開始: ${currentYear}年${currentMonth}月`);
+    const unsubscribe = subscribeToShiftsForMonth(currentYear, currentMonth, (allShifts) => {
       setShifts(allShifts);
+    });
+
+    return () => {
+      console.log('🔌 シフト監視を解除');
+      unsubscribe();
     };
-    fetchShifts();
   }, [currentYear, currentMonth]);
 
   const handleUpdateHelpers = useCallback(async (updatedHelpers: Helper[]) => {
@@ -384,26 +347,7 @@ function App() {
         shifts={shifts}
         year={currentYear}
         month={currentMonth}
-        onClose={async () => {
-          // 最新データをFirestoreから再読み込み
-          const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth);
-
-          // 12月の場合は翌年1月1〜4日のシフトも読み込む
-          let allShifts = loadedShifts;
-          if (currentMonth === 12) {
-            const nextYear = currentYear + 1;
-            const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1);
-
-            // 1月1日〜4日のみをフィルター
-            const januaryShifts = allJanuaryShifts.filter(shift => {
-              const day = parseInt(shift.date.split('-')[2]);
-              return day >= 1 && day <= 4;
-            });
-
-            allShifts = [...loadedShifts, ...januaryShifts];
-          }
-
-          setShifts(allShifts);
+        onClose={() => {
           setCurrentView('shift');
         }}
       />
