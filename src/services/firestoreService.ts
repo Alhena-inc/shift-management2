@@ -247,6 +247,10 @@ export const loadHelpers = async (): Promise<Helper[]> => {
         return {
           ...data,
           id: doc.id,
+          // genderが未定義の場合はデフォルトで'male'を設定
+          gender: data.gender || 'male',
+          // orderが未定義の場合は0を設定
+          order: data.order ?? 0,
           // insurancesが未定義の場合は空配列にする
           insurances: data.insurances || []
         } as Helper;

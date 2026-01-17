@@ -47,13 +47,14 @@ const HelperManagementPage: React.FC = () => {
     const newHelper: Helper = {
       id: newId,
       name: '新規ヘルパー',
+      gender: 'male',  // デフォルトで男性に設定
+      order: helpers.length + 1,  // 順番を設定
       employmentType: 'parttime',
       hourlyRate: 0,
       treatmentImprovementPerHour: 0,
       baseSalary: 0,
       treatmentAllowance: 0,
       otherAllowances: [],
-      monthlySalary: 0,
       dependents: 0,
     };
 
