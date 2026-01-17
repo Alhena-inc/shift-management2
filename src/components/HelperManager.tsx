@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import type { Helper } from '../types';
 import { getGoogleAccessToken } from '../services/googleAuthService';
 import { addHelperColumn } from '../services/googleSheetsApi';
-import { deleteHelper } from '../services/firestoreService';
+import { deleteHelper, softDeleteHelper } from '../services/firestoreService';
 
 // ランダムトークン生成関数（10文字）
 const generateToken = (): string => {
@@ -288,6 +288,12 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
     setEditHelperFirstName('');
   }, []);
 
+  // Assuming this import statement exists at the top of the file or needs to be added.
+  // If it's not present, it should be added at the top of the file.
+  // For this specific instruction, I'm placing it where the instruction implies,
+  // but typically imports are at the top.
+
+
   const handleDeleteHelper = useCallback(async (helperId: string) => {
     const helperName = localHelpers.find(h => h.id === helperId)?.name || '';
 
@@ -306,8 +312,8 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
     try {
       console.log(`💾 ${helperName}さんを削除中...`);
 
-      // 1. 明示的に削除を実行（リスト同期ロジック廃止に伴う変更）
-      await deleteHelper(helperId);
+      // 1. 論理削除を実行（データは残る）
+      await softDeleteHelper(helperId);
 
       // 2. 残りのリストを保存（順序更新など）
       await onUpdate(updatedHelpers);

@@ -235,6 +235,8 @@ export const loadHelpers = async (): Promise<Helper[]> => {
           insurances: data.insurances || []
         } as Helper;
       })
+      // 論理削除されたものを除外
+      .filter(helper => !(helper as any).deleted)
       // orderフィールドでソート
       .sort((a, b) => a.order - b.order);
     return helpers;
