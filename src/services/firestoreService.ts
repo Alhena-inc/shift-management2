@@ -134,6 +134,22 @@ export const deleteHelper = async (helperId: string): Promise<void> => {
   }
 };
 
+// ヘルパーを論理削除（推奨：データは残る）
+export const softDeleteHelper = async (helperId: string): Promise<void> => {
+  try {
+    const helperRef = doc(db, HELPERS_COLLECTION, helperId);
+    await updateDoc(helperRef, {
+      deleted: true,
+      deletedAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    });
+    console.log(`ヘルパーを論理削除しました: ${helperId}`);
+  } catch (error) {
+    console.error('ヘルパー論理削除エラー:', error);
+    throw error;
+  }
+};
+
 // シフトを保存（月ごと）
 export const saveShiftsForMonth = async (_year: number, _month: number, shifts: Shift[]): Promise<void> => {
   try {
