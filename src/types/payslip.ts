@@ -69,7 +69,15 @@ export interface Deductions {
   manualHealthInsurance?: boolean;
   manualCareInsurance?: boolean;
   manualPensionInsurance?: boolean;
+  manualPensionFund?: boolean;
   manualEmploymentInsurance?: boolean;
+  manualSocialInsuranceTotal?: boolean;
+  manualDeductionTotal?: boolean;
+  manualTotalDeduction?: boolean;
+  manualResidentTax?: boolean;
+  manualReimbursement?: boolean;
+  manualAdvancePayment?: boolean;
+  manualYearEndAdjustment?: boolean;
 
   // その他項目（後方互換性のため残す）
   items: DeductionItem[];
@@ -81,6 +89,11 @@ export interface Totals {
   bankTransfer: number;    // 振込支給額
   cashPayment: number;     // 現金支給額
   netPayment: number;      // 差引支給額
+  netPaymentWithExpense?: number; // 差引支給額(経費あり)
+  manualNetPayment?: boolean; // 手動入力フラグ
+  manualNetPaymentWithExpense?: boolean;
+  manualBankTransfer?: boolean;
+  manualCashPayment?: boolean;
 }
 
 // 固定給用の日次勤怠（時給と同じ詳細な形式に統一）
@@ -132,7 +145,8 @@ export interface FixedPayslip extends BasePayslip {
   // 賃金情報
   baseSalary: number;         // 基本給
   treatmentAllowance: number; // 処遇改善加算
-  totalSalary: number;        // 合計時給
+  totalSalary: number;        // 合計給与
+  manualTotalSalary?: boolean; // 手動入力フラグ
 
   // 勤怠項目ラベル
   attendanceLabels?: {
@@ -165,6 +179,18 @@ export interface FixedPayslip extends BasePayslip {
     officeHours?: number;       // 事務稼働時間
     salesHours?: number;        // 営業稼働時間
     totalWorkHours: number;     // 合計稼働時間
+    manualNormalWorkDays?: boolean;
+    manualAccompanyDays?: boolean;
+    manualAbsences?: boolean;
+    manualLateEarly?: boolean;
+    manualTotalWorkDays?: boolean;
+    manualNormalHours?: boolean;
+    manualAccompanyHours?: boolean;
+    manualNightNormalHours?: boolean;
+    manualNightAccompanyHours?: boolean;
+    manualOfficeHours?: boolean;
+    manualSalesHours?: boolean;
+    manualTotalWorkHours?: boolean;
   };
 
   // 支給項目
@@ -177,6 +203,13 @@ export interface FixedPayslip extends BasePayslip {
     nightAllowance: number;       // 夜間手当
     otherAllowances: DeductionItem[]; // その他手当
     totalPayment: number;         // 支給額合計
+    manualBasePay?: boolean;
+    manualOvertimePay?: boolean;
+    manualExpenseReimbursement?: boolean;
+    manualTransportAllowance?: boolean;
+    manualEmergencyAllowance?: boolean;
+    manualNightAllowance?: boolean;
+    manualTotalPayment?: boolean; // 手動入力フラグ
   };
 
   // 控除項目
@@ -212,6 +245,7 @@ export interface HourlyPayslip extends BasePayslip {
   baseHourlyRate: number;     // 基本時給
   treatmentAllowance: number; // 処遇改善加算（時給）
   totalHourlyRate: number;    // 合計時間単価
+  manualTotalHourlyRate?: boolean; // 手動入力フラグ
 
   // 勤怠項目ラベル
   attendanceLabels?: {
@@ -244,6 +278,18 @@ export interface HourlyPayslip extends BasePayslip {
     officeHours: number;       // 事務稼働時間
     salesHours: number;        // 営業稼働時間
     totalWorkHours: number;    // 合計稼働時間
+    manualNormalWorkDays?: boolean;
+    manualAccompanyDays?: boolean;
+    manualAbsences?: boolean;
+    manualLateEarly?: boolean;
+    manualTotalWorkDays?: boolean;
+    manualNormalHours?: boolean;
+    manualAccompanyHours?: boolean;
+    manualNightNormalHours?: boolean;
+    manualNightAccompanyHours?: boolean;
+    manualOfficeHours?: boolean;
+    manualSalesHours?: boolean;
+    manualTotalWorkHours?: boolean;
   };
 
   // 支給項目ラベル
@@ -276,6 +322,17 @@ export interface HourlyPayslip extends BasePayslip {
     nightAllowance?: number;      // 夜間手当
     otherAllowances: DeductionItem[]; // その他手当
     totalPayment: number;         // 支給額合計
+    manualNormalWorkPay?: boolean;
+    manualAccompanyPay?: boolean;
+    manualOfficePay?: boolean;
+    manualYearEndNewYearAllowance?: boolean;
+    manualNightNormalPay?: boolean;
+    manualNightAccompanyPay?: boolean;
+    manualExpenseReimbursement?: boolean;
+    manualTransportAllowance?: boolean;
+    manualEmergencyAllowance?: boolean;
+    manualNightAllowance?: boolean;
+    manualTotalPayment?: boolean; // 手動入力フラグ
   };
 
   // 控除項目ラベル

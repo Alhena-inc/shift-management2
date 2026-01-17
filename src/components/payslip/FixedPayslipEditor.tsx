@@ -27,67 +27,56 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
     const newPayslip = { ...updated };
 
     // 日次勤怠から勤怠サマリーを再計算
-    let totalWorkDays = 0;
-    let totalWorkHours = 0;
+    if (!newPayslip.attendance.manualTotalWorkDays || !newPayslip.attendance.manualTotalWorkHours) {
+      let calcWorkDays = 0;
+      let calcWorkHours = 0;
 
-    newPayslip.dailyAttendance.forEach(day => {
-      // 合計勤務時間を再計算
-      day.totalHours = day.careWork + day.workHours;
+      newPayslip.dailyAttendance.forEach(day => {
+        day.totalHours = day.careWork + day.workHours;
+        if (day.workHours > 0) {
+          calcWorkDays++;
+        }
+        calcWorkHours += day.workHours;
+      });
 
-      // 稼働日数をカウント（workHoursが0より大きい場合）
-      if (day.workHours > 0) {
-        totalWorkDays++;
-      }
-      totalWorkHours += day.workHours;
-    });
-
-    newPayslip.attendance.totalWorkDays = totalWorkDays;
-    newPayslip.attendance.totalWorkHours = totalWorkHours;
+      if (!newPayslip.attendance.manualTotalWorkDays) newPayslip.attendance.totalWorkDays = calcWorkDays;
+      if (!newPayslip.attendance.manualTotalWorkHours) newPayslip.attendance.totalWorkHours = calcWorkHours;
+    }
 
     // 基本給関連の再計算
-    newPayslip.totalSalary = newPayslip.baseSalary + newPayslip.treatmentAllowance;
+    if (!newPayslip.manualTotalSalary) {
+      newPayslip.totalSalary = newPayslip.baseSalary + newPayslip.treatmentAllowance;
+    }
 
     // 支給額合計の計算
-    newPayslip.payments.totalPayment =
-      newPayslip.payments.basePay +
-      newPayslip.payments.overtimePay +
-      newPayslip.payments.expenseReimbursement +
-      newPayslip.payments.transportAllowance +
-      newPayslip.payments.emergencyAllowance +
-      newPayslip.payments.nightAllowance +
-      newPayslip.payments.otherAllowances.reduce((sum, item) => sum + item.amount, 0);
+    if (!newPayslip.payments.manualTotalPayment) {
+      newPayslip.payments.totalPayment =
+        (newPayslip.payments.manualBasePay ? newPayslip.payments.basePay : (newPayslip.totalSalary || 0)) +
+        (newPayslip.payments.overtimePay || 0) +
+        (newPayslip.payments.expenseReimbursement || 0) +
+        (newPayslip.payments.transportAllowance || 0) +
+        (newPayslip.payments.emergencyAllowance || 0) +
+        (newPayslip.payments.nightAllowance || 0) +
+        (newPayslip.payments.otherAllowances || []).reduce((sum, item) => sum + (item.amount || 0), 0);
+    }
 
     // 控除項目の計算
-    console.log('💰 控除項目計算開始（固定給）');
-    console.log('総支給額:', newPayslip.payments.totalPayment);
-    console.log('年齢:', newPayslip.age);
-    console.log('扶養人数:', newPayslip.dependents);
-    console.log('保険加入状況:', newPayslip.insuranceTypes);
-
-    // 各保険料が手動入力されていない場合のみ自動計算
-    const manualInsurance =
-      newPayslip.deductions.manualHealthInsurance ||
-      newPayslip.deductions.manualCareInsurance ||
-      newPayslip.deductions.manualPensionInsurance ||
-      newPayslip.deductions.manualEmploymentInsurance;
-
-    if (!manualInsurance) {
-      // 社会保険料を自動計算（契約社員は全ての社会保険を計算）
+    if (!newPayslip.deductions.manualHealthInsurance || !newPayslip.deductions.manualCareInsurance || !newPayslip.deductions.manualPensionInsurance || !newPayslip.deductions.manualEmploymentInsurance) {
       const insuranceTypes = newPayslip.insuranceTypes || ['health', 'pension', 'employment'];
-      // 40歳以上の場合は介護保険も追加
       if ((newPayslip.age || 0) >= 40 && !insuranceTypes.includes('care')) {
         insuranceTypes.push('care');
       }
 
-      // 標準報酬月額（設定されていない場合は「保険計算対象額」を使用）
       const nonTaxableOtherAllowances = (newPayslip.payments.otherAllowances || [])
         .filter((a: any) => a.taxExempt)
         .reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+
       const insuranceBaseAmount =
         (newPayslip.payments.totalPayment || 0) -
         (newPayslip.payments.expenseReimbursement || 0) -
         (newPayslip.payments.transportAllowance || 0) -
         nonTaxableOtherAllowances;
+
       const standardRemuneration = newPayslip.standardRemuneration || insuranceBaseAmount;
 
       const insurance = calculateInsurance(
@@ -105,96 +94,81 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
     }
 
     // 社会保険計
-    newPayslip.deductions.socialInsuranceTotal =
-      (newPayslip.deductions.healthInsurance || 0) +
-      (newPayslip.deductions.careInsurance || 0) +
-      (newPayslip.deductions.pensionInsurance || 0) +
-      (newPayslip.deductions.pensionFund || 0) +
-      (newPayslip.deductions.employmentInsurance || 0);
-
-    // 課税対象の月給を計算（基本給 + 処遇改善手当 + その他支給(課税のみ)）
-    // ※経費精算・交通費立替などの非課税手当は含めない
-    const taxableOtherAllowances = newPayslip.payments.otherAllowances
-      .filter(item => {
-        // taxExemptフィールドがない場合は課税として扱う（デフォルト）
-        const taxExempt = (item as any).taxExempt === true;
-        return !taxExempt;
-      })
-      .reduce((sum, item) => sum + item.amount, 0);
-
-    const taxableMonthlySalary =
-      newPayslip.baseSalary +
-      newPayslip.treatmentAllowance +
-      taxableOtherAllowances;
-
-    console.log('💰 源泉所得税計算:');
-    console.log('  基本給:', newPayslip.baseSalary);
-    console.log('  処遇改善手当:', newPayslip.treatmentAllowance);
-    console.log('  課税その他手当:', taxableOtherAllowances);
-    console.log('  課税対象の月給:', taxableMonthlySalary);
-    console.log('  社会保険料計:', newPayslip.deductions.socialInsuranceTotal);
-
-    // 課税対象額の決定
-    if (newPayslip.deductions.manualTaxableAmount === undefined) {
-      // 課税対象額 = 課税対象の月給 - 社会保険料計
-      newPayslip.deductions.taxableAmount = Math.max(0, taxableMonthlySalary - newPayslip.deductions.socialInsuranceTotal);
+    if (!newPayslip.deductions.manualSocialInsuranceTotal) {
+      newPayslip.deductions.socialInsuranceTotal =
+        (newPayslip.deductions.healthInsurance || 0) +
+        (newPayslip.deductions.careInsurance || 0) +
+        (newPayslip.deductions.pensionInsurance || 0) +
+        (newPayslip.deductions.pensionFund || 0) +
+        (newPayslip.deductions.employmentInsurance || 0);
     }
 
-    console.log('  課税対象額:', newPayslip.deductions.taxableAmount);
+    // 課税対象額の計算
+    if (newPayslip.deductions.manualTaxableAmount === undefined) {
+      const taxableOtherAllowances = (newPayslip.payments.otherAllowances || [])
+        .filter(item => !(item as any).taxExempt)
+        .reduce((sum, item) => sum + (item.amount || 0), 0);
+
+      const taxableMonthlySalary =
+        (newPayslip.baseSalary || 0) +
+        (newPayslip.treatmentAllowance || 0) +
+        taxableOtherAllowances;
+
+      newPayslip.deductions.taxableAmount = Math.max(0, taxableMonthlySalary - (newPayslip.deductions.socialInsuranceTotal || 0));
+    }
 
     // 源泉所得税を計算
-    const dependents = newPayslip.dependents || 0;
-    const payslipYear = newPayslip.year || new Date().getFullYear();
-
     if (newPayslip.deductions.manualIncomeTax === undefined) {
-      // ★給与明細の年を使用して令和7年/令和8年の税率を適用
-      // ★源泉徴収フラグがfalseの場合は0円
       if (helper?.hasWithholdingTax === false) {
-        console.log('  源泉徴収なし: 0円');
         newPayslip.deductions.incomeTax = 0;
       } else {
         newPayslip.deductions.incomeTax = calculateWithholdingTaxByYear(
-          payslipYear,
+          newPayslip.year || new Date().getFullYear(),
           newPayslip.deductions.taxableAmount,
-          dependents,
+          newPayslip.dependents || 0,
           '甲'
         );
       }
     }
 
-    console.log('  扶養人数:', dependents);
-    console.log('  対象年:', payslipYear);
-    console.log('  源泉徴収フラグ:', helper?.hasWithholdingTax !== false ? 'あり' : 'なし');
-    console.log('  源泉所得税:', newPayslip.deductions.incomeTax);
-
     // 控除計
-    newPayslip.deductions.deductionTotal =
-      (newPayslip.deductions.incomeTax || 0) +
-      (newPayslip.deductions.residentTax || 0) +
-      (newPayslip.deductions.reimbursement || 0) +
-      (newPayslip.deductions.advancePayment || 0) +
-      (newPayslip.deductions.yearEndAdjustment || 0);
+    if (!newPayslip.deductions.manualDeductionTotal) {
+      newPayslip.deductions.deductionTotal =
+        (newPayslip.deductions.incomeTax || 0) +
+        (newPayslip.deductions.residentTax || 0) +
+        (newPayslip.deductions.reimbursement || 0) +
+        (newPayslip.deductions.advancePayment || 0) +
+        (newPayslip.deductions.yearEndAdjustment || 0);
+    }
 
-    // 控除合計 = 社会保険計 + 控除計
-    newPayslip.deductions.totalDeduction =
-      newPayslip.deductions.socialInsuranceTotal +
-      newPayslip.deductions.deductionTotal;
+    // 控除合計
+    if (!newPayslip.deductions.manualTotalDeduction) {
+      newPayslip.deductions.totalDeduction =
+        (newPayslip.deductions.socialInsuranceTotal || 0) +
+        (newPayslip.deductions.deductionTotal || 0);
+    }
 
     // 差引支給額の計算
-    newPayslip.totals.netPayment =
-      newPayslip.payments.totalPayment - newPayslip.deductions.totalDeduction;
+    if (!newPayslip.totals.manualNetPayment) {
+      newPayslip.totals.netPayment =
+        (newPayslip.payments.totalPayment || 0) - (newPayslip.deductions.totalDeduction || 0);
+    }
 
-    // 振込支給額・現金支給額の計算
-    newPayslip.totals.cashPayment = newPayslip.totals.cashPayment || 0;
-    newPayslip.totals.bankTransfer = newPayslip.totals.netPayment - newPayslip.totals.cashPayment;
+    // 差引支給額(経費あり)
+    if (!newPayslip.totals.manualNetPaymentWithExpense) {
+      newPayslip.totals.netPaymentWithExpense =
+        (newPayslip.totals.netPayment || 0) +
+        (newPayslip.payments.expenseReimbursement || 0) +
+        (newPayslip.payments.transportAllowance || 0);
+    }
 
-    console.log('💰 支給額計算:');
-    console.log('  差引支給額:', newPayslip.totals.netPayment);
-    console.log('  現金支給額:', newPayslip.totals.cashPayment);
-    console.log('  振込支給額:', newPayslip.totals.bankTransfer);
+    // 振込支給額・現金支給額の調整
+    if (!newPayslip.totals.manualBankTransfer) {
+      newPayslip.totals.bankTransfer = (newPayslip.totals.netPaymentWithExpense || 0) - (newPayslip.totals.cashPayment || 0);
+    }
 
     return newPayslip;
-  }, []);
+  }, [helper]);
 
   // フィールド更新ハンドラ
   const updateField = useCallback((path: string[], value: any) => {
@@ -209,13 +183,19 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
 
       // 手動入力フラグの設定
       const lastKey = path[path.length - 1];
-      if (path[0] === 'deductions') {
-        if (lastKey === 'healthInsurance') updated.deductions.manualHealthInsurance = true;
-        if (lastKey === 'careInsurance') updated.deductions.manualCareInsurance = true;
-        if (lastKey === 'pensionInsurance') updated.deductions.manualPensionInsurance = true;
-        if (lastKey === 'employmentInsurance') updated.deductions.manualEmploymentInsurance = true;
-        if (lastKey === 'taxableAmount') updated.deductions.manualTaxableAmount = true;
-        if (lastKey === 'incomeTax') updated.deductions.manualIncomeTax = true;
+      if (typeof value === 'number') {
+        const flagName = `manual${lastKey.charAt(0).toUpperCase() + lastKey.slice(1)}`;
+        if (path[0] === 'deductions') {
+          updated.deductions[flagName] = true;
+        } else if (path[0] === 'totals') {
+          updated.totals[flagName] = true;
+        } else if (path[0] === 'payments') {
+          updated.payments[flagName] = true;
+        } else if (path[0] === 'attendance') {
+          updated.attendance[flagName] = true;
+        } else if (lastKey === 'totalSalary') {
+          updated.manualTotalSalary = true;
+        }
       }
 
       return recalculate(updated);
@@ -359,9 +339,12 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
                   <div className="pt-2 border-t border-gray-200">
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-medium text-gray-700">合計給与</span>
-                      <span className="text-lg font-bold text-blue-600">
-                        {formatCurrency(payslip.totalSalary)}
-                      </span>
+                      <input
+                        type="number"
+                        value={payslip.totalSalary}
+                        onChange={(e) => updateField(['totalSalary'], Number(e.target.value))}
+                        className="w-32 text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold text-lg text-blue-600"
+                      />
                     </div>
                   </div>
                 </div>
@@ -373,11 +356,22 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-700">合計稼働日数:</span>
-                    <span className="font-medium">{payslip.attendance.totalWorkDays}日</span>
+                    <input
+                      type="number"
+                      value={payslip.attendance.totalWorkDays}
+                      onChange={(e) => updateField(['attendance', 'totalWorkDays'], Number(e.target.value))}
+                      className="w-20 text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-medium"
+                    />
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-700">合計勤務時間:</span>
-                    <span className="font-medium">{payslip.attendance.totalWorkHours.toFixed(1)}時間</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={payslip.attendance.totalWorkHours}
+                      onChange={(e) => updateField(['attendance', 'totalWorkHours'], Number(e.target.value))}
+                      className="w-20 text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-medium"
+                    />
                   </div>
                 </div>
               </div>
@@ -503,9 +497,12 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
                   <div className="pt-3 border-t border-gray-200">
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-medium text-gray-700">支給額合計</span>
-                      <span className="text-xl font-bold text-blue-600">
-                        {formatCurrency(payslip.payments.totalPayment)}
-                      </span>
+                      <input
+                        type="number"
+                        value={payslip.payments.totalPayment}
+                        onChange={(e) => updateField(['payments', 'totalPayment'], Number(e.target.value))}
+                        className="w-32 text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold text-xl text-blue-600"
+                      />
                     </div>
                   </div>
                 </div>
@@ -522,8 +519,8 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
                       <input
                         type="number"
                         value={payslip.deductions.socialInsuranceTotal}
-                        readOnly
-                        className="w-full border border-gray-200 bg-gray-50 rounded px-3 py-2 text-sm"
+                        onChange={(e) => updateField(['deductions', 'socialInsuranceTotal'], Number(e.target.value))}
+                        className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
                     <div>
@@ -607,9 +604,12 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
                   <div className="pt-3 border-t border-gray-200">
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-medium text-gray-700">控除合計</span>
-                      <span className="text-lg font-bold text-red-600">
-                        {formatCurrency(payslip.deductions.totalDeduction)}
-                      </span>
+                      <input
+                        type="number"
+                        value={payslip.deductions.totalDeduction}
+                        onChange={(e) => updateField(['deductions', 'totalDeduction'], Number(e.target.value))}
+                        className="w-32 text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold text-lg text-red-600"
+                      />
                     </div>
                   </div>
                 </div>
@@ -621,7 +621,12 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
                 <div className="space-y-2">
                   <div className="flex justify-between items-center text-2xl font-bold">
                     <span className="text-gray-700">差引支給額</span>
-                    <span className="text-blue-600">{formatCurrency(payslip.totals.netPayment)}</span>
+                    <input
+                      type="number"
+                      value={payslip.totals.netPayment}
+                      onChange={(e) => updateField(['totals', 'netPayment'], Number(e.target.value))}
+                      className="w-40 text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold text-2xl text-blue-600"
+                    />
                   </div>
                   <div className="text-sm text-gray-600 pt-2 border-t border-gray-300">
                     <div className="flex justify-between">

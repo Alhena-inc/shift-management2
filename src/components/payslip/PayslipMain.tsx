@@ -175,13 +175,19 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     // 月給合計（基本給 + 処遇改善加算 + その他支給）を計算
     if (updated.baseSalary !== undefined) {
       // 固定給の場合
-      updated.totalSalary = (updated.baseSalary || 0) + (updated.treatmentAllowance || 0) + otherAllowancesTotal;
+      if (!updated.manualTotalSalary) {
+        updated.totalSalary = (updated.baseSalary || 0) + (updated.treatmentAllowance || 0) + otherAllowancesTotal;
+      }
       // 基本給支給額に月給合計を設定
       if (!updated.payments) updated.payments = {};
-      updated.payments.basePay = updated.totalSalary;
+      if (!updated.payments.manualBasePay) {
+        updated.payments.basePay = updated.totalSalary;
+      }
     } else if (updated.baseHourlyRate !== undefined) {
       // 時給の場合
-      updated.totalHourlyRate = (updated.baseHourlyRate || 0) + (updated.treatmentAllowance || 0);
+      if (!updated.manualTotalHourlyRate) {
+        updated.totalHourlyRate = (updated.baseHourlyRate || 0) + (updated.treatmentAllowance || 0);
+      }
     }
 
     // その他支給の合計を保存（表示用）
@@ -206,20 +212,22 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     // 時給の場合：basePay は 0 なので otherAllowancesTotal を加算する
     const shouldAddOtherAllowances = updated.baseSalary === undefined;
 
-    // 経費精算と交通費立替は立替金の返金なので支給額合計には含めない（保険料計算に含めないため）
-    updated.payments.totalPayment =
-      basePay +
-      (updated.payments.normalWorkPay || 0) +
-      (updated.payments.accompanyPay || 0) +
-      (updated.payments.nightNormalPay || 0) +
-      (updated.payments.nightAccompanyPay || 0) +
-      (updated.payments.officePay || 0) +
-      ((updated.payments as any).yearEndNewYearAllowance || 0) +
-      // 経費精算と交通費立替は除外
-      (updated.payments.emergencyAllowance || 0) +
-      (updated.payments.nightAllowance || 0) +
-      (updated.payments.overtimePay || 0) +
-      (shouldAddOtherAllowances ? otherAllowancesTotal : 0);
+    // 手動入力フラグがない場合のみ総支給額を自動計算
+    if (!updated.payments.manualTotalPayment) {
+      updated.payments.totalPayment =
+        basePay +
+        (updated.payments.normalWorkPay || 0) +
+        (updated.payments.accompanyPay || 0) +
+        (updated.payments.nightNormalPay || 0) +
+        (updated.payments.nightAccompanyPay || 0) +
+        (updated.payments.officePay || 0) +
+        ((updated.payments as any).yearEndNewYearAllowance || 0) +
+        // 経費精算と交通費立替は除外
+        (updated.payments.emergencyAllowance || 0) +
+        (updated.payments.nightAllowance || 0) +
+        (updated.payments.overtimePay || 0) +
+        (shouldAddOtherAllowances ? otherAllowancesTotal : 0);
+    }
 
     // === 社会保険料と源泉所得税の自動計算 ===
 
@@ -253,11 +261,9 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       // 月給合計（社会保険・雇用保険計算用）
       // ※ 非課税手当（taxExempt=true）は保険計算に含めない
       monthlySalaryTotal = baseSalary + treatmentAllowance + taxableOther;
-      // 例: 144,900 + 144,900 + 0 + 4,200 = 294,000円
 
       // 課税対象の月給（源泉所得税計算用、非課税手当除く）
       taxableMonthlySalary = baseSalary + treatmentAllowance + taxableOther;
-      // 例: 144,900 + 144,900 + 0 = 289,800円
 
       nonTaxableOtherAllowances = nonTaxableOther;
     } else {
@@ -304,10 +310,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     const standardRemuneration = updated.standardRemuneration || 0;
 
     // 2. 社会保険料を計算
-    // 標準報酬月額（健康・介護・年金用）と月給合計（雇用保険用）を使用
-    // 雇用保険料計算には非課税その他手当を含める（交通費立替・手当は除外）
-    // 総支給額 = 基本給 + 処遇改善手当 + 課税その他手当 + 非課税その他手当
-    const nonTaxableTransportAllowance = nonTaxableOtherAllowances; // 交通費立替・手当は除外
+    const nonTaxableTransportAllowance = nonTaxableOtherAllowances;
     const insurance = calculateInsurance(standardRemuneration, monthlySalaryTotal, age, insuranceTypes, nonTaxableTransportAllowance);
 
     // 手動入力された控除項目がある場合はそれを優先、なければ自動計算値を使用
@@ -324,72 +327,73 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       updated.deductions.employmentInsurance = insurance.employmentInsurance;
     }
 
-    // 社会保険料合計（手動入力値がある場合はそれを使用）
-    const socialInsuranceTotal =
-      (updated.deductions.healthInsurance || 0) +
-      (updated.deductions.careInsurance || 0) +
-      (updated.deductions.pensionInsurance || 0) +
-      (updated.deductions.employmentInsurance || 0);
-    updated.deductions.socialInsuranceTotal = socialInsuranceTotal;
+    // 社会保険料合計
+    if (updated.deductions.manualSocialInsuranceTotal === undefined) {
+      const socialInsuranceTotal =
+        (updated.deductions.healthInsurance || 0) +
+        (updated.deductions.careInsurance || 0) +
+        (updated.deductions.pensionInsurance || 0) +
+        (updated.deductions.employmentInsurance || 0);
+      updated.deductions.socialInsuranceTotal = socialInsuranceTotal;
+    }
 
     // 3. 源泉所得税の課税対象額 = 課税対象の月給 - 社会保険料
-    // ※ 非課税手当は既に除外されている
-    // 手動入力された課税対象額がある場合はそれを優先
     if (updated.deductions.manualTaxableAmount === undefined) {
-      updated.deductions.taxableAmount = Math.max(0, taxableMonthlySalary - socialInsuranceTotal);
+      updated.deductions.taxableAmount = Math.max(0, taxableMonthlySalary - (updated.deductions.socialInsuranceTotal || 0));
     }
     const taxableAmount = updated.deductions.taxableAmount || 0;
-    // 例: 289,800 - 44,574 = 245,226円
 
-    // 4. 源泉所得税を計算（課税対象額と扶養人数から）
-    // ★源泉徴収フラグがfalseの場合は0円
-    // ★支給月が1月、または2025年12月分（翌年1月支給）の場合は令和8年分（2026年）の税額表を適用
-    // ★その他の月は給与明細の年を使用して令和7年/令和8年の税率を適用
-    // ★手動入力された場合はそれを優先
+    // 4. 源泉所得税を計算
     let withholdingTax = 0;
     if (updated.deductions.manualIncomeTax !== undefined) {
       withholdingTax = updated.deductions.incomeTax || 0;
     } else if (helper?.hasWithholdingTax !== false) {
       const payslipYear = updated.year || new Date().getFullYear();
       const payslipMonth = updated.month || new Date().getMonth() + 1;
-      // 12月分の給与は翌年1月支給なので、翌年の税額表を使用
       const taxYear = payslipMonth === 12 ? payslipYear + 1 : payslipYear;
       withholdingTax = calculateWithholdingTaxByYear(taxYear, taxableAmount, dependents, '甲');
       updated.deductions.incomeTax = withholdingTax;
     }
 
     // 5. 控除計（源泉所得税 + 立替金 + 年末調整）を計算
-    const residentTaxAmount = helper?.residentTaxType === 'normal' ? 0 : (updated.deductions.residentTax || 0);
     const reimbursementAmount = updated.deductions.reimbursement || 0;
     const yearEndAdjustmentAmount = updated.deductions.yearEndAdjustment || 0;
-    const deductionTotal = withholdingTax + reimbursementAmount + yearEndAdjustmentAmount;
-    updated.deductions.deductionTotal = deductionTotal;
+
+    if (updated.deductions.manualDeductionTotal === undefined) {
+      updated.deductions.deductionTotal = withholdingTax + (updated.deductions.residentTax || 0) + reimbursementAmount + yearEndAdjustmentAmount;
+    }
 
     // 6. 控除合計（社会保険計 + 年金基金 + 控除計 + 住民税 + その他控除）
-    // 年末調整は控除計に含まれているので除外
-    updated.deductions.totalDeduction =
-      socialInsuranceTotal +
-      (updated.deductions.pensionFund || 0) +
-      deductionTotal +  // 源泉所得税 + 立替金 + 年末調整
-      residentTaxAmount +
-      (updated.deductions.advancePayment || 0) +
-      ((updated.deductions as any).otherDeduction1 || 0) +
-      ((updated.deductions as any).otherDeduction2 || 0) +
-      ((updated.deductions as any).otherDeduction3 || 0) +
-      ((updated.deductions as any).otherDeduction4 || 0) +
-      ((updated.deductions as any).otherDeduction5 || 0);
+    if (updated.deductions.manualTotalDeduction === undefined) {
+      updated.deductions.totalDeduction =
+        (updated.deductions.socialInsuranceTotal || 0) +
+        (updated.deductions.pensionFund || 0) +
+        (updated.deductions.deductionTotal || 0) +
+        (updated.deductions.advancePayment || 0) +
+        ((updated.deductions as any).otherDeduction1 || 0) +
+        ((updated.deductions as any).otherDeduction2 || 0) +
+        ((updated.deductions as any).otherDeduction3 || 0) +
+        ((updated.deductions as any).otherDeduction4 || 0) +
+        ((updated.deductions as any).otherDeduction5 || 0);
+    }
 
-    // 差引支給額を計算（経費精算と交通費は含めない）
-    updated.totals.netPayment =
-      updated.payments.totalPayment - updated.deductions.totalDeduction;
+    // 差引支給額を計算
+    if (updated.totals.manualNetPayment === undefined) {
+      updated.totals.netPayment =
+        updated.payments.totalPayment - updated.deductions.totalDeduction;
+    }
 
     // 差引支給額(経費あり) = 差引支給額 + 経費精算 + 交通費
-    const expenseReimbursement = updated.payments.expenseReimbursement || 0;
-    const transportAllowance = updated.payments.transportAllowance || 0;
-    updated.totals.netPaymentWithExpense = updated.totals.netPayment + expenseReimbursement + transportAllowance;
+    if (updated.totals.manualNetPaymentWithExpense === undefined) {
+      const expenseReimbursement = updated.payments.expenseReimbursement || 0;
+      const transportAllowance = updated.payments.transportAllowance || 0;
+      updated.totals.netPaymentWithExpense = updated.totals.netPayment + expenseReimbursement + transportAllowance;
+    }
 
-    // 振込支給額を差引支給額(経費あり)と同じに設定
-    updated.totals.bankTransfer = updated.totals.netPaymentWithExpense;
+    // 振込支給額と現金支給額の調整
+    if (updated.totals.manualBankTransfer === undefined) {
+      updated.totals.bankTransfer = (updated.totals.netPaymentWithExpense || 0) - (updated.totals.cashPayment || 0);
+    }
 
     return updated;
   };
@@ -398,59 +402,44 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     const updated = JSON.parse(JSON.stringify(payslip));
     let current: any = updated;
     for (let i = 0; i < path.length - 1; i++) {
-      // ネストしたオブジェクトが存在しない場合は作成
       if (current[path[i]] === undefined || current[path[i]] === null) {
         current[path[i]] = {};
       }
       current = current[path[i]];
     }
-    current[path[path.length - 1]] = value;
+    const fieldName = path[path.length - 1];
+    current[fieldName] = value;
 
-    // 現金支給額が変更された場合、振込支給額を自動調整
-    if (path[0] === 'totals' && path[1] === 'cashPayment') {
-      updated.totals.bankTransfer = Math.max(0, updated.totals.netPayment - value);
-    }
-    // 振込支給額が変更された場合、現金支給額を自動調整
-    else if (path[0] === 'totals' && path[1] === 'bankTransfer') {
-      updated.totals.cashPayment = Math.max(0, updated.totals.netPayment - value);
-    }
+    // 全ての数値入力において手動フラグを付与
+    if (typeof value === 'number' || (typeof value === 'string' && !isNaN(parseNumber(value)))) {
+      const manualFieldName = `manual${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)}`;
+      current[manualFieldName] = true;
 
-    // 合計値を直接編集した場合は自動計算をスキップ（手動入力を優先）
-    // 控除項目を直接編集した場合、手動入力フラグを設定
-    if (path[0] === 'deductions') {
-      const deductionField = path[1];
-      if (['healthInsurance', 'careInsurance', 'pensionInsurance', 'employmentInsurance', 'incomeTax', 'taxableAmount'].includes(deductionField)) {
-        updated.deductions[`manual${deductionField.charAt(0).toUpperCase() + deductionField.slice(1)}`] = true;
+      // 特殊なトップレベルフィールドの処理
+      if (path.length === 1 && (path[0] === 'totalSalary' || path[0] === 'totalHourlyRate')) {
+        updated[`manual${path[0].charAt(0).toUpperCase() + path[0].slice(1)}`] = true;
       }
     }
 
-    // 合計値を直接編集した場合のみ再計算をスキップ
-    const isDirectTotalEdit =
-      (path[0] === 'payments' && path[1] === 'totalPayment') ||
-      (path[0] === 'deductions' && path[1] === 'totalDeduction') ||
-      (path[0] === 'totals' && path[1] === 'netPayment');
-
-    // 支給項目、控除項目、または関連フィールドが変更された場合、合計を再計算
+    // 再計算が必要か判定
     const needsRecalculation =
-      !isDirectTotalEdit && (
-        path[0] === 'payments' ||
-        path[0] === 'deductions' ||
-        path[0] === 'baseSalary' ||
-        path[0] === 'baseHourlyRate' ||
-        path[0] === 'treatmentAllowance'
-      );
+      path[0] === 'payments' ||
+      path[0] === 'deductions' ||
+      path[0] === 'attendance' ||
+      path[0] === 'baseSalary' ||
+      path[0] === 'baseHourlyRate' ||
+      path[0] === 'totalSalary' ||
+      path[0] === 'totalHourlyRate' ||
+      path[0] === 'treatmentAllowance';
 
     if (needsRecalculation) {
       const recalculated = recalculateTotals(updated);
-      // 振込額と現金額の合計が差引支給額と一致するように調整
-      if (recalculated.totals.bankTransfer === 0 && recalculated.totals.cashPayment === 0) {
-        recalculated.totals.bankTransfer = recalculated.totals.netPayment;
-      }
       onChange(recalculated);
     } else {
       onChange(updated);
     }
   };
+
 
   // 初期表示時に合計を計算（経費精算・交通費立替を含む差引支給額を確実に再計算）
   useEffect(() => {
@@ -916,8 +905,8 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={payslip.deductionLabels?.incomeTaxLabel ?? '源泉所得税'} onChange={(e) => updateField(['deductionLabels', 'incomeTaxLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px', color: '#000000' }} />
             </td>
-            <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: isNormalTaxCollection ? '#f3f4f6' : '#e8f4f8', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={isNormalTaxCollection ? '-' : (payslip.deductionLabels?.residentTaxLabel || '住民税')} onChange={(e) => !isNormalTaxCollection && updateField(['deductionLabels', 'residentTaxLabel'], e.target.value)} readOnly={isNormalTaxCollection} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px', color: isNormalTaxCollection ? '#9ca3af' : '#000000' }} />
+            <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
+              <input type="text" value={payslip.deductionLabels?.residentTaxLabel || '住民税'} onChange={(e) => updateField(['deductionLabels', 'residentTaxLabel'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px', color: '#000000' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#e8f4f8', fontSize: '10px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={payslip.deductionLabels?.blankLabel1 ?? ''} onChange={(e) => updateField(['deductionLabels', 'blankLabel1'], e.target.value)} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '10px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
@@ -925,7 +914,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
           </tr>
           <tr style={{ height: '20px', maxHeight: '20px' }}>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', backgroundColor: 'white' }}>
-              <input type="text" value={formatNumber(payslip.deductions.socialInsuranceTotal || 0)} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px', color: 'inherit' }} />
+              <input type="text" value={formatNumber(payslip.deductions.socialInsuranceTotal || 0)} onChange={(e) => updateField(['deductions', 'socialInsuranceTotal'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px', color: 'inherit' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', backgroundColor: 'white' }}>
               <input type="text" value={formatNumber(payslip.deductions.taxableAmount || 0)} onChange={(e) => updateField(['deductions', 'taxableAmount'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px', color: 'inherit' }} />
@@ -933,9 +922,10 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={formatNumber(payslip.deductions.incomeTax || 0)} onChange={(e) => updateField(['deductions', 'incomeTax'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
-            <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', backgroundColor: isNormalTaxCollection ? '#f3f4f6' : 'white' }}>
-              <input type="text" value={isNormalTaxCollection ? '-' : formatNumber(payslip.deductions.residentTax || 0)} onChange={(e) => !isNormalTaxCollection && updateField(['deductions', 'residentTax'], parseNumber(e.target.value))} readOnly={isNormalTaxCollection} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px', color: isNormalTaxCollection ? '#9ca3af' : 'inherit' }} />
+            <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', backgroundColor: 'white' }}>
+              <input type="text" value={formatNumber(payslip.deductions.residentTax || 0)} onChange={(e) => updateField(['deductions', 'residentTax'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px', color: 'inherit' }} />
             </td>
+
             <td className="editable-cell" style={{ border: '1px solid black', height: '20px', maxHeight: '20px', overflow: 'hidden', padding: '2px 2px' }}>
               <input type="text" value={''} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
@@ -1018,7 +1008,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatNumber(payslip.deductions.deductionTotal || 0)} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={formatNumber(payslip.deductions.deductionTotal || 0)} onChange={(e) => updateField(['deductions', 'deductionTotal'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', height: '20px', maxHeight: '20px', overflow: 'hidden', padding: '2px 2px' }}>
               <input type="text" value={''} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
@@ -1059,10 +1049,10 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <input type="text" value={formatNumber(payslip.totals.cashPayment || 0)} onChange={(e) => updateField(['totals', 'cashPayment'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatNumber(payslip.totals.netPayment || 0)} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={formatNumber(payslip.totals.netPayment || 0)} onChange={(e) => updateField(['totals', 'netPayment'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', backgroundColor: '#fff2cc', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatNumber((payslip.totals as any).netPaymentWithExpense || payslip.totals.netPayment || 0)} readOnly className="w-full text-center border-0 bg-transparent font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
+              <input type="text" value={formatNumber(payslip.totals.netPaymentWithExpense ?? 0)} onChange={(e) => updateField(['totals', 'netPaymentWithExpense'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
           </tr>
         </tbody>

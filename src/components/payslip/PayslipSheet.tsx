@@ -16,75 +16,60 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, helper, onChange }
   const recalculateHourly = useCallback((updated: HourlyPayslip): HourlyPayslip => {
     const newPayslip = { ...updated };
 
-    // 日次勤怠から合計を計算
-    let normalHours = 0;
-    let accompanyHours = 0;
-    let nightNormalHours = 0;
-    let nightAccompanyHours = 0;
-    let officeHours = 0;
-    let salesHours = 0;
-    let totalWorkHours = 0;
-
-    newPayslip.dailyAttendance.forEach((day) => {
-      normalHours += day.normalWork;
-      nightNormalHours += day.normalNight;
-      accompanyHours += day.accompanyWork;
-      nightAccompanyHours += day.accompanyNight;
-      officeHours += day.officeWork;
-      salesHours += day.salesWork;
-      totalWorkHours += day.totalHours;
-    });
-
-    // 勤怠情報を更新
-    newPayslip.attendance.normalHours = normalHours;
-    newPayslip.attendance.accompanyHours = accompanyHours;
-    newPayslip.attendance.nightNormalHours = nightNormalHours;
-    newPayslip.attendance.nightAccompanyHours = nightAccompanyHours;
-    newPayslip.attendance.officeHours = officeHours;
-    newPayslip.attendance.salesHours = salesHours;
-    newPayslip.attendance.totalWorkHours = totalWorkHours;
+    // 日次勤怠から合計を計算（手動入力フラグがない場合のみ）
+    if (!newPayslip.attendance.manualTotalWorkHours) {
+      let calcTotalWorkHours = 0;
+      newPayslip.dailyAttendance.forEach((day) => {
+        calcTotalWorkHours += day.totalHours;
+      });
+      newPayslip.attendance.totalWorkHours = calcTotalWorkHours;
+    }
 
     // 支給額を再計算（時給制のみ）
-    // 通常ケア時給（身体・重度・家事・通院・行動・移動）
-    const rate = newPayslip.totalHourlyRate;
-    const nightRate = rate * 1.25;
-    
-    // 同行時給: 1200円
-    const accompanyRate = 1200;
-    const accompanyNightRate = accompanyRate * 1.25;
-    
-    // 事務・営業時給: 1200円
-    const officeRate = 1200;
+    if (!newPayslip.payments.manualTotalPayment) {
+      // 通常ケア時給（身体・重度・家事・通院・行動・移動）
+      const rate = newPayslip.totalHourlyRate;
+      const nightRate = rate * 1.25;
 
-    newPayslip.payments.normalWorkPay = Math.round(normalHours * rate);
-    newPayslip.payments.accompanyPay = Math.round(accompanyHours * accompanyRate);
-    newPayslip.payments.nightNormalPay = Math.round(nightNormalHours * nightRate);
-    newPayslip.payments.nightAccompanyPay = Math.round(nightAccompanyHours * accompanyNightRate);
-    newPayslip.payments.officePay = Math.round((officeHours + salesHours) * officeRate);
+      // 同行時給: 1200円
+      const accompanyRate = 1200;
+      const accompanyNightRate = accompanyRate * 1.25;
 
-    // その他手当の合計（配列が存在することを確認）
-    const otherAllowances = newPayslip.payments.otherAllowances || [];
-    const otherAllowancesTotal = otherAllowances.reduce(
-      (sum, item) => sum + item.amount,
-      0
-    );
+      // 事務・営業時給: 1200円
+      const officeRate = 1200;
 
-    // 支給額合計
-    newPayslip.payments.totalPayment =
-      newPayslip.payments.normalWorkPay +
-      newPayslip.payments.accompanyPay +
-      newPayslip.payments.nightNormalPay +
-      newPayslip.payments.nightAccompanyPay +
-      newPayslip.payments.officePay +
-      ((newPayslip.payments as any).yearEndNewYearAllowance || 0) +
-      newPayslip.payments.expenseReimbursement +
-      newPayslip.payments.transportAllowance +
-      newPayslip.payments.emergencyAllowance +
-      otherAllowancesTotal;
+      newPayslip.payments.normalWorkPay = Math.round(newPayslip.attendance.normalHours * rate);
+      newPayslip.payments.accompanyPay = Math.round(newPayslip.attendance.accompanyHours * accompanyRate);
+      newPayslip.payments.nightNormalPay = Math.round(newPayslip.attendance.nightNormalHours * nightRate);
+      newPayslip.payments.nightAccompanyPay = Math.round(newPayslip.attendance.nightAccompanyHours * accompanyNightRate);
+      newPayslip.payments.officePay = Math.round((newPayslip.attendance.officeHours + newPayslip.attendance.salesHours) * officeRate);
+
+      // その他手当の合計
+      const otherAllowancesTotal = (newPayslip.payments.otherAllowances || []).reduce(
+        (sum, item) => sum + item.amount,
+        0
+      );
+
+      // 支給額合計
+      newPayslip.payments.totalPayment =
+        newPayslip.payments.normalWorkPay +
+        newPayslip.payments.accompanyPay +
+        newPayslip.payments.nightNormalPay +
+        newPayslip.payments.nightAccompanyPay +
+        newPayslip.payments.officePay +
+        ((newPayslip.payments as any).yearEndNewYearAllowance || 0) +
+        newPayslip.payments.expenseReimbursement +
+        newPayslip.payments.transportAllowance +
+        newPayslip.payments.emergencyAllowance +
+        otherAllowancesTotal;
+    }
 
     // 差引支給額
-    newPayslip.totals.netPayment =
-      newPayslip.payments.totalPayment - newPayslip.deductions.totalDeduction;
+    if (!newPayslip.totals.manualNetPayment) {
+      newPayslip.totals.netPayment =
+        newPayslip.payments.totalPayment - newPayslip.deductions.totalDeduction;
+    }
+
     newPayslip.totals.bankTransfer = newPayslip.totals.netPayment - newPayslip.totals.cashPayment;
 
     return newPayslip;
