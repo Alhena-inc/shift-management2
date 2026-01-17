@@ -3150,8 +3150,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       await Promise.all(targetRows.map(async (key) => {
         const parts = key.split('-');
         const rowIdx = parseInt(parts[parts.length - 1]);
-        const hId = parts[0];
-        const dt = parts.slice(1, parts.length - 1).join('-');
+        const dt = parts.slice(-4, -1).join('-');
+        const hId = parts.slice(0, -4).join('-');
         console.log(`削除中: ${key} (helperId=${hId}, date=${dt}, rowIndex=${rowIdx})`);
         const { shiftId, undoData } = await deleteCare(hId, dt, rowIdx, true, true, true); // skipMenuClose=true, skipStateUpdate=true, skipUndoPush=true
         deletedShiftIds.push(shiftId);
@@ -3258,8 +3258,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         await Promise.all(targetRows.map(async (key) => {
           const parts = key.split('-');
           const rowIdx = parseInt(parts[parts.length - 1]);
-          const hId = parts[0];
-          const dt = parts.slice(1, parts.length - 1).join('-');
+          const dt = parts.slice(-4, -1).join('-');
+          const hId = parts.slice(0, -4).join('-');
 
           console.log(`処理中: ${key}`);
 
@@ -3377,75 +3377,25 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               }
             });
           }
+          // キャンセル情報をクリア
+          delete restoredShift.cancelStatus;
+          delete restoredShift.canceledAt;
 
           // 集計を更新
           updateTotalsForHelperAndDate(hId, dt);
 
-          // Firestoreに保存（2段階の処理）
+          // Firestoreに保存（一括）
           try {
-            console.log(`🔄 復元シフトを保存中:`, {
-              id: restoredShift.id,
-              clientName: restoredShift.clientName,
-              date: restoredShift.date,
-              cancelStatus: restoredShift.cancelStatus,
-              canceledAt: restoredShift.canceledAt,
-              hasCancelStatus: 'cancelStatus' in restoredShift,
-              hasCanceledAt: 'canceledAt' in restoredShift
-            });
+            console.log(`🔄 復元シフトを保存中:`, restoredShift.id);
 
-            // Step 1: まず通常のシフトデータを保存
             await saveShiftWithCorrectYearMonth(restoredShift);
-            console.log(`✅ Step 1: シフトデータを保存しました: ${restoredShift.id}`);
 
-            // Step 2: 新しいユーティリティ関数でキャンセル状態を確実に削除
-            const cancelResult = await updateCancelStatus(restoredShift.id, 'none');
-
-            if (!cancelResult.success) {
-              console.error(`❌ Step 2失敗: キャンセル状態の削除に失敗しました:`, cancelResult.error);
-              console.error('失敗したシフトID:', restoredShift.id);
-              console.error('失敗したキャンセル処理:', {
-                shiftId: restoredShift.id,
-                cancelResult: cancelResult,
-                errorType: cancelResult.error,
-                shift: restoredShift
-              });
-
-              // エラーの種類に応じた詳細なメッセージ
-              if (cancelResult.error === 'PERMISSION_DENIED') {
-                throw new Error('アクセス権限がありません');
-              } else if (cancelResult.error === 'DOCUMENT_NOT_FOUND') {
-                throw new Error('ドキュメントが見つかりません');
-              } else if (cancelResult.error === 'NETWORK_ERROR') {
-                throw new Error('ネットワークエラーが発生しました');
-              } else if (cancelResult.error === 'FAILED_PRECONDITION') {
-                throw new Error('前提条件が満たされていません');
-              } else if (cancelResult.error === 'INVALID_ARGUMENT') {
-                throw new Error('無効な引数が指定されました');
-              } else {
-                throw new Error(`キャンセル状態の削除に失敗しました: ${cancelResult.error}`);
-              }
-            }
-
-            console.log(`✅ Step 2: キャンセル状態を削除しました: ${restoredShift.id}`);
-
-            // Step 3: shiftMapも更新（重要：これがないと再キャンセル時に問題になる）
+            // shiftMapを更新
             const mapKey = `${hId}-${dt}-${rowIdx}`;
-
-            // キャンセル状態が確実に削除されていることを確認
-            console.log(`🔍 shiftMap更新前のチェック:`, {
-              mapKey: mapKey,
-              hasCancelStatus: 'cancelStatus' in restoredShift,
-              cancelStatusValue: restoredShift.cancelStatus,
-              hasCanceledAt: 'canceledAt' in restoredShift,
-              canceledAtValue: restoredShift.canceledAt
-            });
-
             shiftMap.set(mapKey, restoredShift);
-            console.log(`✅ Step 3: shiftMapを更新: ${mapKey}`);
 
             restoredShifts.push(restoredShift);
             console.log(`✅ Firestoreに保存完了: ${key}`, restoredShift);
-
             // 保存成功後、すぐにFirestoreから確認読み込み（デバッグ用）
             if (import.meta.env.DEV) {
               setTimeout(async () => {
@@ -3557,12 +3507,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
       // 全ての行を並列処理で一気に更新
       await Promise.all(targetRows.map(async (key) => {
+
         const parts = key.split('-');
         const rowIdx = parseInt(parts[parts.length - 1]);
-        const hId = parts[0];
-        const dt = parts.slice(1, parts.length - 1).join('-');
-
-        console.log(`処理中: ${key}`);
+        const dt = parts.slice(-4, -1).join('-');
+        const hId = parts.slice(0, -4).join('-');
 
         // データを読み取る（表示用）
         const data: string[] = [];
@@ -3666,56 +3615,30 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             deleted: false
           };
 
-          // undefinedのプロパティを削除
-          delete shift.cancelStatus;
-          delete shift.canceledAt;
+          // キャンセル情報を設定（新しいオブジェクトとして生成）
+          const shiftWithCancel: Shift = {
+            ...shift,
+            cancelStatus: duration === 0 ? ('remove_time' as const) : ('keep_time' as const),
+            canceledAt: Timestamp.now()
+          };
 
           try {
             console.log(`💾 Firestore保存開始: ${key}`, {
-              id: shift.id,
-              clientName: shift.clientName,
-              startTime: shift.startTime,
-              endTime: shift.endTime,
-              willSetCancelStatus: duration === 0 ? 'remove_time' : 'keep_time'
+              id: shiftWithCancel.id,
+              clientName: shiftWithCancel.clientName,
+              cancelStatus: shiftWithCancel.cancelStatus,
+              canceledAt: shiftWithCancel.canceledAt
             });
 
-            // Step 1: まず通常のシフトデータを保存（キャンセル状態なし）
-            await saveShiftWithCorrectYearMonth(shift);
-            console.log(`✅ Step 1完了: 基本データ保存`);
+            // Firestoreに保存（キャンセル情報も含めて一気に保存）
+            await saveShiftWithCorrectYearMonth(shiftWithCancel);
 
-            // Step 2: キャンセル状態を確実に設定（リトライ付き）
-            let retryCount = 0;
-            let cancelResult: { success: boolean; error?: string } = { success: false, error: 'UNKNOWN' };
-
-            while (retryCount < 3 && !cancelResult.success) {
-              cancelResult = await updateCancelStatus(
-                shift.id,
-                duration === 0 ? 'canceled_without_time' : 'canceled_with_time'
-              );
-
-              if (!cancelResult.success) {
-                retryCount++;
-                console.warn(`⚠️ キャンセル状態設定失敗 (試行 ${retryCount}/3):`, cancelResult.error);
-                if (retryCount < 3) {
-                  await new Promise(resolve => setTimeout(resolve, 500)); // 500ms待機
-                }
-              }
-            }
-
-            if (!cancelResult.success) {
-              throw new Error(`キャンセル処理失敗（3回試行）: ${cancelResult.error}`);
-            }
-
-            // Step 3: 成功したらローカルのオブジェクトも更新
-            shift.cancelStatus = duration === 0 ? 'remove_time' : 'keep_time';
-            shift.canceledAt = Timestamp.now();
-
-            // Step 4: shiftMapも更新
+            // shiftMapを更新
             const mapKey = `${hId}-${dt}-${rowIdx}`;
-            shiftMap.set(mapKey, shift);
+            shiftMap.set(mapKey, shiftWithCancel);
 
-            canceledShifts.push(shift);
-            console.log(`✅ Firestore保存完了: ${key}`, shift);
+            canceledShifts.push(shiftWithCancel);
+            console.log(`✅ Firestore保存完了: ${key}`, shiftWithCancel);
           } catch (error) {
             console.error('❌ キャンセル情報の保存に失敗:', error);
 
@@ -3791,12 +3714,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
       // 全ての行を並列処理で一気に更新
       await Promise.all(targetRows.map(async (key) => {
+
         const parts = key.split('-');
         const rowIdx = parseInt(parts[parts.length - 1]);
-        const hId = parts[0];
-        const dt = parts.slice(1, parts.length - 1).join('-');
-
-        console.log(`処理中: ${key}`);
+        const dt = parts.slice(-4, -1).join('-');
+        const hId = parts.slice(0, -4).join('-');
 
         // データを読み取る（表示用）
         const data: string[] = [];
@@ -3905,54 +3827,30 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             deleted: false
           };
 
-          // undefinedのプロパティを削除
-          delete shift.cancelStatus;
-          delete shift.canceledAt;
+          // キャンセル情報を設定（新しいオブジェクトとして生成）
+          const shiftWithCancel: Shift = {
+            ...shift,
+            cancelStatus: 'remove_time' as const,
+            canceledAt: Timestamp.now()
+          };
 
           try {
             console.log(`💾 Firestore保存開始（時間削除）: ${key}`, {
-              id: shift.id,
-              clientName: shift.clientName,
-              startTime: shift.startTime,
-              endTime: shift.endTime,
-              willSetCancelStatus: 'remove_time',
-              duration: shift.duration
+              id: shiftWithCancel.id,
+              clientName: shiftWithCancel.clientName,
+              cancelStatus: shiftWithCancel.cancelStatus
             });
 
-            // Step 1: まず通常のシフトデータを保存（キャンセル状態なし）
-            await saveShiftWithCorrectYearMonth(shift);
-            console.log(`✅ Step 1完了: 基本データ保存（時間削除）`);
+            // Firestoreに保存（一括）
+            await saveShiftWithCorrectYearMonth(shiftWithCancel);
 
-            // Step 2: キャンセル状態を確実に設定（リトライ付き）
-            let retryCount = 0;
-            let cancelResult: { success: boolean; error?: string } = { success: false, error: 'UNKNOWN' };
-
-            while (retryCount < 3 && !cancelResult.success) {
-              cancelResult = await updateCancelStatus(shift.id, 'canceled_without_time');
-
-              if (!cancelResult.success) {
-                retryCount++;
-                console.warn(`⚠️ キャンセル状態設定失敗（時間削除） (試行 ${retryCount}/3):`, cancelResult.error);
-                if (retryCount < 3) {
-                  await new Promise(resolve => setTimeout(resolve, 500)); // 500ms待機
-                }
-              }
-            }
-
-            if (!cancelResult.success) {
-              throw new Error(`キャンセル処理失敗（時間削除・3回試行）: ${cancelResult.error}`);
-            }
-
-            // Step 3: 成功したらローカルのオブジェクトも更新
-            shift.cancelStatus = 'remove_time';
-            shift.canceledAt = Timestamp.now();
-
-            // Step 4: shiftMapも更新
+            // shiftMapを更新
             const mapKey = `${hId}-${dt}-${rowIdx}`;
-            shiftMap.set(mapKey, shift);
+            shiftMap.set(mapKey, shiftWithCancel);
 
-            canceledShifts.push(shift);
-            console.log(`✅ Firestore保存完了（時間削除）: ${key}`, shift);
+            canceledShifts.push(shiftWithCancel);
+            console.log(`✅ Firestore保存完了（時間削除）: ${key}`, shiftWithCancel);
+
           } catch (error) {
             console.error('❌ キャンセル情報の保存に失敗（時間削除）:', error);
 
@@ -4294,8 +4192,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
               // DOMの背景色を白に戻す（ケアがある場合はケアの色に）
               const parts = key.split('-');
               const rowIdx = parseInt(parts[parts.length - 1]);
-              const hId = parts[0];
-              const dt = parts.slice(1, parts.length - 1).join('-');
+              const dt = parts.slice(-4, -1).join('-');
+              const hId = parts.slice(0, -4).join('-');
 
               const shiftKey = `${hId}-${dt}-${rowIdx}`;
               const existingShift = shiftMap.get(shiftKey);
