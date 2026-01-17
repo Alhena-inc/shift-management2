@@ -96,6 +96,9 @@ export interface Helper {
   spreadsheetGid?: string; // Googleスプレッドシートの個人シートID（gid）
   cashPayment?: boolean;   // 手渡し支払いフラグ
   salaryType?: 'hourly' | 'fixed';  // 給与タイプ（時給 or 固定給）デフォルトは時給
+  deleted?: boolean;       // 論理削除フラグ
+  deletedAt?: any;         // 削除日時
+  deletedBy?: string;      // 削除者
 
   // 基本情報
   birthDate?: string;      // 生年月日
