@@ -627,7 +627,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     try {
       await deleteShift(shiftId);
       console.log('✅ Firestoreから削除完了:', shiftId);
-      
+
       // 複数削除時はstate更新をスキップ（呼び出し元で一括更新）
       if (!skipStateUpdate) {
         // React stateのshiftsからも削除（再レンダリングをトリガー）
@@ -646,7 +646,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         menu.remove();
       }
     }
-    
+
     return { shiftId, undoData }; // 削除したシフトIDとUndoデータを返す
   }, [updateTotalsForHelperAndDate, undoStackRef, onUpdateShifts, dayOffRequests]);
 
@@ -1267,10 +1267,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
       // ヘルパー名から ID を検索するマップを作成（複数パターン対応）
       const helperNameToId = new Map<string, string>();
-      
+
       // 名前の正規化関数（空白を除去）
       const normalizeName = (name: string) => name.replace(/[\s　]/g, '');
-      
+
       helpers.forEach(helper => {
         // シフト表表示名（苗字）
         helperNameToId.set(helper.name, helper.id);
@@ -1281,11 +1281,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           const fullName = `${helper.lastName}${helper.firstName}`;
           helperNameToId.set(fullName, helper.id);
           helperNameToId.set(normalizeName(fullName), helper.id);
-          
+
           // フルネーム - 空白あり
           const fullNameWithSpace = `${helper.lastName} ${helper.firstName}`;
           helperNameToId.set(fullNameWithSpace, helper.id);
-          
+
           // フルネーム - 全角空白あり
           const fullNameWithFullWidthSpace = `${helper.lastName}　${helper.firstName}`;
           helperNameToId.set(fullNameWithFullWidthSpace, helper.id);
@@ -1295,25 +1295,25 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         if (helper.lastName) {
           helperNameToId.set(helper.lastName, helper.id);
         }
-        
+
         // シフト表表示名がフルネームの場合（例："田中 航揮"）
         // 空白を除去したバージョンも登録
         if (helper.name.includes(' ') || helper.name.includes('　')) {
           helperNameToId.set(normalizeName(helper.name), helper.id);
         }
       });
-      
+
       // 検索時に名前を正規化してから検索するラッパー関数
       const findHelperId = (name: string): string | undefined => {
         // まず完全一致で検索
         let helperId = helperNameToId.get(name);
         if (helperId) return helperId;
-        
+
         // 空白を除去して再検索
         const normalized = normalizeName(name);
         helperId = helperNameToId.get(normalized);
         if (helperId) return helperId;
-        
+
         // 部分一致で検索（苗字のみでマッチ）
         for (const helper of helpers) {
           // 入力名が苗字で始まる場合（例："田中" → "田中航揮"）
@@ -1325,7 +1325,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             return helper.id;
           }
         }
-        
+
         return undefined;
       };
 
@@ -1900,7 +1900,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     copyBufferRef.backgroundColor = backgroundColor;
     copyBufferRef.cancelStatus = shift?.cancelStatus;
     copyBufferRef.canceledAt = shift?.canceledAt;
-    
+
     // ★ データがある場合のみ内部コピーフラグを設定
     copyBufferRef.hasCopiedData = data.some(line => line.trim() !== '');
 
@@ -1913,7 +1913,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         const originalOutline = parentTd.style.outline;
         parentTd.style.setProperty('outline', '3px solid #22c55e', 'important'); // 緑色
         parentTd.style.setProperty('outline-offset', '-3px', 'important');
-        
+
         // 0.3秒後に元に戻す（青色の選択枠に）
         setTimeout(() => {
           parentTd.style.setProperty('outline', '2px solid #2563eb', 'important');
@@ -1932,7 +1932,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       console.log('⚠️ コピーされたデータがありません');
       return;
     }
-    
+
     console.log('🎯 ペースト開始:', { helperId, date, rowIndex, data: copyBufferRef.data });
 
     // ペースト前の状態をUndoスタックに保存
@@ -2057,7 +2057,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       if (parentTd) {
         parentTd.style.setProperty('outline', '3px solid #22c55e', 'important'); // 緑色
         parentTd.style.setProperty('outline-offset', '-3px', 'important');
-        
+
         // 0.3秒後に青色の選択枠に
         setTimeout(() => {
           parentTd.style.setProperty('outline', '2px solid #2563eb', 'important');
@@ -2687,7 +2687,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           td.style.removeProperty('outline');
           td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index');
           td.style.removeProperty('z-index');
-         
+
         });
         lastSelectedRowTdsRef.current = [];
         syncSelection();
@@ -3194,75 +3194,53 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       console.log('✅ ケア削除処理完了');
     };
 
-    // 対象セル（複数選択含む）がキャンセル状態かチェック
-    console.log('🔍 キャンセル状態チェック開始:', targetRows);
-    const hasCanceledShift = targetRows.some(key => {
+    // 選択された行の状態を分類
+    const canceledRowsList: string[] = [];
+    const activeRowsList: string[] = [];
+
+    targetRows.forEach(key => {
       const parts = key.split('-');
       const rowIdx = parseInt(parts[parts.length - 1]);
       const hId = parts[0];
       const dt = parts.slice(1, parts.length - 1).join('-');
 
-      // 1. shiftMapから最新データを取得
+      // データに基づいてキャンセル状態を判定
       const mapKey = `${hId}-${dt}-${rowIdx}`;
       const mapShift = shiftMap.get(mapKey);
-      console.log(`  1. shiftMap確認 (${mapKey}):`, {
-        exists: !!mapShift,
-        cancelStatus: mapShift?.cancelStatus,
-        hasCancelStatus: mapShift ? 'cancelStatus' in mapShift : false,
-        shiftId: mapShift?.id,
-        clientName: mapShift?.clientName
-      });
-      if (mapShift?.cancelStatus === 'keep_time' || mapShift?.cancelStatus === 'remove_time') {
-        console.log('  ✅ shiftMapでキャンセル状態を検出');
-        return true;
-      }
-
-      // 2. shifts配列からも確認
       const shiftId = `shift-${hId}-${dt}-${rowIdx}`;
       const existingShift = shiftsRef.current.find(s => s.id === shiftId);
-      console.log(`  2. shifts配列確認 (${shiftId}):`, existingShift?.cancelStatus);
-      if (existingShift?.cancelStatus === 'keep_time' || existingShift?.cancelStatus === 'remove_time') {
-        console.log('  ✅ shifts配列でキャンセル状態を検出');
-        return true;
-      }
 
-      // 3. 背景色からも判定（赤色 = キャンセル状態）
-      const bgCellSelector = `.editable-cell[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
-      const bgCells = document.querySelectorAll(bgCellSelector);
-      if (bgCells.length > 0) {
-        const parentTd = bgCells[0].closest('td') as HTMLElement;
-        if (parentTd) {
-          const bgColor = parentTd.style.backgroundColor;
-          console.log(`  3. 背景色確認:`, bgColor);
-          // 赤色のバリエーション（#f87171, rgb(248, 113, 113)など）をチェック
-          if (bgColor && (
-            bgColor === '#f87171' ||
-            bgColor.toLowerCase() === '#f87171' ||
-            bgColor === 'rgb(248, 113, 113)' ||
-            bgColor.includes('248') && bgColor.includes('113') && bgColor.includes('113')
-          )) {
-            console.log('  ✅ 背景色からキャンセル状態を検出:', bgColor);
-            return true;
-          }
+      const cancelStatus = mapShift?.cancelStatus || existingShift?.cancelStatus;
+      const isCanceled = cancelStatus === 'keep_time' || cancelStatus === 'remove_time';
+
+      if (isCanceled) {
+        canceledRowsList.push(key);
+      } else {
+        // シフトデータが存在する場合のみ有効なシフトとする
+        if (mapShift || existingShift) {
+          activeRowsList.push(key);
         }
       }
-
-      console.log('  ❌ キャンセル状態を検出できず');
-      return false;
     });
-    console.log('🔍 キャンセル状態チェック結果:', hasCanceledShift);
 
-    // キャンセル取り消しボタン（キャンセル状態のセルが含まれる場合のみ表示）
+    const hasCanceledShift = canceledRowsList.length > 0;
+    const hasActiveShift = activeRowsList.length > 0;
+
+    let undoCancelBtn: HTMLDivElement | null = null;
+
+    // キャンセル取り消しボタンを作成（判定は後で行う）
     if (hasCanceledShift) {
-      const undoCancelBtn = document.createElement('div');
+      undoCancelBtn = document.createElement('div');
       undoCancelBtn.textContent = 'キャンセルを取り消し';
       undoCancelBtn.style.padding = '8px 16px';
       undoCancelBtn.style.cursor = 'pointer';
       undoCancelBtn.style.color = '#059669';
       undoCancelBtn.style.fontWeight = 'bold';
       undoCancelBtn.style.borderTop = '1px solid #e5e7eb';
-      undoCancelBtn.onmouseover = () => undoCancelBtn.style.backgroundColor = '#d1fae5';
-      undoCancelBtn.onmouseout = () => undoCancelBtn.style.backgroundColor = 'transparent';
+      if (undoCancelBtn) {
+        undoCancelBtn.onmouseover = () => { if (undoCancelBtn) undoCancelBtn.style.backgroundColor = '#d1fae5'; };
+        undoCancelBtn.onmouseout = () => { if (undoCancelBtn) undoCancelBtn.style.backgroundColor = 'transparent'; };
+      }
       undoCancelBtn.onclick = async () => {
         console.log(`♻️ キャンセル取り消し処理開始 - ${targetRows.length}件`);
 
@@ -3333,17 +3311,17 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           // ※ 既存のstartTime/endTimeを使用（Firestoreに保存されている）
           const startTime = existingShift.startTime || '';
           const endTime = existingShift.endTime || '';
-          
+
           // DOM要素の参照を取得
           const timeCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="0"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
           const durationCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="2"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
-          
+
           // 1行目から時間を読み取る（DOM優先、なければFirestore）
           const timeCellText = timeCell?.textContent?.trim() || '';
           const timeMatch = timeCellText.match(/(\d{1,2}:\d{2})\s*[-~]\s*(\d{1,2}:\d{2})/);
           const actualStartTime = timeMatch ? timeMatch[1] : startTime;
           const actualEndTime = timeMatch ? timeMatch[2] : endTime;
-          
+
           if (actualStartTime && actualEndTime) {
             const timeRange = `${actualStartTime}-${actualEndTime}`;
             const duration = calculateTimeDuration(timeRange);
@@ -4040,9 +4018,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       console.log('✅ キャンセル（時間削除）処理完了');
     };
 
-    // キャンセル済みのケアには「キャンセル取り消し」のみ表示
-    // 未キャンセルのケアには「キャンセル（時間残す/削除）」を表示
-    if (!hasCanceledShift) {
+    // キャンセル済みのケアが含まれる場合は「キャンセル取り消し」を表示
+    if (hasCanceledShift && undoCancelBtn) {
+      menu.appendChild(undoCancelBtn);
+    }
+
+    // 未キャンセルのケアが含まれる場合は「キャンセル（時間残す/削除）」を表示
+    if (hasActiveShift) {
       menu.appendChild(cancelKeepTimeBtn);
       menu.appendChild(cancelRemoveTimeBtn);
     }
@@ -4307,17 +4289,17 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             if (next.has(key)) {
               next.delete(key);
               console.log(`🏖️ 休み希望を削除: ${key}`);
-              
+
               // DOMの背景色を白に戻す（ケアがある場合はケアの色に）
               const parts = key.split('-');
               const rowIdx = parseInt(parts[parts.length - 1]);
               const hId = parts[0];
               const dt = parts.slice(1, parts.length - 1).join('-');
-              
+
               const shiftKey = `${hId}-${dt}-${rowIdx}`;
               const existingShift = shiftMap.get(shiftKey);
               const bgColor = existingShift ? (SERVICE_CONFIG[existingShift.serviceType]?.bgColor || '#ffffff') : '#ffffff';
-              
+
               const cellSelector = `.editable-cell[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
               const cells = document.querySelectorAll(cellSelector);
               cells.forEach(cell => {
@@ -4934,7 +4916,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                             document.querySelectorAll('.line-selected').forEach(el => {
                               el.classList.remove('line-selected');
                             });
-                            
+
                             // ★ cell-selectedクラスも削除
                             document.querySelectorAll('.cell-selected').forEach(el => {
                               el.classList.remove('cell-selected');
@@ -4944,7 +4926,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                             // クリックされた位置から対象の行を特定
                             const currentTd = e.currentTarget as HTMLElement;
                             lastSelectedTdRef.current = currentTd;
-                            
+
                             // ★ 現在のセルを記録（最初の行をデフォルトで選択）
                             const firstCell = currentTd.querySelector('.editable-cell') as HTMLElement;
                             if (firstCell) {
@@ -5171,7 +5153,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                         });
                                         lastSelectedRowTdsRef.current = [];
                                       }
-                                      
+
                                       // 複数選択stateもクリア
                                       if (selectedRowsRef.current.size > 0) {
                                         selectedRowsRef.current.clear();
