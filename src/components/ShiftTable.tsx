@@ -325,9 +325,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
   // 複数選択用のstate
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
-
-  // セル複数選択用のstate（キー: "helperId-date-rowIndex"）
-  const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
   const isSelectingCellsRef = useRef(false); // ドラッグ選択中かどうか
 
   // 休み希望管理（キー: "helperId-date-rowIndex", 値: "dayoff"）
@@ -2032,8 +2029,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           deleted: false
         };
 
-        // Reactステートを即座に更新（これが抜けていたため、再レンダリングで消えていた）
-        const updatedShifts = [...shifts.filter(s => s.id !== newShift.id), newShift];
+        // Reactステートを即座に更新（最新の値を確実に使用する）
+        const updatedShifts = [...shiftsRef.current.filter(s => s.id !== newShift.id), newShift];
         onUpdateShifts(updatedShifts);
 
         // Firestoreに保存
@@ -2126,8 +2123,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
           // 保存
           try {
-            // Reactステートを先に更新してUIを即座に反映
-            const updatedShifts = [...shifts.filter(s => !shiftsToSave.some(newS => newS.id === s.id)), ...shiftsToSave];
+            // Reactステートを先に更新してUIを即座に反映（最新の値を確実に使用する）
+            const updatedShifts = [...shiftsRef.current.filter(s => !shiftsToSave.some(newS => newS.id === s.id)), ...shiftsToSave];
             onUpdateShifts(updatedShifts);
 
             // Firestoreに保存
@@ -2356,8 +2353,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 try {
                   await saveShiftsByYearMonth(shiftsToSave);
 
-                  // ローカルのshifts配列を更新
-                  const updatedShifts = shifts.filter(s =>
+                  // ローカルのshifts配列を更新（最新の値を確実に使用する）
+                  const updatedShifts = shiftsRef.current.filter(s =>
                     !shiftsToSave.some(newShift => newShift.id === s.id)
                   );
                   updatedShifts.push(...shiftsToSave);
@@ -2573,7 +2570,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     await saveShiftsByYearMonth(shiftsToSave);
 
                     // ローカルのshifts配列を更新
-                    const updatedShifts = shifts.filter(s =>
+                    const updatedShifts = shiftsRef.current.filter(s =>
                       !shiftsToSave.some(newShift => newShift.id === s.id)
                     );
                     updatedShifts.push(...shiftsToSave);
@@ -2722,7 +2719,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   // 日付全体をコピーする関数
   const copyDateShifts = useCallback((sourceDate: string) => {
     // 指定日付のすべてのシフトを取得
-    const dateShifts = shifts.filter(s => s.date === sourceDate);
+    const dateShifts = shiftsRef.current.filter(s => s.date === sourceDate);
     dateCopyBufferRef.date = sourceDate;
     dateCopyBufferRef.shifts = JSON.parse(JSON.stringify(dateShifts)); // ディープコピー
     console.log(`📋 ${sourceDate}のケア内容をコピーしました (${dateShifts.length}件)`);
@@ -2743,7 +2740,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     }));
 
     // 既存のシフトを更新（ターゲット日付の既存データを新しいデータで上書き）
-    const filteredShifts = shifts.filter(s => s.date !== targetDate);
+    const filteredShifts = shiftsRef.current.filter(s => s.date !== targetDate);
     const updatedShifts = [...filteredShifts, ...newShifts];
 
     onUpdateShifts(updatedShifts);
@@ -2833,12 +2830,21 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     if (!isSelectingCellsRef.current) return;
 
     const cellKey = `${helperId}-${date}-${rowIndex}`;
-    setSelectedCells(prev => {
-      const next = new Set(prev);
-      next.add(cellKey);
-      return next;
-    });
-  }, []);
+    if (!selectedRowsRef.current.has(cellKey)) {
+      selectedRowsRef.current.add(cellKey);
+
+      // ドラッグ中もDOMを直接操作して即座にフィードバック
+      const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
+      if (td) {
+        td.style.setProperty('outline', '3px solid #2563eb', 'important');
+        td.style.setProperty('outline-offset', '-3px', 'important');
+        td.style.setProperty('z-index', '10', 'important');
+        lastSelectedRowTdsRef.current.push(td);
+      }
+
+      syncSelection();
+    }
+  }, [syncSelection]);
 
   // セル選択の終了（マウスアップ）
   const handleCellSelectionEnd = useCallback(() => {
@@ -2860,35 +2866,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
   // 休み希望の設定/解除
   const toggleDayOff = useCallback((helperId: string, date: string, rowIndex: number) => {
-    // Shift+クリックでの複数選択 (selectedRows) をチェック
-    const selectedRowsForThisHelperDate = Array.from(selectedRows)
+    // 選択されている行を取得
+    const allSelectedRows = Array.from(selectedRows)
       .filter(rowKey => rowKey.startsWith(`${helperId}-${date}-`))
       .map(rowKey => {
         const parts = rowKey.split('-');
         return parseInt(parts[parts.length - 1]);
       });
-
-    // ドラッグ選択 (selectedCells) もチェック
-    const selectedCellsForThisHelperDate = Array.from(selectedCells)
-      .filter(cellKey => {
-        // キーを分解: 最後から3番目以降がhelperId-dateの部分
-        const parts = cellKey.split('-');
-        if (parts.length < 3) return false;
-
-        // 最後の1つがrowIndex、残りがhelperId-date
-        const row = parts[parts.length - 1];
-        const cellHelperAndDate = parts.slice(0, -1).join('-');
-        const targetHelperAndDate = `${helperId}-${date}`;
-
-        return cellHelperAndDate === targetHelperAndDate && !isNaN(parseInt(row));
-      })
-      .map(cellKey => {
-        const parts = cellKey.split('-');
-        return parseInt(parts[parts.length - 1]); // rowIndexを取得
-      });
-
-    // 両方の選択を統合（重複を除去）
-    const allSelectedRows = [...new Set([...selectedRowsForThisHelperDate, ...selectedCellsForThisHelperDate])];
 
     // 選択されたセルがある場合は、それらの行に休み希望を設定
     const rowsToToggle = allSelectedRows.length > 0
@@ -2970,7 +2954,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       saveDayOffToFirestore(next);
 
       // 選択をクリア
-      setSelectedCells(new Set());
+      selectedRowsRef.current.clear();
       setSelectedRows(new Set());
       // DOM要素の青枠も削除
       lastSelectedRowTdsRef.current.forEach(td => {
@@ -2981,12 +2965,12 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
       return next;
     });
-  }, [saveDayOffToFirestore, selectedCells, selectedRows, setSelectedRows]);
+  }, [saveDayOffToFirestore, selectedRows, setSelectedRows]);
 
   // 指定休の設定/解除
   const toggleScheduledDayOff = useCallback((helperId: string, date: string) => {
-    // Shift+クリックでの複数選択をチェック
-    const selectedRowsForHelper = Array.from(selectedRows)
+    // 選択されている日付を抽出
+    const allSelectedDates = Array.from(selectedRows)
       .filter(rowKey => {
         const parts = rowKey.split('-');
         const keyHelperId = parts.slice(0, -2).join('-');
@@ -2997,16 +2981,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         return parts[parts.length - 2]; // dateを取得
       });
 
-    // ドラッグ選択もチェック
-    const selectedCellsForHelper = Array.from(selectedCells)
-      .filter(cellKey => cellKey.startsWith(`${helperId}-`))
-      .map(cellKey => {
-        const parts = cellKey.split('-');
-        return parts[parts.length - 2]; // dateを取得
-      });
-
-    // 両方の選択を統合（重複を除去）
-    const allSelectedDates = [...new Set([...selectedRowsForHelper, ...selectedCellsForHelper])];
+    const uniqueDates = [...new Set(allSelectedDates)];
 
     // 選択された日付がある場合は、それらの日に指定休を設定
     const datesToToggle = allSelectedDates.length > 0
@@ -3067,7 +3042,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       saveScheduledDayOffToFirestore(next);
 
       // 選択をクリア
-      setSelectedCells(new Set());
+      selectedRowsRef.current.clear();
       setSelectedRows(new Set());
       // DOM要素の青枠も削除
       lastSelectedRowTdsRef.current.forEach(td => {
@@ -3078,7 +3053,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
       return next;
     });
-  }, [saveScheduledDayOffToFirestore, selectedCells, selectedRows, setSelectedRows, dayOffRequests]);
+  }, [saveScheduledDayOffToFirestore, selectedRows, setSelectedRows, dayOffRequests]);
 
   // コンテキストメニューを表示する関数
   const showContextMenu = useCallback((e: React.MouseEvent, helperId: string, date: string, rowIndex: number) => {
@@ -4122,23 +4097,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
     // 休み希望の設定/解除ボタン
     // Shift+クリックでの複数選択をチェック
-    const selectedRowsForThisHelperDate = Array.from(selectedRows)
+    // 選択されている行をチェック
+    const allSelectedRows = Array.from(selectedRows)
       .filter(rowKey => rowKey.startsWith(`${helperId}-${date}-`))
       .map(rowKey => {
         const parts = rowKey.split('-');
         return parseInt(parts[parts.length - 1]);
       });
-
-    // ドラッグ選択もチェック
-    const selectedCellsForThisHelperDate = Array.from(selectedCells)
-      .filter(cellKey => cellKey.startsWith(`${helperId}-${date}-`))
-      .map(cellKey => {
-        const parts = cellKey.split('-');
-        return parseInt(parts[parts.length - 1]);
-      });
-
-    // 両方の選択を統合（重複を除去）
-    const allSelectedRows = [...new Set([...selectedRowsForThisHelperDate, ...selectedCellsForThisHelperDate])];
 
     const rowsToCheck = allSelectedRows.length > 0
       ? allSelectedRows
@@ -4226,7 +4191,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     setTimeout(() => {
       document.addEventListener('click', closeMenu);
     }, 0);
-  }, [deleteCare, selectedRows, setSelectedRows, dayOffRequests, toggleDayOff, saveDayOffToFirestore, selectedCells, checkIsDayOffRow, scheduledDayOffs, shiftMap, shifts, onUpdateShifts]);
+  }, [deleteCare, selectedRows, setSelectedRows, dayOffRequests, toggleDayOff, saveDayOffToFirestore, checkIsDayOffRow, scheduledDayOffs, shiftMap, shifts, onUpdateShifts]);
 
   // ドラッグ開始
   const handleDragStart = useCallback((e: React.DragEvent, helperId: string, date: string, rowIndex: number) => {
@@ -4795,9 +4760,12 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                             const isMultiSelect = e.ctrlKey || e.metaKey;
 
                             // 既存のShift+ドラッグ選択をクリア（Refのみ更新・再レンダリングなし）
-                            // setSelectedRows(new Set());  // ← React再レンダリング防止のため削除
                             selectedRowsRef.current.clear();
-                            setSelectedRows(new Set());
+                            // 現在のセルを選択に追加
+                            const cellKey = `${helper.id}-${day.date}-${rowIndex}`;
+                            selectedRowsRef.current.add(cellKey);
+
+                            setSelectedRows(new Set(selectedRowsRef.current));
                             lastSelectedRowTdsRef.current.forEach(td => {
                               td.style.removeProperty('outline');
                               td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index');
@@ -4831,6 +4799,12 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                               lastSelectedCellRef.current = firstCell;
                             }
 
+                            // DOM操作で即座に青枠を表示（ z-index を上げて枠が隠れないようにする ）
+                            currentTd.style.setProperty('outline', '3px solid #2563eb', 'important');
+                            currentTd.style.setProperty('outline-offset', '-3px', 'important');
+                            currentTd.style.setProperty('z-index', '10', 'important');
+                            lastSelectedRowTdsRef.current.push(currentTd);
+
                             // currentTargetCellRefも更新（ペースト先として使用）
                             currentTargetCellRef.current = { helperId: helper.id, date: day.date, rowIndex };
 
@@ -4846,7 +4820,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                           }}
                           onDoubleClick={(e) => {
                             // セル選択されている場合は指定休を設定
-                            if (selectedRows.size > 0 || selectedCells.size > 0) {
+                            if (selectedRows.size > 0) {
                               e.preventDefault();
                               e.stopPropagation();
                               toggleScheduledDayOff(helper.id, day.date);
@@ -5479,7 +5453,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                           await saveShiftWithCorrectYearMonth(shift);
 
                                           // ローカルのshifts配列を更新
-                                          const updatedShifts = shifts.filter(s => s.id !== shiftId);
+                                          const updatedShifts = shiftsRef.current.filter(s => s.id !== shiftId);
                                           updatedShifts.push(shift);
                                           onUpdateShifts(updatedShifts);
 
@@ -5736,7 +5710,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                             console.log('✅ セル編集保存完了:', shift.id);
 
                                             // ローカルのshifts配列を更新（画面の再レンダリング用）
-                                            const updatedShifts = shifts.filter(s => s.id !== shift.id);
+                                            const updatedShifts = shiftsRef.current.filter(s => s.id !== shift.id);
                                             updatedShifts.push(shift);
                                             onUpdateShifts(updatedShifts);
                                           } else {
