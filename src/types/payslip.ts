@@ -56,12 +56,20 @@ export interface Deductions {
 
   // 税金・その他控除項目（2段目）
   taxableAmount: number;        // 課税対象額（自動計算）
+  manualTaxableAmount?: boolean; // 手動入力フラグ
   incomeTax: number;            // 源泉所得税（自動計算）
+  manualIncomeTax?: boolean;    // 手動入力フラグ
   residentTax: number;          // 住民税
   reimbursement: number;        // 立替金
   advancePayment: number;       // 前払給与
   yearEndAdjustment: number;    // 年末調整
   deductionTotal: number;       // 控除計（自動計算）
+
+  // 手動入力フラグ
+  manualHealthInsurance?: boolean;
+  manualCareInsurance?: boolean;
+  manualPensionInsurance?: boolean;
+  manualEmploymentInsurance?: boolean;
 
   // その他項目（後方互換性のため残す）
   items: DeductionItem[];

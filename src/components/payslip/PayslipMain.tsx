@@ -151,11 +151,11 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     const calculatedOtherAllowancesTotal = updated.payments?.otherAllowances
       ? updated.payments.otherAllowances.reduce((sum: number, item: any) => sum + (item.amount || 0), 0)
       : 0;
-    
+
     // 手動入力された非課税・課税その他支給を取得
     const manualNonTaxable = (updated.payments as any)?.manualNonTaxableAllowance;
     const manualTaxable = (updated.payments as any)?.manualTaxableAllowance;
-    
+
     // 手動入力値がある場合はそれを合計、なければ計算値を使用
     let otherAllowancesTotal = calculatedOtherAllowancesTotal;
     if (manualNonTaxable !== undefined || manualTaxable !== undefined) {
@@ -166,8 +166,8 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       const calcTaxable = updated.payments?.otherAllowances
         ? updated.payments.otherAllowances.filter((a: any) => !a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0)
         : 0;
-      
-      otherAllowancesTotal = 
+
+      otherAllowancesTotal =
         (manualNonTaxable !== undefined ? manualNonTaxable : calcNonTaxable) +
         (manualTaxable !== undefined ? manualTaxable : calcTaxable);
     }
@@ -205,7 +205,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     // 固定給の場合：basePay（月給合計）には既に otherAllowancesTotal が含まれているので加算しない
     // 時給の場合：basePay は 0 なので otherAllowancesTotal を加算する
     const shouldAddOtherAllowances = updated.baseSalary === undefined;
-    
+
     // 経費精算と交通費立替は立替金の返金なので支給額合計には含めない（保険料計算に含めないため）
     updated.payments.totalPayment =
       basePay +
@@ -309,7 +309,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     // 総支給額 = 基本給 + 処遇改善手当 + 課税その他手当 + 非課税その他手当
     const nonTaxableTransportAllowance = nonTaxableOtherAllowances; // 交通費立替・手当は除外
     const insurance = calculateInsurance(standardRemuneration, monthlySalaryTotal, age, insuranceTypes, nonTaxableTransportAllowance);
-    
+
     // 手動入力された控除項目がある場合はそれを優先、なければ自動計算値を使用
     if (updated.deductions.manualHealthInsurance === undefined) {
       updated.deductions.healthInsurance = insurance.healthInsurance;
@@ -325,7 +325,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     }
 
     // 社会保険料合計（手動入力値がある場合はそれを使用）
-    const socialInsuranceTotal = 
+    const socialInsuranceTotal =
       (updated.deductions.healthInsurance || 0) +
       (updated.deductions.careInsurance || 0) +
       (updated.deductions.pensionInsurance || 0) +
@@ -334,9 +334,12 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
 
     // 3. 源泉所得税の課税対象額 = 課税対象の月給 - 社会保険料
     // ※ 非課税手当は既に除外されている
-    const taxableAmount = Math.max(0, taxableMonthlySalary - socialInsuranceTotal);
+    // 手動入力された課税対象額がある場合はそれを優先
+    if (updated.deductions.manualTaxableAmount === undefined) {
+      updated.deductions.taxableAmount = Math.max(0, taxableMonthlySalary - socialInsuranceTotal);
+    }
+    const taxableAmount = updated.deductions.taxableAmount || 0;
     // 例: 289,800 - 44,574 = 245,226円
-    updated.deductions.taxableAmount = taxableAmount;
 
     // 4. 源泉所得税を計算（課税対象額と扶養人数から）
     // ★源泉徴収フラグがfalseの場合は0円
@@ -416,7 +419,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     // 控除項目を直接編集した場合、手動入力フラグを設定
     if (path[0] === 'deductions') {
       const deductionField = path[1];
-      if (['healthInsurance', 'careInsurance', 'pensionInsurance', 'employmentInsurance', 'incomeTax'].includes(deductionField)) {
+      if (['healthInsurance', 'careInsurance', 'pensionInsurance', 'employmentInsurance', 'incomeTax', 'taxableAmount'].includes(deductionField)) {
         updated.deductions[`manual${deductionField.charAt(0).toUpperCase() + deductionField.slice(1)}`] = true;
       }
     }
@@ -454,7 +457,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     const updated = JSON.parse(JSON.stringify(payslip));
     updated.insuranceTypes = deriveInsuranceTypesFromHelper(helper);
     const recalculated = recalculateTotals(updated);
-    
+
     // recalculateTotalsの結果と現在の値が異なる場合のみ更新
     if (JSON.stringify(recalculated) !== JSON.stringify(payslip)) {
       onChange(recalculated);
@@ -614,12 +617,12 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <input type="text" value={payslip.paymentLabels?.manualTaxableAllowanceLabel || basicTaxableLabel} onChange={(e) => updateField(['paymentLabels', 'manualTaxableAllowanceLabel'], e.target.value)} className="w-full text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatYen((payslip.payments as any)?.manualTaxableAllowance !== undefined 
-                ? (payslip.payments as any).manualTaxableAllowance 
+              <input type="text" value={formatYen((payslip.payments as any)?.manualTaxableAllowance !== undefined
+                ? (payslip.payments as any).manualTaxableAllowance
                 : (() => {
-                const allowances = payslip.payments?.otherAllowances || [];
-                return allowances.filter((a: any) => !a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-              })())} onChange={(e) => updateField(['payments', 'manualTaxableAllowance'], parseNumber(e.target.value.replace(/[¥￥,]/g, '')))} className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ ...amountInputStyle }} />
+                  const allowances = payslip.payments?.otherAllowances || [];
+                  return allowances.filter((a: any) => !a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+                })())} onChange={(e) => updateField(['payments', 'manualTaxableAllowance'], parseNumber(e.target.value.replace(/[¥￥,]/g, '')))} className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ ...amountInputStyle }} />
             </td>
           </tr>
 
@@ -630,12 +633,12 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <input type="text" value={payslip.paymentLabels?.manualNonTaxableAllowanceLabel || basicNonTaxableLabel} onChange={(e) => updateField(['paymentLabels', 'manualNonTaxableAllowanceLabel'], e.target.value)} className="w-full text-left border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
-              <input type="text" value={formatYen((payslip.payments as any)?.manualNonTaxableAllowance !== undefined 
-                ? (payslip.payments as any).manualNonTaxableAllowance 
+              <input type="text" value={formatYen((payslip.payments as any)?.manualNonTaxableAllowance !== undefined
+                ? (payslip.payments as any).manualNonTaxableAllowance
                 : (() => {
-                const allowances = payslip.payments?.otherAllowances || [];
-                return allowances.filter((a: any) => a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-              })())} onChange={(e) => updateField(['payments', 'manualNonTaxableAllowance'], parseNumber(e.target.value.replace(/[¥￥,]/g, '')))} className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ ...amountInputStyle }} />
+                  const allowances = payslip.payments?.otherAllowances || [];
+                  return allowances.filter((a: any) => a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+                })())} onChange={(e) => updateField(['payments', 'manualNonTaxableAllowance'], parseNumber(e.target.value.replace(/[¥￥,]/g, '')))} className="w-full text-right border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ ...amountInputStyle }} />
             </td>
           </tr>
 
@@ -925,7 +928,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
               <input type="text" value={formatNumber(payslip.deductions.socialInsuranceTotal || 0)} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px', color: 'inherit' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', backgroundColor: 'white' }}>
-              <input type="text" value={formatNumber(payslip.deductions.taxableAmount || 0)} readOnly className="w-full text-center border-0 bg-transparent" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px', color: 'inherit' }} />
+              <input type="text" value={formatNumber(payslip.deductions.taxableAmount || 0)} onChange={(e) => updateField(['deductions', 'taxableAmount'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px', color: 'inherit' }} />
             </td>
             <td className="editable-cell" style={{ border: '1px solid black', fontSize: '11px', padding: '2px 2px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden' }}>
               <input type="text" value={formatNumber(payslip.deductions.incomeTax || 0)} onChange={(e) => updateField(['deductions', 'incomeTax'], parseNumber(e.target.value))} className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500" style={{ fontSize: '11px', padding: '0px', lineHeight: '1.2', height: '16px' }} />
