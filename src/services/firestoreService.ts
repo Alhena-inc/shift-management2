@@ -75,13 +75,9 @@ function sanitizeForFirestore(obj: any): any {
 }
 
 // ヘルパーを保存
+// ヘルパーを保存
 export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
   try {
-    // まず現在Firestoreにあるすべてのヘルパーを取得
-    const existingHelpers = await loadHelpers();
-    const existingIds = new Set(existingHelpers.map(h => h.id));
-    const newIds = new Set(helpers.map(h => h.id));
-
     const batch = writeBatch(db);
 
     // 新しいヘルパーリストを保存
@@ -106,7 +102,6 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
       const hasUndefined = Object.entries(sanitizedData).some(([key, value]) => value === undefined);
       if (hasUndefined) {
         console.error(`⚠️ サニタイズ後もundefinedが残っています (ID: ${helper.id}):`, sanitizedData);
-        console.error('問題のあるフィールド:', Object.entries(sanitizedData).filter(([_, v]) => v === undefined));
       }
 
       console.log(`💾 Firestoreに保存するデータ (ID: ${helper.id}):`, sanitizedData);
@@ -116,18 +111,25 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
       batch.set(helperRef, sanitizedData);
     });
 
-    // 削除されたヘルパーをFirestoreからも削除
-    existingIds.forEach(id => {
-      if (!newIds.has(id)) {
-        const helperRef = doc(db, HELPERS_COLLECTION, id);
-        batch.delete(helperRef);
-        console.log(`ヘルパーを削除: ${id}`);
-      }
-    });
+    // 【重要】既存の「リストに含まれないヘルパーを削除する」ロジックを廃止
+    // これにより、読み込み不全時に上書きしても既存データが消える事故を防ぐ
+    // 削除は明示的に deleteHelper を呼び出す必要がある
 
     await batch.commit();
   } catch (error) {
     console.error('ヘルパー保存エラー:', error);
+    throw error;
+  }
+};
+
+// ヘルパーを削除
+export const deleteHelper = async (helperId: string): Promise<void> => {
+  try {
+    const helperRef = doc(db, HELPERS_COLLECTION, helperId);
+    await deleteDoc(helperRef);
+    console.log(`ヘルパーを削除しました: ${helperId}`);
+  } catch (error) {
+    console.error('ヘルパー削除エラー:', error);
     throw error;
   }
 };

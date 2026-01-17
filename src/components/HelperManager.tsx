@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import type { Helper } from '../types';
 import { getGoogleAccessToken } from '../services/googleAuthService';
 import { addHelperColumn } from '../services/googleSheetsApi';
+import { deleteHelper } from '../services/firestoreService';
 
 // ランダムトークン生成関数（10文字）
 const generateToken = (): string => {
@@ -305,6 +306,10 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
     try {
       console.log(`💾 ${helperName}さんを削除中...`);
 
+      // 1. 明示的に削除を実行（リスト同期ロジック廃止に伴う変更）
+      await deleteHelper(helperId);
+
+      // 2. 残りのリストを保存（順序更新など）
       await onUpdate(updatedHelpers);
 
       setHasChanges(false);
