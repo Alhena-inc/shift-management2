@@ -2620,22 +2620,28 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
         // 通常の文字キーの場合、編集モードに入る
         if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete') {
-          e.preventDefault();
+          // IME入力を考慮：既定の動作を活かすために、ここでは contenteditable 設定と focus のみに留める
+          // ただし、Backspace/Deleteの場合は内容をクリアする必要がある
 
-          // 編集モードに入る
           cell.setAttribute('contenteditable', 'true');
           cell.style.userSelect = 'text';
           cell.style.webkitUserSelect = 'text';
+          cell.focus();
 
-          // Backspace/Deleteの場合は内容をクリア
           if (e.key === 'Backspace' || e.key === 'Delete') {
+            e.preventDefault();
             cell.textContent = '';
           } else {
-            // 通常の文字の場合は、既存の内容を置き換える
-            cell.textContent = e.key;
+            // 通常の文字（1文字目）の場合
+            // 既存の内容を消して新しく入力を開始する場合
+            cell.textContent = '';
+
+            // preventDefaultしないことで、現在の入力文字（e.key）がブラウザによって自然に挿入されるようにする。
+            // これによりIMEの確定前の状態が維持され、「kい」のように分離されるのを防ぐ。
           }
 
-          cell.focus();
+          // カーソル位置を制御（少し遅延させて、ブラウザの文字挿入後に末尾に行くようにする場合もあるが、
+          // textContent='' にした直後なら0文字目でOK）
 
           // カーソルを末尾に配置
           const range = document.createRange();
@@ -4894,9 +4900,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                         // 同じtd内に次のセルがある場合
                                         if (lastSelectedCellRef.current) {
                                           lastSelectedCellRef.current.classList.remove('cell-selected');
+                                          lastSelectedCellRef.current.classList.remove('line-selected');
                                         }
                                         lastSelectedCellRef.current = nextSiblingCell;
                                         nextSiblingCell.classList.add('cell-selected');
+                                        nextSiblingCell.classList.add('line-selected');
                                         nextSiblingCell.focus();
                                       } else {
                                         // 同じtd内に次のセルがない場合、次のtrの同じ列の最初のセルへ
@@ -4920,9 +4928,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                                         if (lastSelectedCellRef.current) {
                                           lastSelectedCellRef.current.classList.remove('cell-selected');
+                                          lastSelectedCellRef.current.classList.remove('line-selected');
                                         }
                                         lastSelectedCellRef.current = nextCell;
                                         nextCell.classList.add('cell-selected');
+                                        nextCell.classList.add('line-selected');
                                         nextCell.focus();
                                       }
                                     }
