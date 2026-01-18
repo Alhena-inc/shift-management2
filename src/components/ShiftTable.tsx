@@ -1877,7 +1877,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     // コピーバッファに保存
     copyBufferRef.data = data;
     copyBufferRef.backgroundColor = backgroundColor;
-    copyBufferRef.cancelStatus = shift?.cancelStatus;
+    // "none" は型定義に含まれないため除外し、型アサーションで明示
+    copyBufferRef.cancelStatus = (shift?.cancelStatus === 'none' || shift?.cancelStatus === undefined)
+      ? undefined
+      : shift.cancelStatus as 'keep_time' | 'remove_time';
     copyBufferRef.canceledAt = shift?.canceledAt;
     copyBufferRef.sourceShift = shift ? { ...shift } : null; // ★ ソースデータを保存
 
@@ -4752,8 +4755,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                           title={cellDisplayData.hasWarning ? '⚠️ 終了時刻が入力されていません' : undefined}
                           onPointerDown={(e) => {
                             // contentEditableの要素をクリックした場合はドラッグを無効化
-                            const target = e.target as HTMLElement;
-                            if (target.contentEditable === 'true' || target.closest('[contenteditable="true"]')) {
+                            const dragTarget = e.target as HTMLElement;
+                            if (dragTarget.contentEditable === 'true' || dragTarget.closest('[contenteditable="true"]')) {
                               e.currentTarget.draggable = false;
                             } else {
                               e.currentTarget.draggable = true;
@@ -4804,8 +4807,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                             lastSelectedTdRef.current = currentTd;
 
                             // ★ クリックされた位置から対象の行を特定して強調
-                            const target = e.target as HTMLElement;
-                            const clickedCell = target.closest('.editable-cell') as HTMLElement;
+                            const targetElement = e.target as HTMLElement;
+                            const clickedCell = targetElement.closest('.editable-cell') as HTMLElement;
                             if (clickedCell) {
                               lastSelectedCellRef.current = clickedCell;
                             } else {
