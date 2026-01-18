@@ -386,9 +386,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   const copyBufferRef = useMemo(() => ({
     data: [] as string[],
     backgroundColor: '#ffffff',
-    cancelStatus: undefined as 'none' | 'keep_time' | 'remove_time' | undefined,
+    cancelStatus: undefined as 'keep_time' | 'remove_time' | undefined,
     canceledAt: undefined as any,
-    hasCopiedData: false  // ★ 内部コピーが行われたかどうかのフラグ
+    hasCopiedData: false, // ★ 内部コピーが行われたかどうかのフラグ
+    sourceShift: null as Shift | null // ★ 追加：内部コピー時のソースデータ
   }), []);
 
   // 日付全体のコピーバッファ
@@ -1878,6 +1879,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     copyBufferRef.backgroundColor = backgroundColor;
     copyBufferRef.cancelStatus = shift?.cancelStatus;
     copyBufferRef.canceledAt = shift?.canceledAt;
+    copyBufferRef.sourceShift = shift ? { ...shift } : null; // ★ ソースデータを保存
 
     // ★ データがある場合のみ内部コピーフラグを設定
     copyBufferRef.hasCopiedData = data.some(line => line.trim() !== '');
@@ -1987,7 +1989,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         // サービスタイプを抽出
         const match = clientInfo.match(/\((.+?)\)/);
         let serviceType: ServiceType = 'shintai';
-        if (match) {
+
+        // ★ 内部コピーの場合はソースのサービスタイプを優先
+        if (copyBufferRef.sourceShift) {
+          serviceType = copyBufferRef.sourceShift.serviceType;
+        } else if (match) {
           const serviceLabel = match[1];
           const serviceEntry = Object.entries(SERVICE_CONFIG).find(
             ([_, config]) => config.label === serviceLabel
@@ -1998,10 +2004,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         }
 
         const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
-        // ハイフンまたは波線に対応
-        const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*[-~〜]\s*(\d{1,2}:\d{2})/);
+        // ★ 終了時刻がなくてもマッチするように改善
+        const timeMatch = timeRange.match(/(\d{1,2}:\d{2})(?:\s*[-~〜]\s*(\d{1,2}:\d{2}))?/);
         const startTime = timeMatch ? timeMatch[1] : '';
-        const endTime = timeMatch ? timeMatch[2] : '';
+        const endTime = timeMatch && timeMatch[2] ? timeMatch[2] : '';
 
         // 給与を計算（会議とその他は計算しない）
         const payCalculation = (serviceType === 'kaigi' || serviceType === 'other' || serviceType === 'yotei')
@@ -2012,12 +2018,12 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           id: `shift-${helperId}-${date}-${rowIndex}`,
           date,
           helperId: String(helperId),
-          clientName,
+          clientName: clientName || copyBufferRef.sourceShift?.clientName || '',
           serviceType,
-          startTime,
-          endTime,
-          duration: parseFloat(durationStr) || 0,
-          area,
+          startTime: startTime || copyBufferRef.sourceShift?.startTime || '',
+          endTime: endTime || copyBufferRef.sourceShift?.endTime || '',
+          duration: parseFloat(durationStr) || (copyBufferRef.sourceShift?.duration ?? 0),
+          area: area || copyBufferRef.sourceShift?.area || '',
           rowIndex,
           cancelStatus: copyBufferRef.cancelStatus,
           canceledAt: copyBufferRef.canceledAt,
@@ -2031,6 +2037,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
         // Reactステートを即座に更新（最新の値を確実に使用する）
         const updatedShifts = [...shiftsRef.current.filter(s => s.id !== newShift.id), newShift];
+        shiftsRef.current = updatedShifts; // ★ Refを同期的に更新して連続ペーストに対応
         onUpdateShifts(updatedShifts);
 
         // Firestoreに保存
@@ -2125,6 +2132,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           try {
             // Reactステートを先に更新してUIを即座に反映（最新の値を確実に使用する）
             const updatedShifts = [...shiftsRef.current.filter(s => !shiftsToSave.some(newS => newS.id === s.id)), ...shiftsToSave];
+            shiftsRef.current = updatedShifts; // ★ Refを同期的に更新して連続ペーストに対応
             onUpdateShifts(updatedShifts);
 
             // Firestoreに保存
@@ -2302,6 +2310,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     }
 
                     const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
+                    // ★ 終了時刻がなくてもマッチするように改善
                     const timeMatch = timeRange.match(/(\d{1,2}:\d{2})(?:\s*[-~〜]\s*(\d{1,2}:\d{2}))?/);
                     const startTime = timeMatch ? timeMatch[1] : '';
                     const endTime = timeMatch && timeMatch[2] ? timeMatch[2] : '';
@@ -2358,6 +2367,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     !shiftsToSave.some(newShift => newShift.id === s.id)
                   );
                   updatedShifts.push(...shiftsToSave);
+                  shiftsRef.current = updatedShifts; // ★ Refを同期的に更新して連続ペーストに対応
                   onUpdateShifts(updatedShifts);
 
                   // ★ Undoスタックに追加（2次元グループとして）
@@ -2523,7 +2533,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     }
 
                     const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
-                    const timeMatch = timeRange.match(/(\d{1,2}:\d{2})(?:\s*[-~]\s*(\d{1,2}:\d{2}))?/);
+                    // ★ 終了時刻がなくてもマッチするように改善
+                    const timeMatch = timeRange.match(/(\d{1,2}:\d{2})(?:\s*[-~〜]\s*(\d{1,2}:\d{2}))?/);
                     const startTime = timeMatch ? timeMatch[1] : '';
                     const endTime = timeMatch && timeMatch[2] ? timeMatch[2] : '';
 
@@ -2574,6 +2585,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                       !shiftsToSave.some(newShift => newShift.id === s.id)
                     );
                     updatedShifts.push(...shiftsToSave);
+                    shiftsRef.current = updatedShifts; // ★ Refを同期的に更新して連続ペーストに対応
                     onUpdateShifts(updatedShifts);
 
                     // ★ Undoスタックに追加（グループとして）
@@ -4787,23 +4799,22 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                               el.classList.remove('cell-selected');
                             });
 
-                            // ★ tdの青枠は設定しない（1行単位で設定するため）
-                            // クリックされた位置から対象の行を特定
+                            // ★ tdの青枠は設定しない（Reactがstyleプロパティで処理するため）
                             const currentTd = e.currentTarget as HTMLElement;
                             lastSelectedTdRef.current = currentTd;
 
-                            // ★ 現在のセルを記録（最初の行をデフォルトで選択）
-                            const firstCell = currentTd.querySelector('.editable-cell') as HTMLElement;
-                            if (firstCell) {
-                              firstCell.classList.add('line-selected');
-                              lastSelectedCellRef.current = firstCell;
+                            // ★ クリックされた位置から対象の行を特定して強調
+                            const target = e.target as HTMLElement;
+                            const clickedCell = target.closest('.editable-cell') as HTMLElement;
+                            if (clickedCell) {
+                              lastSelectedCellRef.current = clickedCell;
+                            } else {
+                              // padding部分などのクリック時は従来通り最初の行を選択
+                              const firstCell = currentTd.querySelector('.editable-cell') as HTMLElement;
+                              if (firstCell) {
+                                lastSelectedCellRef.current = firstCell;
+                              }
                             }
-
-                            // DOM操作で即座に青枠を表示（ z-index を上げて枠が隠れないようにする ）
-                            currentTd.style.setProperty('outline', '3px solid #2563eb', 'important');
-                            currentTd.style.setProperty('outline-offset', '-3px', 'important');
-                            currentTd.style.setProperty('z-index', '10', 'important');
-                            lastSelectedRowTdsRef.current.push(currentTd);
 
                             // currentTargetCellRefも更新（ペースト先として使用）
                             currentTargetCellRef.current = { helperId: helper.id, date: day.date, rowIndex };
@@ -5276,209 +5287,148 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                   }}
                                   onPaste={async (e) => {
                                     e.preventDefault();
+                                    const clipboardText = e.clipboardData.getData('text/plain');
+                                    if (!clipboardText) return;
 
                                     const helperId = e.currentTarget.dataset.helper || '';
                                     const date = e.currentTarget.dataset.date || '';
                                     const currentRow = e.currentTarget.dataset.row || '0';
                                     const currentLine = parseInt(e.currentTarget.dataset.line || '0');
 
-                                    // クリップボードからテキストを取得
-                                    const clipboardText = e.clipboardData.getData('text/plain');
+                                    console.log('📋 ペースト処理開始 (改善版):', { helperId, date, currentRow, currentLine });
 
-                                    // 改行で分割
-                                    // 空行を消すと行ズレするので保持する（Sheetsのセル内改行もそのまま扱う）
-                                    const lines = clipboardText.split(/\r?\n/);
+                                    // 1. クリップボードのパース (タブで分割して複数セル対応)
+                                    const rows = clipboardText.split(/\r?\n/);
+                                    if (rows.length === 0) return;
 
-                                    if (lines.length === 0 || (lines.length === 1 && lines[0] === '')) {
-                                      return;
+                                    // 2. 対象となるセル情報を特定
+                                    // ひとまずは現在の(ヘルパー,日付,行)を起点にする
+                                    const targetHelperId = helperId;
+                                    const targetDate = date;
+                                    const targetRowIndex = parseInt(currentRow);
+
+                                    // 3. 既存のデータを取得（Refから安全に）
+                                    const shiftId = `shift-${targetHelperId}-${targetDate}-${targetRowIndex}`;
+                                    const existingShift = shiftsRef.current.find(s => s.id === shiftId);
+
+                                    // 既存の4つの値を配列で用意
+                                    let currentLines = [
+                                      existingShift ? `${existingShift.startTime}${existingShift.endTime ? '-' + existingShift.endTime : ''}` : '',
+                                      existingShift ? `${existingShift.clientName}${existingShift.serviceType && SERVICE_CONFIG[existingShift.serviceType] ? '(' + SERVICE_CONFIG[existingShift.serviceType].label + ')' : ''}` : '',
+                                      existingShift ? String(existingShift.duration || '') : '',
+                                      existingShift ? (existingShift.area || '') : ''
+                                    ];
+
+                                    // 4. 新しいデータをマージ
+                                    // ペーストされた行を、現在のフォーカス行から順次適用
+                                    for (let i = 0; i < rows.length; i++) {
+                                      const lineIndex = currentLine + i;
+                                      if (lineIndex < 4) {
+                                        currentLines[lineIndex] = rows[i].trim();
+                                      }
                                     }
 
-                                    console.log(`📋 ペースト処理開始: ${lines.length}行`);
+                                    // 5. DOMを先に更新（楽観的UI）
+                                    for (let i = 0; i < 4; i++) {
+                                      const cellSelector = `.editable-cell[data-row="${targetRowIndex}"][data-line="${i}"][data-helper="${targetHelperId}"][data-date="${targetDate}"]`;
+                                      const cell = safeQuerySelector<HTMLElement>(cellSelector);
+                                      if (cell) {
+                                        safeSetTextContent(cell, currentLines[i]);
+                                      }
+                                    }
 
-                                    // 現在のセルから順番に貼り付け
-                                    // null=未変更、''=空白を貼り付け（クリア）
-                                    const dataToSave: Array<string | null> = [null, null, null, null];
+                                    // 6. 特殊な自動計算（時間から時間数、利用者名から背景色）
+                                    const timeRange = currentLines[0];
+                                    const clientInfo = currentLines[1];
+                                    let durationStr = currentLines[2];
+                                    const area = currentLines[3];
 
-                                    // DOM更新を次のフレームに遅延させて安全に実行
-                                    requestAnimationFrame(async () => {
+                                    // 時間入力があれば時間数を自動計算
+                                    if (timeRange && (!durationStr || durationStr === '')) {
+                                      const duration = calculateTimeDuration(timeRange);
+                                      if (duration) {
+                                        durationStr = duration;
+                                        const durSelector = `.editable-cell[data-row="${targetRowIndex}"][data-line="2"][data-helper="${targetHelperId}"][data-date="${targetDate}"]`;
+                                        const durCell = safeQuerySelector<HTMLElement>(durSelector);
+                                        if (durCell) safeSetTextContent(durCell, duration);
+                                      }
+                                    }
+
+                                    // 利用者名から背景色を更新
+                                    const match = clientInfo.match(/\((.+?)\)/);
+                                    let serviceType: ServiceType = 'shintai';
+                                    if (match) {
+                                      const serviceLabel = match[1];
+                                      const serviceEntry = Object.entries(SERVICE_CONFIG).find(
+                                        ([_, config]) => config.label === serviceLabel
+                                      );
+                                      if (serviceEntry) {
+                                        serviceType = serviceEntry[0] as ServiceType;
+                                        const bgColor = serviceEntry[1].bgColor;
+                                        const parentTd = e.currentTarget.closest('td');
+                                        if (parentTd) {
+                                          safeSetStyle(parentTd, { backgroundColor: bgColor });
+                                          const cells = parentTd.querySelectorAll('.editable-cell');
+                                          cells.forEach(c => safeSetStyle(c as HTMLElement, { backgroundColor: bgColor }));
+                                        }
+                                      }
+                                    } else if (existingShift?.serviceType === 'yotei') {
+                                      serviceType = 'yotei';
+                                    }
+
+                                    // 7. 保存処理（非同期）
+                                    const finalLines = [timeRange, clientInfo, durationStr, area];
+                                    if (finalLines.some(l => l.trim() !== '')) {
+                                      const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
+                                      const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*[-~〜]\s*(\d{1,2}:\d{2})/);
+                                      const startTime = timeMatch ? timeMatch[1] : (timeRange.match(/(\d{1,2}:\d{2})/) ? timeRange.match(/(\d{1,2}:\d{2})/)![1] : '');
+                                      const endTime = timeMatch ? timeMatch[2] : '';
+
+                                      const payCalculation = calculateShiftPay(serviceType, timeRange, targetDate);
+
+                                      const newShift: Shift = {
+                                        id: shiftId,
+                                        date: targetDate,
+                                        helperId: String(targetHelperId),
+                                        clientName,
+                                        serviceType,
+                                        startTime,
+                                        endTime,
+                                        duration: parseFloat(durationStr) || 0,
+                                        area,
+                                        rowIndex: targetRowIndex,
+                                        cancelStatus: existingShift?.cancelStatus,
+                                        canceledAt: existingShift?.canceledAt,
+                                        regularHours: payCalculation.regularHours,
+                                        nightHours: payCalculation.nightHours,
+                                        regularPay: payCalculation.regularPay,
+                                        nightPay: payCalculation.nightPay,
+                                        totalPay: payCalculation.totalPay,
+                                        deleted: false
+                                      };
+
                                       try {
-                                        for (let i = 0; i < Math.min(lines.length, 4 - currentLine); i++) {
-                                          const targetLine = currentLine + i;
-                                          const targetSelector = `.editable-cell[data-row="${currentRow}"][data-line="${targetLine}"][data-helper="${helperId}"][data-date="${date}"]`;
-                                          const targetCell = safeQuerySelector<HTMLElement>(targetSelector);
-
-                                          if (targetCell) {
-                                            // 安全にテキストを設定
-                                            const pasted = lines[i] ?? '';
-                                            if (safeSetTextContent(targetCell, pasted)) {
-                                              dataToSave[targetLine] = pasted; // '' も有効な値として保持
-                                            }
-
-                                            // 1段目（時間）の場合、3段目（時間数）を自動計算
-                                            if (targetLine === 0) {
-                                              const timeText = pasted;
-                                              const durationSelector = `.editable-cell[data-row="${currentRow}"][data-line="2"][data-helper="${helperId}"][data-date="${date}"]`;
-                                              const durationCell = safeQuerySelector<HTMLElement>(durationSelector);
-                                              const rowIndexNum = parseInt(currentRow || '0');
-                                              const isDayOffRow = checkIsDayOffRow(helperId, date, rowIndexNum);
-                                              const isScheduled = scheduledDayOffs.has(`${helperId}-${date}`);
-
-                                              if (isDayOffRow || isScheduled) {
-                                                // 休み希望/指定休の行では時間数を自動入力しない
-                                                if (durationCell) {
-                                                  safeSetTextContent(durationCell, '');
-                                                  dataToSave[2] = '';
-                                                }
-                                              } else if (timeText.trim() === '') {
-                                                // 時間が空なら時間数もクリア（ズレ防止）
-                                                if (durationCell) {
-                                                  safeSetTextContent(durationCell, '');
-                                                  dataToSave[2] = '';
-                                                }
-                                              } else {
-                                                const duration = calculateTimeDuration(timeText);
-                                                if (duration && durationCell) {
-                                                  if (safeSetTextContent(durationCell, duration)) {
-                                                    dataToSave[2] = duration;
-                                                  }
-                                                }
-                                              }
-                                            }
-
-                                            // 2段目（利用者名）の場合、サービスタイプから背景色を設定
-                                            if (targetLine === 1) {
-                                              const match = pasted.match(/\((.+?)\)/);
-                                              if (match) {
-                                                const serviceLabel = match[1];
-                                                const serviceEntry = Object.entries(SERVICE_CONFIG).find(
-                                                  ([_, config]) => config.label === serviceLabel
-                                                );
-
-                                                if (serviceEntry) {
-                                                  const [_, config] = serviceEntry;
-
-                                                  // 親のtd要素と全セルに背景色を設定
-                                                  const parentTd = targetCell.closest('td');
-                                                  if (parentTd) {
-                                                    safeSetStyle(parentTd as HTMLElement, { backgroundColor: config.bgColor });
-                                                  }
-
-                                                  // 全セルの背景色を更新
-                                                  const cellSelector = `[data-row="${currentRow}"][data-helper="${helperId}"][data-date="${date}"].editable-cell`;
-                                                  const cellElements = safeQuerySelectorAll<HTMLElement>(cellSelector);
-                                                  cellElements.forEach((cell) => {
-                                                    safeSetStyle(cell, { backgroundColor: config.bgColor });
-                                                  });
-                                                }
-                                              }
-                                            }
-                                          }
-                                        }
+                                        await saveShiftWithCorrectYearMonth(newShift);
+                                        const updatedShifts = shiftsRef.current.filter(s => s.id !== shiftId);
+                                        updatedShifts.push(newShift);
+                                        onUpdateShifts(updatedShifts);
+                                        updateTotalsForHelperAndDate(targetHelperId, targetDate);
+                                        console.log('✅ ペーストデータを保存しました');
                                       } catch (error) {
-                                        console.error('ペースト処理中にエラーが発生しました:', error);
+                                        console.error('ペースト保存エラー:', error);
                                       }
-                                    });
-
-                                    // 2つ目のrequestAnimationFrameで既存データ取得とFirestore保存
-                                    requestAnimationFrame(async () => {
-                                      // 全4ラインのデータを取得（既存データも含む）
-                                      for (let i = 0; i < 4; i++) {
-                                        if (dataToSave[i] === null) {
-                                          const cellSelector = `.editable-cell[data-row="${currentRow}"][data-line="${i}"][data-helper="${helperId}"][data-date="${date}"]`;
-                                          const cell = safeQuerySelector<HTMLElement>(cellSelector);
-                                          dataToSave[i] = cell?.textContent ?? '';
-                                        }
+                                    } else {
+                                      // 空白をペーストした場合は削除
+                                      try {
+                                        await deleteShift(shiftId);
+                                        const updatedShifts = shiftsRef.current.filter(s => s.id !== shiftId);
+                                        onUpdateShifts(updatedShifts);
+                                        updateTotalsForHelperAndDate(targetHelperId, targetDate);
+                                        console.log('✅ シフトを削除しました (ペースト経由)');
+                                      } catch (err) {
+                                        console.error('ペースト削除エラー:', err);
                                       }
-
-                                      // 集計を更新
-                                      updateTotalsForHelperAndDate(helperId, date);
-
-                                      // Firestoreに保存
-                                      const resolved = dataToSave.map(v => v ?? '');
-                                      const [timeRange, clientInfo, durationStr, area] = resolved;
-
-                                      if (resolved.some(line => line.trim() !== '')) {
-                                        const match = clientInfo.match(/\((.+?)\)/);
-                                        let serviceType: ServiceType = 'shintai';
-
-                                        // 既存のシフトを確認（右クリックで予定(紫)にした場合など、()なしでもserviceTypeを保持したい）
-                                        const shiftId = `shift-${helperId}-${date}-${currentRow}`;
-                                        const existingShift = shiftsRef.current.find(s => s.id === shiftId);
-
-                                        if (match) {
-                                          const serviceLabel = match[1];
-                                          const serviceEntry = Object.entries(SERVICE_CONFIG).find(
-                                            ([_, config]) => config.label === serviceLabel
-                                          );
-                                          if (serviceEntry) {
-                                            serviceType = serviceEntry[0] as ServiceType;
-                                          }
-                                        } else if (existingShift?.serviceType === 'yotei') {
-                                          // 予定（紫）は()がない表示なので、誤ってother等に落とさない
-                                          serviceType = 'yotei';
-                                        }
-
-                                        const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
-                                        const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*[-~〜]\s*(\d{1,2}:\d{2})/);
-                                        const startTime = timeMatch ? timeMatch[1] : '';
-                                        const endTime = timeMatch ? timeMatch[2] : '';
-
-                                        // 既存のシフトを確認してキャンセルステータスを保持
-                                        const newCancelStatus = existingShift?.cancelStatus;
-
-                                        // 給与を計算（日付を渡して年末年始判定）
-                                        const payCalculation = calculateShiftPay(serviceType, timeRange, date);
-
-                                        const shift: Shift = {
-                                          id: shiftId,
-                                          date,
-                                          helperId: String(helperId), // helperIdを文字列に統一
-                                          clientName,
-                                          serviceType,
-                                          startTime,
-                                          endTime,
-                                          duration: parseFloat(durationStr) || 0,
-                                          area,
-                                          rowIndex: parseInt(currentRow),
-                                          ...(newCancelStatus ? { cancelStatus: newCancelStatus } : {}),
-                                          regularHours: payCalculation.regularHours,
-                                          nightHours: payCalculation.nightHours,
-                                          regularPay: payCalculation.regularPay,
-                                          nightPay: payCalculation.nightPay,
-                                          totalPay: payCalculation.totalPay,
-                                          deleted: false  // 削除フラグを明示的にfalseに設定
-                                        };
-
-                                        try {
-                                          await saveShiftWithCorrectYearMonth(shift);
-
-                                          // ローカルのshifts配列を更新
-                                          const updatedShifts = shiftsRef.current.filter(s => s.id !== shiftId);
-                                          updatedShifts.push(shift);
-                                          onUpdateShifts(updatedShifts);
-
-                                          console.log('✅ ペーストデータを保存しました');
-                                        } catch (error) {
-                                          console.error('ペーストデータの保存に失敗しました:', error);
-                                        }
-                                      }
-                                      else {
-                                        // 全行が空の場合：セル編集と同じ削除ルールに合わせる
-                                        const dayOffKey = `${helperId}-${date}-${currentRow}`;
-                                        const hasHolidayRequest = dayOffRequests.has(dayOffKey);
-                                        if (!hasHolidayRequest) {
-                                          const shiftId = `shift-${helperId}-${date}-${currentRow}`;
-                                          try {
-                                            await deleteShift(shiftId);
-                                            console.log('✅ 空のシフトを削除しました（ペースト）:', shiftId);
-                                          } catch (error) {
-                                            console.error('❌ シフト削除エラー（ペースト）:', error);
-                                          }
-                                        } else {
-                                          console.log('🏖️ 休み希望があるため削除をスキップ（ペースト）:', dayOffKey);
-                                        }
-                                      }
-                                    });
+                                    }
                                   }}
                                   onBlur={(e) => {
                                     // 編集モードを解除（DOM操作を安全に実行）
@@ -5712,6 +5662,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                             // ローカルのshifts配列を更新（画面の再レンダリング用）
                                             const updatedShifts = shiftsRef.current.filter(s => s.id !== shift.id);
                                             updatedShifts.push(shift);
+                                            shiftsRef.current = updatedShifts; // ★ Refを同期的に更新
                                             onUpdateShifts(updatedShifts);
                                           } else {
                                             // 全行が空の場合：背景色をリセット（ただし休み希望の場合は維持）
