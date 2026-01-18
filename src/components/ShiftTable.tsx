@@ -2632,17 +2632,20 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             e.preventDefault();
             cell.textContent = '';
           } else {
-            // 通常の文字（1文字目）の場合
-            // 既存の内容を消して新しく入力を開始する場合
+            // IME入力の不具合対策:
+            // 既存のテキストが入っている状態で入力を開始すると、ブラウザによっては
+            // 「既存テキスト + 入力文字」となったり、入力文字が確定扱いになったりする。
+
+            // 1. 既存テキストをクリア
             cell.textContent = '';
 
-            // preventDefaultしないことで、現在の入力文字（e.key）がブラウザによって自然に挿入されるようにする。
-            // これによりIMEの確定前の状態が維持され、「kい」のように分離されるのを防ぐ。
+            // 2. フォーカスを確実にセットし直す（念のため）
+            cell.focus();
+
+            // これにより、これから発生する keypress/input イベントがこの空のセルに対して発行され、
+            // 新しい IME コンポジションが正常に開始されることを期待。
+            // 以前の対策（range選択など）よりもシンプルに空にすることで「nあ」問題（nが確定済みテキストとして残る現象）を回避。
           }
-
-          // カーソル位置を制御（少し遅延させて、ブラウザの文字挿入後に末尾に行くようにする場合もあるが、
-          // textContent='' にした直後なら0文字目でOK）
-
           // カーソルを末尾に配置
           const range = document.createRange();
           const sel = window.getSelection();
@@ -4849,7 +4852,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
                                       // 編集モードでない場合は、編集モードに入る（1回目のEnter）
                                       if (!isEditable) {
-                                        // 休み希望のセルかチェック（dayOffRequests Mapを使う）
+                                        // 休み希望チェック
                                         const cellHelper = currentElement.getAttribute('data-helper') || '';
                                         const cellDate = currentElement.getAttribute('data-date') || '';
                                         const cellRow = currentElement.getAttribute('data-row') || '';
@@ -4860,12 +4863,70 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                           return;
                                         }
 
+                                        // ★★★ Enterキーの挙動変更 ★★★
+                                        // 1段目(Line index 0)・3段目(Line index 2) は1回のEnterで下のセルへ移動（編集モードをスキップ）
+                                        // 2段目(Line index 1)・4段目(Line index 3) は従来の動作（1回目で編集モード）
+                                        const lineIndex = parseInt(currentElement.dataset.line || '0');
+
+                                        // 0: 時間, 1: 利用者, 2: 時間数, 3: 区域
+                                        // lineIndexは 0, 1, 2, 3 のいずれか。
+                                        // User request: "1段目(0)は1回... 3段目(2)は1回..." -> 0と2は即移動
+                                        if (lineIndex === 0 || lineIndex === 2) {
+                                          // 強制的に移動処理へ流す。
+                                          // ここで移動ロジックを実行してreturnする。
+
+                                          // 集計更新（念のため）
+                                          updateTotalsForHelperAndDate(cellHelper, cellDate);
+
+                                          // 次のセルへ移動
+                                          const moveDown = () => {
+                                            const nextSiblingCell = currentElement.nextElementSibling as HTMLElement;
+                                            if (nextSiblingCell && nextSiblingCell.classList.contains('editable-cell')) {
+                                              // 同じTD内の次のセルへ
+                                              if (lastSelectedCellRef.current) {
+                                                lastSelectedCellRef.current.classList.remove('cell-selected');
+                                                lastSelectedCellRef.current.classList.remove('line-selected');
+                                              }
+                                              lastSelectedCellRef.current = nextSiblingCell;
+                                              nextSiblingCell.classList.add('cell-selected');
+                                              nextSiblingCell.classList.add('line-selected');
+                                              nextSiblingCell.focus();
+                                            } else {
+                                              // 次の行(TR)の同じ列へ
+                                              const currentTd = currentElement.closest('td');
+                                              if (!currentTd) return;
+                                              const currentTr = currentTd.parentElement as HTMLTableRowElement;
+                                              if (!currentTr) return;
+                                              const tdArray = Array.from(currentTr.children);
+                                              const colIndex = tdArray.indexOf(currentTd);
+                                              const nextTr = currentTr.nextElementSibling as HTMLTableRowElement;
+                                              if (!nextTr) return;
+                                              const nextTd = nextTr.children[colIndex] as HTMLElement;
+                                              if (!nextTd) return;
+                                              const nextCell = nextTd.querySelector('.editable-cell') as HTMLElement;
+                                              if (!nextCell) return;
+
+                                              if (lastSelectedCellRef.current) {
+                                                lastSelectedCellRef.current.classList.remove('cell-selected');
+                                                lastSelectedCellRef.current.classList.remove('line-selected');
+                                              }
+                                              lastSelectedCellRef.current = nextCell;
+                                              nextCell.classList.add('cell-selected');
+                                              nextCell.classList.add('line-selected');
+                                              nextCell.focus();
+                                            }
+                                          };
+
+                                          moveDown();
+                                          return;
+                                        }
+
+                                        // 2段目・4段目は編集モードに入る
                                         currentElement.setAttribute('contenteditable', 'true');
                                         currentElement.style.userSelect = 'text';
                                         currentElement.style.webkitUserSelect = 'text';
                                         currentElement.focus();
 
-                                        // カーソルを末尾に移動
                                         const range = document.createRange();
                                         const sel = window.getSelection();
                                         range.selectNodeContents(currentElement);
@@ -4991,7 +5052,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                       console.time('🔧 その他処理');
                                       e.stopPropagation();
 
-                                      // 休み希望のセルかチェック
+                                      // 休み希望のセルかチェック（dayOffRequests Mapを使う）
                                       const isDayOffInTimeout = checkIsDayOffRow(helper.id, day.date, rowIndex);
 
                                       // 現場（シフト）が入っているかチェック
@@ -5005,19 +5066,29 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                       }
 
                                       // 複数選択行の青枠をクリア
+                                      // ★ ダブルクリックや連続クリックで青枠が消えるのを防ぐため、
+                                      // 現在クリックしたセル/行が既に選択状態であればクリアしない、などの制御を入れる。
                                       if (lastSelectedRowTdsRef.current.length > 0) {
+                                        // ここでのクリアは、シフトキー等による範囲選択を解除するためのもの。
+                                        // 単一選択の .line-selected の制御ではないが、念のため競合を防ぐ。
+
+                                        // 選択されているTD群のループ処理
                                         lastSelectedRowTdsRef.current.forEach(td => {
+                                          // 範囲選択用のクラスのみ削除
                                           td.classList.remove('shift-cell-multi-selected');
+                                          // styleのoutline削除は範囲選択用。単一選択は .line-selected クラスで制御しているため競合しないはずだが、
+                                          // 万が一 style 属性で outline を制御している箇所があれば影響する。
+                                          // 現状の実装: .line-selected { outline: ... } なので、style.removeProperty('outline') は影響しないはず。
                                           td.style.removeProperty('outline');
                                           td.style.removeProperty('outline-offset');
                                           td.style.removeProperty('z-index');
                                         });
                                         lastSelectedRowTdsRef.current = [];
                                       }
-
                                       // 複数選択stateもクリア
                                       if (selectedRowsRef.current.size > 0) {
                                         selectedRowsRef.current.clear();
+                                        // setSelectedRows削除：React再レンダリングを防止
                                       }
 
                                       // クリック回数を取得
