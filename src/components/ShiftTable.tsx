@@ -1797,16 +1797,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     // 選択をStateに同期（右クリックメニューで使用）
     syncSelection();
 
-    // ★★★ Shift+ドラッグ完了後、青枠は保持しない（ユーザー要望）
-    // マウスボタンを離した時点で複数選択の視覚的な青枠をクリア
-    // ただし、selectedRowsRef.currentは保持し、右クリックメニューで使用可能
-    // → 青枠のみクリアし、データは保持
-    lastSelectedRowTdsRef.current.forEach(td => {
-      td.style.removeProperty('outline');
-      td.style.removeProperty('outline-offset');
-      td.style.removeProperty('z-index');
-    });
-    lastSelectedRowTdsRef.current = [];
+    // ★★★ Shiftキーを離しても青枠は維持する（ユーザー要望）
+    // 青枠は他のセルを普通にクリックしたときにのみ解除する
+    // → ここでは何もしない
 
     // フラグをリセット（少し遅延させて、clickイベント後に確実にリセット）
     setTimeout(() => {
@@ -1826,21 +1819,28 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
     isDraggingForSelectionRef.current = true;
     justStartedDraggingRef.current = false; // まだドラッグしていない
-    lastProcessedCellRef.current = null;
+    // lastProcessedCellRefはクリアしない（同じセルを二度処理しないようにするため）
 
     // 最初にクリックしたセルも選択に追加
     const cellKey = `${helperId}-${date}-${rowIndex}`;
-    if (!selectedRowsRef.current.has(cellKey)) {
-      selectedRowsRef.current.add(cellKey);
-      // DOM直接操作で即座に青枠表示
-      const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
-      if (td) {
-        td.style.setProperty('outline', '3px solid #2563eb', 'important');
-        td.style.setProperty('outline-offset', '-3px', 'important');
-        td.style.setProperty('z-index', '10', 'important');
+
+    // ★★★ 確実に選択に追加（重複チェックなしで直接追加）
+    selectedRowsRef.current.add(cellKey);
+    lastProcessedCellRef.current = cellKey; // このセルは処理済みとして記録
+
+    // DOM直接操作で即座に青枠表示
+    const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
+    if (td) {
+      td.style.setProperty('outline', '3px solid #2563eb', 'important');
+      td.style.setProperty('outline-offset', '-3px', 'important');
+      td.style.setProperty('z-index', '10', 'important');
+      // 重複しないようにチェックしてから追加
+      if (!lastSelectedRowTdsRef.current.includes(td)) {
         lastSelectedRowTdsRef.current.push(td);
       }
     }
+
+    console.log(`🔵 Shift+クリック: ${cellKey} を選択に追加 (合計: ${selectedRowsRef.current.size}個)`);
 
     // documentレベルでpointermoveを監視
     document.addEventListener('pointermove', handlePointerMove, { passive: true });
