@@ -1887,24 +1887,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     // ★ データがある場合のみ内部コピーフラグを設定
     copyBufferRef.hasCopiedData = data.some(line => line.trim() !== '');
 
-    // ★ 視覚的フィードバック：コピー時に緑色の枠を一瞬表示
-    const bgCellSelectorForFeedback = `.editable-cell[data-row="${rowIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
-    const feedbackCells = document.querySelectorAll(bgCellSelectorForFeedback);
-    if (feedbackCells.length > 0) {
-      const parentTd = feedbackCells[0].closest('td') as HTMLElement;
-      if (parentTd) {
-        const originalOutline = parentTd.style.outline;
-        parentTd.style.setProperty('outline', '3px solid #22c55e', 'important'); // 緑色
-        parentTd.style.setProperty('outline-offset', '-3px', 'important');
-
-        // 0.3秒後に元に戻す（青色の選択枠に）
-        setTimeout(() => {
-          parentTd.style.setProperty('outline', '2px solid #2563eb', 'important');
-          parentTd.style.setProperty('outline-offset', '-2px', 'important');
-        }, 300);
-      }
-    }
-
     console.log('📋 セルをコピーしました:', data, 'cancelStatus:', shift?.cancelStatus);
   }, [copyBufferRef, shiftMap]);
 
@@ -1948,18 +1930,17 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     // Redoスタックをクリア（新しい操作が行われたらRedoはできなくなる）
     redoStackRef.length = 0;
 
-    // 4つのラインにデータを設定
-    for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
-      const cellSelector = `.editable-cell[data-row="${rowIndex}"][data-line="${lineIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
-      const cell = document.querySelector(cellSelector) as HTMLElement;
-      if (cell) {
-        cell.textContent = copyBufferRef.data[lineIndex] || '';
-      }
-    }
-
-    // 背景色を設定（休み希望を考慮）
+    // 4つのラインにデータを設定（1回のquerySelectorAllで取得して効率化）
     const bgCellSelector = `.editable-cell[data-row="${rowIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
     const bgCells = document.querySelectorAll(bgCellSelector);
+
+    // データを設定
+    bgCells.forEach((cell, index) => {
+      const lineIndex = parseInt((cell as HTMLElement).dataset.line || '0');
+      (cell as HTMLElement).textContent = copyBufferRef.data[lineIndex] || '';
+    });
+
+    // 背景色を設定（休み希望を考慮）
     if (bgCells.length > 0) {
       const parentTd = bgCells[0].closest('td') as HTMLElement;
       if (parentTd) {
@@ -2041,7 +2022,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         // Reactステートを即座に更新（最新の値を確実に使用する）
         const updatedShifts = [...shiftsRef.current.filter(s => s.id !== newShift.id), newShift];
         shiftsRef.current = updatedShifts; // ★ Refを同期的に更新して連続ペーストに対応
-        onUpdateShifts(updatedShifts);
+
+        // ★ React stateの更新をrequestAnimationFrameで最適化（連続ペースト時のパフォーマンス改善）
+        requestAnimationFrame(() => {
+          onUpdateShifts(updatedShifts);
+        });
 
         // Firestoreに保存
         await saveShiftWithCorrectYearMonth(newShift);
@@ -2051,23 +2036,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
     saveData();
 
-    // ★ 視覚的フィードバック：ペースト時に緑色の枠を一瞬表示
-    const bgCellSelectorForFeedback = `.editable-cell[data-row="${rowIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
-    const feedbackCells = document.querySelectorAll(bgCellSelectorForFeedback);
-    if (feedbackCells.length > 0) {
-      const parentTd = feedbackCells[0].closest('td') as HTMLElement;
-      if (parentTd) {
-        parentTd.style.setProperty('outline', '3px solid #22c55e', 'important'); // 緑色
-        parentTd.style.setProperty('outline-offset', '-3px', 'important');
-
-        // 0.3秒後に青色の選択枠に
-        setTimeout(() => {
-          parentTd.style.setProperty('outline', '2px solid #2563eb', 'important');
-          parentTd.style.setProperty('outline-offset', '-2px', 'important');
-        }, 300);
-      }
-    }
-
     // ★ 選択状態を更新（ペースト先を選択状態に）
     selectedCellRef.helperId = helperId;
     selectedCellRef.date = date;
@@ -2075,7 +2043,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     currentTargetCellRef.current = { helperId, date, rowIndex };
 
     console.log('✅ セルにペーストしました:', copyBufferRef.data);
-  }, [copyBufferRef, updateTotalsForHelperAndDate, year, month, dayOffRequests, selectedCellRef, currentTargetCellRef, undoStackRef, redoStackRef]);
+  }, [copyBufferRef, updateTotalsForHelperAndDate, year, month, dayOffRequests, selectedCellRef, currentTargetCellRef, undoStackRef, redoStackRef, onUpdateShifts, saveShiftWithCorrectYearMonth]);
 
   // キーボードイベント（Cmd+C / Cmd+V / Cmd+Z / Cmd+Shift+Z / 直接入力）のリスナー
   useEffect(() => {
@@ -4747,10 +4715,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                               ? 'grabbing'
                               : 'grab',
                             opacity: draggedCell && draggedCell.helperId === helper.id && draggedCell.date === day.date && draggedCell.rowIndex === rowIndex ? 0.5 : 1,
-                            backgroundColor: cellDisplayData.bgColor,
-                            // 選択時はoutlineのみで表示（背景色は維持）
-                            outline: isSelectedRow ? '3px solid #2563eb' : undefined,
-                            outlineOffset: isSelectedRow ? '-3px' : undefined
+                            backgroundColor: cellDisplayData.bgColor
+                            // セル全体の青枠は非表示（行ごとの枠のみ表示）
                           }}
                           title={cellDisplayData.hasWarning ? '⚠️ 終了時刻が入力されていません' : undefined}
                           onPointerDown={(e) => {
