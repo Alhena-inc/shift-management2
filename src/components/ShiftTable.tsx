@@ -1797,6 +1797,17 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     // 選択をStateに同期（右クリックメニューで使用）
     syncSelection();
 
+    // ★★★ Shift+ドラッグ完了後、青枠は保持しない（ユーザー要望）
+    // マウスボタンを離した時点で複数選択の視覚的な青枠をクリア
+    // ただし、selectedRowsRef.currentは保持し、右クリックメニューで使用可能
+    // → 青枠のみクリアし、データは保持
+    lastSelectedRowTdsRef.current.forEach(td => {
+      td.style.removeProperty('outline');
+      td.style.removeProperty('outline-offset');
+      td.style.removeProperty('z-index');
+    });
+    lastSelectedRowTdsRef.current = [];
+
     // フラグをリセット（少し遅延させて、clickイベント後に確実にリセット）
     setTimeout(() => {
       justStartedDraggingRef.current = false;
@@ -3142,7 +3153,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       // 前回選択されたtdのoutlineのみ削除
       lastSelectedRowTdsRef.current.forEach(td => {
         td.style.removeProperty('outline');
-        td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index');
+        td.style.removeProperty('outline-offset');
+        td.style.removeProperty('z-index');
       });
       lastSelectedRowTdsRef.current = [];
 
@@ -3152,6 +3164,24 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       });
       lastSelectedTdRef.current = null;
       lastSelectedCellRef.current = null;
+
+      // ★★★ 削除後、最初の削除対象セル位置に近いセルを1つだけ選択状態にする
+      if (targetRows.length > 0) {
+        const firstKey = targetRows[0];
+        const parts = firstKey.split('-');
+        const rowIdx = parseInt(parts[parts.length - 1]);
+        const dt = parts.slice(-4, -1).join('-');
+        const hId = parts.slice(0, -4).join('-');
+
+        // 同じ位置のセルを探して青枠を付ける
+        const cellSelector = `.editable-cell[data-helper="${hId}"][data-date="${dt}"][data-row="${rowIdx}"][data-line="0"]`;
+        const targetCell = document.querySelector(cellSelector) as HTMLElement;
+        if (targetCell) {
+          targetCell.classList.add('line-selected');
+          lastSelectedCellRef.current = targetCell;
+          console.log(`🔵 削除後、1つのセルに青枠を設定: ${hId}-${dt}-${rowIdx}`);
+        }
+      }
 
       // 要素が存在する場合のみ削除
       if (document.body.contains(menu)) {
