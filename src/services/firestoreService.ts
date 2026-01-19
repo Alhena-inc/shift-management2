@@ -141,8 +141,8 @@ export const subscribeToHelpers = (onUpdate: (helpers: Helper[]) => void) => {
   const q = query(collection(db, HELPERS_COLLECTION), orderBy('order', 'asc'));
   const unsubscribe = onSnapshot(q, (snapshot) => {
     const helpers = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Helper));
-    // 論理削除されていないデータのみ（deletedプロパティがない場合は表示対象）
-    onUpdate(helpers.filter(h => h.deleted !== true));
+    // 論理削除されたデータも含めて全て返す（呼び出し側でフィルタリング）
+    onUpdate(helpers);
   }, (error) => {
     console.error('ヘルパー監視エラー:', error);
   });
@@ -270,8 +270,6 @@ export const loadHelpers = async (): Promise<Helper[]> => {
           insurances: data.insurances || []
         } as Helper;
       })
-      // 論理削除されたものを除外
-      .filter(helper => !(helper as any).deleted)
       // orderフィールドでソート
       .sort((a, b) => a.order - b.order);
     return helpers;

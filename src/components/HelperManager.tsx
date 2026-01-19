@@ -518,26 +518,28 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
               onDragEnd={handleDragEnd}
             >
               <SortableContext
-                items={localHelpers.map(h => h.id)}
+                items={localHelpers.filter(h => !h.deleted).map(h => h.id)}
                 strategy={verticalListSortingStrategy}
               >
-                {localHelpers.map((helper) => (
-                  <SortableHelperRow
-                    key={helper.id}
-                    helper={helper}
-                    isEditing={editingHelperId === helper.id}
-                    editFirstName={editHelperFirstName}
-                    baseUrl={baseUrl}
-                    isSaving={isSaving}
-                    onStartEdit={handleStartEdit}
-                    onSaveEdit={handleSaveEdit}
-                    onCancelEdit={handleCancelEdit}
-                    onDelete={handleDeleteHelper}
-                    onCopyUrl={handleCopyUrl}
-                    onGenerateToken={handleGenerateToken}
-                    onEditChange={setEditHelperFirstName}
-                  />
-                ))}
+                {localHelpers
+                  .filter(helper => !helper.deleted)
+                  .map((helper) => (
+                    <SortableHelperRow
+                      key={helper.id}
+                      helper={helper}
+                      isEditing={editingHelperId === helper.id}
+                      editFirstName={editHelperFirstName}
+                      baseUrl={baseUrl}
+                      isSaving={isSaving}
+                      onStartEdit={handleStartEdit}
+                      onSaveEdit={handleSaveEdit}
+                      onCancelEdit={handleCancelEdit}
+                      onDelete={handleDeleteHelper}
+                      onCopyUrl={handleCopyUrl}
+                      onGenerateToken={handleGenerateToken}
+                      onEditChange={setEditHelperFirstName}
+                    />
+                  ))}
               </SortableContext>
             </DndContext>
           </div>

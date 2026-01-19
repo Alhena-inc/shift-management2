@@ -290,9 +290,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     );
   }
 
-  const sortedHelpers = useMemo(() => [...helpers].sort((a, b) => a.order - b.order), [helpers]);
-  const weeks = useMemo(() => groupByWeek(year, month), [year, month]);
-
   // タスク1: シフトデータをMapに変換（高速アクセス用）
   const shiftMap = useMemo(() => {
     const map = new Map<string, Shift>();
@@ -335,6 +332,37 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
   // 表示テキスト管理（キー: "helperId-date", 値: 表示テキスト）
   const [displayTexts, setDisplayTexts] = useState<Map<string, string>>(new Map());
+
+  const sortedHelpers = useMemo(() => {
+    return helpers
+      .filter(helper => {
+        // 削除されていないヘルパーは常に表示
+        if (!helper.deleted) return true;
+
+        // 削除されている場合、その月にデータ（シフト、休み希望、指定休）があるかチェック
+        const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+
+        // 1. シフトがあるか
+        const hasShifts = shifts.some(s => s.helperId === helper.id);
+        if (hasShifts) return true;
+
+        // 2. 休み希望があるか
+        const hasDayOff = Array.from(dayOffRequests.keys()).some(key =>
+          key.startsWith(`${helper.id}-`) && key.includes(monthStr)
+        );
+        if (hasDayOff) return true;
+
+        // 3. 指定休があるか
+        const hasScheduled = Array.from(scheduledDayOffs.keys()).some(key =>
+          key.startsWith(`${helper.id}-`) && key.includes(monthStr)
+        );
+        if (hasScheduled) return true;
+
+        return false;
+      })
+      .sort((a, b) => a.order - b.order);
+  }, [helpers, shifts, dayOffRequests, scheduledDayOffs, year, month]);
+  const weeks = useMemo(() => groupByWeek(year, month), [year, month]);
 
   // 前回選択されたセルを記録（高速クリーンアップ用）
   const lastSelectedCellRef = useRef<HTMLElement | null>(null);
