@@ -232,7 +232,7 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
 
         // データを年月ごとに分類
         dayOffRequests.forEach((value, key) => {
-          const date = key.split('-').slice(1).join('-'); // helperId-YYYY-MM-DD から YYYY-MM-DD を取得
+          const date = key.slice(-10); // 末尾10文字（YYYY-MM-DD）を取得
           if (date.startsWith(`${nextYear}-01`)) {
             nextMonthRequests.set(key, value);
           } else {
@@ -241,7 +241,7 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
         });
 
         scheduledDayOffs.forEach((value, key) => {
-          const date = key.split('-').slice(1).join('-');
+          const date = key.slice(-10);
           if (date.startsWith(`${nextYear}-01`)) {
             nextMonthScheduled.set(key, value);
           } else {
@@ -250,7 +250,7 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
         });
 
         displayTexts.forEach((value, key) => {
-          const date = key.split('-').slice(1).join('-');
+          const date = key.slice(-10);
           if (date.startsWith(`${nextYear}-01`)) {
             nextMonthTexts.set(key, value);
           } else {
@@ -554,6 +554,19 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
             </div>
             <div className="flex gap-4">
               <button
+                onClick={() => {
+                  if (confirm('すべての休み希望と指定休をリセットしますか？\nこの操作は元に戻せません。')) {
+                    setDayOffRequests(new Map());
+                    setScheduledDayOffs(new Map());
+                    setDisplayTexts(new Map());
+                  }
+                }}
+                className="px-8 py-4 bg-red-500 text-white text-lg font-medium rounded-lg hover:bg-red-600 transition-colors"
+                disabled={isSaving || (dayOffRequests.size === 0 && scheduledDayOffs.size === 0)}
+              >
+                🗑️ 全てリセット
+              </button>
+              <button
                 onClick={onBack}
                 className="px-8 py-4 bg-gray-500 text-white text-lg font-medium rounded-lg hover:bg-gray-600 transition-colors"
                 disabled={isSaving}
@@ -590,8 +603,8 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                       setFirstSelectedSlot(null);
                     }}
                     className={`flex-1 px-4 py-3 rounded-lg font-bold transition-all ${selectedType === 'dayOff'
-                        ? 'bg-pink-500 text-white shadow-lg'
-                        : 'bg-white text-gray-700 border-2 border-gray-300 hover:border-pink-300'
+                      ? 'bg-pink-500 text-white shadow-lg'
+                      : 'bg-white text-gray-700 border-2 border-gray-300 hover:border-pink-300'
                       }`}
                   >
                     休み希望
@@ -603,8 +616,8 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                       setFirstSelectedSlot(null);
                     }}
                     className={`flex-1 px-4 py-3 rounded-lg font-bold transition-all ${selectedType === 'scheduled'
-                        ? 'text-white shadow-lg'
-                        : 'bg-white text-gray-700 border-2 border-gray-300 hover:border-green-300'
+                      ? 'text-white shadow-lg'
+                      : 'bg-white text-gray-700 border-2 border-gray-300 hover:border-green-300'
                       }`}
                     style={selectedType === 'scheduled' ? { backgroundColor: '#22c55e' } : undefined}
                   >
@@ -654,8 +667,8 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                               key={slot.row}
                               onClick={() => handleSlotClick(slot.row)}
                               className={`px-4 py-4 border-b border-gray-200 last:border-b-0 cursor-pointer transition-all ${isSelected
-                                  ? 'bg-pink-400 text-white font-bold'
-                                  : 'bg-white hover:bg-gray-100 text-gray-800'
+                                ? 'bg-pink-400 text-white font-bold'
+                                : 'bg-white hover:bg-gray-100 text-gray-800'
                                 }`}
                             >
                               <div className="flex items-center justify-center">

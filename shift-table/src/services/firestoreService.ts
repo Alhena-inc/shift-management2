@@ -11,7 +11,8 @@ import {
   orderBy,
   deleteDoc,
   deleteField,
-  onSnapshot
+  onSnapshot,
+  getDoc
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type { Helper, Shift } from '../types';
@@ -140,8 +141,8 @@ export const subscribeToHelpers = (onUpdate: (helpers: Helper[]) => void) => {
   const q = query(collection(db, HELPERS_COLLECTION), orderBy('order', 'asc'));
   const unsubscribe = onSnapshot(q, (snapshot) => {
     const helpers = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Helper));
-    // 論理削除されていないデータのみ（deletedプロパティがない場合は表示対象）
-    onUpdate(helpers.filter(h => h.deleted !== true));
+    // 論理削除されたデータも含めて全て返す（呼び出し側でフィルタリング）
+    onUpdate(helpers);
   }, (error) => {
     console.error('ヘルパー監視エラー:', error);
   });
@@ -269,8 +270,6 @@ export const loadHelpers = async (): Promise<Helper[]> => {
           insurances: data.insurances || []
         } as Helper;
       })
-      // 論理削除されたものを除外
-      .filter(helper => !(helper as any).deleted)
       // orderフィールドでソート
       .sort((a, b) => a.order - b.order);
     return helpers;
@@ -662,10 +661,10 @@ export const saveDayOffRequests = async (year: number, month: number, requests: 
 export const loadDayOffRequests = async (year: number, month: number): Promise<Map<string, string>> => {
   try {
     const docId = `${year}-${String(month).padStart(2, '0')}`;
-    const docSnap = await getDocs(query(collection(db, 'dayOffRequests')));
+    const docRef = doc(db, 'dayOffRequests', docId);
+    const targetDoc = await getDoc(docRef);
 
-    const targetDoc = docSnap.docs.find(d => d.id === docId);
-    if (targetDoc && targetDoc.exists()) {
+    if (targetDoc.exists()) {
       const data = targetDoc.data();
       const requestsData = data.requests || [];
 
@@ -722,10 +721,10 @@ export const saveScheduledDayOffs = async (year: number, month: number, schedule
 export const loadScheduledDayOffs = async (year: number, month: number): Promise<Map<string, boolean>> => {
   try {
     const docId = `${year}-${String(month).padStart(2, '0')}`;
-    const docSnap = await getDocs(query(collection(db, 'scheduledDayOffs')));
+    const docRef = doc(db, 'scheduledDayOffs', docId);
+    const targetDoc = await getDoc(docRef);
 
-    const targetDoc = docSnap.docs.find(d => d.id === docId);
-    if (targetDoc && targetDoc.exists()) {
+    if (targetDoc.exists()) {
       const data = targetDoc.data();
       const scheduledDayOffsData = data.scheduledDayOffs || [];
 
@@ -774,10 +773,10 @@ export const saveDisplayTexts = async (year: number, month: number, displayTexts
 export const loadDisplayTexts = async (year: number, month: number): Promise<Map<string, string>> => {
   try {
     const docId = `${year}-${String(month).padStart(2, '0')}`;
-    const docSnap = await getDocs(query(collection(db, 'displayTexts')));
+    const docRef = doc(db, 'displayTexts', docId);
+    const targetDoc = await getDoc(docRef);
 
-    const targetDoc = docSnap.docs.find(d => d.id === docId);
-    if (targetDoc && targetDoc.exists()) {
+    if (targetDoc.exists()) {
       const data = targetDoc.data();
       const displayTextsData = data.displayTexts || [];
 
@@ -884,6 +883,47 @@ export const subscribeToDisplayTextsMap = (
     return unsubscribe;
   } catch (error) {
     console.error('表示テキストリアルタイムリスナー設定エラー:', error);
+    return () => { };
+  }
+};
+
+// 指定休のリアルタイムリスナー（Map版）
+export const subscribeToScheduledDayOffs = (
+  year: number,
+  month: number,
+  onUpdate: (scheduledDayOffs: Map<string, boolean>) => void
+): (() => void) => {
+  try {
+    const docId = `${year}-${String(month).padStart(2, '0')}`;
+    const docRef = doc(db, 'scheduledDayOffs', docId);
+
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snapshot) => {
+        const scheduledDayOffs = new Map<string, boolean>();
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          const scheduledDayOffsData = data.scheduledDayOffs || [];
+
+          if (Array.isArray(scheduledDayOffsData)) {
+            scheduledDayOffsData.forEach((item: any) => {
+              scheduledDayOffs.set(item.key, item.value);
+            });
+          }
+          console.log(`🟢 リアルタイム更新: 指定休 ${docId} (${scheduledDayOffs.size}件)`);
+        } else {
+          console.log(`🟢 リアルタイム更新: 指定休データなし ${docId}`);
+        }
+        onUpdate(scheduledDayOffs);
+      },
+      (error) => {
+        console.error('指定休リアルタイムリスナーエラー:', error);
+      }
+    );
+
+    return unsubscribe;
+  } catch (error) {
+    console.error('指定休リアルタイムリスナー設定エラー:', error);
     return () => { };
   }
 };

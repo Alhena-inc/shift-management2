@@ -2,7 +2,7 @@ import { useMemo, useCallback, useEffect, memo, useState, useRef } from 'react';
 import type { Helper, Shift, ServiceType } from '../types';
 import { useScrollDetection } from '../hooks/useScrollDetection';
 import { SERVICE_CONFIG } from '../types';
-import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts, subscribeToDayOffRequestsMap, subscribeToDisplayTextsMap, subscribeToShiftsForMonth } from '../services/firestoreService';
+import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts, subscribeToDayOffRequestsMap, subscribeToDisplayTextsMap, subscribeToShiftsForMonth, subscribeToScheduledDayOffs } from '../services/firestoreService';
 import { Timestamp } from 'firebase/firestore';
 import { auth } from '../lib/firebase';
 import { calculateNightHours, calculateRegularHours, calculateTimeDuration } from '../utils/timeCalculations';
@@ -290,9 +290,6 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     );
   }
 
-  const sortedHelpers = useMemo(() => [...helpers].sort((a, b) => a.order - b.order), [helpers]);
-  const weeks = useMemo(() => groupByWeek(year, month), [year, month]);
-
   // タスク1: シフトデータをMapに変換（高速アクセス用）
   const shiftMap = useMemo(() => {
     const map = new Map<string, Shift>();
@@ -335,6 +332,37 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
   // 表示テキスト管理（キー: "helperId-date", 値: 表示テキスト）
   const [displayTexts, setDisplayTexts] = useState<Map<string, string>>(new Map());
+
+  const sortedHelpers = useMemo(() => {
+    return helpers
+      .filter(helper => {
+        // 削除されていないヘルパーは常に表示
+        if (!helper.deleted) return true;
+
+        // 削除されている場合、その月にデータ（シフト、休み希望、指定休）があるかチェック
+        const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+
+        // 1. シフトがあるか
+        const hasShifts = shifts.some(s => s.helperId === helper.id);
+        if (hasShifts) return true;
+
+        // 2. 休み希望があるか
+        const hasDayOff = Array.from(dayOffRequests.keys()).some(key =>
+          key.startsWith(`${helper.id}-`) && key.includes(monthStr)
+        );
+        if (hasDayOff) return true;
+
+        // 3. 指定休があるか
+        const hasScheduled = Array.from(scheduledDayOffs.keys()).some(key =>
+          key.startsWith(`${helper.id}-`) && key.includes(monthStr)
+        );
+        if (hasScheduled) return true;
+
+        return false;
+      })
+      .sort((a, b) => a.order - b.order);
+  }, [helpers, shifts, dayOffRequests, scheduledDayOffs, year, month]);
+  const weeks = useMemo(() => groupByWeek(year, month), [year, month]);
 
   // 前回選択されたセルを記録（高速クリーンアップ用）
   const lastSelectedCellRef = useRef<HTMLElement | null>(null);
@@ -1085,6 +1113,38 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     unsubscribeCurrent = subscribeToDayOffRequestsMap(year, month, (reqs) => handleUpdate(reqs, false));
     if (month === 12) {
       unsubscribeNext = subscribeToDayOffRequestsMap(year + 1, 1, (reqs) => handleUpdate(reqs, true));
+    }
+
+    return () => {
+      unsubscribeCurrent();
+      unsubscribeNext();
+    };
+  }, [year, month]);
+
+  // 指定休を読み込み（リアルタイム）
+  useEffect(() => {
+    let unsubscribeCurrent = () => { };
+    let unsubscribeNext = () => { };
+
+    const handleUpdate = (requests: Map<string, boolean>, isNextMonth: boolean) => {
+      setScheduledDayOffs(prev => {
+        const newMap = new Map(prev);
+        const monthPrefix = isNextMonth
+          ? `${month === 12 ? year + 1 : year}-${String(month === 12 ? 1 : month + 1).padStart(2, '0')}`
+          : `${year}-${String(month).padStart(2, '0')}`;
+
+        // 現在表示している月のデータ以外を一度消してマージ（または月ごとに管理）
+        // ここでは単純化のため、全データをスプレッドしてマージ
+        for (const [key, value] of requests.entries()) {
+          newMap.set(key, value);
+        }
+        return newMap;
+      });
+    };
+
+    unsubscribeCurrent = subscribeToScheduledDayOffs(year, month, (reqs) => handleUpdate(reqs, false));
+    if (month === 12) {
+      unsubscribeNext = subscribeToScheduledDayOffs(year + 1, 1, (reqs) => handleUpdate(reqs, true));
     }
 
     return () => {
