@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>シフト管理</title>
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Apple Touch Icon (必須) -->
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icon-192.png" />
+
+    <!-- PWA対応 -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="シフト管理" />
+
+    <!-- Theme Color -->
+    <meta name="theme-color" content="#3b82f6" />
+
+    <!-- Description -->
+    <meta name="description" content="介護シフト管理システム" />
+
+    <!-- Cross-Origin Policy -->
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin-allow-popups" />
+
+    <!-- Content Security Policy - 開発環境用（Googleスプレッドシート埋め込みとVite HMR対応） -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;
+      script-src * 'unsafe-inline' 'unsafe-eval';
+      style-src * 'unsafe-inline';
+      img-src * data: blob:;
+      font-src * data:;
+      frame-src *;
+      connect-src *;
+    ">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
