@@ -1,21 +1,21 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import type { Helper } from '../types';
-import { loadHelpers, saveHelpers } from '../services/firestoreService';
+import { loadHelpers, saveHelpers, subscribeToHelpers } from '../services/firestoreService';
 
 const HelperManagementPage: React.FC = () => {
   const [helpers, setHelpers] = useState<Helper[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
+  // ヘルパーデータのリアルタイム監視
   useEffect(() => {
-    const fetchHelpers = async () => {
-      setIsLoading(true);
-      const loadedHelpers = await loadHelpers();
-      setHelpers(loadedHelpers);
+    setIsLoading(true);
+    const unsubscribe = subscribeToHelpers((updatedHelpers) => {
+      setHelpers(updatedHelpers);
       setIsLoading(false);
-    };
-    fetchHelpers();
+    });
+    return () => unsubscribe();
   }, []);
 
   // 検索フィルター
@@ -25,8 +25,13 @@ const HelperManagementPage: React.FC = () => {
   });
 
   // ステータスバッジの色（ヘルパーはデフォルトで稼働中扱い）
-  const getEmploymentTypeBadge = (employmentType?: string) => {
-    switch (employmentType) {
+  const getEmploymentTypeBadge = (helper: Helper) => {
+    // 給与タイプが固定給の場合は「正社員」として表示
+    if (helper.salaryType === 'fixed') {
+      return { color: 'bg-blue-100 text-blue-800', label: '正社員' };
+    }
+
+    switch (helper.employmentType) {
       case 'fulltime':
         return { color: 'bg-blue-100 text-blue-800', label: '正社員' };
       case 'contract':
@@ -131,17 +136,25 @@ const HelperManagementPage: React.FC = () => {
         {!isLoading && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredHelpers.map((helper) => {
-              const employmentBadge = getEmploymentTypeBadge(helper.employmentType);
-              const isFixedSalary = helper.employmentType === 'fulltime' || helper.employmentType === 'contract';
+              const employmentBadge = getEmploymentTypeBadge(helper);
+
+              // 給与タイプ判定（詳細ページと同じロジックにする）
+              let isFixedSalary = helper.employmentType === 'fulltime' || helper.employmentType === 'contract';
+              if (helper.salaryType) {
+                isFixedSalary = helper.salaryType === 'fixed';
+              }
 
               return (
                 <div
                   key={helper.id}
-                  className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow border border-gray-200 overflow-hidden cursor-pointer"
+                  className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow border border-gray-200 overflow-hidden cursor-pointer flex flex-col h-full"
                   onClick={() => window.location.href = `/helpers/${helper.id}`}
                 >
-                  {/* カードヘッダー */}
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-200">
+                  {/* カードヘッダー（男性は青、女性はピンク） */}
+                  <div className={`px-6 py-4 border-b border-gray-200 ${helper.gender === 'female'
+                    ? 'bg-gradient-to-r from-pink-50 to-rose-50'
+                    : 'bg-gradient-to-r from-blue-50 to-indigo-50'
+                    }`}>
                     <div className="flex items-start justify-between">
                       <div>
                         <h3 className="text-lg font-bold text-gray-800">
@@ -155,7 +168,7 @@ const HelperManagementPage: React.FC = () => {
                   </div>
 
                   {/* カードコンテンツ */}
-                  <div className="px-6 py-4 space-y-3">
+                  <div className="px-6 py-4 space-y-3 flex-1">
                     {/* 時給制の場合 */}
                     {!isFixedSalary && (
                       <>

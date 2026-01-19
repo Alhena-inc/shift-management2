@@ -4776,50 +4776,49 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                               return;
                             }
 
-                            // 通常のクリック・ドラッグでセル選択
+                            // ★★★ 高速化：通常クリック時は再レンダリングなしで即座に青枠表示
                             const isMultiSelect = e.ctrlKey || e.metaKey;
 
-                            // 既存のShift+ドラッグ選択をクリア（Refのみ更新・再レンダリングなし）
+                            // ★ まず既存の青枠をすべて即座にクリア（DOM直接操作）
+                            document.querySelectorAll('.line-selected').forEach(el => {
+                              el.classList.remove('line-selected');
+                            });
+                            document.querySelectorAll('.cell-selected').forEach(el => {
+                              el.classList.remove('cell-selected');
+                            });
+                            lastSelectedRowTdsRef.current.forEach(td => {
+                              td.style.removeProperty('outline');
+                              td.style.removeProperty('outline-offset');
+                              td.style.removeProperty('z-index');
+                            });
+                            lastSelectedRowTdsRef.current = [];
+
+                            // Refのみ更新（再レンダリングなし）
                             selectedRowsRef.current.clear();
-                            // 現在のセルを選択に追加
                             const cellKey = `${helper.id}-${day.date}-${rowIndex}`;
                             selectedRowsRef.current.add(cellKey);
 
-                            setSelectedRows(new Set(selectedRowsRef.current));
-                            lastSelectedRowTdsRef.current.forEach(td => {
-                              td.style.removeProperty('outline');
-                              td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index');
-                            });
-                            lastSelectedRowTdsRef.current = [];
+                            // ★★★ setSelectedRowsは呼ばない！再レンダリングを避ける
+                            // 必要な場合のみ後で非同期で更新（右クリックメニュー用など）
 
                             // ★ コピー&ペースト用に現在選択されているセルを記録
                             selectedCellRef.helperId = helper.id;
                             selectedCellRef.date = day.date;
                             selectedCellRef.rowIndex = rowIndex;
 
-                            // ★ 前回選択された行の青枠を削除
-                            document.querySelectorAll('.line-selected').forEach(el => {
-                              el.classList.remove('line-selected');
-                            });
-
-                            // ★ cell-selectedクラスも削除
-                            document.querySelectorAll('.cell-selected').forEach(el => {
-                              el.classList.remove('cell-selected');
-                            });
-
-                            // ★ tdの青枠は設定しない（Reactがstyleプロパティで処理するため）
                             const currentTd = e.currentTarget as HTMLElement;
                             lastSelectedTdRef.current = currentTd;
 
-                            // ★ クリックされた位置から対象の行を特定して強調
+                            // ★★★ 即座に青枠をDOM直接操作で表示（最速）
                             const targetElement = e.target as HTMLElement;
                             const clickedCell = targetElement.closest('.editable-cell') as HTMLElement;
                             if (clickedCell) {
+                              clickedCell.classList.add('line-selected');
                               lastSelectedCellRef.current = clickedCell;
                             } else {
-                              // padding部分などのクリック時は従来通り最初の行を選択
                               const firstCell = currentTd.querySelector('.editable-cell') as HTMLElement;
                               if (firstCell) {
+                                firstCell.classList.add('line-selected');
                                 lastSelectedCellRef.current = firstCell;
                               }
                             }

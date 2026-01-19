@@ -2,7 +2,24 @@ import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import type { Helper } from '../types';
 import { getGoogleAccessToken } from '../services/googleAuthService';
 import { addHelperColumn } from '../services/googleSheetsApi';
-import { deleteHelper, softDeleteHelper } from '../services/firestoreService';
+import { softDeleteHelper } from '../services/firestoreService';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 // ランダムトークン生成関数（10文字）
 const generateToken = (): string => {
@@ -14,6 +31,186 @@ const generateToken = (): string => {
   return token;
 };
 
+interface SortableHelperRowProps {
+  helper: Helper;
+  isEditing: boolean;
+  editFirstName: string;
+  baseUrl: string;
+  isSaving: boolean;
+  onStartEdit: (helper: Helper) => void;
+  onSaveEdit: () => void;
+  onCancelEdit: () => void;
+  onDelete: (id: string) => void;
+  onCopyUrl: (token: string) => void;
+  onGenerateToken: (id: string) => void;
+  onEditChange: (value: string) => void;
+}
+
+const SortableHelperRow = ({
+  helper,
+  isEditing,
+  editFirstName,
+  baseUrl,
+  isSaving,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+  onDelete,
+  onCopyUrl,
+  onGenerateToken,
+  onEditChange
+}: SortableHelperRowProps) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: helper.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : 1,
+    position: 'relative' as const,
+  };
+
+  const bgColor = helper.gender === 'male' ? 'bg-blue-50' : 'bg-pink-50';
+  const borderColor = helper.gender === 'male' ? '#93c5fd' : '#f9a8d4';
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="border-2 rounded-lg transition-all mb-2 bg-white"
+    >
+      <div
+        className="border-b rounded-t-lg transition-all"
+        style={{ borderColor }}
+      >
+        <div className={`flex items-center justify-between p-4 ${bgColor} rounded-t-lg`}>
+          <div className="flex items-center gap-4 flex-1">
+            {/* ドラッグハンドル */}
+            {!isEditing && (
+              <div
+                {...attributes}
+                {...listeners}
+                className="cursor-move p-2 hover:bg-black/5 rounded touch-none"
+              >
+                <span className="text-2xl text-gray-500">☰</span>
+              </div>
+            )}
+
+            <span className="text-2xl">{helper.gender === 'male' ? '👨' : '👩'}</span>
+
+            <div className="flex-1">
+              {isEditing ? (
+                <div className="space-y-3">
+                  <div className="font-medium text-lg">{helper.name}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">苗字: {helper.name}</span>
+                    <span className="text-sm text-gray-600">+</span>
+                    <input
+                      type="text"
+                      value={editFirstName}
+                      onChange={(e) => onEditChange(e.target.value)}
+                      placeholder="名前を入力"
+                      className="flex-1 px-3 py-2 border rounded text-sm"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="font-medium text-lg">{helper.name}</div>
+                  <div className="text-sm text-gray-600">
+                    {helper.gender === 'male' ? '男性' : '女性'} · 順番: {helper.order}
+                    {helper.lastName && helper.firstName && ` · ${helper.lastName}${helper.firstName}`}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            {isEditing ? (
+              <>
+                <button
+                  onClick={onSaveEdit}
+                  disabled={isSaving}
+                  className="px-3 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm disabled:opacity-50"
+                >
+                  {isSaving ? '保存中...' : '✓ 保存'}
+                </button>
+                <button
+                  onClick={onCancelEdit}
+                  disabled={isSaving}
+                  className="px-3 py-1 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm disabled:opacity-50"
+                >
+                  ✕ キャンセル
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => onStartEdit(helper)}
+                  className="px-3 py-1 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                >
+                  ✏️ 編集
+                </button>
+                <button
+                  onClick={() => onDelete(helper.id)}
+                  className="px-3 py-1 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  🗑️ 削除
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 個人シフト表URL部分 */}
+      <div className="p-4 bg-white rounded-b-lg">
+        <div className="text-sm font-medium mb-2">📱 個人シフト表URL</div>
+        {helper.personalToken ? (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={`${baseUrl}/personal/${helper.personalToken}`}
+                readOnly
+                className="flex-1 px-3 py-2 text-sm border rounded bg-gray-50"
+              />
+              <button
+                onClick={() => onCopyUrl(helper.personalToken!)}
+                className="px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm whitespace-nowrap"
+              >
+                📋 コピー
+              </button>
+            </div>
+            <button
+              onClick={() => onGenerateToken(helper.id)}
+              className="text-xs text-gray-500 hover:text-gray-700 text-left"
+            >
+              🔄 URLを再生成
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => onGenerateToken(helper.id)}
+            className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
+          >
+            ✨ URLを生成
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
 interface Props {
   helpers: Helper[];
   onUpdate: (helpers: Helper[]) => void;
@@ -21,7 +218,6 @@ interface Props {
 }
 
 export const HelperManager = memo(function HelperManager({ helpers, onUpdate, onClose }: Props) {
-  // 開発環境では常に現在のURLを使用（本番環境では環境変数を優先）
   const isDevelopment = import.meta.env.DEV;
   const baseUrl = isDevelopment ? window.location.origin : (import.meta.env.VITE_APP_URL || window.location.origin);
 
@@ -30,43 +226,81 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
   const [newHelperFirstName, setNewHelperFirstName] = useState('');
   const [newHelperGender, setNewHelperGender] = useState<'male' | 'female'>('male');
   const [showAddForm, setShowAddForm] = useState(false);
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-  const listContainerRef = useRef<HTMLDivElement>(null);
-  const scrollIntervalRef = useRef<number | null>(null);
   const [localHelpers, setLocalHelpers] = useState<Helper[]>(helpers);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [editingHelperId, setEditingHelperId] = useState<string | null>(null);
   const [editHelperFirstName, setEditHelperFirstName] = useState('');
 
+  // DnD Sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (active.id !== over?.id) {
+      const oldIndex = localHelpers.findIndex((item) => item.id === active.id);
+      const newIndex = localHelpers.findIndex((item) => item.id === over?.id);
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const newHelpers = arrayMove(localHelpers, oldIndex, newIndex);
+
+        // orderを再設定
+        const reorderedHelpers = newHelpers.map((h, idx) => ({ ...h, order: idx + 1 }));
+
+        setLocalHelpers(reorderedHelpers);
+        setHasChanges(false);
+
+        // 即座に保存
+        setIsSaving(true);
+        try {
+          console.log('💾 並び替えを保存中...');
+          await onUpdate(reorderedHelpers);
+          console.log('✅ 並び替えを保存しました');
+        } catch (error) {
+          console.error('❌ 保存エラー:', error);
+          alert('並び替えの保存に失敗しました');
+          setLocalHelpers(localHelpers); // Revert
+        } finally {
+          setIsSaving(false);
+        }
+      }
+    }
+  }, [localHelpers, onUpdate]);
+
   const handleAddHelper = useCallback(async () => {
-    // 苗字または名前のどちらかが入力されていればOK
     const lastName = newHelperLastName.trim();
     const firstName = newHelperFirstName.trim();
-    const displayName = newHelperName.trim() || lastName; // nameが空なら苗字を使用
+    const displayName = newHelperName.trim() || lastName;
 
     if (!displayName) {
       alert('苗字を入力してください');
       return;
     }
 
-    // 男性と女性を分ける
     const maleHelpers = localHelpers.filter(h => h.gender === 'male');
     const femaleHelpers = localHelpers.filter(h => h.gender === 'female');
 
-    // 新しいIDと順番を計算
     const maxId = Math.max(...localHelpers.map(h => parseInt(h.id)), 0);
     const newHelper: Helper = {
       id: String(maxId + 1),
       name: displayName,
-      ...(lastName && { lastName }), // lastNameが空でない場合のみ追加
-      ...(firstName && { firstName }), // firstNameが空でない場合のみ追加
+      ...(lastName && { lastName }),
+      ...(firstName && { firstName }),
       gender: newHelperGender,
-      order: 0, // 仮の値
-      personalToken: generateToken(), // 新規作成時にURLトークンを自動生成
+      order: 0,
+      personalToken: generateToken(),
     };
 
-    // 性別に応じて最後に追加
     let updatedHelpers: Helper[];
     if (newHelperGender === 'male') {
       updatedHelpers = [...maleHelpers, newHelper, ...femaleHelpers];
@@ -74,171 +308,35 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
       updatedHelpers = [...maleHelpers, ...femaleHelpers, newHelper];
     }
 
-    // orderを再設定
     updatedHelpers = updatedHelpers.map((h, idx) => ({ ...h, order: idx + 1 }));
 
-    // 即座にFirebaseに保存
     setIsSaving(true);
     try {
-      console.log(`💾 ${displayName}さんをFirebaseに保存中...`);
-
       await onUpdate(updatedHelpers);
-
-      console.log(`✅ ${displayName}さんをFirebaseに保存しました`);
-
-      // Firestoreの書き込み完了を確実に待つ（500msに延長）
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Google Sheetsに列を追加
       try {
-        console.log(`📊 Googleスプレッドシートに${displayName}さんの列を追加中...`);
-
-        // Google OAuth認証（初回のみポップアップ表示）
         const accessToken = await getGoogleAccessToken();
-
-        // スプレッドシートに列を追加
         await addHelperColumn(displayName, accessToken);
-
-        console.log(`✅ Googleスプレッドシートに${displayName}さんの列を追加しました`);
       } catch (error) {
-        console.error('❌ スプレッドシートへの列追加に失敗:', error);
-        // スプレッドシートの更新に失敗してもヘルパー登録は成功とする
-        const errorMessage = error instanceof Error ? error.message : String(error);
-
-        // 403エラーの場合は、スプレッドシート共有設定の案内を表示
-        if (errorMessage.includes('403') || errorMessage.includes('アクセスできません')) {
-          alert(
-            `⚠️ ${displayName}さんは登録されましたが、スプレッドシートへの列追加に失敗しました。\n\n` +
-            `【原因】\n` +
-            `スプレッドシートへのアクセス権限がありません。\n\n` +
-            `【対処方法】\n` +
-            `1. Googleスプレッドシートを開く:\n` +
-            `   https://docs.google.com/spreadsheets/d/1hrNbQ3X9bkFqNe3zoZgs3vQF54K2rmFxXNJm_0Xg5m0/edit\n\n` +
-            `2. 右上の「共有」ボタンをクリック\n\n` +
-            `3. 認証したGoogleアカウントを「編集者」として追加\n` +
-            `   または「リンクを知っている全員」を「編集者」に変更\n\n` +
-            `4. もう一度ヘルパー追加をお試しください`
-          );
-        } else {
-          alert(
-            `⚠️ ${displayName}さんは登録されましたが、スプレッドシートへの列追加に失敗しました:\n\n` +
-            `${errorMessage}\n\n` +
-            `手動でスプレッドシートに列を追加してください。`
-          );
-        }
+        console.error('Spreadsheet error:', error);
+        // Continue even if spreadsheet fails
       }
 
       setLocalHelpers(updatedHelpers);
-      setHasChanges(false);
       setNewHelperName('');
       setNewHelperLastName('');
       setNewHelperFirstName('');
       setNewHelperGender('male');
       setShowAddForm(false);
-
-      // 保存成功メッセージを表示（シフト表に戻らない）
       alert(`✅ ${displayName}さんを保存しました`);
     } catch (error) {
-      console.error('❌ ヘルパーの追加に失敗しました:', error);
-      alert(`❌ ${displayName}さんの追加に失敗しました。\n\nエラー: ${error instanceof Error ? error.message : '不明なエラー'}\n\nもう一度お試しください。`);
-
-      // エラー時はローカルステートも元に戻す
-      setLocalHelpers(localHelpers);
+      console.error('Add helper error:', error);
+      alert(`追加に失敗しました: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsSaving(false);
     }
   }, [localHelpers, newHelperLastName, newHelperFirstName, newHelperName, newHelperGender, onUpdate]);
-
-  // クリーンアップ: スクロールインターバルをクリア
-  useEffect(() => {
-    return () => {
-      if (scrollIntervalRef.current) {
-        clearInterval(scrollIntervalRef.current);
-      }
-    };
-  }, []);
-
-  const handleDragStart = useCallback((index: number) => {
-    setDraggedIndex(index);
-  }, []);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-
-    // 自動スクロール処理
-    const container = listContainerRef.current;
-    if (!container) return;
-
-    const rect = container.getBoundingClientRect();
-    const scrollThreshold = 80; // スクロールを開始する境界の高さ
-    const scrollSpeed = 10; // スクロール速度
-
-    const mouseY = e.clientY - rect.top;
-
-    // 既存のスクロールインターバルをクリア
-    if (scrollIntervalRef.current) {
-      clearInterval(scrollIntervalRef.current);
-      scrollIntervalRef.current = null;
-    }
-
-    // 上端に近い場合は上にスクロール
-    if (mouseY < scrollThreshold && mouseY > 0) {
-      scrollIntervalRef.current = window.setInterval(() => {
-        container.scrollTop -= scrollSpeed;
-      }, 16);
-    }
-    // 下端に近い場合は下にスクロール
-    else if (mouseY > rect.height - scrollThreshold && mouseY < rect.height) {
-      scrollIntervalRef.current = window.setInterval(() => {
-        container.scrollTop += scrollSpeed;
-      }, 16);
-    }
-  }, []);
-
-  const handleDrop = useCallback(async (dropIndex: number) => {
-    // スクロールインターバルをクリア
-    if (scrollIntervalRef.current) {
-      clearInterval(scrollIntervalRef.current);
-      scrollIntervalRef.current = null;
-    }
-
-    if (draggedIndex === null || draggedIndex === dropIndex) {
-      setDraggedIndex(null);
-      return;
-    }
-
-    const updatedHelpers = [...localHelpers];
-    const [draggedHelper] = updatedHelpers.splice(draggedIndex, 1);
-    updatedHelpers.splice(dropIndex, 0, draggedHelper);
-
-    // orderを再設定
-    const reorderedHelpers = updatedHelpers.map((h, idx) => ({ ...h, order: idx + 1 }));
-
-    setLocalHelpers(reorderedHelpers);
-    setDraggedIndex(null);
-
-    // 即座にFirebaseに保存
-    setIsSaving(true);
-    try {
-      console.log('💾 ヘルパーの順番を保存中...');
-
-      await onUpdate(reorderedHelpers);
-
-      setHasChanges(false);
-      console.log('✅ ヘルパーの順番を保存しました');
-
-      // 小さな成功フィードバック（アラートなし）
-      // アラートは出さずにコンソールログのみ
-    } catch (error) {
-      console.error('❌ ヘルパーの順番保存に失敗しました:', error);
-      alert('❌ 順番の保存に失敗しました。もう一度お試しください。');
-
-      // エラー時は元の順番に戻す
-      setLocalHelpers(localHelpers);
-    } finally {
-      setIsSaving(false);
-    }
-  }, [draggedIndex, localHelpers, onUpdate]);
 
   const handleStartEdit = useCallback((helper: Helper) => {
     setEditingHelperId(helper.id);
@@ -256,8 +354,8 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
         const trimmedFirstName = editHelperFirstName.trim();
         return {
           ...h,
-          lastName: h.name, // 現在のnameを苗字として設定
-          ...(trimmedFirstName && { firstName: trimmedFirstName }) // firstNameが空でない場合のみ追加
+          lastName: h.name,
+          ...(trimmedFirstName && { firstName: trimmedFirstName })
         };
       }
       return h;
@@ -267,19 +365,15 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
     setEditingHelperId(null);
     setEditHelperFirstName('');
 
-    // 即座にFirestoreに保存
     setIsSaving(true);
     try {
-      console.log('💾 名前の編集を保存中...');
       await onUpdate(updatedHelpers);
-      console.log('✅ 名前の編集を保存しました');
       alert('✅ 保存しました');
     } catch (error) {
-      console.error('❌ 保存エラー:', error);
-      alert('❌ 保存に失敗しました');
+      console.error('Save error:', error);
+      alert('保存に失敗しました');
     } finally {
       setIsSaving(false);
-      setHasChanges(false);
     }
   }, [editingHelperId, localHelpers, editHelperFirstName, onUpdate]);
 
@@ -287,12 +381,6 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
     setEditingHelperId(null);
     setEditHelperFirstName('');
   }, []);
-
-  // Assuming this import statement exists at the top of the file or needs to be added.
-  // If it's not present, it should be added at the top of the file.
-  // For this specific instruction, I'm placing it where the instruction implies,
-  // but typically imports are at the top.
-
 
   const handleDeleteHelper = useCallback(async (helperId: string) => {
     const helperName = localHelpers.find(h => h.id === helperId)?.name || '';
@@ -306,28 +394,14 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
       .map((h, idx) => ({ ...h, order: idx + 1 }));
 
     setLocalHelpers(updatedHelpers);
-
-    // 即座にFirebaseに保存
     setIsSaving(true);
     try {
-      console.log(`💾 ${helperName}さんを削除中...`);
-
-      // 1. 論理削除を実行（データは残る）
       await softDeleteHelper(helperId);
-
-      // 2. 残りのリストを保存（順序更新など）
       await onUpdate(updatedHelpers);
-
-      setHasChanges(false);
-      console.log(`✅ ${helperName}さんを削除しました`);
-
-      // 削除成功メッセージ
       alert(`✅ ${helperName}さんを削除しました`);
     } catch (error) {
-      console.error('❌ ヘルパーの削除に失敗しました:', error);
-      alert(`❌ ${helperName}さんの削除に失敗しました。\n\nエラー: ${error instanceof Error ? error.message : '不明なエラー'}\n\nもう一度お試しください。`);
-
-      // 失敗した場合は元に戻す
+      console.error('Delete error:', error);
+      alert('削除に失敗しました');
       setLocalHelpers(localHelpers);
     } finally {
       setIsSaving(false);
@@ -349,20 +423,12 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
     );
     setLocalHelpers(updatedHelpers);
 
-    // 即座にFirebaseに保存
     setIsSaving(true);
     try {
-      console.log('💾 URLを生成中...');
-
       await onUpdate(updatedHelpers);
-
-      setHasChanges(false);
-      console.log('✅ URLを生成して保存しました');
     } catch (error) {
-      console.error('❌ URL生成の保存に失敗しました:', error);
-      alert(`URL生成の保存に失敗しました。\n\nエラー: ${error instanceof Error ? error.message : '不明なエラー'}\n\nもう一度お試しください。`);
-
-      // 失敗した場合は元に戻す
+      console.error('Token gen error:', error);
+      alert('URL生成の保存に失敗しました');
       setLocalHelpers(localHelpers);
     } finally {
       setIsSaving(false);
@@ -385,8 +451,7 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
         onClose();
       }, 300);
     } catch (error) {
-      console.error('保存に失敗しました:', error);
-      alert('保存に失敗しました。もう一度お試しください。');
+      alert('保存に失敗しました');
     } finally {
       setIsSaving(false);
     }
@@ -443,138 +508,38 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
           </div>
 
           <p className="text-sm text-gray-600 mb-4">
-            ドラッグ＆ドロップで順番を入れ替えられます
+            ドラッグ＆ドロップで順番を入れ替えられます（≡ アイコンをドラッグ）
           </p>
 
-          {/* ヘルパーリスト表示 */}
-          <div ref={listContainerRef} className="space-y-2 max-h-[600px] overflow-y-auto">
-            {localHelpers.map((helper, index) => {
-              // 性別に応じた背景色
-              const bgColor = helper.gender === 'male'
-                ? 'bg-blue-50'
-                : 'bg-pink-50';
-
-              return (
-                <div
-                  key={helper.id}
-                  className="border-2 rounded-lg transition-all"
-                  style={{ borderColor: helper.gender === 'male' ? '#93c5fd' : '#f9a8d4' }}
-                >
-                  {/* ドラッグ可能なヘッダー部分 */}
-                  <div
-                    draggable={editingHelperId !== helper.id}
-                    onDragStart={() => handleDragStart(index)}
-                    onDragOver={handleDragOver}
-                    onDrop={() => handleDrop(index)}
-                    className={`flex items-center justify-between p-4 ${editingHelperId !== helper.id ? 'cursor-move' : ''} ${bgColor} ${draggedIndex === index ? 'opacity-50' : ''
-                      }`}
-                  >
-                    <div className="flex items-center gap-4 flex-1">
-                      {editingHelperId !== helper.id && <span className="text-2xl">☰</span>}
-                      <span className="text-2xl">{helper.gender === 'male' ? '👨' : '👩'}</span>
-                      <div className="flex-1">
-                        {editingHelperId === helper.id ? (
-                          <div className="space-y-3">
-                            <div className="font-medium text-lg">{helper.name}</div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm text-gray-600">苗字: {helper.name}</span>
-                              <span className="text-sm text-gray-600">+</span>
-                              <input
-                                type="text"
-                                value={editHelperFirstName}
-                                onChange={(e) => setEditHelperFirstName(e.target.value)}
-                                placeholder="名前を入力"
-                                className="flex-1 px-3 py-2 border rounded text-sm"
-                                autoFocus
-                              />
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="font-medium text-lg">{helper.name}</div>
-                            <div className="text-sm text-gray-600">
-                              {helper.gender === 'male' ? '男性' : '女性'} · 順番: {helper.order}
-                              {helper.lastName && helper.firstName && ` · ${helper.lastName}${helper.firstName}`}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      {editingHelperId === helper.id ? (
-                        <>
-                          <button
-                            onClick={handleSaveEdit}
-                            disabled={isSaving}
-                            className="px-3 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {isSaving ? '保存中...' : '✓ 保存'}
-                          </button>
-                          <button
-                            onClick={handleCancelEdit}
-                            disabled={isSaving}
-                            className="px-3 py-1 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            ✕ キャンセル
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => handleStartEdit(helper)}
-                            className="px-3 py-1 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                          >
-                            ✏️ 編集
-                          </button>
-                          <button
-                            onClick={() => handleDeleteHelper(helper.id)}
-                            className="px-3 py-1 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          >
-                            🗑️ 削除
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 個人シフト表URL部分 */}
-                  <div className="p-4 bg-white border-t">
-                    <div className="text-sm font-medium mb-2">📱 個人シフト表URL</div>
-                    {helper.personalToken ? (
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={`${baseUrl}/personal/${helper.personalToken}`}
-                            readOnly
-                            className="flex-1 px-3 py-2 text-sm border rounded bg-gray-50"
-                          />
-                          <button
-                            onClick={() => handleCopyUrl(helper.personalToken!)}
-                            className="px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm whitespace-nowrap"
-                          >
-                            📋 コピー
-                          </button>
-                        </div>
-                        <button
-                          onClick={() => handleGenerateToken(helper.id)}
-                          className="text-xs text-gray-500 hover:text-gray-700 text-left"
-                        >
-                          🔄 URLを再生成
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => handleGenerateToken(helper.id)}
-                        className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
-                      >
-                        ✨ URLを生成
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+          <div className="max-h-[600px] overflow-y-auto pr-2">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={localHelpers.map(h => h.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {localHelpers.map((helper) => (
+                  <SortableHelperRow
+                    key={helper.id}
+                    helper={helper}
+                    isEditing={editingHelperId === helper.id}
+                    editFirstName={editHelperFirstName}
+                    baseUrl={baseUrl}
+                    isSaving={isSaving}
+                    onStartEdit={handleStartEdit}
+                    onSaveEdit={handleSaveEdit}
+                    onCancelEdit={handleCancelEdit}
+                    onDelete={handleDeleteHelper}
+                    onCopyUrl={handleCopyUrl}
+                    onGenerateToken={handleGenerateToken}
+                    onEditChange={setEditHelperFirstName}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
           </div>
         </div>
 
@@ -582,8 +547,6 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
         {showAddForm && (
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-xl font-bold mb-4">新しいヘルパーを追加</h2>
-
-            {/* フォーム */}
             <div className="space-y-6">
               <div>
                 <label className="block text-lg font-medium mb-3">シフト表表示名（苗字のみでOK）</label>
@@ -653,7 +616,6 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
               </div>
             </div>
 
-            {/* ボタン */}
             <div className="flex gap-4 mt-8">
               <button
                 onClick={() => {
