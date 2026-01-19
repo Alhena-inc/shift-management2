@@ -108,7 +108,12 @@ const SortableHelperRow = ({
             <div className="flex-1">
               {isEditing ? (
                 <div className="space-y-3">
-                  <div className="font-medium text-lg">{helper.name}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold px-1.5 py-0.5 bg-gray-600 text-white rounded opacity-60">
+                      #{helper.order}
+                    </span>
+                    <div className="font-medium text-lg">{helper.name}</div>
+                  </div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-gray-600">苗字: {helper.name}</span>
                     <span className="text-sm text-gray-600">+</span>
@@ -124,9 +129,14 @@ const SortableHelperRow = ({
                 </div>
               ) : (
                 <>
-                  <div className="font-medium text-lg">{helper.name}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold px-1.5 py-0.5 bg-gray-600 text-white rounded opacity-60">
+                      #{helper.order}
+                    </span>
+                    <div className="font-medium text-lg">{helper.name}</div>
+                  </div>
                   <div className="text-sm text-gray-600">
-                    {helper.gender === 'male' ? '男性' : '女性'} · 順番: {helper.order}
+                    {helper.gender === 'male' ? '男性' : '女性'}
                     {helper.lastName && helper.firstName && ` · ${helper.lastName}${helper.firstName}`}
                   </div>
                 </>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { Helper, Shift } from '../types';
 import { calculatePayrollData, sendPayrollToSheetsViaZapier } from '../services/zapierPayrollService';
 
@@ -11,6 +11,7 @@ interface Props {
 }
 
 export function PayrollStatementModal({ helpers, shifts, year, month, onClose }: Props) {
+  const sortedHelpers = useMemo(() => [...helpers].sort((a, b) => (a.order || 0) - (b.order || 0) || a.id.localeCompare(b.id)), [helpers]);
   const [selectedHelpers, setSelectedHelpers] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processStatus, setProcessStatus] = useState<{
@@ -21,10 +22,10 @@ export function PayrollStatementModal({ helpers, shifts, year, month, onClose }:
 
   // 全員選択/解除
   const handleSelectAll = () => {
-    if (selectedHelpers.length === helpers.length) {
+    if (selectedHelpers.length === sortedHelpers.length) {
       setSelectedHelpers([]);
     } else {
-      setSelectedHelpers(helpers.map(h => h.id));
+      setSelectedHelpers(sortedHelpers.map(h => h.id));
     }
   };
 
@@ -69,12 +70,12 @@ export function PayrollStatementModal({ helpers, shifts, year, month, onClose }:
         setProcessStatus(prev => prev.map(status =>
           status.helperName === helper.name
             ? {
-                helperName: helper.name,
-                status: result.success ? 'success' : 'error',
-                message: result.success
-                  ? `シート「${result.sheetName}」を作成しました`
-                  : result.error || '送信に失敗しました'
-              }
+              helperName: helper.name,
+              status: result.success ? 'success' : 'error',
+              message: result.success
+                ? `シート「${result.sheetName}」を作成しました`
+                : result.error || '送信に失敗しました'
+            }
             : status
         ));
 
@@ -87,10 +88,10 @@ export function PayrollStatementModal({ helpers, shifts, year, month, onClose }:
         setProcessStatus(prev => prev.map(status =>
           status.helperName === helper.name
             ? {
-                helperName: helper.name,
-                status: 'error',
-                message: error instanceof Error ? error.message : '予期しないエラー'
-              }
+              helperName: helper.name,
+              status: 'error',
+              message: error instanceof Error ? error.message : '予期しないエラー'
+            }
             : status
         ));
       }
@@ -140,12 +141,12 @@ export function PayrollStatementModal({ helpers, shifts, year, month, onClose }:
                   onClick={handleSelectAll}
                   className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-semibold"
                 >
-                  {selectedHelpers.length === helpers.length ? '全解除' : '全選択'}
+                  {selectedHelpers.length === sortedHelpers.length ? '全解除' : '全選択'}
                 </button>
               </div>
 
               <div className="mb-6 max-h-96 overflow-y-auto border-2 border-gray-200 rounded-lg">
-                {helpers.map(helper => {
+                {sortedHelpers.map(helper => {
                   const isSelected = selectedHelpers.includes(helper.id);
                   const payType = helper.salaryType || 'hourly';
 
@@ -153,24 +154,22 @@ export function PayrollStatementModal({ helpers, shifts, year, month, onClose }:
                     <div
                       key={helper.id}
                       onClick={() => handleToggleHelper(helper.id)}
-                      className={`p-4 border-b border-gray-200 cursor-pointer transition-colors ${
-                        isSelected ? 'bg-blue-100' : 'hover:bg-gray-50'
-                      }`}
+                      className={`p-4 border-b border-gray-200 cursor-pointer transition-colors ${isSelected ? 'bg-blue-100' : 'hover:bg-gray-50'
+                        }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <input
                             type="checkbox"
                             checked={isSelected}
-                            onChange={() => {}}
+                            onChange={() => { }}
                             className="w-5 h-5 cursor-pointer"
                           />
                           <span className="text-lg font-bold text-gray-800">{helper.name}</span>
-                          <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                            payType === 'hourly'
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-purple-100 text-purple-700'
-                          }`}>
+                          <span className={`px-3 py-1 rounded-full text-sm font-semibold ${payType === 'hourly'
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-purple-100 text-purple-700'
+                            }`}>
                             {payType === 'hourly' ? '時給' : '固定給'}
                           </span>
                         </div>
@@ -191,11 +190,10 @@ export function PayrollStatementModal({ helpers, shifts, year, month, onClose }:
                 <button
                   onClick={handleCreatePayrollStatements}
                   disabled={selectedHelpers.length === 0}
-                  className={`px-6 py-3 rounded-lg font-bold transition-colors ${
-                    selectedHelpers.length === 0
-                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      : 'bg-green-500 text-white hover:bg-green-600'
-                  }`}
+                  className={`px-6 py-3 rounded-lg font-bold transition-colors ${selectedHelpers.length === 0
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-green-500 text-white hover:bg-green-600'
+                    }`}
                 >
                   給与明細を作成 ({selectedHelpers.length}人)
                 </button>
@@ -210,13 +208,12 @@ export function PayrollStatementModal({ helpers, shifts, year, month, onClose }:
               {processStatus.map((status, index) => (
                 <div
                   key={index}
-                  className={`p-4 rounded-lg border-2 ${
-                    status.status === 'processing'
-                      ? 'bg-blue-50 border-blue-200'
-                      : status.status === 'success'
+                  className={`p-4 rounded-lg border-2 ${status.status === 'processing'
+                    ? 'bg-blue-50 border-blue-200'
+                    : status.status === 'success'
                       ? 'bg-green-50 border-green-200'
                       : 'bg-red-50 border-red-200'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -232,13 +229,12 @@ export function PayrollStatementModal({ helpers, shifts, year, month, onClose }:
                       <div>
                         <div className="font-bold text-gray-800">{status.helperName}</div>
                         {status.message && (
-                          <div className={`text-sm ${
-                            status.status === 'success'
-                              ? 'text-green-700'
-                              : status.status === 'error'
+                          <div className={`text-sm ${status.status === 'success'
+                            ? 'text-green-700'
+                            : status.status === 'error'
                               ? 'text-red-700'
                               : 'text-blue-700'
-                          }`}>
+                            }`}>
                             {status.message}
                           </div>
                         )}

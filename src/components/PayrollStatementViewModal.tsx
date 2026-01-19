@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import type { Helper, Shift } from '../types';
 import { PayrollStatement } from './PayrollStatement';
 
@@ -11,6 +11,7 @@ interface Props {
 }
 
 export function PayrollStatementViewModal({ helpers, shifts, year, month, onClose }: Props) {
+  const sortedHelpers = useMemo(() => [...helpers].sort((a, b) => (a.order || 0) - (b.order || 0) || a.id.localeCompare(b.id)), [helpers]);
   const [selectedHelperId, setSelectedHelperId] = useState<string>('');
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -200,7 +201,7 @@ export function PayrollStatementViewModal({ helpers, shifts, year, month, onClos
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {helpers.map(helper => (
+                {sortedHelpers.map(helper => (
                   <button
                     key={helper.id}
                     onClick={() => setSelectedHelperId(helper.id)}
