@@ -887,3 +887,44 @@ export const subscribeToDisplayTextsMap = (
     return () => { };
   }
 };
+
+// 指定休のリアルタイムリスナー（Map版）
+export const subscribeToScheduledDayOffs = (
+  year: number,
+  month: number,
+  onUpdate: (scheduledDayOffs: Map<string, boolean>) => void
+): (() => void) => {
+  try {
+    const docId = `${year}-${String(month).padStart(2, '0')}`;
+    const docRef = doc(db, 'scheduledDayOffs', docId);
+
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snapshot) => {
+        const scheduledDayOffs = new Map<string, boolean>();
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          const scheduledDayOffsData = data.scheduledDayOffs || [];
+
+          if (Array.isArray(scheduledDayOffsData)) {
+            scheduledDayOffsData.forEach((item: any) => {
+              scheduledDayOffs.set(item.key, item.value);
+            });
+          }
+          console.log(`🟢 リアルタイム更新: 指定休 ${docId} (${scheduledDayOffs.size}件)`);
+        } else {
+          console.log(`🟢 リアルタイム更新: 指定休データなし ${docId}`);
+        }
+        onUpdate(scheduledDayOffs);
+      },
+      (error) => {
+        console.error('指定休リアルタイムリスナーエラー:', error);
+      }
+    );
+
+    return unsubscribe;
+  } catch (error) {
+    console.error('指定休リアルタイムリスナー設定エラー:', error);
+    return () => { };
+  }
+};
