@@ -332,6 +332,7 @@ function App() {
     return (
       <DayOffManager
         helpers={helpers}
+        shifts={shifts}
         year={currentYear}
         month={currentMonth}
         onBack={() => setCurrentView('shift')}

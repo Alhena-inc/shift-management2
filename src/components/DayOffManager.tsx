@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, memo } from 'react';
-import type { Helper } from '../types';
+import type { Helper, Shift } from '../types';
 import { loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts, saveDisplayTexts } from '../services/firestoreService';
 import { TIME_SLOTS } from '../utils/timeSlots';
 
 interface DayOffManagerProps {
   helpers: Helper[];
+  shifts: Shift[];
   year: number;
   month: number;
   onBack: () => void;
@@ -15,7 +16,7 @@ type DayOffRequestMap = Map<string, string>;
 type ScheduledDayOffMap = Map<string, boolean>;
 type DisplayTextMap = Map<string, string>; // 表示テキストを保存
 
-export const DayOffManager = memo(function DayOffManager({ helpers, year, month, onBack }: DayOffManagerProps) {
+export const DayOffManager = memo(function DayOffManager({ helpers, shifts, year, month, onBack }: DayOffManagerProps) {
   const [dayOffRequests, setDayOffRequests] = useState<DayOffRequestMap>(new Map());
   const [scheduledDayOffs, setScheduledDayOffs] = useState<ScheduledDayOffMap>(new Map());
   const [displayTexts, setDisplayTexts] = useState<DisplayTextMap>(new Map()); // 表示テキストMap
@@ -90,6 +91,37 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
     };
     loadData();
   }, [year, month]);
+
+  // ヘルパーをシフト表と同じ基準でフィルタリング・ソート
+  const sortedHelpers = useMemo(() => {
+    return helpers
+      .filter(helper => {
+        // 削除されていないヘルパーは常に表示
+        if (!helper.deleted) return true;
+
+        // 削除されている場合、その月にデータ（シフト、休み希望、指定休）があるかチェック
+        const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+
+        // 1. シフトがあるか
+        const hasShifts = shifts.some(s => s.helperId === helper.id);
+        if (hasShifts) return true;
+
+        // 2. 休み希望があるか
+        const hasDayOff = Array.from(dayOffRequests.keys()).some(key =>
+          key.startsWith(`${helper.id}-`) && key.includes(monthStr)
+        );
+        if (hasDayOff) return true;
+
+        // 3. 指定休があるか
+        const hasScheduled = Array.from(scheduledDayOffs.keys()).some(key =>
+          key.startsWith(`${helper.id}-`) && key.includes(monthStr)
+        );
+        if (hasScheduled) return true;
+
+        return false;
+      })
+      .sort((a, b) => (a.order || 0) - (b.order || 0) || a.id.localeCompare(b.id));
+  }, [helpers, shifts, dayOffRequests, scheduledDayOffs, year, month]);
 
   // セルをクリックした時の処理
   const handleCellClick = useCallback((helperId: string, date: string) => {
@@ -315,7 +347,7 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
 
   // 特定の日の全ヘルパーを一括設定/解除
   const toggleDateAllHelpers = useCallback((date: string) => {
-    const dateKeys = helpers.map(helper => `${helper.id}-${date}`);
+    const dateKeys = sortedHelpers.map(helper => `${helper.id}-${date}`);
     const allSelected = dateKeys.every(key => dayOffRequests.has(key) || scheduledDayOffs.has(key));
 
     setDayOffRequests(prev => {
@@ -435,7 +467,7 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
                 </th>
                 <th className="px-3 py-3 border-r-2 border-yellow-300 bg-yellow-50"></th>
                 {dates.map(date => {
-                  const dateKeys = helpers.map(helper => `${helper.id}-${date}`);
+                  const dateKeys = sortedHelpers.map(helper => `${helper.id}-${date}`);
                   const allSelected = dateKeys.length > 0 && dateKeys.every(key => dayOffRequests.has(key));
                   const dateObj = new Date(date);
                   const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
@@ -458,7 +490,7 @@ export const DayOffManager = memo(function DayOffManager({ helpers, year, month,
               </tr>
             </thead>
             <tbody>
-              {helpers.map((helper, helperIndex) => {
+              {sortedHelpers.map((helper, helperIndex) => {
                 const helperKeys = dates.map(date => `${helper.id}-${date}`);
                 const allSelected = helperKeys.every(key => dayOffRequests.has(key));
 

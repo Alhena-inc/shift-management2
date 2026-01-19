@@ -18,11 +18,14 @@ const HelperManagementPage: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // 検索フィルター
-  const filteredHelpers = helpers.filter(helper => {
-    const query = searchQuery.toLowerCase();
-    return helper.name.toLowerCase().includes(query);
-  });
+  // 検索フィルターとソート
+  const filteredHelpers = helpers
+    .filter(helper => !helper.deleted) // 削除済みヘルパーを除外
+    .filter(helper => {
+      const query = searchQuery.toLowerCase();
+      return helper.name.toLowerCase().includes(query);
+    })
+    .sort((a, b) => (a.order || 0) - (b.order || 0)); // order順にソート
 
   // ステータスバッジの色（ヘルパーはデフォルトで稼働中扱い）
   const getEmploymentTypeBadge = (helper: Helper) => {
@@ -157,9 +160,14 @@ const HelperManagementPage: React.FC = () => {
                     }`}>
                     <div className="flex items-start justify-between">
                       <div>
-                        <h3 className="text-lg font-bold text-gray-800">
-                          {helper.name}
-                        </h3>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold px-1.5 py-0.5 bg-gray-600 text-white rounded opacity-60">
+                            #{helper.order}
+                          </span>
+                          <h3 className="text-lg font-bold text-gray-800">
+                            {helper.name}
+                          </h3>
+                        </div>
                       </div>
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${employmentBadge.color}`}>
                         {employmentBadge.label}

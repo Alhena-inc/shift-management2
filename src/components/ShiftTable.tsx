@@ -360,7 +360,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
         return false;
       })
-      .sort((a, b) => a.order - b.order);
+      .sort((a, b) => (a.order || 0) - (b.order || 0) || a.id.localeCompare(b.id));
   }, [helpers, shifts, dayOffRequests, scheduledDayOffs, year, month]);
   const weeks = useMemo(() => groupByWeek(year, month), [year, month]);
 

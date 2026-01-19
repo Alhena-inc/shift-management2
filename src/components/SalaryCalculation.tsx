@@ -70,7 +70,7 @@ function calculateRegularHours(timeRange: string): number {
 export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Props) {
   const [showPayslipList, setShowPayslipList] = useState(false);
 
-  const sortedHelpers = useMemo(() => [...helpers].sort((a, b) => a.order - b.order), [helpers]);
+  const sortedHelpers = useMemo(() => [...helpers].sort((a, b) => (a.order || 0) - (b.order || 0) || a.id.localeCompare(b.id)), [helpers]);
 
   // 給与明細一覧を開く
   const handleOpenPayslipList = useCallback(() => {
