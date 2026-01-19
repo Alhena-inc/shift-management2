@@ -11,7 +11,8 @@ import {
   orderBy,
   deleteDoc,
   deleteField,
-  onSnapshot
+  onSnapshot,
+  getDoc
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type { Helper, Shift } from '../types';
@@ -662,10 +663,10 @@ export const saveDayOffRequests = async (year: number, month: number, requests: 
 export const loadDayOffRequests = async (year: number, month: number): Promise<Map<string, string>> => {
   try {
     const docId = `${year}-${String(month).padStart(2, '0')}`;
-    const docSnap = await getDocs(query(collection(db, 'dayOffRequests')));
+    const docRef = doc(db, 'dayOffRequests', docId);
+    const targetDoc = await getDoc(docRef);
 
-    const targetDoc = docSnap.docs.find(d => d.id === docId);
-    if (targetDoc && targetDoc.exists()) {
+    if (targetDoc.exists()) {
       const data = targetDoc.data();
       const requestsData = data.requests || [];
 
@@ -722,10 +723,10 @@ export const saveScheduledDayOffs = async (year: number, month: number, schedule
 export const loadScheduledDayOffs = async (year: number, month: number): Promise<Map<string, boolean>> => {
   try {
     const docId = `${year}-${String(month).padStart(2, '0')}`;
-    const docSnap = await getDocs(query(collection(db, 'scheduledDayOffs')));
+    const docRef = doc(db, 'scheduledDayOffs', docId);
+    const targetDoc = await getDoc(docRef);
 
-    const targetDoc = docSnap.docs.find(d => d.id === docId);
-    if (targetDoc && targetDoc.exists()) {
+    if (targetDoc.exists()) {
       const data = targetDoc.data();
       const scheduledDayOffsData = data.scheduledDayOffs || [];
 
@@ -774,10 +775,10 @@ export const saveDisplayTexts = async (year: number, month: number, displayTexts
 export const loadDisplayTexts = async (year: number, month: number): Promise<Map<string, string>> => {
   try {
     const docId = `${year}-${String(month).padStart(2, '0')}`;
-    const docSnap = await getDocs(query(collection(db, 'displayTexts')));
+    const docRef = doc(db, 'displayTexts', docId);
+    const targetDoc = await getDoc(docRef);
 
-    const targetDoc = docSnap.docs.find(d => d.id === docId);
-    if (targetDoc && targetDoc.exists()) {
+    if (targetDoc.exists()) {
       const data = targetDoc.data();
       const displayTextsData = data.displayTexts || [];
 
