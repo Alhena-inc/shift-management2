@@ -167,32 +167,37 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, helper, onChange }
         `}
       </style>
 
-      {/* 3カラムレイアウト */}
-      <div className="flex gap-4 justify-start">
-        {/* 左カラム：賃金明細本体 */}
-        <div className="flex-1" style={{ maxWidth: '800px' }}>
+      {/* 3カラムレイアウト（縦並びに戻し、2ページ目へ） */}
+      <div className="flex flex-col gap-8 justify-start items-start w-full print:block">
+        {/* 1ページ目：賃金明細本体 */}
+        <div className="w-full">
           <PayslipMain payslip={payslip} helper={helper} onChange={handleMainChange} />
         </div>
 
-        {/* 中央カラム：月勤怠表 */}
-        <div className="flex-shrink-0" style={{ width: '600px', minWidth: '600px', marginLeft: '0px' }}>
-          <MonthlyAttendanceSheet
-            month={payslip.month}
-            dailyAttendance={payslip.dailyAttendance}
-            onChange={handleAttendanceChange}
-          />
-        </div>
+        {/* 2ページ目：月勤怠表 & ケア一覧 (印刷時は改ページ) */}
+        <div className="w-full break-before-page" style={{ pageBreakBefore: 'always' }}>
+          <div className="flex gap-4 w-full justify-start items-start">
+            {/* 月勤怠表 */}
+            <div className="flex-shrink-0" style={{ width: '600px', minWidth: '600px' }}>
+              <MonthlyAttendanceSheet
+                month={payslip.month}
+                dailyAttendance={payslip.dailyAttendance}
+                onChange={handleAttendanceChange}
+              />
+            </div>
 
-        {/* 右カラム：ケア一覧（時給のみ） */}
-        {payslip.employmentType === 'アルバイト' && 'careList' in payslip && (
-          <div className="flex-shrink-0" style={{ width: '450px' }}>
-            <CareListSheet
-              month={payslip.month}
-              careList={(payslip as HourlyPayslip).careList}
-              onChange={handleCareListChange}
-            />
+            {/* ケア一覧（時給のみ） */}
+            {payslip.employmentType === 'アルバイト' && 'careList' in payslip && (
+              <div className="flex-shrink-0" style={{ width: '450px' }}>
+                <CareListSheet
+                  month={payslip.month}
+                  careList={(payslip as HourlyPayslip).careList}
+                  onChange={handleCareListChange}
+                />
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

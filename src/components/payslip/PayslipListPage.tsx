@@ -32,7 +32,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
   const [showEditModal, setShowEditModal] = useState(false);
   const [creating, setCreating] = useState(false);
   const [selectedHelperIds, setSelectedHelperIds] = useState<Set<string>>(new Set());
-  
+
   // PDF関連
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [pdfProgress, setPdfProgress] = useState({ current: 0, total: 0 });
@@ -40,7 +40,34 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
   const [bulkPdfMode, setBulkPdfMode] = useState(false);
   const printViewRef = useRef<HTMLDivElement>(null);
 
-  // 給与明細とヘルパー一覧を読み込み
+  // ヘルパーをソート・フィルタリング
+  const sortedHelpers = useMemo(() => {
+    // 1. 重複排除
+    const uniqueHelpersMap = new Map();
+    helpers.forEach(h => {
+      if (!uniqueHelpersMap.has(h.id)) {
+        uniqueHelpersMap.set(h.id, h);
+      }
+    });
+
+    // 2. フィルタリングとソート
+    return Array.from(uniqueHelpersMap.values())
+      .filter(helper => {
+        // 削除されていないヘルパーは常に表示
+        if (!helper.deleted) return true;
+
+        // 削除されている場合、その月にデータ（シフト、給与明細）があるかチェック
+        // シフトがあるか
+        const hasShifts = shifts.some(s => s.helperId === helper.id);
+
+        // 給与明細があるか
+        const hasPayslip = payslips.some(p => p.helperId === helper.id);
+
+        return hasShifts || hasPayslip;
+      })
+      .sort((a, b) => (a.order || 0) - (b.order || 0) || a.id.localeCompare(b.id));
+  }, [helpers, shifts, payslips]);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -148,7 +175,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
   // 給与明細を一括作成
   const handleBulkCreatePayslips = useCallback(async () => {
     // 未作成のヘルパーを抽出
-    const helpersWithoutPayslip = helpers.filter(helper =>
+    const helpersWithoutPayslip = sortedHelpers.filter(helper =>
       !payslips.some(p => p.helperId === helper.id)
     );
 
@@ -209,7 +236,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
     } finally {
       setCreating(false);
     }
-  }, [helpers, payslips, shifts, selectedYear, selectedMonth, loadData]);
+  }, [sortedHelpers, payslips, shifts, selectedYear, selectedMonth, loadData]);
 
   // 選択したヘルパーの給与明細を一括作成（未作成は作成、作成済みは上書き再計算）
   const handleBulkCreateSelectedPayslips = useCallback(async () => {
@@ -219,7 +246,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
       return;
     }
 
-    const selectedHelpers = helpers.filter(h => selectedHelperIds.has(h.id));
+    const selectedHelpers = sortedHelpers.filter(h => selectedHelperIds.has(h.id));
     const existingCount = selectedHelpers.filter(h => payslips.some(p => p.helperId === h.id)).length;
     const newCount = selectedHelpers.length - existingCount;
 
@@ -278,7 +305,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
     } finally {
       setCreating(false);
     }
-  }, [selectedHelperIds, helpers, payslips, shifts, selectedYear, selectedMonth, loadData]);
+  }, [selectedHelperIds, sortedHelpers, payslips, shifts, selectedYear, selectedMonth, loadData]);
 
   // 給与明細を再計算
   const handleRecalculatePayslip = useCallback(async (helper: Helper, existingPayslip: Payslip) => {
@@ -538,7 +565,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
 
   // 選択UI
   const selectedCount = selectedHelperIds.size;
-  const isAllSelected = helpers.length > 0 && helpers.every(h => selectedHelperIds.has(h.id));
+  const isAllSelected = sortedHelpers.length > 0 && sortedHelpers.every(h => selectedHelperIds.has(h.id));
 
   const toggleSelectHelper = (helperId: string) => {
     setSelectedHelperIds(prev => {
@@ -551,7 +578,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
 
   const toggleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedHelperIds(new Set(helpers.map(h => h.id)));
+      setSelectedHelperIds(new Set(sortedHelpers.map(h => h.id)));
     } else {
       setSelectedHelperIds(new Set());
     }
@@ -682,7 +709,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               <p className="mt-2 text-gray-600">読み込み中...</p>
             </div>
-          ) : helpers.length === 0 ? (
+          ) : sortedHelpers.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               ヘルパーが登録されていません
             </div>
@@ -710,7 +737,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
                   </tr>
                 </thead>
                 <tbody>
-                  {helpers.map((helper, index) => {
+                  {sortedHelpers.map((helper, index) => {
                     const payslip = getPayslipForHelper(helper.id);
                     const isSelected = selectedHelperIds.has(helper.id);
 
@@ -890,10 +917,10 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
 
       {/* PDF生成用の非表示プリントビュー */}
       {generatingPdf && pdfTargetPayslip && (
-        <div 
-          style={{ 
-            position: 'fixed', 
-            left: '-9999px', 
+        <div
+          style={{
+            position: 'fixed',
+            left: '-9999px',
             top: '0',
             width: '210mm',
             background: 'white'

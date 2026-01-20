@@ -44,6 +44,7 @@ interface SortableHelperRowProps {
   onCopyUrl: (token: string) => void;
   onGenerateToken: (id: string) => void;
   onEditChange: (value: string) => void;
+  displayIndex: number;
 }
 
 const SortableHelperRow = ({
@@ -58,7 +59,8 @@ const SortableHelperRow = ({
   onDelete,
   onCopyUrl,
   onGenerateToken,
-  onEditChange
+  onEditChange,
+  displayIndex
 }: SortableHelperRowProps) => {
   const {
     attributes,
@@ -533,10 +535,11 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
               >
                 {localHelpers
                   .filter(helper => !helper.deleted)
-                  .map((helper) => (
+                  .map((helper, index) => (
                     <SortableHelperRow
                       key={helper.id}
                       helper={helper}
+                      displayIndex={index + 1}
                       isEditing={editingHelperId === helper.id}
                       editFirstName={editHelperFirstName}
                       baseUrl={baseUrl}
