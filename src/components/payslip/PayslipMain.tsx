@@ -25,54 +25,57 @@ const parseNumber = (value: string): number => {
 };
 
 // --- スタイル定数 (A4 Landscape) ---
-const SHEET_WIDTH = '1122px'; // A4横
+const SHEET_WIDTH = '1200px';
 const FONT_FAMILY = '"Hiragino Mincho ProN", "Yu Mincho", serif';
 const TEXT_COLOR = '#000000';
 
-// 縦幅を調整 (20px -> 22px) "もうちょっとだけ"
-const CELL_HEIGHT = '22px';
-const FONT_SIZE = '10px';
+const CELL_HEIGHT = '24px';
+const FONT_SIZE = '14px';
 
 // スタイル定義 (行間を詰める - !importantで強制)
 const baseCellStyle = {
   border: '1px solid black',
   height: CELL_HEIGHT,
+  minHeight: CELL_HEIGHT,
+  maxHeight: CELL_HEIGHT,
   fontSize: FONT_SIZE,
   verticalAlign: 'middle',
   padding: '0 !important',
-  lineHeight: '1 !important', // 行間を1に強制
+  lineHeight: '24px',
   overflow: 'hidden',
+  whiteSpace: 'nowrap' as const,
   boxSizing: 'border-box' as const,
 };
 
 const headerCellStyle = {
   ...baseCellStyle,
   backgroundColor: '#d0fdd0',
-  textAlign: 'justify' as const,
-  textAlignLast: 'justify' as any,
+  textAlign: 'center' as const,
   fontWeight: 'bold',
-  padding: '0 8px !important',
+  padding: '0 2px 0 6px !important',
+  letterSpacing: '0.4em',
 };
 
 const inputCellStyle = {
   ...baseCellStyle,
   backgroundColor: '#ffffff',
   textAlign: 'right' as const,
-  padding: '0 2px !important',
+  padding: '0 !important',
 };
 
 const inputStyle = {
   width: '100%',
-  height: '100%',
+  height: '24px',
   textAlign: 'right' as const,
   background: 'transparent',
   border: 'none',
   outline: 'none',
-  fontSize: 'inherit',
+  fontSize: '16px',
+  fontWeight: '600',
   fontFamily: 'inherit',
-  padding: '0',
+  padding: '0 12px 0 0',
   margin: 0,
-  lineHeight: 'normal',
+  lineHeight: '24px',
   display: 'block',
   boxSizing: 'border-box' as const,
   appearance: 'none',
@@ -104,7 +107,37 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     return { taxableOther, nonTaxableOther };
   };
 
+  const timeToMinutes = (time: any): number => {
+    if (time === undefined || time === null || time === '') return 0;
+    if (typeof time === 'number') return time * 60;
+    const s = String(time);
+    if (s.includes(':')) {
+      const [h, m] = s.split(':').map(p => parseInt(p, 10) || 0);
+      return h * 60 + m;
+    }
+    return (parseFloat(s) || 0) * 60;
+  };
+
+  const minutesToTime = (totalMinutes: number): string => {
+    if (totalMinutes <= 0) return '';
+    const h = Math.floor(totalMinutes / 60);
+    const m = Math.round(totalMinutes % 60);
+    return m === 0 ? String(h) : `${h}:${String(m).padStart(2, '0')}`;
+  };
+
   const recalculateTotals = (updated: any) => {
+    // 勤怠時間の合計計算 (5つの項目の合計)
+    const att = updated.attendance || {};
+    const totalMins =
+      timeToMinutes(att.totalWorkHours) +
+      timeToMinutes(att.accompanyHours) +
+      timeToMinutes(att.nightWorkHours) +
+      timeToMinutes(att.nightAccompanyHours) +
+      timeToMinutes(att.officeWorkHours);
+
+    // 合計稼働時間をセット
+    att.totalActualHours = minutesToTime(totalMins);
+
     const { taxableOther, nonTaxableOther } = calculateOtherAllowancesValues(updated);
     const otherAllowancesTotal = taxableOther + nonTaxableOther;
     if (updated.baseSalary !== undefined) {
@@ -167,7 +200,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     }
     if (updated.deductions.manualTotalDeduction === undefined) {
       updated.deductions.totalDeduction = (updated.deductions.socialInsuranceTotal || 0) + (updated.deductions.pensionFund || 0) + (updated.deductions.deductionTotal || 0) + (updated.deductions.advancePayment || 0) +
-        ((updated.deductions as any).otherDeduction1 || 0) + ((updated.deductions as any).otherDeduction2 || 0) + ((updated.deductions as any).otherDeduction3 || 0) +
+        ((updated.deductions as any).otherDeduction1 || 0) + ((updated.deductions as any).otherDeduction2 || 0) + ((updated.deductions as any).otherDeduction2 || 0) +
         ((updated.deductions as any).otherDeduction4 || 0) + ((updated.deductions as any).otherDeduction5 || 0);
     }
 
@@ -209,12 +242,25 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
   const { taxableOther, nonTaxableOther } = calculateOtherAllowancesValues(payslip);
 
   // Components
-  const LabelCell = ({ children, colSpan = 1 }: any) => (
-    <td style={{ ...headerCellStyle, width: 'auto' }} colSpan={colSpan}>{children}</td>
-  );
+  const LabelCell = ({ children, colSpan = 1 }: any) => {
+    const text = typeof children === 'string' ? children : '';
+    let style = { ...headerCellStyle, height: CELL_HEIGHT, fontSize: FONT_SIZE };
+
+    if (text.length >= 7) {
+      style = { ...style, letterSpacing: '0', fontSize: '13px', padding: '0 2px !important' };
+    } else if (text.length >= 6) {
+      style = { ...style, letterSpacing: '0.05em' };
+    } else if (text.length >= 5) {
+      style = { ...style, letterSpacing: '0.2em' };
+    }
+
+    return (
+      <td style={style} colSpan={colSpan}>{children}</td>
+    );
+  };
 
   const InputCell = ({ path, value, isNumber = true, colSpan = 1 }: any) => (
-    <td style={inputCellStyle} colSpan={colSpan}>
+    <td style={{ ...inputCellStyle, height: CELL_HEIGHT }} colSpan={colSpan}>
       <input
         type="text"
         value={isNumber ? formatCurrency(value) : (value || '')}
@@ -226,7 +272,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
   );
 
   const EmptyCell = ({ colSpan = 1, style = {} }: any) => (
-    <td style={{ ...inputCellStyle, ...style }} colSpan={colSpan}></td>
+    <td style={{ ...inputCellStyle, height: CELL_HEIGHT, ...style }} colSpan={colSpan}></td>
   );
 
   return (
@@ -241,40 +287,45 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       <style>
         {`
         .vertical-text {
-            writing-mode: vertical-rl;
+            writing-mode: vertical-lr;
             text-orientation: upright;
-            letter-spacing: 1.5em;
+            letter-spacing: 0.1em;
             white-space: nowrap;
             text-align: center;
             border: 2px solid black; 
             border-right: 1px solid black;
             font-weight: bold; 
             font-size: 11px;
-            padding-top: 10px;
-            padding-bottom: 10px;
-            line-height: 1.2;
-        }
+            line-height: 34px;
             padding: 0;
+            padding-left: 4px;
             background-color: white; 
-            width: 30px;
+            width: 34px;
+            height: 100%;
+            overflow: hidden;
         }
         .section-table {
            width: 100%;
            border-collapse: collapse;
            table-layout: fixed; 
-           margin-bottom: -1px; 
+           margin-bottom: 0px !important; 
            border: 2px solid black; 
         }
         .section-table tr {
-            height: 20px !important;
+            height: 21px !important;
+            min-height: 21px !important;
+            max-height: 21px !important;
         }
         .section-table td {
            border: 1px solid black; 
-           height: 20px !important;
+           height: 21px !important;
+           min-height: 21px !important;
+           max-height: 21px !important;
+           padding: 0 !important;
+           line-height: 21px !important;
         }
         .block-separator {
-            height: 0px; 
-            margin-bottom: -2px;
+            height: 18px; 
         }
         `}
       </style>
@@ -282,37 +333,37 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       {/* === ヘッダー === */}
       <div className="flex justify-between items-end mb-1">
         {/* 左上: タイトル・氏名欄 */}
-        <div className="border border-black w-[380px] p-2">
+        <div className="border border-black w-[440px] p-2">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xl font-bold whitespace-nowrap">給与 明細書</span>
-            <span className="text-xs">
+            <span className="text-2xl font-bold whitespace-nowrap">給与 明細書</span>
+            <span className="text-sm">
               令 和 {payslip.year - 2018} 年 {payslip.month} 月 分
             </span>
           </div>
           <div className="w-full flex flex-col gap-1">
             <div className="flex border-b border-black w-full mx-auto">
-              <span className="w-16 text-xs text-left self-center">社員番号</span>
+              <span className="w-20 text-sm text-left self-center">社員番号</span>
               <span className="flex-1 text-center text-sm">000001</span>
             </div>
             <div className="flex border-b border-black w-full mx-auto items-end">
-              <span className="w-16 text-xs text-left self-center mb-1">氏 名</span>
-              <span className="flex-1 text-lg font-bold text-center leading-none mb-1">{payslip.helperName}</span>
+              <span className="w-20 text-sm text-left self-center mb-1">氏 名</span>
+              <span className="flex-1 text-xl font-bold text-center leading-none mb-1">{payslip.helperName}</span>
             </div>
           </div>
-          <div className="text-right w-full mt-1 h-4">
+          <div className="text-right w-full mt-1 h-5">
             <input
               type="text"
               value={(payslip as any).companyName || 'Alhena合同会社'}
               onChange={e => updateField(['companyName'], e.target.value)}
-              className="text-right w-full bg-transparent border-none outline-none text-[10px] h-full"
+              className="text-right w-full bg-transparent border-none outline-none text-xs h-full"
             />
           </div>
         </div>
 
         {/* 右上: メッセージ */}
         <div className="flex flex-col items-end gap-1 mb-2">
-          <div className="border border-black w-16 h-16 bg-white"></div>
-          <div className="text-[10px]">今月もご苦労さまでした。</div>
+          <div className="border border-black w-20 h-20 bg-white"></div>
+          <div className="text-xs">今月もご苦労さまでした。</div>
         </div>
       </div>
 
@@ -327,15 +378,14 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       <table className="section-table">
         <colgroup>
           <col style={{ width: '30px' }} />
-          <col style={{ width: '9.6%' }} /><col style={{ width: '9.6%' }} /><col style={{ width: '9.6%' }} /><col style={{ width: '9.6%' }} /><col style={{ width: '9.6%' }} />
-          <col style={{ width: '9.6%' }} /><col style={{ width: '9.6%' }} /><col style={{ width: '9.6%' }} /><col style={{ width: '9.6%' }} /><col style={{ width: 'auto' }} />
+          {[...Array(9)].map((_, i) => <col key={i} style={{ width: '10.8%' }} />)}
         </colgroup>
         <tbody>
           {/* Row 1 Header */}
           <tr>
             <td rowSpan={6} className="vertical-text">支給</td>
             <LabelCell>基本給</LabelCell><LabelCell>役員報酬</LabelCell><LabelCell>処遇改善手当</LabelCell><LabelCell>同行研修手当</LabelCell><LabelCell>交通手当</LabelCell>
-            <LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell>
+            <LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell>
           </tr>
           {/* Row 1 Value */}
           <tr>
@@ -345,16 +395,15 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
             <InputCell path={['payments', 'accompanyAllowance']} value={0} />
             <InputCell path={['payments', 'transportAllowance']} value={payslip.payments.transportAllowance} />
             <EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell />
-            <EmptyCell />
           </tr>
           {/* Row 2 Header */}
           <tr>
-            <LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell>
+            <LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell>
             <LabelCell>特別手当</LabelCell><LabelCell>年末年始手当</LabelCell><LabelCell>残業手当</LabelCell><LabelCell>休日出勤</LabelCell><LabelCell>深夜残業</LabelCell>
           </tr>
           {/* Row 2 Value */}
           <tr>
-            <EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell />
+            <EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell />
             <InputCell path={['payments', 'specialAllowance']} value={0} />
             <InputCell path={['payments', 'yearEndNewYearAllowance']} value={(payslip.payments as any).yearEndNewYearAllowance} />
             <InputCell path={['payments', 'overtimePay']} value={payslip.payments.overtimePay} />
@@ -364,7 +413,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
           {/* Row 3 Header */}
           <tr>
             <LabelCell>60h超残業</LabelCell><LabelCell>遅早控除</LabelCell><LabelCell>欠勤控除</LabelCell><LabelCell>通勤課税</LabelCell><LabelCell>通勤非課税</LabelCell>
-            <LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>課税計</LabelCell><LabelCell>非課税計</LabelCell><LabelCell>総支給額</LabelCell>
+            <LabelCell>　</LabelCell><LabelCell>課税計</LabelCell><LabelCell>非課税計</LabelCell><LabelCell>総支給額</LabelCell>
           </tr>
           {/* Row 3 Value */}
           <tr>
@@ -373,7 +422,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
             <InputCell path={['deductions', 'absenceDeduction']} value={payslip.deductions.absenceDeduction || 0} />
             <InputCell path={['payments', 'taxableCommute']} value={payslip.payments.taxableCommute || 0} />
             <InputCell path={['payments', 'manualNonTaxableAllowance']} value={nonTaxableOther} />
-            <EmptyCell /><EmptyCell />
+            <EmptyCell />
             <InputCell path={['totals', 'taxableTotal']} value={(payslip.totals as any).taxableTotal || 0} />
             <InputCell path={['totals', 'nonTaxableTotal']} value={(payslip.totals as any).nonTaxableTotal || 0} />
             <InputCell path={['payments', 'totalPayment']} value={payslip.payments.totalPayment} />
@@ -384,18 +433,17 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       <div className="block-separator" />
 
       {/* === 2. 控除の部 === */}
-      <table className="section-table" style={{ borderTop: 'none' }}>
+      <table className="section-table">
         <colgroup>
           <col style={{ width: '30px' }} />
-          <col style={{ width: '9.6%' }} /><col style={{ width: '9.6%' }} /><col style={{ width: '9.6%' }} /><col style={{ width: '9.6%' }} /><col style={{ width: '9.6%' }} />
-          <col style={{ width: '9.6%' }} /><col style={{ width: '9.6%' }} /><col style={{ width: '9.6%' }} /><col style={{ width: '9.6%' }} /><col style={{ width: 'auto' }} />
+          {[...Array(9)].map((_, i) => <col key={i} style={{ width: '10.8%' }} />)}
         </colgroup>
         <tbody>
           {/* Row 1 Header */}
           <tr>
-            <td rowSpan={4} className="vertical-text">控除</td>
+            <td rowSpan={6} className="vertical-text">控除</td>
             <LabelCell>健康保険</LabelCell><LabelCell>介護保険</LabelCell><LabelCell>厚生年金</LabelCell><LabelCell>年金基金</LabelCell><LabelCell>雇用保険</LabelCell>
-            <LabelCell>社会保険計</LabelCell><LabelCell>　</LabelCell><LabelCell>課税対象額</LabelCell><LabelCell>源泉所得税</LabelCell><LabelCell>住民税</LabelCell>
+            <LabelCell>社会保険計</LabelCell><LabelCell>課税対象額</LabelCell><LabelCell>源泉所得税</LabelCell><LabelCell>住民税</LabelCell>
           </tr>
           {/* Row 1 Value */}
           <tr>
@@ -405,23 +453,33 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
             <InputCell path={['deductions', 'pensionFund']} value={0} />
             <InputCell path={['deductions', 'employmentInsurance']} value={payslip.deductions.employmentInsurance} />
             <InputCell path={['deductions', 'socialInsuranceTotal']} value={payslip.deductions.socialInsuranceTotal} />
-            <EmptyCell />
             <InputCell path={['deductions', 'taxableAmount']} value={payslip.deductions.taxableAmount} />
             <InputCell path={['deductions', 'incomeTax']} value={payslip.deductions.incomeTax} />
             <InputCell path={['deductions', 'residentTax']} value={payslip.deductions.residentTax} />
           </tr>
-          {/* Row 2 Header */}
+          {/* Row 2 Prepaid Header/Value */}
+          <tr>
+            <LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell>
+            <LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell>
+            <LabelCell style={{ backgroundColor: '#d0fdd0', padding: '0 !important' }}>前払給与</LabelCell>
+          </tr>
+          <tr>
+            <EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell />
+            <EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell />
+            <InputCell path={['deductions', 'advancePayment']} value={payslip.deductions.advancePayment} />
+          </tr>
+          {/* Row 3 Header */}
           <tr>
             <LabelCell>立替金</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell>
-            <LabelCell>　</LabelCell><LabelCell>年末調整</LabelCell><LabelCell>控除計</LabelCell><LabelCell>前払給与</LabelCell><LabelCell>控除合計</LabelCell>
+            <LabelCell>　</LabelCell><LabelCell>年末調整</LabelCell><LabelCell>控除計</LabelCell><LabelCell>控除合計</LabelCell>
           </tr>
-          {/* Row 2 Value */}
+          {/* Row 3 Value */}
           <tr>
             <InputCell path={['deductions', 'reimbursement']} value={payslip.deductions.reimbursement} />
-            <EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell />
+            <EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell />
+            <EmptyCell />
             <InputCell path={['deductions', 'yearEndAdjustment']} value={payslip.deductions.yearEndAdjustment} />
-            <InputCell path={['deductions', 'deductionSubTotal']} value={0} />
-            <InputCell path={['deductions', 'advancePayment']} value={payslip.deductions.advancePayment} />
+            <InputCell path={['deductions', 'deductionTotal']} value={payslip.deductions.deductionTotal} />
             <InputCell path={['deductions', 'totalDeduction']} value={payslip.deductions.totalDeduction} />
           </tr>
         </tbody>
@@ -429,54 +487,116 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
 
       <div className="block-separator" />
 
-      {/* === 3. 勤怠・記事の部 === */}
-      <table className="section-table" style={{ borderTop: 'none' }}>
+      {/* === 3. 勤怠の部 === */}
+      <table className="section-table">
         <colgroup>
-          <col style={{ width: '30px' }} />
-          <col style={{ width: '13.8%' }} /><col style={{ width: '13.8%' }} /><col style={{ width: '13.8%' }} /><col style={{ width: '13.8%' }} />
-          <col style={{ width: '13.8%' }} /><col style={{ width: '13.8%' }} /><col style={{ width: 'auto' }} />
+          <col style={{ width: '34px' }} />
+          {[...Array(9)].map((_, i) => <col key={i} style={{ width: '10.8%' }} />)}
         </colgroup>
         <tbody>
-          {/* Kintai Upper Header */}
+          {/* Stage 1: Row 1-2 */}
           <tr>
-            <td rowSpan={6} className="vertical-text">勤怠<br />／<br />記事</td>
-            <LabelCell>出勤日数</LabelCell><LabelCell>有給日数</LabelCell><LabelCell>欠勤日数</LabelCell><LabelCell>特別休暇</LabelCell>
-            <LabelCell>出勤時間</LabelCell><LabelCell>60h超残業</LabelCell><LabelCell>　</LabelCell>
+            <td rowSpan={6} className="vertical-text">勤怠</td>
+            <LabelCell>通常稼働日数</LabelCell>
+            <LabelCell>同行稼働日数</LabelCell>
+            <LabelCell>欠勤回数</LabelCell>
+            <LabelCell>遅刻・早退回数</LabelCell>
+            <LabelCell>　</LabelCell>
+            <LabelCell>合計稼働日数</LabelCell>
+            <LabelCell>　</LabelCell>
+            <LabelCell>　</LabelCell>
+            <LabelCell>　</LabelCell>
           </tr>
           <tr>
             <InputCell path={['attendance', 'normalWorkDays']} value={(payslip.attendance as any).normalWorkDays} isNumber={false} />
-            <InputCell path={['attendance', 'paidLeaveDays']} value={0} isNumber={false} />
+            <InputCell path={['attendance', 'accompanyWorkDays']} value={(payslip.attendance as any).accompanyWorkDays || 0} isNumber={false} />
             <InputCell path={['attendance', 'absences']} value={(payslip.attendance as any).absences} isNumber={false} />
+            <InputCell path={['attendance', 'lateEarlyCount']} value={(payslip.attendance as any).lateEarlyCount || 0} isNumber={false} />
             <EmptyCell />
+            <InputCell path={['attendance', 'totalWorkDays']} value={(payslip.attendance as any).totalWorkDays || 0} isNumber={false} />
+            <EmptyCell />
+            <EmptyCell />
+            <EmptyCell />
+          </tr>
+          {/* Stage 2: Row 3-4 */}
+          <tr>
+            <LabelCell>通常稼働時間</LabelCell>
+            <LabelCell>同行時間</LabelCell>
+            <LabelCell>(深夜)稼働時間</LabelCell>
+            <LabelCell>(深夜)同行時間</LabelCell>
+            <LabelCell>事務営業時間</LabelCell>
+            <LabelCell>合計稼働時間</LabelCell>
+            <LabelCell>　</LabelCell>
+            <LabelCell>　</LabelCell>
+            <LabelCell>　</LabelCell>
+          </tr>
+          <tr>
             <InputCell path={['attendance', 'totalWorkHours']} value={payslip.attendance.totalWorkHours} isNumber={false} />
-            <EmptyCell /><EmptyCell />
+            <InputCell path={['attendance', 'accompanyHours']} value={(payslip.attendance as any).accompanyHours || ''} isNumber={false} />
+            <InputCell path={['attendance', 'nightWorkHours']} value={payslip.attendance.nightWorkHours} isNumber={false} />
+            <InputCell path={['attendance', 'nightAccompanyHours']} value={(payslip.attendance as any).nightAccompanyHours || ''} isNumber={false} />
+            <InputCell path={['attendance', 'officeWorkHours']} value={(payslip.attendance as any).officeWorkHours || ''} isNumber={false} />
+            <InputCell path={['attendance', 'totalActualHours']} value={(payslip.attendance as any).totalActualHours || ''} isNumber={false} />
+            <EmptyCell />
+            <EmptyCell />
+            <EmptyCell />
           </tr>
-          {/* Kintai Lower Header */}
+          {/* Stage 3: Row 5-6 (Empty rows for height consistency) */}
           <tr>
-            <LabelCell>残業時間</LabelCell><LabelCell>休日日数</LabelCell><LabelCell>休出時間</LabelCell><LabelCell>深夜残業</LabelCell>
-            <LabelCell>遅早回数</LabelCell><LabelCell>遅早時間</LabelCell><LabelCell>同行時間</LabelCell>
+            <LabelCell>　</LabelCell>
+            <LabelCell>　</LabelCell>
+            <LabelCell>　</LabelCell>
+            <LabelCell>　</LabelCell>
+            <LabelCell>　</LabelCell>
+            <LabelCell>　</LabelCell>
+            <LabelCell>　</LabelCell>
+            <LabelCell>　</LabelCell>
+            <LabelCell>　</LabelCell>
           </tr>
           <tr>
-            <InputCell path={['attendance', 'overtimeHours']} value={0} isNumber={false} />
-            <EmptyCell /><EmptyCell />
-            <InputCell path={['attendance', 'nightNormalHours']} value={payslip.attendance.nightNormalHours} isNumber={false} />
-            <EmptyCell /><EmptyCell />
-            <InputCell path={['attendance', 'accompanyHours']} value={payslip.attendance.accompanyHours} isNumber={false} />
+            <EmptyCell />
+            <EmptyCell />
+            <EmptyCell />
+            <EmptyCell />
+            <EmptyCell />
+            <EmptyCell />
+            <EmptyCell />
+            <EmptyCell />
+            <EmptyCell />
           </tr>
+        </tbody>
+      </table>
 
-          {/* Kiji (Article) Header */}
+      <div className="block-separator" />
+
+      {/* === 4. 記事の部 === */}
+      <table className="section-table">
+        <colgroup>
+          <col style={{ width: '30px' }} />
+          {[...Array(9)].map((_, i) => <col key={i} style={{ width: '10.8%' }} />)}
+        </colgroup>
+        <tbody>
           <tr>
-            <LabelCell>課税累計額</LabelCell><LabelCell>税扶養人数</LabelCell><LabelCell>　</LabelCell><LabelCell>銀行振込1</LabelCell>
-            <LabelCell>銀行振込2</LabelCell><LabelCell>現金支給額</LabelCell><LabelCell>差引支給額</LabelCell>
+            <td rowSpan={2} className="vertical-text">記事</td>
+            <LabelCell>課税累計額</LabelCell>
+            <LabelCell>税扶養人数</LabelCell>
+            <LabelCell>　</LabelCell>
+            <LabelCell>　</LabelCell>
+            <LabelCell>　</LabelCell>
+            <LabelCell>銀行振込１</LabelCell>
+            <LabelCell>銀行振込２</LabelCell>
+            <LabelCell>現金支給額</LabelCell>
+            <LabelCell>差引支給額</LabelCell>
           </tr>
-          {/* Kiji Value */}
           <tr>
-            <InputCell path={['totals', 'taxablePaymentYTD']} value={0} />
+            <InputCell path={['totals', 'taxableYTD']} value={(payslip.totals as any).taxableYTD || 0} />
             <InputCell path={['dependents']} value={payslip.dependents} isNumber={false} />
+            <EmptyCell />
+            <EmptyCell />
             <EmptyCell />
             <InputCell path={['totals', 'bankTransfer']} value={payslip.totals.bankTransfer} />
             <EmptyCell />
-            <InputCell path={['totals', 'cashPayment']} value={payslip.totals.cashPayment} />
+            <EmptyCell />
             <InputCell path={['totals', 'netPayment']} value={payslip.totals.netPayment} />
           </tr>
         </tbody>
