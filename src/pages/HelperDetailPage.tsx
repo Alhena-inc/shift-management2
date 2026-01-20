@@ -233,8 +233,8 @@ const HelperDetailPage: React.FC = () => {
             onClick={handleSave}
             disabled={isSaving}
             className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 ${isSaving
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'bg-blue-600 text-white hover:bg-blue-700'
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : 'bg-blue-600 text-white hover:bg-blue-700'
               }`}
           >
             {isSaving ? '保存中...' : '💾 保存'}
@@ -249,8 +249,8 @@ const HelperDetailPage: React.FC = () => {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`px-6 py-3 font-medium transition-colors whitespace-nowrap ${activeTab === tab.id
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-500 hover:text-gray-700'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-500 hover:text-gray-700'
                   }`}
               >
                 {tab.label}
@@ -447,7 +447,7 @@ const HelperDetailPage: React.FC = () => {
                 {qualificationOptions.map((qual) => {
                   const isChecked = helper.qualifications?.includes(qual) || false;
                   const acquiredDate = helper.qualificationDates?.[qual] || '';
-                  
+
                   return (
                     <div key={qual} className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
                       <div className="flex items-center gap-3">
@@ -1049,6 +1049,22 @@ const HelperDetailPage: React.FC = () => {
                       <p className="text-xs text-gray-500">労働災害補償</p>
                     </div>
                   </label>
+                </div>
+
+                <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    標準報酬月額（円）
+                  </label>
+                  <input
+                    type="number"
+                    value={helper.standardRemuneration || ''}
+                    onChange={(e) => handleChange('standardRemuneration', parseFloat(e.target.value) || 0)}
+                    className="w-full md:w-1/3 px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="300000"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    社会保険料の計算に使用します。未入力の場合は、その月の総支給額から自動的に標準報酬を決定します。
+                  </p>
                 </div>
               </div>
 

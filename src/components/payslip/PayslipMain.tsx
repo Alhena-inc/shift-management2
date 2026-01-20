@@ -2,7 +2,7 @@
 import React, { useEffect } from 'react';
 import type { Payslip, HourlyPayslip } from '../../types/payslip';
 import type { Helper } from '../../types';
-import { calculateInsurance } from '../../utils/insuranceCalculator';
+import { calculateInsurance, getHealthStandardRemuneration } from '../../utils/insuranceCalculator';
 import { calculateWithholdingTaxByYear } from '../../utils/taxCalculator';
 
 interface PayslipMainProps {
@@ -143,7 +143,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     if (updated.baseSalary !== undefined) {
       if (!updated.manualTotalSalary) updated.totalSalary = (updated.baseSalary || 0) + (updated.treatmentAllowance || 0) + otherAllowancesTotal;
       if (!updated.payments) updated.payments = {};
-      if (!updated.payments.manualBasePay) updated.payments.basePay = updated.totalSalary;
+      if (!updated.payments.manualBasePay) updated.payments.basePay = updated.baseSalary;
     } else if (updated.baseHourlyRate !== undefined) {
       if (!updated.manualTotalHourlyRate) updated.totalHourlyRate = (updated.baseHourlyRate || 0) + (updated.treatmentAllowance || 0);
     }
@@ -179,7 +179,8 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       taxableMonthlySalary = salaryCoreAmount;
     }
 
-    const insurance = calculateInsurance(updated.standardRemuneration || 0, monthlySalaryTotal, updated.age || 0, updated.insuranceTypes || [], nonTaxableOther);
+    const stdRemuneration = updated.standardRemuneration || getHealthStandardRemuneration(monthlySalaryTotal);
+    const insurance = calculateInsurance(stdRemuneration, monthlySalaryTotal, updated.age || 0, updated.insuranceTypes || [], nonTaxableOther);
     if (updated.deductions.manualHealthInsurance === undefined) updated.deductions.healthInsurance = insurance.healthInsurance;
     if (updated.deductions.manualCareInsurance === undefined) updated.deductions.careInsurance = insurance.careInsurance;
     if (updated.deductions.manualPensionInsurance === undefined) updated.deductions.pensionInsurance = insurance.pensionInsurance;
@@ -187,14 +188,23 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     if (updated.deductions.manualSocialInsuranceTotal === undefined) {
       updated.deductions.socialInsuranceTotal = (updated.deductions.healthInsurance || 0) + (updated.deductions.careInsurance || 0) + (updated.deductions.pensionInsurance || 0) + (updated.deductions.employmentInsurance || 0);
     }
+    if (!updated.totals) updated.totals = {};
+    updated.totals.nonTaxableTotal = nonTaxableOther;
+    updated.totals.taxableTotal = updated.payments.totalPayment - nonTaxableOther;
+
     if (updated.deductions.manualTaxableAmount === undefined) {
-      updated.deductions.taxableAmount = Math.max(0, taxableMonthlySalary - (updated.deductions.socialInsuranceTotal || 0));
+      updated.deductions.taxableAmount = Math.max(0, updated.totals.taxableTotal - (updated.deductions.socialInsuranceTotal || 0));
     }
     if (updated.deductions.manualIncomeTax === undefined && helper?.hasWithholdingTax !== false) {
       const pMonth = updated.month || new Date().getMonth() + 1;
       const taxYear = pMonth === 12 ? (updated.year || new Date().getFullYear()) + 1 : (updated.year || new Date().getFullYear());
       updated.deductions.incomeTax = calculateWithholdingTaxByYear(taxYear, updated.deductions.taxableAmount || 0, updated.dependents || 0, '甲');
     }
+    const totalExpenses = (updated.payments.transportAllowance || 0) + (updated.payments.expenseReimbursement || 0);
+    if (updated.deductions.manualReimbursement === undefined) {
+      updated.deductions.reimbursement = -totalExpenses;
+    }
+
     if (updated.deductions.manualDeductionTotal === undefined) {
       updated.deductions.deductionTotal = (updated.deductions.incomeTax || 0) + (updated.deductions.residentTax || 0) + (updated.deductions.reimbursement || 0) + (updated.deductions.yearEndAdjustment || 0);
     }
@@ -205,8 +215,11 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     }
 
     if (updated.totals.manualNetPayment === undefined) updated.totals.netPayment = updated.payments.totalPayment - updated.deductions.totalDeduction;
-    if (updated.totals.manualNetPaymentWithExpense === undefined) updated.totals.netPaymentWithExpense = updated.totals.netPayment + (updated.payments.expenseReimbursement || 0) + (updated.payments.transportAllowance || 0);
-    if (updated.totals.manualBankTransfer === undefined) updated.totals.bankTransfer = (updated.totals.netPaymentWithExpense || 0) - (updated.totals.cashPayment || 0);
+
+    // Expenses are now included in netPayment via negative reimbursement deduction
+    updated.totals.netPaymentWithExpense = updated.totals.netPayment;
+
+    if (updated.totals.manualBankTransfer === undefined) updated.totals.bankTransfer = (updated.totals.netPayment || 0) - (updated.totals.cashPayment || 0);
 
     return updated;
   };
@@ -235,9 +248,13 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
   useEffect(() => {
     const updated = JSON.parse(JSON.stringify(payslip));
     updated.insuranceTypes = deriveInsuranceTypesFromHelper(helper);
+    // ヘルパーマスタに標準報酬月額が設定されている場合は同期
+    if (helper?.standardRemuneration && (!updated.standardRemuneration || updated.standardRemuneration === 0)) {
+      updated.standardRemuneration = helper.standardRemuneration;
+    }
     const recalculated = recalculateTotals(updated);
     if (JSON.stringify(recalculated) !== JSON.stringify(payslip)) onChange(recalculated);
-  }, [payslip.id]);
+  }, [payslip.id, helper]);
 
   const { taxableOther, nonTaxableOther } = calculateOtherAllowancesValues(payslip);
 
@@ -259,17 +276,20 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     );
   };
 
-  const InputCell = ({ path, value, isNumber = true, colSpan = 1 }: any) => (
-    <td style={{ ...inputCellStyle, height: CELL_HEIGHT }} colSpan={colSpan}>
-      <input
-        type="text"
-        value={isNumber ? formatCurrency(value) : (value || '')}
-        onChange={(e) => updateField(path, isNumber ? parseNumber(e.target.value) : e.target.value)}
-        style={inputStyle}
-        placeholder=""
-      />
-    </td>
-  );
+  const InputCell = ({ path, value, isNumber = true, colSpan = 1 }: any) => {
+    const isNegative = isNumber && value < 0;
+    return (
+      <td style={{ ...inputCellStyle, height: CELL_HEIGHT }} colSpan={colSpan}>
+        <input
+          type="text"
+          value={isNumber ? formatCurrency(value) : (value || '')}
+          onChange={(e) => updateField(path, isNumber ? parseNumber(e.target.value) : e.target.value)}
+          style={{ ...inputStyle, color: isNegative ? 'red' : 'inherit' }}
+          placeholder=""
+        />
+      </td>
+    );
+  };
 
   const EmptyCell = ({ colSpan = 1, style = {} }: any) => (
     <td style={{ ...inputCellStyle, height: CELL_HEIGHT, ...style }} colSpan={colSpan}></td>
@@ -384,7 +404,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
           {/* Row 1 Header */}
           <tr>
             <td rowSpan={6} className="vertical-text">支給</td>
-            <LabelCell>基本給</LabelCell><LabelCell>役員報酬</LabelCell><LabelCell>処遇改善手当</LabelCell><LabelCell>同行研修手当</LabelCell><LabelCell>交通手当</LabelCell>
+            <LabelCell>基本給</LabelCell><LabelCell>役員報酬</LabelCell><LabelCell>処遇改善手当</LabelCell><LabelCell>同行研修手当</LabelCell><LabelCell>　</LabelCell>
             <LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell>
           </tr>
           {/* Row 1 Value */}
@@ -393,7 +413,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
             <InputCell path={['payments', 'directorCompensation']} value={0} />
             <InputCell path={['treatmentAllowance']} value={payslip.treatmentAllowance} />
             <InputCell path={['payments', 'accompanyAllowance']} value={0} />
-            <InputCell path={['payments', 'transportAllowance']} value={payslip.payments.transportAllowance} />
+            <EmptyCell />
             <EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell />
           </tr>
           {/* Row 2 Header */}
@@ -459,12 +479,13 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
           </tr>
           {/* Row 2 Prepaid Header/Value */}
           <tr>
-            <LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell>
+            <LabelCell>標準報酬月額</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell>
             <LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell>
             <LabelCell style={{ backgroundColor: '#d0fdd0', padding: '0 !important' }}>前払給与</LabelCell>
           </tr>
           <tr>
-            <EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell />
+            <InputCell path={['standardRemuneration']} value={payslip.standardRemuneration} />
+            <EmptyCell /><EmptyCell /><EmptyCell />
             <EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell />
             <InputCell path={['deductions', 'advancePayment']} value={payslip.deductions.advancePayment} />
           </tr>

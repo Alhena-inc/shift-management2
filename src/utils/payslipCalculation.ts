@@ -389,8 +389,8 @@ export function generateFixedPayslipFromShifts(
   // - 経費精算 / 交通費立替・手当（非課税扱い）
   const nonTaxableOtherAllowances = helper.otherAllowances
     ? helper.otherAllowances
-        .filter(a => a.taxExempt)
-        .reduce((sum, a) => sum + a.amount, 0)
+      .filter(a => a.taxExempt)
+      .reduce((sum, a) => sum + a.amount, 0)
     : 0;
   const insuranceBaseAmount =
     (payslip.payments.basePay || 0) +
@@ -404,17 +404,22 @@ export function generateFixedPayslipFromShifts(
   // 社会保険は加入がある場合のみ計算（未加入でも源泉/住民税は計算する）
   // 雇用保険料計算用：非課税その他手当のみ（交通費立替・手当は除外）
   const nonTaxableTransportAllowance = nonTaxableOtherAllowances;
+  const standardRemuneration = Number((helper as any).standardRemuneration) ||
+    Number((helper as any).standardMonthlyRemuneration) ||
+    insuranceBaseAmount;
+
+  // 明細オブジェクトに保持（再計算で使用するため）
+  payslip.standardRemuneration = standardRemuneration;
+
   const insuranceResult =
     insuranceTypes.length > 0
       ? calculateInsurance(
-          Number((helper as any).standardRemuneration) ||
-            Number((helper as any).standardMonthlyRemuneration) ||
-            insuranceBaseAmount,
-          insuranceBaseAmount, // 雇用保険用の課税支給額
-          age,
-          insuranceTypes,
-          nonTaxableTransportAllowance // 非課税その他手当（雇用保険料計算用、交通費立替・手当は除外）
-        )
+        standardRemuneration,
+        insuranceBaseAmount, // 雇用保険用の課税支給額
+        age,
+        insuranceTypes,
+        nonTaxableTransportAllowance // 非課税その他手当（雇用保険料計算用、交通費立替・手当は除外）
+      )
       : { healthInsurance: 0, careInsurance: 0, pensionInsurance: 0, employmentInsurance: 0, total: 0 };
 
   // 控除項目の個別フィールドに設定
@@ -704,12 +709,12 @@ export function generateHourlyPayslipFromShifts(
   // 通常ケア時給（身体・重度・家事・通院・行動・移動）: 2000円
   const rate = payslip.totalHourlyRate;
   const nightRate = rate * 1.25; // 深夜割増（25%増）
-  
+
   // 同行時給: 1200円（処遇改善加算含む）
   const accompanyBaseRate = 1200;
   const accompanyRate = accompanyBaseRate;
   const accompanyNightRate = accompanyRate * 1.25; // 深夜割増（25%増）
-  
+
   // 事務・営業時給: 1200円
   const officeRate = helper.officeHourlyRate || 1200;
 
@@ -722,7 +727,7 @@ export function generateHourlyPayslipFromShifts(
 
   // その他手当を初期化（配列を確実に作成）
   payslip.payments.otherAllowances = [];
-  
+
   // ヘルパーマスタからその他手当を取得
   if (helper.otherAllowances && helper.otherAllowances.length > 0) {
     helper.otherAllowances.forEach(allowance => {
@@ -795,8 +800,8 @@ export function generateHourlyPayslipFromShifts(
   // ※時給の場合も、taxExempt=true の手当や交通費/経費精算は保険計算に含めない
   const nonTaxableOtherAllowances = helper.otherAllowances
     ? helper.otherAllowances
-        .filter(a => a.taxExempt)
-        .reduce((sum, a) => sum + a.amount, 0)
+      .filter(a => a.taxExempt)
+      .reduce((sum, a) => sum + a.amount, 0)
     : 0;
 
   // 保険計算用：給与コア（交通費・経費精算など非課税は除外）
@@ -812,17 +817,22 @@ export function generateHourlyPayslipFromShifts(
   // 社会保険は加入がある場合のみ計算（未加入でも源泉/住民税は計算する）
   // 雇用保険料計算用：非課税その他手当のみ（交通費立替・手当は除外）
   const nonTaxableTransportAllowance = nonTaxableOtherAllowances;
+  const standardRemuneration = Number((helper as any).standardRemuneration) ||
+    Number((helper as any).standardMonthlyRemuneration) ||
+    salaryCoreAmount;
+
+  // 明細オブジェクトに保持（再計算で使用するため）
+  payslip.standardRemuneration = standardRemuneration;
+
   const insuranceResult =
     insuranceTypes.length > 0
       ? calculateInsurance(
-          Number((helper as any).standardRemuneration) ||
-            Number((helper as any).standardMonthlyRemuneration) ||
-            salaryCoreAmount,
-          salaryCoreAmount, // 雇用保険用の課税支給額
-          age,
-          insuranceTypes,
-          nonTaxableTransportAllowance // 非課税その他手当（雇用保険料計算用、交通費立替・手当は除外）
-        )
+        standardRemuneration,
+        salaryCoreAmount, // 雇用保険用の課税支給額
+        age,
+        insuranceTypes,
+        nonTaxableTransportAllowance // 非課税その他手当（雇用保険料計算用、交通費立替・手当は除外）
+      )
       : { healthInsurance: 0, careInsurance: 0, pensionInsurance: 0, employmentInsurance: 0, total: 0 };
 
   // 控除項目の個別フィールドに設定
