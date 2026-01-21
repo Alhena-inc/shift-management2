@@ -489,50 +489,64 @@ const HelperDetailPage: React.FC = () => {
           {activeTab === 'salary' && (
             <div className="space-y-8">
               {/* 給与タイプ選択 */}
-              <div>
-                <h2 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">給与タイプ</h2>
-                <div className="space-y-3">
-                  <label className="flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-blue-50"
-                    style={{
-                      borderColor: getSalaryType() === 'fixed' ? '#3b82f6' : '#d1d5db',
-                      backgroundColor: getSalaryType() === 'fixed' ? '#eff6ff' : 'white'
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="salaryType"
-                      checked={getSalaryType() === 'fixed'}
-                      onChange={() => handleChange('salaryType', 'fixed')}
-                      className="w-5 h-5 text-blue-600"
-                    />
-                    <div className="flex-1">
-                      <div className="font-bold text-gray-800">固定給（社員・契約社員）</div>
-                      <div className="text-sm text-gray-600 mt-1">
-                        月給制。基本給・処遇改善手当・その他手当を設定します
-                      </div>
-                    </div>
-                  </label>
+              {/* 給与タイプ・雇用形態設定 */}
+              <div className="bg-gray-50 p-6 rounded-xl border border-gray-200 mb-8">
+                <h2 className="text-lg font-bold text-gray-800 mb-6 pb-2 border-b border-gray-300">雇用・給与設定</h2>
 
-                  <label className="flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-green-50"
-                    style={{
-                      borderColor: getSalaryType() === 'hourly' ? '#10b981' : '#d1d5db',
-                      backgroundColor: getSalaryType() === 'hourly' ? '#f0fdf4' : 'white'
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="salaryType"
-                      checked={getSalaryType() === 'hourly'}
-                      onChange={() => handleChange('salaryType', 'hourly')}
-                      className="w-5 h-5 text-green-600"
-                    />
-                    <div className="flex-1">
-                      <div className="font-bold text-gray-800">時給（アルバイト・パート）</div>
-                      <div className="text-sm text-gray-600 mt-1">
-                        時給制。稼働時間に応じて給与を計算します
-                      </div>
-                    </div>
+                {/* 1. 給与タイプ選択 */}
+                <div className="mb-6">
+                  <label className="block text-sm font-bold text-gray-700 mb-3">
+                    給与タイプ
                   </label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label className={`flex items-start gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${getSalaryType() === 'fixed' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:bg-gray-50'
+                      }`}>
+                      <input
+                        type="radio"
+                        name="salaryType"
+                        checked={getSalaryType() === 'fixed'}
+                        onChange={() => handleChange('salaryType', 'fixed')}
+                        className="mt-1 w-5 h-5 text-blue-600 focus:ring-blue-500"
+                      />
+                      <div>
+                        <div className="font-bold text-gray-800">固定給</div>
+                        <p className="text-xs text-gray-500 mt-1">月給制。基本給・処遇改善手当を設定します。</p>
+                      </div>
+                    </label>
+
+                    <label className={`flex items-start gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${getSalaryType() === 'hourly' ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white hover:bg-gray-50'
+                      }`}>
+                      <input
+                        type="radio"
+                        name="salaryType"
+                        checked={getSalaryType() === 'hourly'}
+                        onChange={() => handleChange('salaryType', 'hourly')}
+                        className="mt-1 w-5 h-5 text-green-600 focus:ring-green-500"
+                      />
+                      <div>
+                        <div className="font-bold text-gray-800">時給</div>
+                        <p className="text-xs text-gray-500 mt-1">時給制。稼働時間に応じて計算します。</p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* 2. 雇用形態選択 */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    雇用形態
+                  </label>
+                  <select
+                    value={helper.employmentType || 'parttime'}
+                    onChange={(e) => handleChange('employmentType', e.target.value)}
+                    className="w-full md:w-1/2 px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="fulltime">正社員</option>
+                    <option value="contract">契約社員</option>
+                    <option value="parttime">パート・アルバイト</option>
+                    <option value="temporary">派遣社員</option>
+                    <option value="outsourced">業務委託</option>
+                  </select>
                 </div>
               </div>
 
