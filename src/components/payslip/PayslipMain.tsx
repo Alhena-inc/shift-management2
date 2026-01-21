@@ -196,8 +196,10 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       updated.deductions.taxableAmount = Math.max(0, updated.totals.taxableTotal - (updated.deductions.socialInsuranceTotal || 0));
     }
     if (updated.deductions.manualIncomeTax === undefined && helper?.hasWithholdingTax !== false) {
+      const pYear = updated.year || new Date().getFullYear();
       const pMonth = updated.month || new Date().getMonth() + 1;
-      const taxYear = pMonth === 12 ? (updated.year || new Date().getFullYear()) + 1 : (updated.year || new Date().getFullYear());
+      // 12月分（翌年1月支給）の場合は翌年の税額表を使用
+      const taxYear = pMonth === 12 ? pYear + 1 : pYear;
       updated.deductions.incomeTax = calculateWithholdingTaxByYear(taxYear, updated.deductions.taxableAmount || 0, updated.dependents || 0, '甲');
     }
     const totalExpenses = (updated.payments.transportAllowance || 0) + (updated.payments.expenseReimbursement || 0);

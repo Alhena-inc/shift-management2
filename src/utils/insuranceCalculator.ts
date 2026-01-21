@@ -191,10 +191,18 @@ export function calculateInsurance(
     pensionInsurance = Math.round(standardRemuneration * INSURANCE_RATES.pension);
   }
 
-  // 雇用保険（雇用保険法に基づき、課税支給額 + 非課税通勤手当で計算、端数は切り捨て）
+  // 雇用保険（課税支給額 + 非課税通勤手当で計算）
+  // 端数処理：50銭以下切り捨て、51銭以上切り上げ
   if (insuranceTypes.includes('employment')) {
     const employmentInsuranceBase = monthlySalaryTotal + nonTaxableTransportAllowance;
-    employmentInsurance = Math.floor(employmentInsuranceBase * INSURANCE_RATES.employment);
+    const rawValue = employmentInsuranceBase * INSURANCE_RATES.employment;
+    const decimal = rawValue - Math.floor(rawValue);
+
+    if (decimal <= 0.5) {
+      employmentInsurance = Math.floor(rawValue);
+    } else {
+      employmentInsurance = Math.ceil(rawValue);
+    }
   }
 
   const total = healthInsurance + careInsurance + pensionInsurance + employmentInsurance;

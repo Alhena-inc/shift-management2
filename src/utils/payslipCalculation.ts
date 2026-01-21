@@ -5,7 +5,7 @@ import type { FixedPayslip, HourlyPayslip, Payslip } from '../types/payslip';
 import { createEmptyFixedPayslip, createEmptyHourlyPayslip } from '../services/payslipService';
 import { NIGHT_START, NIGHT_END } from '../types/payslip';
 import { calculateWithholdingTaxByYear } from './taxCalculator';
-import { calculateInsurance } from './insuranceCalculator';
+import { calculateInsurance, getHealthStandardRemuneration } from './insuranceCalculator';
 import { generateFixedDailyAttendanceFromTemplate } from './attendanceTemplate';
 
 /**
@@ -404,9 +404,16 @@ export function generateFixedPayslipFromShifts(
   // 社会保険は加入がある場合のみ計算（未加入でも源泉/住民税は計算する）
   // 雇用保険料計算用：非課税その他手当のみ（交通費立替・手当は除外）
   const nonTaxableTransportAllowance = nonTaxableOtherAllowances;
-  const standardRemuneration = Number((helper as any).standardRemuneration) ||
-    Number((helper as any).standardMonthlyRemuneration) ||
-    insuranceBaseAmount;
+
+  // 標準報酬月額の決定
+  // 1. ヘルパー設定で固定値が指定されていればそれを使用
+  // 2. 指定がなければ、支給総額（保険対象額）から等級表に基づいて自動決定（302,200円 -> 300,000円等級など）
+  let standardRemuneration = Number((helper as any).standardRemuneration) ||
+    Number((helper as any).standardMonthlyRemuneration);
+
+  if (!standardRemuneration) {
+    standardRemuneration = getHealthStandardRemuneration(insuranceBaseAmount);
+  }
 
   // 明細オブジェクトに保持（再計算で使用するため）
   payslip.standardRemuneration = standardRemuneration;
@@ -454,8 +461,8 @@ export function generateFixedPayslipFromShifts(
     const dependents = helper.dependents || 0;
     const payslipYear = payslip.year || new Date().getFullYear();
     const payslipMonth = payslip.month || new Date().getMonth() + 1;
-    // 支給月が1月、または2025年12月分（翌年1月支給）の場合は令和8年分（2026年）の税額表を使用
-    const taxYear = (payslipMonth === 1 || (payslipYear === 2025 && payslipMonth === 12)) ? 2026 : payslipYear;
+    // 支給月が1月、または12月分（翌年1月支給）の場合は翌年の税額表を使用
+    const taxYear = payslipMonth === 12 ? (payslipYear + 1) : payslipYear;
     const withholdingTax = calculateWithholdingTaxByYear(taxYear, taxableAmount, dependents, '甲');
     payslip.deductions.incomeTax = withholdingTax || 0;
   }
@@ -859,8 +866,8 @@ export function generateHourlyPayslipFromShifts(
     const dependents = helper.dependents || 0;
     const payslipYear = payslip.year || new Date().getFullYear();
     const payslipMonth = payslip.month || new Date().getMonth() + 1;
-    // 支給月が1月、または2025年12月分（翌年1月支給）の場合は令和8年分（2026年）の税額表を使用
-    const taxYear = (payslipMonth === 1 || (payslipYear === 2025 && payslipMonth === 12)) ? 2026 : payslipYear;
+    // 支給月が1月、または12月分（翌年1月支給）の場合は翌年の税額表を使用
+    const taxYear = payslipMonth === 12 ? (payslipYear + 1) : payslipYear;
     const withholdingTax = calculateWithholdingTaxByYear(taxYear, taxableAmount, dependents, '甲');
     payslip.deductions.incomeTax = withholdingTax || 0;
   }
