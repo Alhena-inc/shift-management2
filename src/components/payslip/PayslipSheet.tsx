@@ -168,15 +168,15 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, helper, onChange }
       </style>
 
       {/* 3カラムレイアウト（縦並びに戻し、2ページ目へ） */}
-      <div className="flex flex-col gap-8 justify-start items-start w-full print:block">
+      <div className="flex flex-col gap-8 justify-center items-center w-full print:block">
         {/* 1ページ目：賃金明細本体 */}
-        <div className="w-full">
+        <div className="w-full page-1 flex justify-center">
           <PayslipMain payslip={payslip} helper={helper} onChange={handleMainChange} />
         </div>
 
         {/* 2ページ目：月勤怠表 & ケア一覧 (印刷時は改ページ) */}
-        <div className="w-full break-before-page" style={{ pageBreakBefore: 'always' }}>
-          <div className="flex gap-4 w-full justify-start items-start">
+        <div className="w-full page-2 break-before-page flex justify-center" style={{ pageBreakBefore: 'always' }}>
+          <div className="flex gap-4 w-full justify-center items-start">
             {/* 月勤怠表 */}
             <div className="flex-shrink-0" style={{ width: '600px', minWidth: '600px' }}>
               <MonthlyAttendanceSheet

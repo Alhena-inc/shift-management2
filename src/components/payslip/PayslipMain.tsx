@@ -3,7 +3,14 @@ import React, { useEffect } from 'react';
 import type { Payslip, HourlyPayslip } from '../../types/payslip';
 import type { Helper } from '../../types';
 import { calculateInsurance, getHealthStandardRemuneration } from '../../utils/insuranceCalculator';
-import { calculateWithholdingTaxByYear } from '../../utils/taxCalculator';
+import {
+  recalculatePayslip,
+  deriveInsuranceTypesFromHelper,
+  calculateOtherAllowancesValues,
+  timeToMinutes,
+  minutesToTime
+} from '../../utils/payslipUpdater';
+
 
 interface PayslipMainProps {
   payslip: Payslip;
@@ -16,6 +23,13 @@ const formatCurrency = (amount: number | undefined): string => {
     return '';
   }
   return amount === 0 ? '' : amount.toLocaleString();
+};
+
+const formatDecimal = (value: number | string | undefined): string => {
+  if (value === undefined || value === null || value === '') return '';
+  const num = Number(value);
+  if (isNaN(num)) return String(value);
+  return num.toFixed(2);
 };
 
 const parseNumber = (value: string): number => {
@@ -84,147 +98,9 @@ const inputStyle = {
 const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) => {
 
   // === データ処理 ===
-  const deriveInsuranceTypesFromHelper = (h?: Helper): string[] => {
-    const current = (payslip as any)?.insuranceTypes || [];
-    if (!h) return current;
-    const ins = h.insurances || [];
-    const result: string[] = [];
-    if (ins.includes('health') || (h as any).hasSocialInsurance === true || (h as any).socialInsurance === true) result.push('health', 'pension');
-    const age = Number((h as any).age) || 0;
-    if (ins.includes('care') || (h as any).hasNursingInsurance === true || (h as any).nursingInsurance === true || age >= 40) result.push('care');
-    if (ins.includes('employment') || (h as any).hasEmploymentInsurance === true || (h as any).employmentInsurance === true) result.push('employment');
-    return Array.from(new Set(result));
-  };
 
-  const calculateOtherAllowancesValues = (updated: any) => {
-    const otherAllowances = updated.payments?.otherAllowances || [];
-    const taxableOther = (updated.payments as any)?.manualTaxableAllowance !== undefined
-      ? (updated.payments as any).manualTaxableAllowance
-      : otherAllowances.filter((a: any) => !a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-    const nonTaxableOther = (updated.payments as any)?.manualNonTaxableAllowance !== undefined
-      ? (updated.payments as any).manualNonTaxableAllowance
-      : otherAllowances.filter((a: any) => a.taxExempt).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-    return { taxableOther, nonTaxableOther };
-  };
 
-  const timeToMinutes = (time: any): number => {
-    if (time === undefined || time === null || time === '') return 0;
-    if (typeof time === 'number') return time * 60;
-    const s = String(time);
-    if (s.includes(':')) {
-      const [h, m] = s.split(':').map(p => parseInt(p, 10) || 0);
-      return h * 60 + m;
-    }
-    return (parseFloat(s) || 0) * 60;
-  };
-
-  const minutesToTime = (totalMinutes: number): string => {
-    if (totalMinutes <= 0) return '';
-    const h = Math.floor(totalMinutes / 60);
-    const m = Math.round(totalMinutes % 60);
-    return m === 0 ? String(h) : `${h}:${String(m).padStart(2, '0')}`;
-  };
-
-  const recalculateTotals = (updated: any) => {
-    // 勤怠時間の合計計算 (5つの項目の合計)
-    const att = updated.attendance || {};
-    const totalMins =
-      timeToMinutes(att.totalWorkHours) +
-      timeToMinutes(att.accompanyHours) +
-      timeToMinutes(att.nightWorkHours) +
-      timeToMinutes(att.nightAccompanyHours) +
-      timeToMinutes(att.officeWorkHours);
-
-    // 合計稼働時間をセット
-    att.totalActualHours = minutesToTime(totalMins);
-
-    const { taxableOther, nonTaxableOther } = calculateOtherAllowancesValues(updated);
-    const otherAllowancesTotal = taxableOther + nonTaxableOther;
-    if (updated.baseSalary !== undefined) {
-      if (!updated.manualTotalSalary) updated.totalSalary = (updated.baseSalary || 0) + (updated.treatmentAllowance || 0) + otherAllowancesTotal;
-      if (!updated.payments) updated.payments = {};
-      if (!updated.payments.manualBasePay) updated.payments.basePay = updated.baseSalary;
-    } else if (updated.baseHourlyRate !== undefined) {
-      if (!updated.manualTotalHourlyRate) updated.totalHourlyRate = (updated.baseHourlyRate || 0) + (updated.treatmentAllowance || 0);
-    }
-    if (!updated.payments) updated.payments = {};
-    updated.payments.otherAllowancesTotal = otherAllowancesTotal;
-
-    let basePay = 0;
-    if (updated.totalSalary !== undefined) basePay = updated.totalSalary || 0;
-    else if (updated.baseSalary !== undefined) basePay = (updated.baseSalary || 0) + (updated.treatmentAllowance || 0);
-    else if (updated.payments?.basePay !== undefined) basePay = updated.payments.basePay || 0;
-
-    // 総支給額 (otherTotal is taxable + nonTaxable, but taxable is usually 0 here if manualTaxable is used)
-    const shouldAddOtherAllowances = updated.baseSalary === undefined;
-
-    if (!updated.payments.manualTotalPayment) {
-      updated.payments.totalPayment = basePay +
-        (updated.payments.normalWorkPay || 0) + (updated.payments.accompanyPay || 0) + (updated.payments.nightNormalPay || 0) +
-        (updated.payments.nightAccompanyPay || 0) + (updated.payments.officePay || 0) + ((updated.payments as any).yearEndNewYearAllowance || 0) +
-        (updated.payments.emergencyAllowance || 0) + (updated.payments.nightAllowance || 0) + (updated.payments.overtimePay || 0) +
-        (shouldAddOtherAllowances ? otherAllowancesTotal : 0);
-    }
-
-    let monthlySalaryTotal = 0;
-    let taxableMonthlySalary = 0;
-    if (updated.baseSalary !== undefined) {
-      monthlySalaryTotal = (updated.baseSalary || 0) + (updated.treatmentAllowance || 0) + taxableOther;
-      taxableMonthlySalary = monthlySalaryTotal;
-    } else {
-      const salaryCoreAmount = (updated.payments?.normalWorkPay || 0) + (updated.payments?.accompanyPay || 0) +
-        (updated.payments?.nightNormalPay || 0) + (updated.payments?.nightAccompanyPay || 0) + (updated.payments?.officePay || 0) +
-        ((updated.payments as any)?.yearEndNewYearAllowance || 0) + taxableOther;
-      monthlySalaryTotal = salaryCoreAmount;
-      taxableMonthlySalary = salaryCoreAmount;
-    }
-
-    const stdRemuneration = updated.standardRemuneration || getHealthStandardRemuneration(monthlySalaryTotal);
-    const insurance = calculateInsurance(stdRemuneration, monthlySalaryTotal, updated.age || 0, updated.insuranceTypes || [], nonTaxableOther);
-    if (updated.deductions.manualHealthInsurance === undefined) updated.deductions.healthInsurance = insurance.healthInsurance;
-    if (updated.deductions.manualCareInsurance === undefined) updated.deductions.careInsurance = insurance.careInsurance;
-    if (updated.deductions.manualPensionInsurance === undefined) updated.deductions.pensionInsurance = insurance.pensionInsurance;
-    if (updated.deductions.manualEmploymentInsurance === undefined) updated.deductions.employmentInsurance = insurance.employmentInsurance;
-    if (updated.deductions.manualSocialInsuranceTotal === undefined) {
-      updated.deductions.socialInsuranceTotal = (updated.deductions.healthInsurance || 0) + (updated.deductions.careInsurance || 0) + (updated.deductions.pensionInsurance || 0) + (updated.deductions.employmentInsurance || 0);
-    }
-    if (!updated.totals) updated.totals = {};
-    updated.totals.nonTaxableTotal = nonTaxableOther;
-    updated.totals.taxableTotal = updated.payments.totalPayment - nonTaxableOther;
-
-    if (updated.deductions.manualTaxableAmount === undefined) {
-      updated.deductions.taxableAmount = Math.max(0, updated.totals.taxableTotal - (updated.deductions.socialInsuranceTotal || 0));
-    }
-    if (updated.deductions.manualIncomeTax === undefined && helper?.hasWithholdingTax !== false) {
-      const pYear = updated.year || new Date().getFullYear();
-      const pMonth = updated.month || new Date().getMonth() + 1;
-      // 12月分（翌年1月支給）の場合は翌年の税額表を使用
-      const taxYear = pMonth === 12 ? pYear + 1 : pYear;
-      updated.deductions.incomeTax = calculateWithholdingTaxByYear(taxYear, updated.deductions.taxableAmount || 0, updated.dependents || 0, '甲');
-    }
-    const totalExpenses = (updated.payments.transportAllowance || 0) + (updated.payments.expenseReimbursement || 0);
-    if (updated.deductions.manualReimbursement === undefined) {
-      updated.deductions.reimbursement = -totalExpenses;
-    }
-
-    if (updated.deductions.manualDeductionTotal === undefined) {
-      updated.deductions.deductionTotal = (updated.deductions.incomeTax || 0) + (updated.deductions.residentTax || 0) + (updated.deductions.reimbursement || 0) + (updated.deductions.yearEndAdjustment || 0);
-    }
-    if (updated.deductions.manualTotalDeduction === undefined) {
-      updated.deductions.totalDeduction = (updated.deductions.socialInsuranceTotal || 0) + (updated.deductions.pensionFund || 0) + (updated.deductions.deductionTotal || 0) + (updated.deductions.advancePayment || 0) +
-        ((updated.deductions as any).otherDeduction1 || 0) + ((updated.deductions as any).otherDeduction2 || 0) + ((updated.deductions as any).otherDeduction2 || 0) +
-        ((updated.deductions as any).otherDeduction4 || 0) + ((updated.deductions as any).otherDeduction5 || 0);
-    }
-
-    if (updated.totals.manualNetPayment === undefined) updated.totals.netPayment = updated.payments.totalPayment - updated.deductions.totalDeduction;
-
-    // Expenses are now included in netPayment via negative reimbursement deduction
-    updated.totals.netPaymentWithExpense = updated.totals.netPayment;
-
-    if (updated.totals.manualBankTransfer === undefined) updated.totals.bankTransfer = (updated.totals.netPayment || 0) - (updated.totals.cashPayment || 0);
-
-    return updated;
-  };
+  const recalculateTotals = (updated: any) => recalculatePayslip(updated, helper);
 
   const updateField = (path: string[], value: any) => {
     const updated = JSON.parse(JSON.stringify(payslip));
@@ -249,7 +125,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
 
   useEffect(() => {
     const updated = JSON.parse(JSON.stringify(payslip));
-    updated.insuranceTypes = deriveInsuranceTypesFromHelper(helper);
+    updated.insuranceTypes = deriveInsuranceTypesFromHelper(helper, updated.insuranceTypes);
     // ヘルパーマスタに標準報酬月額が設定されている場合は同期
     if (helper?.standardRemuneration && (!updated.standardRemuneration || updated.standardRemuneration === 0)) {
       updated.standardRemuneration = helper.standardRemuneration;
@@ -284,6 +160,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       <td style={{ ...inputCellStyle, height: CELL_HEIGHT }} colSpan={colSpan}>
         <input
           type="text"
+          data-sync-path={path ? path.join('-') : undefined}
           value={isNumber ? formatCurrency(value) : (value || '')}
           onChange={(e) => updateField(path, isNumber ? parseNumber(e.target.value) : e.target.value)}
           style={{ ...inputStyle, color: isNegative ? 'red' : 'inherit' }}
@@ -355,30 +232,28 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
       {/* === ヘッダー === */}
       <div className="flex justify-between items-end mb-1">
         {/* 左上: タイトル・氏名欄 */}
-        <div className="border border-black w-[440px] p-2">
-          <div className="flex items-center justify-between mb-2">
+        <div
+          className="border border-black w-[440px]"
+          style={{ padding: '10px', height: '125px', overflow: 'visible' }}
+        >
+          {/* タイトル行 */}
+          <div className="flex items-center justify-between" style={{ marginBottom: '8px' }}>
             <span className="text-2xl font-bold whitespace-nowrap">給与 明細書</span>
             <span className="text-sm">
               令 和 {payslip.year - 2018} 年 {payslip.month} 月 分
             </span>
           </div>
-          <div className="w-full flex flex-col gap-1">
-            <div className="flex border-b border-black w-full mx-auto">
-              <span className="w-20 text-sm text-left self-center">社員番号</span>
-              <span className="flex-1 text-center text-sm">000001</span>
-            </div>
-            <div className="flex border-b border-black w-full mx-auto items-end">
-              <span className="w-20 text-sm text-left self-center mb-1">氏 名</span>
-              <span className="flex-1 text-xl font-bold text-center leading-none mb-1">{payslip.helperName}</span>
-            </div>
+          {/* 氏名行 */}
+          <div
+            className="flex w-full items-baseline"
+            style={{ borderBottom: '1px solid black', paddingBottom: '4px', marginBottom: '4px' }}
+          >
+            <span style={{ width: '50px', fontSize: '14px', flexShrink: 0 }}>氏 名</span>
+            <span className="flex-1 text-xl font-bold text-center">{payslip.helperName}</span>
           </div>
-          <div className="text-right w-full mt-1 h-5">
-            <input
-              type="text"
-              value={(payslip as any).companyName || 'Alhena合同会社'}
-              onChange={e => updateField(['companyName'], e.target.value)}
-              className="text-right w-full bg-transparent border-none outline-none text-xs h-full"
-            />
+          {/* 会社名行 */}
+          <div style={{ textAlign: 'right', fontSize: '12px' }}>
+            {(payslip as any).companyName || 'Alhena合同会社'}
           </div>
         </div>
 
@@ -531,12 +406,12 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
             <LabelCell>　</LabelCell>
           </tr>
           <tr>
-            <InputCell path={['attendance', 'normalWorkDays']} value={(payslip.attendance as any).normalWorkDays} isNumber={false} />
-            <InputCell path={['attendance', 'accompanyWorkDays']} value={(payslip.attendance as any).accompanyWorkDays || 0} isNumber={false} />
+            <InputCell path={['attendance', 'normalWorkDays']} value={formatDecimal((payslip.attendance as any).normalWorkDays)} isNumber={false} />
+            <InputCell path={['attendance', 'accompanyWorkDays']} value={formatDecimal((payslip.attendance as any).accompanyWorkDays || 0)} isNumber={false} />
             <InputCell path={['attendance', 'absences']} value={(payslip.attendance as any).absences} isNumber={false} />
             <InputCell path={['attendance', 'lateEarlyCount']} value={(payslip.attendance as any).lateEarlyCount || 0} isNumber={false} />
             <EmptyCell />
-            <InputCell path={['attendance', 'totalWorkDays']} value={(payslip.attendance as any).totalWorkDays || 0} isNumber={false} />
+            <InputCell path={['attendance', 'totalWorkDays']} value={formatDecimal((payslip.attendance as any).totalWorkDays || 0)} isNumber={false} />
             <EmptyCell />
             <EmptyCell />
             <EmptyCell />
@@ -554,12 +429,12 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
             <LabelCell>　</LabelCell>
           </tr>
           <tr>
-            <InputCell path={['attendance', 'totalWorkHours']} value={payslip.attendance.totalWorkHours} isNumber={false} />
-            <InputCell path={['attendance', 'accompanyHours']} value={(payslip.attendance as any).accompanyHours || ''} isNumber={false} />
-            <InputCell path={['attendance', 'nightWorkHours']} value={payslip.attendance.nightWorkHours} isNumber={false} />
-            <InputCell path={['attendance', 'nightAccompanyHours']} value={(payslip.attendance as any).nightAccompanyHours || ''} isNumber={false} />
-            <InputCell path={['attendance', 'officeWorkHours']} value={(payslip.attendance as any).officeWorkHours || ''} isNumber={false} />
-            <InputCell path={['attendance', 'totalActualHours']} value={(payslip.attendance as any).totalActualHours || ''} isNumber={false} />
+            <InputCell path={['attendance', 'totalWorkHours']} value={formatDecimal(payslip.attendance.totalWorkHours)} isNumber={false} />
+            <InputCell path={['attendance', 'accompanyHours']} value={formatDecimal((payslip.attendance as any).accompanyHours || '')} isNumber={false} />
+            <InputCell path={['attendance', 'nightWorkHours']} value={formatDecimal(payslip.attendance.nightWorkHours)} isNumber={false} />
+            <InputCell path={['attendance', 'nightAccompanyHours']} value={formatDecimal((payslip.attendance as any).nightAccompanyHours || '')} isNumber={false} />
+            <InputCell path={['attendance', 'officeWorkHours']} value={formatDecimal((payslip.attendance as any).officeWorkHours || '')} isNumber={false} />
+            <InputCell path={['attendance', 'totalActualHours']} value={formatDecimal((payslip.attendance as any).totalActualHours || '')} isNumber={false} />
             <EmptyCell />
             <EmptyCell />
             <EmptyCell />

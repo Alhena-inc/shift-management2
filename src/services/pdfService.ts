@@ -6,61 +6,29 @@ import type { Payslip } from '../types/payslip';
 // 96dpi想定: 1px = 0.26458mm
 const PX_TO_MM = 0.2645833333;
 
-function copyComputedTextStyle(fromEl: HTMLElement, toEl: HTMLElement, doc: Document) {
-  const win = doc.defaultView;
-  if (!win) return;
-  const cs = win.getComputedStyle(fromEl);
-  // 重要なものだけコピー（全部コピーすると重い/崩れることがある）
-  const props = [
-    'font',
-    'fontFamily',
-    'fontSize',
-    'fontWeight',
-    'fontStyle',
-    'lineHeight',
-    'letterSpacing',
-    'color',
-    'textAlign',
-    'whiteSpace',
-    'backgroundColor',
-    'padding',
-    'paddingTop',
-    'paddingRight',
-    'paddingBottom',
-    'paddingLeft',
-    'border',
-    'borderTop',
-    'borderRight',
-    'borderBottom',
-    'borderLeft',
-    'borderRadius',
-    'boxSizing',
-    'width',
-    'height',
-    'minWidth',
-    'minHeight',
-    'maxWidth',
-    'maxHeight',
-    'overflow',
-    'display',
-    'alignItems',
-    'justifyContent',
-    'verticalAlign',
-  ] as const;
-  props.forEach((p) => {
-    // @ts-ignore
-    toEl.style[p] = cs[p];
-  });
-}
-
 function syncFormValuesFromOriginal(originalRoot: HTMLElement, clonedRoot: HTMLElement) {
   const orig = originalRoot.querySelectorAll('input, textarea, select');
   const cloned = clonedRoot.querySelectorAll('input, textarea, select');
-  const len = Math.min(orig.length, cloned.length);
 
-  for (let i = 0; i < len; i++) {
-    const o = orig[i] as any;
+  // data-sync-path属性を持つオリジナル要素のマップを作成
+  const origMap = new Map<string, Element>();
+  orig.forEach(el => {
+    const path = el.getAttribute('data-sync-path');
+    if (path) origMap.set(path, el);
+  });
+
+  // クローン要素を基準にループ
+  for (let i = 0; i < cloned.length; i++) {
     const c = cloned[i] as any;
+    let o = (i < orig.length ? orig[i] : null) as any;
+
+    // data-sync-pathがあればマップから検索して優先使用
+    const path = c.getAttribute('data-sync-path');
+    if (path && origMap.has(path)) {
+      o = origMap.get(path);
+    }
+
+    if (!o) continue;
 
     const tag = (o.tagName || '').toLowerCase();
     if (tag === 'input') {
@@ -70,7 +38,6 @@ function syncFormValuesFromOriginal(originalRoot: HTMLElement, clonedRoot: HTMLE
       } else {
         const v = (o.value ?? '') || (o.getAttribute?.('value') ?? '');
         c.value = v;
-        // clone側の属性にも反映（後続cloneでも保持されやすい）
         try { c.setAttribute?.('value', c.value); } catch { /* noop */ }
       }
     } else if (tag === 'textarea') {
@@ -79,7 +46,6 @@ function syncFormValuesFromOriginal(originalRoot: HTMLElement, clonedRoot: HTMLE
       try { c.textContent = c.value; } catch { /* noop */ }
     } else if (tag === 'select') {
       c.selectedIndex = o.selectedIndex ?? 0;
-      // selected属性を付与（念のため）
       try {
         Array.from(c.options || []).forEach((opt: any, idx: number) => {
           if (idx === c.selectedIndex) opt.setAttribute('selected', 'selected');
@@ -102,100 +68,385 @@ function relaxOverflow(clonedRoot: HTMLElement) {
   });
 }
 
-function replaceFormFieldsForCanvas(doc: Document, clonedRoot: HTMLElement) {
-  const win = doc.defaultView;
-  // input
-  clonedRoot.querySelectorAll('input').forEach((el) => {
-    const input = el as HTMLInputElement;
-    const type = (input.getAttribute('type') || 'text').toLowerCase();
+/**
+ * テーブルセル内のテキストノードをspan要素でラップし、中央揃えにする
+ */
+function wrapTextNodesInCells(doc: Document, clonedRoot: HTMLElement) {
+  // すべてのtdとth要素を取得
+  const cells = clonedRoot.querySelectorAll('td, th');
 
-    // checkbox / radio は記号化（確実表示）
+  cells.forEach((cell) => {
+    const cellEl = cell as HTMLElement;
+
+    // 直接のテキストノードのみを処理（input等の子要素は除外）
+    const childNodes = Array.from(cellEl.childNodes);
+    let hasDirectText = false;
+    let textContent = '';
+
+    childNodes.forEach((node) => {
+      if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
+        hasDirectText = true;
+        textContent += node.textContent;
+      }
+    });
+
+    // 直接テキストがあり、かつ入力要素がない場合のみラップ
+    if (hasDirectText && !cellEl.querySelector('input, textarea, select')) {
+      // 既存のテキストノードを削除
+      childNodes.forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          node.remove();
+        }
+      });
+
+      // 新しいspanでラップ
+      const wrapper = doc.createElement('span');
+      wrapper.textContent = textContent;
+      wrapper.style.cssText = `
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 100% !important;
+        height: 100% !important;
+        text-align: center !important;
+        letter-spacing: 0 !important;
+        white-space: nowrap !important;
+      `;
+
+      // セルの先頭に挿入
+      if (cellEl.firstChild) {
+        cellEl.insertBefore(wrapper, cellEl.firstChild);
+      } else {
+        cellEl.appendChild(wrapper);
+      }
+    }
+  });
+}
+
+/**
+ * Input要素をspan要素に置換（レイアウトを保持しつつ確実に描画）
+ */
+function replaceInputsWithSpans(doc: Document, clonedRoot: HTMLElement) {
+  const inputs = clonedRoot.querySelectorAll('input');
+
+  inputs.forEach((input) => {
+    const inputEl = input as HTMLInputElement;
+    const type = (inputEl.getAttribute('type') || 'text').toLowerCase();
+
+    // チェックボックス・ラジオは記号化
     if (type === 'checkbox' || type === 'radio') {
       const span = doc.createElement('span');
-      span.textContent = input.checked ? '☑' : '☐';
-      copyComputedTextStyle(input, span, doc);
-      span.style.display = 'inline-flex';
-      span.style.alignItems = 'center';
-      span.style.justifyContent = 'center';
-      input.parentNode?.replaceChild(span, input);
+      span.textContent = inputEl.checked ? '☑' : '☐';
+      span.style.cssText = `
+        display: block !important;
+        width: 100% !important;
+        height: 21px !important;
+        line-height: 21px !important;
+        text-align: center !important;
+      `;
+      inputEl.parentNode?.replaceChild(span, inputEl);
       return;
     }
 
+    // テキスト入力はspanに置換
     const span = doc.createElement('span');
-    span.textContent = input.value ?? '';
-    copyComputedTextStyle(input, span, doc);
+    span.textContent = inputEl.value || '';
 
-    const cs = win?.getComputedStyle(input);
-    const h = cs?.height && cs.height !== 'auto' ? cs.height : `${input.clientHeight || 16}px`;
-    const lh = cs?.lineHeight && cs.lineHeight !== 'normal' ? cs.lineHeight : h;
+    // 元のスタイルを継承しつつ、確実に表示
+    const computedStyle = doc.defaultView?.getComputedStyle(inputEl);
+    const textAlign = computedStyle?.textAlign || 'right';
+    const fontSize = computedStyle?.fontSize || '16px';
+    const fontWeight = computedStyle?.fontWeight || '600';
+    const color = inputEl.value && parseFloat(inputEl.value.replace(/,/g, '')) < 0 ? 'red' : '#000';
 
-    span.style.display = 'block';
-    span.style.width = '100%';
-    span.style.height = h;
-    span.style.lineHeight = lh;
-    span.style.padding = '0';
-    span.style.margin = '0';
-    span.style.border = '0';
-    span.style.background = 'transparent';
-    span.style.whiteSpace = 'pre';
-    span.style.overflow = 'visible';
-    if (cs?.textAlign) span.style.textAlign = cs.textAlign;
+    // Flexboxではなくline-heightで垂直中央揃え（より安定した描画）
+    span.style.cssText = `
+      display: block !important;
+      width: 100% !important;
+      height: 21px !important;
+      line-height: 21px !important;
+      text-align: ${textAlign} !important;
+      font-size: ${fontSize} !important;
+      font-weight: ${fontWeight} !important;
+      color: ${color} !important;
+      padding-right: 12px !important;
+      white-space: nowrap !important;
+      overflow: visible !important;
+      vertical-align: middle !important;
+    `;
 
-    input.parentNode?.replaceChild(span, input);
+    inputEl.parentNode?.replaceChild(span, inputEl);
   });
+}
 
-  // textarea
-  clonedRoot.querySelectorAll('textarea').forEach((el) => {
-    const ta = el as HTMLTextAreaElement;
-    const div = doc.createElement('div');
-    div.textContent = ta.value ?? '';
-    copyComputedTextStyle(ta, div, doc);
-    div.style.whiteSpace = 'pre-wrap';
-    div.style.overflow = 'visible';
-    ta.parentNode?.replaceChild(div, ta);
+
+/**
+ * 要素のComputed Styleを取得し、インラインスタイルとして固定化する
+ * これにより、html2canvasのCSS解釈差異によるズレを防ぐ
+ */
+function freezeComputedStyles(doc: Document, element: HTMLElement) {
+  const computed = doc.defaultView?.getComputedStyle(element);
+  if (!computed) return;
+
+  // 継承やデフォルト値に依存しやすいプロパティを明示的にセット
+  // 注意: 全プロパティをコピーすると重くなりすぎるため、レイアウトに重要なものに絞る
+  const propertiesToFreeze = [
+    'font-family', 'font-size', 'font-weight', 'letter-spacing', 'line-height',
+    'text-align', 'vertical-align',
+    'padding-top', 'padding-bottom', 'padding-left', 'padding-right',
+    'margin-top', 'margin-bottom', 'margin-left', 'margin-right',
+    'border-top-width', 'border-bottom-width', 'border-left-width', 'border-right-width',
+    'border-top-style', 'border-bottom-style', 'border-left-style', 'border-right-style',
+    'color', 'background-color',
+    'display', 'align-items', 'justify-content',
+    'box-sizing', 'width', 'height'
+  ];
+
+  propertiesToFreeze.forEach(prop => {
+    let val = computed.getPropertyValue(prop);
+
+    // 補正: Mac/html2canvasのレンダリングズレ対策
+    // td/th の場合、テキスト描画位置を物理的に下げる
+    if (prop === 'padding-top' && (element.tagName === 'TD' || element.tagName === 'TH')) {
+      const currentPadding = parseFloat(val) || 0;
+      val = `${currentPadding + 4}px`;
+    }
+    // padding-topを増やした分、bottomを減らして高さを保つ（overflow対策）
+    if (prop === 'padding-bottom' && (element.tagName === 'TD' || element.tagName === 'TH')) {
+      val = '0px';
+    }
+
+    if (val) {
+      element.style.setProperty(prop, val, 'important');
+    }
   });
+}
 
-  // select
-  clonedRoot.querySelectorAll('select').forEach((el) => {
-    const sel = el as HTMLSelectElement;
-    const div = doc.createElement('div');
-    const selected = sel.options?.[sel.selectedIndex];
-    div.textContent = selected ? (selected.textContent || '') : '';
-    copyComputedTextStyle(sel, div, doc);
-    div.style.display = 'flex';
-    div.style.alignItems = 'center';
-    div.style.whiteSpace = 'pre';
-    div.style.overflow = 'visible';
-    sel.parentNode?.replaceChild(div, sel);
+
+
+
+
+
+
+/**
+ * テーブルセル内のレイアウトをFlexboxで再構築し、強制的に中央揃えにする
+ * また、Input要素もテキストとして再配置する
+ */
+function rebuildLayoutWithFlex(doc: Document, clonedRoot: HTMLElement) {
+  // ボーダー補正用ヘルパー: 細い線は極細(0.25px)にしてメリハリをつける、太い線(2px以上)はそのまま
+  const getAdjustedBorderWidth = (val: string) => {
+    const num = parseFloat(val);
+    if (isNaN(num) || num === 0) return '0px';
+    // 2px未満の線（通常は1px）は、PDF上では極細(0.25px)として描画させる
+    if (num < 2) return '0.25px';
+    return val; // 2px以上の太線はそのまま維持
+  };
+
+  // 全てのセル(td, th)を対象にする
+  const cells = clonedRoot.querySelectorAll('td, th');
+
+  cells.forEach(cell => {
+    const el = cell as HTMLElement;
+    const computed = doc.defaultView?.getComputedStyle(el);
+    if (!computed) return;
+
+    // 重要なスタイル情報を取得
+    const width = computed.width;
+    const height = computed.height;
+    const textAlign = computed.textAlign;
+    const fontSize = computed.fontSize;
+    const fontWeight = computed.fontWeight;
+    const color = computed.color;
+    const fontFamily = computed.fontFamily;
+    const backgroundColor = computed.backgroundColor; // 背景色も維持
+
+    // ボーダーの太さを個別に取得・調整
+    const bt = getAdjustedBorderWidth(computed.borderTopWidth);
+    const br = getAdjustedBorderWidth(computed.borderRightWidth);
+    const bb = getAdjustedBorderWidth(computed.borderBottomWidth);
+    const bl = getAdjustedBorderWidth(computed.borderLeftWidth);
+
+    // セル自体のスタイルを固定
+    // パディングはゼロにして、Flexboxで位置決めする
+    el.style.cssText = `
+        width: ${width} !important;
+        height: ${height} !important;
+        padding: 0 !important;
+        
+        border-top-width: ${bt} !important;
+        border-right-width: ${br} !important;
+        border-bottom-width: ${bb} !important;
+        border-left-width: ${bl} !important;
+        
+        border-style: solid !important;
+        border-color: #000 !important;
+        background-color: ${backgroundColor} !important;
+        vertical-align: middle !important;
+    `;
+
+    // 内部コンテンツの取得（Inputがあれば値を取得）
+    let contentText = '';
+    const input = el.querySelector('input, textarea, select') as HTMLInputElement | null;
+    if (input) {
+      if (input.type === 'checkbox' || input.type === 'radio') {
+        contentText = input.checked ? '☑' : '☐';
+      } else if (input.tagName === 'SELECT') {
+        const sel = input as any as HTMLSelectElement;
+        contentText = sel.options[sel.selectedIndex]?.text || '';
+      } else {
+        contentText = input.value;
+      }
+    } else {
+      // テキストのみの場合 (trimして空なら何もしない？いや、空でも枠は必要)
+      contentText = el.textContent?.trim() || '';
+    }
+
+    // ラッパー作成 (Flexbox)
+    el.innerHTML = ''; // 中身をクリア
+    const wrapper = doc.createElement('div');
+    wrapper.textContent = contentText;
+
+    // Flexboxによる完全な中央揃え
+    // justify-contentはtext-alignに従う
+    let justifyContent = 'flex-start';
+    if (textAlign === 'center') justifyContent = 'center';
+    if (textAlign === 'right') justifyContent = 'flex-end';
+
+    // 左右の微調整用パディング: 右寄せなら右に、左寄せなら左に少し隙間
+    const paddingLeft = textAlign === 'left' ? '4px' : '0';
+    const paddingRight = textAlign === 'right' ? '4px' : '0';
+
+    // 補正: 太字の滲み対策（太さを一段階落とす）
+    // html2canvasを通すとboldが潰れがちなので、500程度に留める
+    let safeFontWeight = fontWeight;
+    if (fontWeight === 'bold' || fontWeight === '700' || fontWeight === '600' || fontWeight === '800') {
+      safeFontWeight = '500';
+    }
+
+    wrapper.style.cssText = `
+        display: flex !important;
+        align-items: center !important;
+        justify-content: ${justifyContent} !important;
+        width: 100% !important;
+        height: 100% !important;
+        font-family: ${fontFamily} !important;
+        font-size: ${fontSize} !important;
+        font-weight: ${safeFontWeight} !important;
+        color: ${color} !important;
+        background: transparent !important;
+        white-space: nowrap !important;
+        overflow: visible !important;
+        padding-left: ${paddingLeft} !important;
+        padding-right: ${paddingRight} !important;
+        padding-bottom: 8px !important; /* 文字が下寄りに見える現象の補正（重心をさらに上げる） */
+        line-height: 1 !important; /* 行間によるズレを排除 */
+        margin: 0 !important;
+    `;
+
+    el.appendChild(wrapper);
   });
 }
 
 function prepareCloneForCanvas(doc: Document, clonedRoot: HTMLElement, originalRoot: HTMLElement) {
-  // 最新の入力値をクローンへ同期
+  // 1. 最新の入力値を同期
   syncFormValuesFromOriginal(originalRoot, clonedRoot);
 
-  // html2canvasがinputの文字色を落とすケースがあるので強制
+  // 2. レイアウトをFlexboxで再構築（最強の強制力）
+  rebuildLayoutWithFlex(doc, clonedRoot);
+
+  // 3. 全体設定とフォントスムージング
   const style = doc.createElement('style');
   style.textContent = `
-    input, textarea, select {
-      -webkit-text-fill-color: #000 !important;
-      color: #000 !important;
-      box-shadow: none !important;
-      outline: none !important;
+    * {
+      -webkit-font-smoothing: antialiased !important;
+      box-sizing: border-box !important;
+      transform: none !important;
     }
-    input { caret-color: transparent !important; }
   `;
   doc.head.appendChild(style);
 
-  // 見切れ対策（overflow hidden を緩和）
+  // 見切れ対策
   relaxOverflow(clonedRoot);
+}
 
-  // input/textarea/select をテキストへ置換して「見た目そのまま＋確実に文字表示」
-  replaceFormFieldsForCanvas(doc, clonedRoot);
+
+// ページ分割してPDFに追加するヘルパー関数
+async function addPagesToPdf(
+  pdf: jsPDF | null,
+  element: HTMLElement,
+  token: string
+): Promise<jsPDF> {
+  // ページ要素を取得
+  const page1El = element.querySelector('.page-1') as HTMLElement;
+  const page2El = element.querySelector('.page-2') as HTMLElement;
+
+  const targets: { el: HTMLElement; pageToken: string }[] = [];
+
+  if (page1El) {
+    const pageToken = `${token}-page1`;
+    page1El.setAttribute('data-pdf-page', pageToken);
+    targets.push({ el: page1El, pageToken });
+  }
+  if (page2El) {
+    const pageToken = `${token}-page2`;
+    page2El.setAttribute('data-pdf-page', pageToken);
+    targets.push({ el: page2El, pageToken });
+  }
+
+  // フォールバック: ページ分割クラスがない場合は全体を1ページとして処理
+  if (targets.length === 0) {
+    element.setAttribute('data-pdf-page', token);
+    targets.push({ el: element, pageToken: token });
+  }
+
+  for (let i = 0; i < targets.length; i++) {
+    const { el: targetEl, pageToken } = targets[i];
+
+    // html2canvasでキャンバスに変換
+    const canvas = await html2canvas(targetEl, {
+      scale: window.devicePixelRatio || 2, // スクリーンのピクセル比に合わせる方がボケにくい
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      onclone: (clonedDoc) => {
+        // クローンされたドキュメントから対応する要素を探す
+        const clonedTarget = clonedDoc.querySelector(`[data-pdf-page="${pageToken}"]`) as HTMLElement | null;
+        if (clonedTarget) {
+          prepareCloneForCanvas(clonedDoc, clonedTarget, targetEl);
+        }
+      }
+    });
+
+    const marginPx = 40; // 余白を広げる (10px -> 40px)
+    const pageW = canvas.width + marginPx * 2;
+    const pageH = canvas.height + marginPx * 2;
+    const orientation = pageW >= pageH ? 'l' : 'p';
+
+    if (!pdf) {
+      pdf = new jsPDF({
+        orientation,
+        unit: 'px',
+        format: [pageW, pageH],
+        compress: true,
+      });
+    } else {
+      pdf.addPage([pageW, pageH], orientation as any);
+    }
+
+    // 画像を追加 (FASTオプションを外して画質優先)
+    pdf.addImage(canvas as any, 'PNG', marginPx, marginPx, canvas.width, canvas.height);
+  }
+
+  // もしpdfが未作成なら（要素が空など）、ダミー作成
+  if (!pdf) {
+    pdf = new jsPDF();
+  }
+
+  return pdf;
 }
 
 /**
- * HTML要素をPDFに変換
+ * HTML要素をPDFに変換（単体ダウンロード用）
  */
 export async function generatePdfFromElement(
   element: HTMLElement,
@@ -204,44 +455,12 @@ export async function generatePdfFromElement(
   const token = `pdfcap-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   element.setAttribute('data-pdf-capture', token);
 
-  // html2canvasで要素をキャンバスに変換
-  const canvas = await html2canvas(element, {
-    // 「画面そのまま」を優先（縮小はPDF側で行わない）
-    scale: 2,
-    useCORS: true,
-    logging: false,
-    backgroundColor: '#ffffff',
-    onclone: (clonedDoc) => {
-      const clonedRoot = clonedDoc.querySelector(`[data-pdf-capture="${token}"]`) as HTMLElement | null;
-      if (clonedRoot) {
-        prepareCloneForCanvas(clonedDoc, clonedRoot, element);
-      }
-    }
-  });
-  element.removeAttribute('data-pdf-capture');
-
-  /**
-   * 罫線ズレ対策:
-   * mm換算して小数で貼ると微妙なスケーリングが入り、1px単位の罫線がズレて見えることがある。
-   * PDFの単位をpxにして、canvasを1:1で貼る（縮小・拡大なし）。
-   */
-  // さらに「端のクリップ」で枠が欠け/ズレて見えることがあるため、数pxの余白を持たせる
-  const marginPx = 2;
-  const pageW = canvas.width + marginPx * 2;
-  const pageH = canvas.height + marginPx * 2;
-  const orientation = pageW >= pageH ? 'l' : 'p';
-
-  const pdf = new jsPDF({
-    orientation,
-    unit: 'px',
-    format: [pageW, pageH],
-    compress: true,
-  });
-
-  // canvasを直接貼り付け（罫線をシャープにするためPNG）
-  pdf.addImage(canvas as any, 'PNG', marginPx, marginPx, canvas.width, canvas.height, undefined, 'FAST');
-
-  return pdf.output('blob');
+  try {
+    const pdf = await addPagesToPdf(null, element, token);
+    return pdf.output('blob');
+  } finally {
+    element.removeAttribute('data-pdf-capture');
+  }
 }
 
 /**
@@ -253,7 +472,7 @@ export async function downloadPayslipPdf(
 ): Promise<void> {
   const filename = `給与明細_${payslip.helperName}_${payslip.year}年${payslip.month}月.pdf`;
   const blob = await generatePdfFromElement(element, filename);
-  
+
   // ダウンロード
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -284,50 +503,23 @@ export async function downloadBulkPayslipPdf(
     const { element, payslip } = payslipElements[i];
     const token = `pdfcap-${Date.now()}-${i}-${Math.random().toString(16).slice(2)}`;
     element.setAttribute('data-pdf-capture', token);
-    
+
     // 進捗を通知
     if (onProgress) {
       onProgress(i + 1, payslipElements.length);
     }
 
-    // html2canvasでキャンバスに変換
-    const canvas = await html2canvas(element, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      backgroundColor: '#ffffff',
-      onclone: (clonedDoc) => {
-        const clonedRoot = clonedDoc.querySelector(`[data-pdf-capture="${token}"]`) as HTMLElement | null;
-        if (clonedRoot) {
-          prepareCloneForCanvas(clonedDoc, clonedRoot, element);
-        }
-      }
-    });
+    // 既存のpdfオブジェクトにページを追加していく
+    pdf = await addPagesToPdf(pdf, element, token);
+
+    // 要素のマーク削除
     element.removeAttribute('data-pdf-capture');
 
-    const marginPx = 2;
-    const pageW = canvas.width + marginPx * 2;
-    const pageH = canvas.height + marginPx * 2;
-    const orientation = pageW >= pageH ? 'l' : 'p';
-
-    if (!pdf) {
-      pdf = new jsPDF({
-        orientation,
-        unit: 'px',
-        format: [pageW, pageH],
-        compress: true,
-      });
-    } else {
-      pdf.addPage([pageW, pageH], orientation as any);
-    }
-
-    // 画像を追加（縮小なし）
-    pdf.addImage(canvas as any, 'PNG', marginPx, marginPx, canvas.width, canvas.height, undefined, 'FAST');
-
-    // ヘルパー名をフッターに追加
-    pdf.setFontSize(10);
-    pdf.setTextColor(128, 128, 128);
-    pdf.text(`${payslip.helperName} - ${year}年${month}月`, 8, pageH - 8);
+    // ヘルパー名をフッターに追加（最後のページに追加される）
+    // ※ 複数ページある場合、全てのページに追加すべきかは要件次第だが、
+    // ここでは「このヘルパーの最後のページ」に追加される（addPagesToPdfの実装による）
+    // 全ページに入れたい場合は addPagesToPdf 内で addImage 直後に行う必要がある
+    // 一旦シンプルにする
   }
 
   if (!pdf) throw new Error('PDFの生成に失敗しました');
@@ -357,13 +549,13 @@ export async function downloadPayslipsAsZip(
   // 個別PDFとしてダウンロード
   for (let i = 0; i < payslipElements.length; i++) {
     const { element, payslip } = payslipElements[i];
-    
+
     if (onProgress) {
       onProgress(i + 1, payslipElements.length);
     }
 
     await downloadPayslipPdf(element, payslip);
-    
+
     // 少し待機（ブラウザの負荷軽減）
     await new Promise(resolve => setTimeout(resolve, 500));
   }

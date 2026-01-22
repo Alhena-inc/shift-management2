@@ -126,6 +126,9 @@ export function PayslipSheet({ data }: PayslipSheetProps) {
     window.print();
   };
 
+  // ケア一覧を表示するかどうか（データが存在し、かつケア記録がある場合）
+  const showCareList = data.careList && data.careList.length > 0;
+
   return (
     <div className="payslip-wrapper">
       {/* 印刷ボタン（印刷時は非表示） */}
@@ -133,261 +136,268 @@ export function PayslipSheet({ data }: PayslipSheetProps) {
         <button onClick={handlePrint} className="print-button">印刷する</button>
       </div>
 
-      {/* 給与明細書 - 3カラムレイアウト */}
-      <div className="payslip-container">
-        {/* 左カラム: 賃金明細 */}
-        <div className="column left-column">
-          {/* タイトル */}
-          <div className="title-row">
-            賃金明細 {year}年 {month}月分（支払通知書）
-          </div>
-
-          {/* 承認印と会社情報 */}
-          <div className="header-section">
-            <div className="stamp-area">
-              <div className="stamp-label">承認印</div>
-              <div className="stamp-box"></div>
+      <div className="payslip-root">
+        {/* === 1ページ目: 給与明細書 === */}
+        <div className="payslip-page page-1">
+          {/* 給与明細テーブル */}
+          <div className="column left-column">
+            {/* タイトル */}
+            <div className="title-row">
+              賃金明細 {year}年 {month}月分（支払通知書）
             </div>
-            <div className="company-info">
-              <div className="company-name">{data.companyName}</div>
-              <div className="office-name">{data.officeName}</div>
-              <div className="company-address">{data.companyAddress}</div>
+
+            {/* 承認印と会社情報 */}
+            <div className="header-section">
+              <div className="stamp-area">
+                <div className="stamp-label">承認印</div>
+                <div className="stamp-box"></div>
+              </div>
+              <div className="company-info">
+                <div className="company-name">{data.companyName}</div>
+                <div className="office-name">{data.officeName}</div>
+                <div className="company-address">{data.companyAddress}</div>
+              </div>
             </div>
-          </div>
 
-          {/* 基本情報 */}
-          <div className="basic-info">
-            <table>
-              <tbody>
-                <tr>
-                  <td className="label">処遇改善加算</td>
-                  <td className="value">{data.treatmentImprovement}</td>
-                  <td className="unit">円</td>
-                  <td className="label">基本</td>
-                  <td className="value">{data.baseHourlyRate}</td>
-                  <td className="unit">円</td>
-                </tr>
-                <tr>
-                  <td className="label">氏名</td>
-                  <td colSpan={2} className="value">{data.employeeName} 様</td>
-                  <td className="label">雇用形態</td>
-                  <td colSpan={2} className="value">{data.employmentType}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+            {/* 基本情報 */}
+            <div className="basic-info">
+              <table>
+                <tbody>
+                  <tr>
+                    <td className="label">処遇改善加算</td>
+                    <td className="value">{data.treatmentImprovement.toLocaleString()}</td>
+                    <td className="unit">円</td>
+                    <td className="label">基本</td>
+                    <td className="value">{data.baseHourlyRate.toLocaleString()}</td>
+                    <td className="unit">円</td>
+                  </tr>
+                  <tr>
+                    <td className="label">氏名</td>
+                    <td colSpan={2} className="value">{data.employeeName} 様</td>
+                    <td className="label">雇用形態</td>
+                    <td colSpan={2} className="value">{data.employmentType}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
-          {/* 勤怠項目 */}
-          <div className="section">
-            <div className="section-header">勤怠項目</div>
-            <table className="data-table">
-              <tbody>
-                <tr>
-                  <td className="label-cell">通常稼働日数</td>
-                  <td className="label-cell">同行稼働日数</td>
-                  <td className="label-cell">欠勤回数</td>
-                  <td className="label-cell">遅刻・早退回数</td>
-                  <td className="label-cell" colSpan={2}>合計稼働日数</td>
-                </tr>
-                <tr>
-                  <td className="value-cell">{data.attendance.regularWorkDays}</td>
-                  <td className="value-cell">{data.attendance.accompanyingWorkDays}</td>
-                  <td className="value-cell">{data.attendance.absenceDays}</td>
-                  <td className="value-cell">{data.attendance.lateDays}</td>
-                  <td className="value-cell" colSpan={2}>{data.attendance.totalWorkDays}</td>
-                </tr>
-                <tr>
-                  <td className="label-cell">通常稼働時間</td>
-                  <td className="label-cell">同行時間</td>
-                  <td className="label-cell">(深夜)稼働時間</td>
-                  <td className="label-cell">(深夜)同行時間</td>
-                  <td className="label-cell" colSpan={2}>事務・営業業務時間</td>
-                </tr>
-                <tr>
-                  <td className="value-cell">{data.attendance.regularWorkHours.toFixed(1)}h</td>
-                  <td className="value-cell">{data.attendance.accompanyingHours.toFixed(1)}h</td>
-                  <td className="value-cell">{data.attendance.nightWorkHours.toFixed(1)}h</td>
-                  <td className="value-cell">{data.attendance.nightAccompanyingHours.toFixed(1)}h</td>
-                  <td className="value-cell" colSpan={2}>{(data.attendance.officeWorkHours + data.attendance.salesWorkHours).toFixed(1)}h</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+            {/* 勤怠項目 */}
+            <div className="section">
+              <div className="section-header">勤怠項目</div>
+              <table className="data-table">
+                <tbody>
+                  <tr>
+                    <td className="label-cell">通常稼働日数</td>
+                    <td className="label-cell">同行稼働日数</td>
+                    <td className="label-cell">欠勤回数</td>
+                    <td className="label-cell">遅刻・早退回数</td>
+                    <td className="label-cell" colSpan={2}>合計稼働日数</td>
+                  </tr>
+                  <tr>
+                    <td className="value-cell">{data.attendance.regularWorkDays}</td>
+                    <td className="value-cell">{data.attendance.accompanyingWorkDays}</td>
+                    <td className="value-cell">{data.attendance.absenceDays}</td>
+                    <td className="value-cell">{data.attendance.lateDays}</td>
+                    <td className="value-cell" colSpan={2}>{data.attendance.totalWorkDays}</td>
+                  </tr>
+                  <tr>
+                    <td className="label-cell">通常稼働時間</td>
+                    <td className="label-cell">同行時間</td>
+                    <td className="label-cell">(深夜)稼働時間</td>
+                    <td className="label-cell">(深夜)同行時間</td>
+                    <td className="label-cell" colSpan={2}>事務・営業業務時間</td>
+                  </tr>
+                  <tr>
+                    <td className="value-cell">{data.attendance.regularWorkHours.toFixed(1)}h</td>
+                    <td className="value-cell">{data.attendance.accompanyingHours.toFixed(1)}h</td>
+                    <td className="value-cell">{data.attendance.nightWorkHours.toFixed(1)}h</td>
+                    <td className="value-cell">{data.attendance.nightAccompanyingHours.toFixed(1)}h</td>
+                    <td className="value-cell" colSpan={2}>{(data.attendance.officeWorkHours + data.attendance.salesWorkHours).toFixed(1)}h</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
-          {/* 支給項目 */}
-          <div className="section">
-            <div className="section-header">支給項目</div>
-            <table className="data-table">
-              <tbody>
-                <tr>
-                  <td className="label-cell">通常稼働報酬</td>
-                  <td className="label-cell">同行稼働報酬</td>
-                  <td className="label-cell">(深夜)稼働報酬</td>
-                  <td className="label-cell">(深夜)同行報酬</td>
-                  <td className="label-cell" colSpan={2}>事務・営業報酬</td>
-                </tr>
-                <tr>
-                  <td className="value-cell">¥{data.payments.regularPay.toLocaleString()}</td>
-                  <td className="value-cell">¥{data.payments.accompanyingPay.toLocaleString()}</td>
-                  <td className="value-cell">¥{data.payments.nightPay.toLocaleString()}</td>
-                  <td className="value-cell">¥0</td>
-                  <td className="value-cell" colSpan={2}>¥{data.payments.officeWorkPay.toLocaleString()}</td>
-                </tr>
-                <tr>
-                  <td className="label-cell">経費精算</td>
-                  <td className="label-cell" colSpan={2}>交通費立替・手当</td>
-                  <td className="label-cell" colSpan={2}>緊急時対応加算</td>
-                  <td className="label-cell">支給額合計</td>
-                </tr>
-                <tr>
-                  <td className="value-cell">¥0</td>
-                  <td className="value-cell" colSpan={2}>¥{data.payments.transportAllowance.toLocaleString()}</td>
-                  <td className="value-cell" colSpan={2}>¥{data.payments.otherAllowances.reduce((sum, a) => sum + a.amount, 0).toLocaleString()}</td>
-                  <td className="value-cell total">¥{totalPayments.toLocaleString()}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+            {/* 支給項目 */}
+            <div className="section">
+              <div className="section-header">支給項目</div>
+              <table className="data-table">
+                <tbody>
+                  <tr>
+                    <td className="label-cell">通常稼働報酬</td>
+                    <td className="label-cell">同行稼働報酬</td>
+                    <td className="label-cell">(深夜)稼働報酬</td>
+                    <td className="label-cell">(深夜)同行報酬</td>
+                    <td className="label-cell" colSpan={2}>事務・営業報酬</td>
+                  </tr>
+                  <tr>
+                    <td className="value-cell">¥{data.payments.regularPay.toLocaleString()}</td>
+                    <td className="value-cell">¥{data.payments.accompanyingPay.toLocaleString()}</td>
+                    <td className="value-cell">¥{data.payments.nightPay.toLocaleString()}</td>
+                    <td className="value-cell">¥0</td>
+                    <td className="value-cell" colSpan={2}>¥{data.payments.officeWorkPay.toLocaleString()}</td>
+                  </tr>
+                  <tr>
+                    <td className="label-cell">経費精算</td>
+                    <td className="label-cell" colSpan={2}>交通費立替・手当</td>
+                    <td className="label-cell" colSpan={2}>緊急時対応加算</td>
+                    <td className="label-cell">支給額合計</td>
+                  </tr>
+                  <tr>
+                    <td className="value-cell">¥0</td>
+                    <td className="value-cell" colSpan={2}>¥{data.payments.transportAllowance.toLocaleString()}</td>
+                    <td className="value-cell" colSpan={2}>¥{data.payments.otherAllowances.reduce((sum, a) => sum + a.amount, 0).toLocaleString()}</td>
+                    <td className="value-cell total">¥{totalPayments.toLocaleString()}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
-          {/* 控除項目 */}
-          <div className="section">
-            <div className="section-header">控除項目</div>
-            <table className="data-table">
-              <tbody>
-                <tr>
-                  <td className="label-cell">通常時間給控除</td>
-                  <td className="label-cell">同行時間給控除</td>
-                  <td className="label-cell">(深夜)時間給控除</td>
-                  <td className="label-cell">(深夜)同行控除</td>
-                  <td className="label-cell">事務・営業控除</td>
-                  <td className="label-cell">控除額合計</td>
-                </tr>
-                <tr>
-                  <td className="value-cell">¥0</td>
-                  <td className="value-cell">¥0</td>
-                  <td className="value-cell">¥0</td>
-                  <td className="value-cell">¥0</td>
-                  <td className="value-cell">¥0</td>
-                  <td className="value-cell total">¥{totalDeductions.toLocaleString()}</td>
-                </tr>
-                <tr>
-                  <td className="label-cell" colSpan={6}></td>
-                </tr>
-                <tr>
-                  <td className="value-cell">-</td>
-                  <td className="value-cell" colSpan={4}></td>
-                  <td className="value-cell">¥{totalDeductions.toLocaleString()}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+            {/* 控除項目 */}
+            <div className="section">
+              <div className="section-header">控除項目</div>
+              <table className="data-table">
+                <tbody>
+                  <tr>
+                    <td className="label-cell">通常時間給控除</td>
+                    <td className="label-cell">同行時間給控除</td>
+                    <td className="label-cell">(深夜)時間給控除</td>
+                    <td className="label-cell">(深夜)同行控除</td>
+                    <td className="label-cell">事務・営業控除</td>
+                    <td className="label-cell">控除額合計</td>
+                  </tr>
+                  <tr>
+                    <td className="value-cell">¥0</td>
+                    <td className="value-cell">¥0</td>
+                    <td className="value-cell">¥0</td>
+                    <td className="value-cell">¥0</td>
+                    <td className="value-cell">¥0</td>
+                    <td className="value-cell total">¥{totalDeductions.toLocaleString()}</td>
+                  </tr>
+                  <tr>
+                    <td className="label-cell" colSpan={6}></td>
+                  </tr>
+                  <tr>
+                    <td className="value-cell">-</td>
+                    <td className="value-cell" colSpan={4}></td>
+                    <td className="value-cell">¥{totalDeductions.toLocaleString()}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
-          {/* 合計 */}
-          <div className="section">
-            <div className="section-header">合計</div>
-            <table className="data-table">
-              <tbody>
-                <tr>
-                  <td className="label-cell"></td>
-                  <td className="label-cell">振込支給額</td>
-                  <td className="label-cell">現金支給額</td>
-                  <td className="label-cell" colSpan={2}>差引支給額</td>
-                  <td className="label-cell">差引支給額</td>
-                </tr>
-                <tr>
-                  <td className="value-cell"></td>
-                  <td className="value-cell">¥{netPay.toLocaleString()}</td>
-                  <td className="value-cell"></td>
-                  <td className="value-cell total" colSpan={2}>¥{netPay.toLocaleString()}</td>
-                  <td className="value-cell total">¥{netPay.toLocaleString()}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+            {/* 合計 */}
+            <div className="section">
+              <div className="section-header">合計</div>
+              <table className="data-table">
+                <tbody>
+                  <tr>
+                    <td className="label-cell"></td>
+                    <td className="label-cell">振込支給額</td>
+                    <td className="label-cell">現金支給額</td>
+                    <td className="label-cell" colSpan={2}>差引支給額</td>
+                    <td className="label-cell">差引支給額</td>
+                  </tr>
+                  <tr>
+                    <td className="value-cell"></td>
+                    <td className="value-cell">¥{netPay.toLocaleString()}</td>
+                    <td className="value-cell"></td>
+                    <td className="value-cell total" colSpan={2}>¥{netPay.toLocaleString()}</td>
+                    <td className="value-cell total">¥{netPay.toLocaleString()}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
-          {/* 備考欄 */}
-          <div className="remarks-section">
-            <div className="section-header">備考欄</div>
-            <div className="remarks-content"></div>
+            {/* 備考欄 */}
+            <div className="remarks-section">
+              <div className="section-header">備考欄</div>
+              <div className="remarks-content"></div>
+            </div>
           </div>
         </div>
 
-        {/* 中央カラム: 月勤怠表 */}
-        <div className="column middle-column">
-          <div className="column-header red-header">月勤怠表</div>
-          <table className="attendance-table">
-            <thead>
-              <tr>
-                <th>日付</th>
-                <th>曜日</th>
-                <th>通常稼働</th>
-                <th>深夜(深夜)</th>
-                <th>同行稼働</th>
-                <th>同行(深夜)</th>
-                <th>事務稼働</th>
-                <th>営業稼働</th>
-                <th>合計勤務時間</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.dailyAttendance.map((day, index) => (
-                <tr key={index}>
-                  <td>{day.date}</td>
-                  <td>{day.dayOfWeek}</td>
-                  <td>{day.regularWork > 0 ? day.regularWork.toFixed(2) : '0.00'}時</td>
-                  <td>{day.regularNight > 0 ? day.regularNight.toFixed(2) : '0.00'}時</td>
-                  <td>{day.accompanyingWork > 0 ? day.accompanyingWork.toFixed(2) : '0.00'}時</td>
-                  <td>{day.accompanyingNight > 0 ? day.accompanyingNight.toFixed(2) : '0.00'}時</td>
-                  <td>{day.officeWork > 0 ? day.officeWork.toFixed(2) : '0.00'}時</td>
-                  <td>{day.salesWork > 0 ? day.salesWork.toFixed(2) : '0.00'}時</td>
-                  <td className="total-hours">{day.totalHours > 0 ? day.totalHours.toFixed(2) : '0.00'}時</td>
+        {/* === 2ページ目: 勤怠表 & ケア一覧 === */}
+        <div className="payslip-page page-2">
+          {/* 月勤怠表 */}
+          <div className="column middle-column">
+            <div className="column-header red-header">月勤怠表</div>
+            <table className="attendance-table">
+              <thead>
+                <tr>
+                  <th>日付</th>
+                  <th>曜日</th>
+                  <th>通常稼働</th>
+                  <th>深夜(深夜)</th>
+                  <th>同行稼働</th>
+                  <th>同行(深夜)</th>
+                  <th>事務稼働</th>
+                  <th>営業稼働</th>
+                  <th>合計勤務時間</th>
                 </tr>
-              ))}
-              <tr className="total-row">
-                <td colSpan={2}>合計</td>
-                <td>{data.dailyAttendance.reduce((sum, d) => sum + d.regularWork, 0).toFixed(2)}時</td>
-                <td>{data.dailyAttendance.reduce((sum, d) => sum + d.regularNight, 0).toFixed(2)}時</td>
-                <td>{data.dailyAttendance.reduce((sum, d) => sum + d.accompanyingWork, 0).toFixed(2)}時</td>
-                <td>{data.dailyAttendance.reduce((sum, d) => sum + d.accompanyingNight, 0).toFixed(2)}時</td>
-                <td>{data.dailyAttendance.reduce((sum, d) => sum + d.officeWork, 0).toFixed(2)}時</td>
-                <td>{data.dailyAttendance.reduce((sum, d) => sum + d.salesWork, 0).toFixed(2)}時</td>
-                <td className="total-hours">{data.dailyAttendance.reduce((sum, d) => sum + d.totalHours, 0).toFixed(2)}時</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {data.dailyAttendance.map((day, index) => (
+                  <tr key={index}>
+                    <td>{day.date}</td>
+                    <td>{day.dayOfWeek}</td>
+                    <td>{day.regularWork > 0 ? day.regularWork.toFixed(2) : '0.00'}時</td>
+                    <td>{day.regularNight > 0 ? day.regularNight.toFixed(2) : '0.00'}時</td>
+                    <td>{day.accompanyingWork > 0 ? day.accompanyingWork.toFixed(2) : '0.00'}時</td>
+                    <td>{day.accompanyingNight > 0 ? day.accompanyingNight.toFixed(2) : '0.00'}時</td>
+                    <td>{day.officeWork > 0 ? day.officeWork.toFixed(2) : '0.00'}時</td>
+                    <td>{day.salesWork > 0 ? day.salesWork.toFixed(2) : '0.00'}時</td>
+                    <td className="total-hours">{day.totalHours > 0 ? day.totalHours.toFixed(2) : '0.00'}時</td>
+                  </tr>
+                ))}
+                <tr className="total-row">
+                  <td colSpan={2}>合計</td>
+                  <td>{data.dailyAttendance.reduce((sum, d) => sum + d.regularWork, 0).toFixed(2)}時</td>
+                  <td>{data.dailyAttendance.reduce((sum, d) => sum + d.regularNight, 0).toFixed(2)}時</td>
+                  <td>{data.dailyAttendance.reduce((sum, d) => sum + d.accompanyingWork, 0).toFixed(2)}時</td>
+                  <td>{data.dailyAttendance.reduce((sum, d) => sum + d.accompanyingNight, 0).toFixed(2)}時</td>
+                  <td>{data.dailyAttendance.reduce((sum, d) => sum + d.officeWork, 0).toFixed(2)}時</td>
+                  <td>{data.dailyAttendance.reduce((sum, d) => sum + d.salesWork, 0).toFixed(2)}時</td>
+                  <td className="total-hours">{data.dailyAttendance.reduce((sum, d) => sum + d.totalHours, 0).toFixed(2)}時</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
-        {/* 右カラム: ケア一覧 */}
-        <div className="column right-column">
-          <div className="column-header green-header">ケア一覧</div>
-          <table className="care-table">
-            <thead>
-              <tr>
-                <th>日付</th>
-                <th colSpan={5}>ケア内容</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.careList.map((day, index) => (
-                <tr key={index}>
-                  <td className="date-cell">{day.date}</td>
-                  <td colSpan={5} className="care-content">
-                    {day.cares.length > 0 ? (
-                      <div className="care-list">
-                        {day.cares.map((care, careIndex) => (
-                          <div key={careIndex} className="care-item">
-                            {care.clientName}({care.serviceType}) {care.timeRange}
+          {/* ケア一覧（存在する場合のみ表示） */}
+          {showCareList && (
+            <div className="column right-column">
+              <div className="column-header green-header">ケア一覧</div>
+              <table className="care-table">
+                <thead>
+                  <tr>
+                    <th>日付</th>
+                    <th colSpan={5}>ケア内容</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.careList.map((day, index) => (
+                    <tr key={index}>
+                      <td className="date-cell">{day.date}</td>
+                      <td colSpan={5} className="care-content">
+                        {day.cares.length > 0 ? (
+                          <div className="care-list">
+                            {day.cares.map((care, careIndex) => (
+                              <div key={careIndex} className="care-item">
+                                {care.clientName}({care.serviceType}) {care.timeRange}
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    ) : (
-                      ''
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                        ) : (
+                          ''
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 
@@ -419,24 +429,53 @@ export function PayslipSheet({ data }: PayslipSheetProps) {
           background: #2563eb;
         }
 
-        .payslip-container {
-          display: grid;
-          grid-template-columns: 520px 420px 420px;
-          gap: 0;
+        /* ルートコンテナ */
+        .payslip-root {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 40px;
+          width: 100%;
+        }
+
+        /* ページ共通スタイル */
+        .payslip-page {
           background: white;
-          margin: 0 auto;
           width: fit-content;
-          font-family: 'MS PGothic', 'Meiryo', sans-serif;
-          font-size: 10px;
+          /* シャドウなどは画面表示時のみ */
+        }
+
+        /* 1ページ目（給与明細） */
+        .page-1 {
+          margin: 0 auto;
+        }
+
+        /* 2ページ目（勤怠表・ケア一覧） */
+        .page-2 {
+          display: flex;
+          justify-content: center;
+          gap: 20px;
+          width: 100%;
+          max-width: 1000px; /* 必要に応じて調整 */
         }
 
         .column {
           border: 1px solid #000;
+          background: white;
         }
 
         .left-column {
           display: flex;
           flex-direction: column;
+          width: 520px; /* 給与明細の幅 */
+        }
+
+        .middle-column {
+          width: 420px;
+        }
+
+        .right-column {
+          width: 420px;
         }
 
         .title-row {
@@ -671,12 +710,29 @@ export function PayslipSheet({ data }: PayslipSheetProps) {
             padding: 0;
           }
 
-          .payslip-container {
-            page-break-inside: avoid;
+          .payslip-root {
+            display: block; /* プリント時はブロックで縦並び */
           }
 
+          /* 1ページ目 */
+          .page-1 {
+            page-break-after: always; /* 1ページ目の後に改ページ */
+            margin: 0 auto;
+            border: none;
+          }
+
+          /* 2ページ目 */
+          .page-2 {
+            page-break-before: always; /* 2ページ目の前に改ページ */
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 0;
+            border: none;
+          }
+          
           @page {
-            size: A3 landscape;
+            size: A3 landscape; /* 横向き */
             margin: 10mm;
           }
         }

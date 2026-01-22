@@ -470,6 +470,10 @@ export function generateFixedPayslipFromShifts(
   // 住民税
   payslip.deductions.residentTax = helper.residentialTax || 0;
 
+  // 立替金（交通費 + 経費精算 のマイナス値を自動設定）
+  const totalExpenses = (payslip.payments.transportAllowance || 0) + (payslip.payments.expenseReimbursement || 0);
+  payslip.deductions.reimbursement = -totalExpenses;
+
   // 控除計（所得税+住民税+その他控除）
   payslip.deductions.deductionTotal =
     (payslip.deductions.incomeTax || 0) +
@@ -874,6 +878,10 @@ export function generateHourlyPayslipFromShifts(
 
   // 住民税
   payslip.deductions.residentTax = helper.residentialTax || 0;
+
+  // 立替金（交通費 + 経費精算 のマイナス値を自動設定）
+  const totalExpenses = (payslip.payments.transportAllowance || 0) + (payslip.payments.expenseReimbursement || 0);
+  payslip.deductions.reimbursement = -totalExpenses;
 
   // 控除計（所得税+住民税+その他控除）
   payslip.deductions.deductionTotal =
