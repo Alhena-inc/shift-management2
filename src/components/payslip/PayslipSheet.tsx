@@ -9,9 +9,10 @@ interface PayslipSheetProps {
   payslip: Payslip;
   helper?: Helper;
   onChange: (payslip: Payslip) => void;
+  isPrintMode?: boolean;
 }
 
-const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, helper, onChange }) => {
+const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, helper, onChange, isPrintMode = false }) => {
   // 時給制の場合のみ勤怠データから給与を再計算
   const recalculateHourly = useCallback((updated: HourlyPayslip): HourlyPayslip => {
     const newPayslip = { ...updated };
@@ -171,7 +172,7 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, helper, onChange }
       <div className="flex flex-col gap-8 justify-center items-center w-full print:block">
         {/* 1ページ目：賃金明細本体 */}
         <div className="w-full page-1 flex justify-center">
-          <PayslipMain payslip={payslip} helper={helper} onChange={handleMainChange} />
+          <PayslipMain payslip={payslip} helper={helper} onChange={handleMainChange} isPrintMode={isPrintMode} />
         </div>
 
         {/* 2ページ目：月勤怠表 & ケア一覧 (印刷時は改ページ) */}

@@ -55,6 +55,7 @@ const PayslipPrintView: React.FC<PayslipPrintViewProps> = ({ payslip, helper }) 
         payslip={calculatedPayslip}
         helper={helper}
         onChange={() => { /* 読み取り専用 */ }}
+        isPrintMode={true}
       />
     </div>
   );

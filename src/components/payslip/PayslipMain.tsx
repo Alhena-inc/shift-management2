@@ -16,6 +16,7 @@ interface PayslipMainProps {
   payslip: Payslip;
   helper?: Helper;
   onChange: (payslip: Payslip) => void;
+  isPrintMode?: boolean;
 }
 
 const formatCurrency = (amount: number | undefined): string => {
@@ -95,7 +96,7 @@ const inputStyle = {
   appearance: 'none',
 };
 
-const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) => {
+const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, isPrintMode = false }) => {
 
   // === データ処理 ===
 
@@ -154,16 +155,71 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
     );
   };
 
-  const InputCell = ({ path, value, isNumber = true, colSpan = 1 }: any) => {
-    const isNegative = isNumber && value < 0;
+  const InputCell = ({ path, value, isNumber = true, colSpan = 1, absoluteNegative = false }: any) => {
+    // 数値として評価（文字列の場合も考慮）
+    const numericValue = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
+    const isValidNumber = !isNaN(numericValue) && value !== '' && value !== null && value !== undefined;
+
+    // マイナス判定
+    const isNegative = isNumber && isValidNumber && numericValue < 0;
+
+    // 表示値の計算
+    let formattedDisplayValue = '';
+    if (isNumber && isValidNumber) {
+      if (isNegative && absoluteNegative) {
+        formattedDisplayValue = '+' + formatCurrency(Math.abs(numericValue));
+      } else {
+        formattedDisplayValue = formatCurrency(numericValue);
+      }
+    } else {
+      formattedDisplayValue = value || '';
+    }
+
+    if (isPrintMode) {
+      return (
+        <td style={{ ...inputCellStyle, height: CELL_HEIGHT, color: isNegative ? '#ff0000' : 'inherit' }} colSpan={colSpan}>
+          <div style={{
+            width: '100%',
+            height: '100%',
+            textAlign: 'right',
+            fontSize: '16px',
+            fontWeight: '600',
+            fontFamily: 'inherit',
+            padding: '0 12px 0 0',
+            lineHeight: '24px',
+            display: 'block',
+            boxSizing: 'border-box',
+            color: 'inherit',
+          }}>
+            {formattedDisplayValue}
+          </div>
+        </td>
+      );
+    }
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const inputVal = e.target.value;
+      if (isNumber) {
+        let parsed = parseNumber(inputVal);
+        // absoluteNegative（立替金など）の場合、ユーザーは正の値を入力するが、
+        // 内部的にはマイナス（支給扱い）として保持する必要があるため符号を反転させる
+        if (absoluteNegative && parsed > 0) {
+          parsed = -parsed;
+        }
+        updateField(path, parsed);
+      } else {
+        updateField(path, inputVal);
+      }
+    };
+
     return (
       <td style={{ ...inputCellStyle, height: CELL_HEIGHT }} colSpan={colSpan}>
         <input
           type="text"
           data-sync-path={path ? path.join('-') : undefined}
-          value={isNumber ? formatCurrency(value) : (value || '')}
-          onChange={(e) => updateField(path, isNumber ? parseNumber(e.target.value) : e.target.value)}
-          style={{ ...inputStyle, color: isNegative ? 'red' : 'inherit' }}
+          value={formattedDisplayValue}
+          onChange={handleInputChange}
+          style={{ ...inputStyle, color: isNegative ? '#ff0000' : 'inherit' }}
           placeholder=""
         />
       </td>
@@ -373,11 +429,11 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange }) 
           </tr>
           {/* Row 3 Value */}
           <tr>
-            <InputCell path={['deductions', 'reimbursement']} value={payslip.deductions.reimbursement} />
+            <InputCell path={['deductions', 'reimbursement']} value={payslip.deductions.reimbursement} absoluteNegative={true} />
             <EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell />
             <EmptyCell />
-            <InputCell path={['deductions', 'yearEndAdjustment']} value={payslip.deductions.yearEndAdjustment} />
-            <InputCell path={['deductions', 'deductionTotal']} value={payslip.deductions.deductionTotal} />
+            <InputCell path={['deductions', 'yearEndAdjustment']} value={payslip.deductions.yearEndAdjustment} absoluteNegative={true} />
+            <InputCell path={['deductions', 'deductionTotal']} value={payslip.deductions.deductionTotal} absoluteNegative={true} />
             <InputCell path={['deductions', 'totalDeduction']} value={payslip.deductions.totalDeduction} />
           </tr>
         </tbody>
