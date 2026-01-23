@@ -244,15 +244,27 @@ export function generateFixedPayslipFromShifts(
 
       // 実績が入力されているシフトのみを集計対象とする
       // duration（実績時間）が0または未設定のものは除外
+      // また、cancelStatus が 'remove_time' または 'canceled_without_time' のものも除外
       const allDayShifts = monthShifts.filter(s => s.date === dateStr && !s.deleted);
-      const excludedShifts = allDayShifts.filter(s => !s.duration || s.duration <= 0);
-      const dayShifts = allDayShifts.filter(s => s.duration && s.duration > 0);
+      const excludedShifts = allDayShifts.filter(s =>
+        !s.duration ||
+        s.duration <= 0 ||
+        s.cancelStatus === 'remove_time' ||
+        s.cancelStatus === 'canceled_without_time'
+      );
+      const dayShifts = allDayShifts.filter(s =>
+        s.duration &&
+        s.duration > 0 &&
+        s.cancelStatus !== 'remove_time' &&
+        s.cancelStatus !== 'canceled_without_time'
+      );
 
-      // デバッグ：実績なしで除外されたシフトを表示
+      // デバッグ：実績なし、または削除・キャンセルで除外されたシフトを表示
       if (excludedShifts.length > 0) {
         excludedShifts.forEach(s => {
           const serviceLabel = s.serviceType ? (SERVICE_CONFIG[s.serviceType]?.label || s.serviceType) : '不明';
-          console.log(`⚠️ 除外（実績なし）: ${s.date} ${s.startTime}-${s.endTime} ${s.clientName} (${serviceLabel}) duration=${s.duration}`);
+          const reason = s.cancelStatus ? `cancelStatus=${s.cancelStatus}` : `duration=${s.duration}`;
+          console.log(`⚠️ 除外（実績なし/キャンセル）: ${s.date} ${s.startTime}-${s.endTime} ${s.clientName} (${serviceLabel}) ${reason}`);
         });
       }
 
@@ -406,13 +418,23 @@ export function generateFixedPayslipFromShifts(
   const nonTaxableTransportAllowance = nonTaxableOtherAllowances;
 
   // 標準報酬月額の決定
-  // 1. ヘルパー設定で固定値が指定されていればそれを使用
-  // 2. 指定がなければ、支給総額（保険対象額）から等級表に基づいて自動決定（302,200円 -> 300,000円等級など）
-  let standardRemuneration = Number((helper as any).standardRemuneration) ||
-    Number((helper as any).standardMonthlyRemuneration);
+  // 1. 保険未加入の場合は0
+  // 2. ヘルパー設定で固定値（0を含む）が指定されていればそれを使用
+  // 3. 指定がなければ（undefinedまたはNaN）、支給総額（保険対象額）から等級表に基づいて自動決定
+  let standardRemuneration = 0;
 
-  if (!standardRemuneration) {
-    standardRemuneration = getHealthStandardRemuneration(insuranceBaseAmount);
+  if (hasSocialInsurance) {
+    const fixedValue = (helper.standardRemuneration !== undefined && helper.standardRemuneration !== null)
+      ? Number(helper.standardRemuneration)
+      : (helper as any).standardMonthlyRemuneration !== undefined
+        ? Number((helper as any).standardMonthlyRemuneration)
+        : NaN;
+
+    if (!isNaN(fixedValue)) {
+      standardRemuneration = fixedValue;
+    } else {
+      standardRemuneration = getHealthStandardRemuneration(insuranceBaseAmount);
+    }
   }
 
   // 明細オブジェクトに保持（再計算で使用するため）
@@ -606,15 +628,27 @@ export function generateHourlyPayslipFromShifts(
 
     // 実績が入力されているシフトのみを集計対象とする（時給用）
     // duration（実績時間）が0または未設定のものは除外
+    // また、cancelStatus が 'remove_time' または 'canceled_without_time' のものも除外
     const allDayShifts = monthShifts.filter(s => s.date === dateStr && !s.deleted);
-    const excludedShifts = allDayShifts.filter(s => !s.duration || s.duration <= 0);
-    const dayShifts = allDayShifts.filter(s => s.duration && s.duration > 0);
+    const excludedShifts = allDayShifts.filter(s =>
+      !s.duration ||
+      s.duration <= 0 ||
+      s.cancelStatus === 'remove_time' ||
+      s.cancelStatus === 'canceled_without_time'
+    );
+    const dayShifts = allDayShifts.filter(s =>
+      s.duration &&
+      s.duration > 0 &&
+      s.cancelStatus !== 'remove_time' &&
+      s.cancelStatus !== 'canceled_without_time'
+    );
 
-    // デバッグ：実績なしで除外されたシフトを表示
+    // デバッグ：実績なし、または削除・キャンセルで除外されたシフトを表示
     if (excludedShifts.length > 0) {
       excludedShifts.forEach(s => {
         const serviceLabel = s.serviceType ? (SERVICE_CONFIG[s.serviceType]?.label || s.serviceType) : '不明';
-        console.log(`⚠️ 除外（実績なし・時給）: ${s.date} ${s.startTime}-${s.endTime} ${s.clientName} (${serviceLabel}) duration=${s.duration}`);
+        const reason = s.cancelStatus ? `cancelStatus=${s.cancelStatus}` : `duration=${s.duration}`;
+        console.log(`⚠️ 除外（実績なし/キャンセル・時給）: ${s.date} ${s.startTime}-${s.endTime} ${s.clientName} (${serviceLabel}) ${reason}`);
       });
     }
 
@@ -754,29 +788,71 @@ export function generateHourlyPayslipFromShifts(
   const specialAllowance = calculateSpecialAllowance(helper.name, monthShifts);
   if (specialAllowance.amount > 0) {
     console.log(`✨ 特別手当: ${helper.name} - ${specialAllowance.details} = ${specialAllowance.amount}円`);
-    payslip.payments.otherAllowances.push({
-      name: '特別手当',
-      amount: specialAllowance.amount,
-      taxExempt: false  // 課税対象
-    });
+    payslip.payments.specialAllowance = specialAllowance.amount;
   }
 
   // その他手当の合計を計算
   const otherAllowancesTotal = payslip.payments.otherAllowances.reduce((sum, item) => sum + item.amount, 0);
   console.log(`📊 その他手当合計: ${otherAllowancesTotal}円 (${payslip.payments.otherAllowances.map(a => `${a.name}:${a.amount}`).join(', ')})`);
 
+  // 処遇改善加算（時給額ではなく合計支給額）を計算
+  const baseRate = payslip.baseHourlyRate;
+  const treatRate = payslip.treatmentAllowance;
+
+  // 基本報酬 = (通常時間 + 深夜通常時間) * 基本時給
+  const totalBaseEligibleHours =
+    payslip.attendance.normalHours +
+    payslip.attendance.nightNormalHours;
+
+  payslip.payments.basePay = Math.round(totalBaseEligibleHours * baseRate);
+
+  // 同行研修手当 = (同行時間 + 深夜同行時間) * 1200円
+  const totalAccompanyHours =
+    payslip.attendance.accompanyHours +
+    payslip.attendance.nightAccompanyHours;
+  payslip.payments.accompanyPay = Math.round(totalAccompanyHours * 1200);
+
+  // 事務・営業手当 = (事務時間 + 営業時間) * 1200円
+  const totalOfficeSalesHours =
+    payslip.attendance.officeHours +
+    payslip.attendance.salesHours;
+  payslip.payments.officePay = Math.round(totalOfficeSalesHours * 1200);
+
+  // 処遇改善加算 = (通常時間 + 深夜通常時間) * 処遇改善単価
+  // ※同行や事務には処遇改善がつかない前提（必要に応じて調整）
+  const totalTreatEligibleHours =
+    payslip.attendance.normalHours +
+    payslip.attendance.nightNormalHours;
+
+  (payslip.payments as any).treatmentAllowancePay = Math.round(totalTreatEligibleHours * treatRate);
+
+  // 夜間手当（割増分 0.25分）
+  // 通常深夜: (base + treat) * 0.25
+  // 同行深夜: accompanyRate(1200円) * 0.25
+  const nightIncreaseNormal = payslip.attendance.nightNormalHours * (baseRate + treatRate) * 0.25;
+  const nightIncreaseAccompany = payslip.attendance.nightAccompanyHours * 1200 * 0.25;
+  payslip.payments.nightAllowance = Math.round(nightIncreaseNormal + nightIncreaseAccompany);
+
   // 支給額合計
+  // 基本給(basePay) + 処遇改善(treatmentAllowancePay) + 同行手当(accompanyPay) + 事務営業手当(officePay) + 深夜手当(nightAllowance) + その他
   payslip.payments.totalPayment =
-    payslip.payments.normalWorkPay +
+    payslip.payments.basePay +
+    (payslip.payments as any).treatmentAllowancePay +
     payslip.payments.accompanyPay +
     payslip.payments.officePay +
+    payslip.payments.nightAllowance +
+    (payslip.payments.specialAllowance || 0) +
     payslip.payments.yearEndNewYearAllowance +
-    payslip.payments.nightNormalPay +
-    payslip.payments.nightAccompanyPay +
     payslip.payments.expenseReimbursement +
     payslip.payments.transportAllowance +
     payslip.payments.emergencyAllowance +
     otherAllowancesTotal;
+
+  // 以前の個別項目は0にする（二重計上防止のため、また明細表に表示させないため）
+  payslip.payments.normalWorkPay = 0;
+  //(accompanyPay, officePay は新形式で値をセット済み)
+  payslip.payments.nightNormalPay = 0;
+  payslip.payments.nightAccompanyPay = 0;
 
   // 社会保険料の計算（時給制でも加入している場合）
   const age = helper.age || 0;
@@ -828,9 +904,21 @@ export function generateHourlyPayslipFromShifts(
   // 社会保険は加入がある場合のみ計算（未加入でも源泉/住民税は計算する）
   // 雇用保険料計算用：非課税その他手当のみ（交通費立替・手当は除外）
   const nonTaxableTransportAllowance = nonTaxableOtherAllowances;
-  const standardRemuneration = Number((helper as any).standardRemuneration) ||
-    Number((helper as any).standardMonthlyRemuneration) ||
-    salaryCoreAmount;
+  let standardRemuneration = 0;
+
+  if (hasSocialInsurance) {
+    const fixedValue = (helper.standardRemuneration !== undefined && helper.standardRemuneration !== null)
+      ? Number(helper.standardRemuneration)
+      : (helper as any).standardMonthlyRemuneration !== undefined
+        ? Number((helper as any).standardMonthlyRemuneration)
+        : NaN;
+
+    if (!isNaN(fixedValue)) {
+      standardRemuneration = fixedValue;
+    } else {
+      standardRemuneration = salaryCoreAmount;
+    }
+  }
 
   // 明細オブジェクトに保持（再計算で使用するため）
   payslip.standardRemuneration = standardRemuneration;

@@ -91,9 +91,9 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
         ...helper,
         // insurancesが未定義の場合は空配列にする（Firestoreに確実に保存）
         insurances: helper.insurances || [],
-        // standardRemunerationとstandardMonthlyRemunerationの両方に対応
-        standardRemuneration: helper.standardRemuneration || (helper as any).standardMonthlyRemuneration || 0,
-        standardMonthlyRemuneration: (helper as any).standardMonthlyRemuneration || helper.standardRemuneration || 0,
+        // standardRemunerationとstandardMonthlyRemunerationの両方を同期させて保存
+        standardRemuneration: helper.standardRemuneration ?? (helper as any).standardMonthlyRemuneration ?? 0,
+        standardMonthlyRemuneration: helper.standardRemuneration ?? (helper as any).standardMonthlyRemuneration ?? 0,
         updatedAt: Timestamp.now()
       };
 
@@ -210,12 +210,18 @@ export const saveShiftsForMonth = async (_year: number, _month: number, shifts: 
         });
       }
 
-      // cancelStatusとcanceledAtがundefinedの場合は保存しない
-      if (sanitizedData.cancelStatus === undefined) {
-        delete sanitizedData.cancelStatus;
+      // cancelStatusとcanceledAtがundefinedの場合は、Firestoreからフィールドを削除する
+      // (merge: true を使用しているため、明示的に deleteField() を指定する必要がある)
+      if (shift.cancelStatus === undefined) {
+        sanitizedData.cancelStatus = deleteField();
+      } else {
+        sanitizedData.cancelStatus = shift.cancelStatus;
       }
-      if (sanitizedData.canceledAt === undefined) {
-        delete sanitizedData.canceledAt;
+
+      if (shift.canceledAt === undefined) {
+        sanitizedData.canceledAt = deleteField();
+      } else {
+        sanitizedData.canceledAt = shift.canceledAt;
       }
 
       // merge: trueで既存フィールドを保持しながら更新
@@ -576,6 +582,23 @@ export const restoreShift = async (shiftId: string): Promise<void> => {
     console.log(`シフトを復元しました: ${shiftId}`);
   } catch (error) {
     console.error('シフト復元エラー:', error);
+    throw error;
+  }
+};
+
+// キャンセル状態をクリア（キャンセル取り消し用）
+// deleteField()を使って明示的にFirestoreからフィールドを削除する
+export const clearCancelStatus = async (shiftId: string): Promise<void> => {
+  try {
+    const shiftRef = doc(db, SHIFTS_COLLECTION, shiftId);
+    await updateDoc(shiftRef, {
+      cancelStatus: deleteField(),
+      canceledAt: deleteField(),
+      updatedAt: Timestamp.now()
+    });
+    console.log(`✅ キャンセル状態をクリアしました: ${shiftId}`);
+  } catch (error) {
+    console.error('❌ キャンセル状態クリアエラー:', error);
     throw error;
   }
 };

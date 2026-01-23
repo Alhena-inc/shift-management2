@@ -96,11 +96,101 @@ const inputStyle = {
   appearance: 'none',
 };
 
+// --- 内部コンポーネント ---
+const LabelCell = ({ children, colSpan = 1 }: any) => {
+  const text = typeof children === 'string' ? children : '';
+  let style = { ...headerCellStyle, height: CELL_HEIGHT, fontSize: FONT_SIZE };
+
+  if (text.length >= 7) {
+    style = { ...style, letterSpacing: '0', fontSize: '13px', padding: '0 2px !important' };
+  } else if (text.length >= 6) {
+    style = { ...style, letterSpacing: '0.05em' };
+  } else if (text.length >= 5) {
+    style = { ...style, letterSpacing: '0.2em' };
+  }
+
+  return (
+    <td style={style} colSpan={colSpan}>{children}</td>
+  );
+};
+
+const InputCell = ({ path, value, isNumber = true, colSpan = 1, absoluteNegative = false, isPrintMode = false, onUpdate }: any) => {
+  // 数値として評価（文字列の場合も考慮）
+  const numericValue = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
+  const isValidNumber = !isNaN(numericValue) && value !== '' && value !== null && value !== undefined;
+
+  // マイナス判定
+  const isNegative = isNumber && isValidNumber && numericValue < 0;
+
+  // 表示値の計算
+  let formattedDisplayValue = '';
+  if (isNumber && isValidNumber) {
+    if (isNegative && absoluteNegative) {
+      formattedDisplayValue = '-' + formatCurrency(Math.abs(numericValue));
+    } else {
+      formattedDisplayValue = formatCurrency(numericValue);
+    }
+  } else {
+    formattedDisplayValue = value || '';
+  }
+
+  if (isPrintMode) {
+    return (
+      <td style={{ ...inputCellStyle, height: CELL_HEIGHT, color: isNegative ? '#ff0000' : 'inherit' }} colSpan={colSpan}>
+        <div style={{
+          width: '100%',
+          height: '100%',
+          textAlign: 'right',
+          fontSize: '16px',
+          fontWeight: '600',
+          fontFamily: 'inherit',
+          padding: '0 12px 0 0',
+          lineHeight: '24px',
+          display: 'block',
+          boxSizing: 'border-box',
+          color: 'inherit',
+        }}>
+          {formattedDisplayValue}
+        </div>
+      </td>
+    );
+  }
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputVal = e.target.value;
+    if (isNumber) {
+      let parsed = parseNumber(inputVal);
+      // absoluteNegative（立替金など）の場合、ユーザーは正の値を入力するが、
+      // 内部的にはマイナス（支給扱い）として保持する必要があるため符号を反転させる
+      if (absoluteNegative && parsed > 0) {
+        parsed = -parsed;
+      }
+      onUpdate(path, parsed);
+    } else {
+      onUpdate(path, inputVal);
+    }
+  };
+
+  return (
+    <td style={{ ...inputCellStyle, height: CELL_HEIGHT }} colSpan={colSpan}>
+      <input
+        type="text"
+        data-sync-path={path ? path.join('-') : undefined}
+        value={formattedDisplayValue}
+        onChange={handleInputChange}
+        style={{ ...inputStyle, color: isNegative ? '#ff0000' : 'inherit' }}
+        placeholder=""
+      />
+    </td>
+  );
+};
+
+const EmptyCell = ({ colSpan = 1, style = {} }: any) => (
+  <td style={{ ...inputCellStyle, height: CELL_HEIGHT, ...style }} colSpan={colSpan}></td>
+);
+
 const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, isPrintMode = false }) => {
-
   // === データ処理 ===
-
-
   const recalculateTotals = (updated: any) => recalculatePayslip(updated, helper);
 
   const updateField = (path: string[], value: any) => {
@@ -112,6 +202,8 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
     }
     const fieldName = path[path.length - 1];
     current[fieldName] = value;
+
+    // 手動入力フラグの管理
     if (typeof value === 'number' || (typeof value === 'string' && !isNaN(parseNumber(value)))) {
       const manualFieldName = `manual${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)}`;
       current[manualFieldName] = true;
@@ -119,6 +211,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
         updated[`manual${path[0].charAt(0).toUpperCase() + path[0].slice(1)}`] = true;
       }
     }
+
     const needsRecalculation = ['payments', 'deductions', 'attendance', 'baseSalary', 'baseHourlyRate', 'totalSalary', 'totalHourlyRate', 'treatmentAllowance', 'dependents'].includes(path[0]);
     if (needsRecalculation) onChange(recalculateTotals(updated));
     else onChange(updated);
@@ -127,7 +220,6 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
   useEffect(() => {
     const updated = JSON.parse(JSON.stringify(payslip));
     updated.insuranceTypes = deriveInsuranceTypesFromHelper(helper, updated.insuranceTypes);
-    // ヘルパーマスタに標準報酬月額が設定されている場合は同期
     if (helper?.standardRemuneration && (!updated.standardRemuneration || updated.standardRemuneration === 0)) {
       updated.standardRemuneration = helper.standardRemuneration;
     }
@@ -136,99 +228,6 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
   }, [payslip.id, helper]);
 
   const { taxableOther, nonTaxableOther } = calculateOtherAllowancesValues(payslip);
-
-  // Components
-  const LabelCell = ({ children, colSpan = 1 }: any) => {
-    const text = typeof children === 'string' ? children : '';
-    let style = { ...headerCellStyle, height: CELL_HEIGHT, fontSize: FONT_SIZE };
-
-    if (text.length >= 7) {
-      style = { ...style, letterSpacing: '0', fontSize: '13px', padding: '0 2px !important' };
-    } else if (text.length >= 6) {
-      style = { ...style, letterSpacing: '0.05em' };
-    } else if (text.length >= 5) {
-      style = { ...style, letterSpacing: '0.2em' };
-    }
-
-    return (
-      <td style={style} colSpan={colSpan}>{children}</td>
-    );
-  };
-
-  const InputCell = ({ path, value, isNumber = true, colSpan = 1, absoluteNegative = false }: any) => {
-    // 数値として評価（文字列の場合も考慮）
-    const numericValue = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
-    const isValidNumber = !isNaN(numericValue) && value !== '' && value !== null && value !== undefined;
-
-    // マイナス判定
-    const isNegative = isNumber && isValidNumber && numericValue < 0;
-
-    // 表示値の計算
-    let formattedDisplayValue = '';
-    if (isNumber && isValidNumber) {
-      if (isNegative && absoluteNegative) {
-        formattedDisplayValue = '+' + formatCurrency(Math.abs(numericValue));
-      } else {
-        formattedDisplayValue = formatCurrency(numericValue);
-      }
-    } else {
-      formattedDisplayValue = value || '';
-    }
-
-    if (isPrintMode) {
-      return (
-        <td style={{ ...inputCellStyle, height: CELL_HEIGHT, color: isNegative ? '#ff0000' : 'inherit' }} colSpan={colSpan}>
-          <div style={{
-            width: '100%',
-            height: '100%',
-            textAlign: 'right',
-            fontSize: '16px',
-            fontWeight: '600',
-            fontFamily: 'inherit',
-            padding: '0 12px 0 0',
-            lineHeight: '24px',
-            display: 'block',
-            boxSizing: 'border-box',
-            color: 'inherit',
-          }}>
-            {formattedDisplayValue}
-          </div>
-        </td>
-      );
-    }
-
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const inputVal = e.target.value;
-      if (isNumber) {
-        let parsed = parseNumber(inputVal);
-        // absoluteNegative（立替金など）の場合、ユーザーは正の値を入力するが、
-        // 内部的にはマイナス（支給扱い）として保持する必要があるため符号を反転させる
-        if (absoluteNegative && parsed > 0) {
-          parsed = -parsed;
-        }
-        updateField(path, parsed);
-      } else {
-        updateField(path, inputVal);
-      }
-    };
-
-    return (
-      <td style={{ ...inputCellStyle, height: CELL_HEIGHT }} colSpan={colSpan}>
-        <input
-          type="text"
-          data-sync-path={path ? path.join('-') : undefined}
-          value={formattedDisplayValue}
-          onChange={handleInputChange}
-          style={{ ...inputStyle, color: isNegative ? '#ff0000' : 'inherit' }}
-          placeholder=""
-        />
-      </td>
-    );
-  };
-
-  const EmptyCell = ({ colSpan = 1, style = {} }: any) => (
-    <td style={{ ...inputCellStyle, height: CELL_HEIGHT, ...style }} colSpan={colSpan}></td>
-  );
 
   return (
     <div
@@ -337,31 +336,62 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
           {/* Row 1 Header */}
           <tr>
             <td rowSpan={6} className="vertical-text">支給</td>
-            <LabelCell>基本給</LabelCell><LabelCell>役員報酬</LabelCell><LabelCell>処遇改善手当</LabelCell><LabelCell>同行研修手当</LabelCell><LabelCell>　</LabelCell>
-            <LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell>
+            <LabelCell>基本給</LabelCell><LabelCell>役員報酬</LabelCell><LabelCell>処遇改善手当</LabelCell><LabelCell>同行研修手当</LabelCell><LabelCell>事務・営業手当</LabelCell>
+            <LabelCell>{payslip.payments.otherAllowances?.[0]?.name || "　"}</LabelCell>
+            <LabelCell>{payslip.payments.otherAllowances?.[1]?.name || "　"}</LabelCell>
+            <LabelCell>{payslip.payments.otherAllowances?.[2]?.name || "　"}</LabelCell>
+            <LabelCell>{payslip.payments.otherAllowances?.[3]?.name || "　"}</LabelCell>
           </tr>
           {/* Row 1 Value */}
           <tr>
-            <InputCell path={['payments', 'basePay']} value={payslip.payments.basePay} />
-            <InputCell path={['payments', 'directorCompensation']} value={0} />
-            <InputCell path={['treatmentAllowance']} value={payslip.treatmentAllowance} />
-            <InputCell path={['payments', 'accompanyAllowance']} value={0} />
-            <EmptyCell />
-            <EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'basePay']} value={payslip.payments.basePay} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'directorCompensation']} value={payslip.payments.directorCompensation || 0} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode}
+              path={payslip.employmentType === 'アルバイト' ? ['payments', 'treatmentAllowancePay'] : ['treatmentAllowance']}
+              value={payslip.employmentType === 'アルバイト' ? (payslip.payments.treatmentAllowancePay ?? 0) : payslip.treatmentAllowance}
+            />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'accompanyPay']} value={payslip.payments.accompanyPay || 0} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'officePay']} value={payslip.payments.officePay || 0} />
+            {payslip.payments.otherAllowances?.[0] ? (
+              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', 0, 'amount']} value={payslip.payments.otherAllowances[0].amount} />
+            ) : <EmptyCell />}
+            {payslip.payments.otherAllowances?.[1] ? (
+              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', 1, 'amount']} value={payslip.payments.otherAllowances[1].amount} />
+            ) : <EmptyCell />}
+            {payslip.payments.otherAllowances?.[2] ? (
+              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', 2, 'amount']} value={payslip.payments.otherAllowances[2].amount} />
+            ) : <EmptyCell />}
+            {payslip.payments.otherAllowances?.[3] ? (
+              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', 3, 'amount']} value={payslip.payments.otherAllowances[3].amount} />
+            ) : <EmptyCell />}
           </tr>
           {/* Row 2 Header */}
           <tr>
-            <LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell>
+            <LabelCell>{payslip.payments.otherAllowances?.[4]?.name || "　"}</LabelCell>
+            <LabelCell>{payslip.payments.otherAllowances?.[5]?.name || "　"}</LabelCell>
+            <LabelCell>{payslip.payments.otherAllowances?.[6]?.name || "　"}</LabelCell>
+            <LabelCell>{payslip.payments.otherAllowances?.[7]?.name || "　"}</LabelCell>
             <LabelCell>特別手当</LabelCell><LabelCell>年末年始手当</LabelCell><LabelCell>残業手当</LabelCell><LabelCell>休日出勤</LabelCell><LabelCell>深夜残業</LabelCell>
           </tr>
           {/* Row 2 Value */}
           <tr>
-            <EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell />
-            <InputCell path={['payments', 'specialAllowance']} value={0} />
-            <InputCell path={['payments', 'yearEndNewYearAllowance']} value={(payslip.payments as any).yearEndNewYearAllowance} />
-            <InputCell path={['payments', 'overtimePay']} value={payslip.payments.overtimePay} />
-            <InputCell path={['payments', 'holidayAllowance']} value={0} />
-            <InputCell path={['payments', 'nightAllowance']} value={payslip.payments.nightAllowance} />
+            {payslip.payments.otherAllowances?.[4] ? (
+              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', 4, 'amount']} value={payslip.payments.otherAllowances[4].amount} />
+            ) : <EmptyCell />}
+            {payslip.payments.otherAllowances?.[5] ? (
+              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', 5, 'amount']} value={payslip.payments.otherAllowances[5].amount} />
+            ) : <EmptyCell />}
+            {payslip.payments.otherAllowances?.[6] ? (
+              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', 6, 'amount']} value={payslip.payments.otherAllowances[6].amount} />
+            ) : <EmptyCell />}
+            {payslip.payments.otherAllowances?.[7] ? (
+              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', 7, 'amount']} value={payslip.payments.otherAllowances[7].amount} />
+            ) : <EmptyCell />}
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'specialAllowance']} value={payslip.payments.specialAllowance} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'yearEndNewYearAllowance']} value={(payslip.payments as any).yearEndNewYearAllowance} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'overtimePay']} value={payslip.payments.overtimePay} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'holidayAllowance']} value={0} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'nightAllowance']} value={payslip.payments.nightAllowance} />
           </tr>
           {/* Row 3 Header */}
           <tr>
@@ -370,15 +400,15 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
           </tr>
           {/* Row 3 Value */}
           <tr>
-            <InputCell path={['payments', 'over60Pay']} value={payslip.payments.over60Pay || 0} />
-            <InputCell path={['deductions', 'lateEarlyDeduction']} value={payslip.deductions.lateEarlyDeduction || 0} />
-            <InputCell path={['deductions', 'absenceDeduction']} value={payslip.deductions.absenceDeduction || 0} />
-            <InputCell path={['payments', 'taxableCommute']} value={payslip.payments.taxableCommute || 0} />
-            <InputCell path={['payments', 'manualNonTaxableAllowance']} value={nonTaxableOther} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'over60Pay']} value={payslip.payments.over60Pay || 0} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'lateEarlyDeduction']} value={payslip.deductions.lateEarlyDeduction || 0} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'absenceDeduction']} value={payslip.deductions.absenceDeduction || 0} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'taxableCommute']} value={payslip.payments.taxableCommute || 0} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'manualNonTaxableAllowance']} value={nonTaxableOther} />
             <EmptyCell />
-            <InputCell path={['totals', 'taxableTotal']} value={(payslip.totals as any).taxableTotal || 0} />
-            <InputCell path={['totals', 'nonTaxableTotal']} value={(payslip.totals as any).nonTaxableTotal || 0} />
-            <InputCell path={['payments', 'totalPayment']} value={payslip.payments.totalPayment} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['totals', 'taxableTotal']} value={(payslip.totals as any).taxableTotal || 0} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['totals', 'nonTaxableTotal']} value={(payslip.totals as any).nonTaxableTotal || 0} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'totalPayment']} value={payslip.payments.totalPayment} />
           </tr>
         </tbody>
       </table>
@@ -400,15 +430,15 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
           </tr>
           {/* Row 1 Value */}
           <tr>
-            <InputCell path={['deductions', 'healthInsurance']} value={payslip.deductions.healthInsurance} />
-            <InputCell path={['deductions', 'careInsurance']} value={payslip.deductions.careInsurance} />
-            <InputCell path={['deductions', 'pensionInsurance']} value={payslip.deductions.pensionInsurance} />
-            <InputCell path={['deductions', 'pensionFund']} value={0} />
-            <InputCell path={['deductions', 'employmentInsurance']} value={payslip.deductions.employmentInsurance} />
-            <InputCell path={['deductions', 'socialInsuranceTotal']} value={payslip.deductions.socialInsuranceTotal} />
-            <InputCell path={['deductions', 'taxableAmount']} value={payslip.deductions.taxableAmount} />
-            <InputCell path={['deductions', 'incomeTax']} value={payslip.deductions.incomeTax} />
-            <InputCell path={['deductions', 'residentTax']} value={payslip.deductions.residentTax} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'healthInsurance']} value={payslip.deductions.healthInsurance} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'careInsurance']} value={payslip.deductions.careInsurance} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'pensionInsurance']} value={payslip.deductions.pensionInsurance} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'pensionFund']} value={0} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'employmentInsurance']} value={payslip.deductions.employmentInsurance} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'socialInsuranceTotal']} value={payslip.deductions.socialInsuranceTotal} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'taxableAmount']} value={payslip.deductions.taxableAmount} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'incomeTax']} value={payslip.deductions.incomeTax} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'residentTax']} value={payslip.deductions.residentTax} />
           </tr>
           {/* Row 2 Prepaid Header/Value */}
           <tr>
@@ -417,10 +447,10 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
             <LabelCell style={{ backgroundColor: '#d0fdd0', padding: '0 !important' }}>前払給与</LabelCell>
           </tr>
           <tr>
-            <InputCell path={['standardRemuneration']} value={payslip.standardRemuneration} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['standardRemuneration']} value={payslip.standardRemuneration} />
             <EmptyCell /><EmptyCell /><EmptyCell />
             <EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell />
-            <InputCell path={['deductions', 'advancePayment']} value={payslip.deductions.advancePayment} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'advancePayment']} value={payslip.deductions.advancePayment} />
           </tr>
           {/* Row 3 Header */}
           <tr>
@@ -429,12 +459,12 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
           </tr>
           {/* Row 3 Value */}
           <tr>
-            <InputCell path={['deductions', 'reimbursement']} value={payslip.deductions.reimbursement} absoluteNegative={true} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'reimbursement']} value={payslip.deductions.reimbursement} absoluteNegative={true} />
             <EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell />
             <EmptyCell />
-            <InputCell path={['deductions', 'yearEndAdjustment']} value={payslip.deductions.yearEndAdjustment} absoluteNegative={true} />
-            <InputCell path={['deductions', 'deductionTotal']} value={payslip.deductions.deductionTotal} absoluteNegative={true} />
-            <InputCell path={['deductions', 'totalDeduction']} value={payslip.deductions.totalDeduction} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'yearEndAdjustment']} value={payslip.deductions.yearEndAdjustment} absoluteNegative={true} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'deductionTotal']} value={payslip.deductions.deductionTotal} absoluteNegative={true} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'totalDeduction']} value={payslip.deductions.totalDeduction} />
           </tr>
         </tbody>
       </table>
@@ -452,7 +482,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
           <tr>
             <td rowSpan={6} className="vertical-text">勤怠</td>
             <LabelCell>通常稼働日数</LabelCell>
-            <LabelCell>同行稼働日数</LabelCell>
+            <LabelCell>有休日数</LabelCell>
             <LabelCell>欠勤回数</LabelCell>
             <LabelCell>遅刻・早退回数</LabelCell>
             <LabelCell>　</LabelCell>
@@ -462,12 +492,12 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
             <LabelCell>　</LabelCell>
           </tr>
           <tr>
-            <InputCell path={['attendance', 'normalWorkDays']} value={formatDecimal((payslip.attendance as any).normalWorkDays)} isNumber={false} />
-            <InputCell path={['attendance', 'accompanyWorkDays']} value={formatDecimal((payslip.attendance as any).accompanyWorkDays || 0)} isNumber={false} />
-            <InputCell path={['attendance', 'absences']} value={(payslip.attendance as any).absences} isNumber={false} />
-            <InputCell path={['attendance', 'lateEarlyCount']} value={(payslip.attendance as any).lateEarlyCount || 0} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'normalWorkDays']} value={formatDecimal((payslip.attendance as any).normalWorkDays)} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'paidLeaveDays']} value={formatDecimal((payslip.attendance as any).paidLeaveDays || 0)} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'absences']} value={(payslip.attendance as any).absences} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'lateEarlyCount']} value={(payslip.attendance as any).lateEarlyCount || 0} isNumber={false} />
             <EmptyCell />
-            <InputCell path={['attendance', 'totalWorkDays']} value={formatDecimal((payslip.attendance as any).totalWorkDays || 0)} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'totalWorkDays']} value={formatDecimal((payslip.attendance as any).totalWorkDays || 0)} isNumber={false} />
             <EmptyCell />
             <EmptyCell />
             <EmptyCell />
@@ -485,12 +515,36 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
             <LabelCell>　</LabelCell>
           </tr>
           <tr>
-            <InputCell path={['attendance', 'totalWorkHours']} value={formatDecimal(payslip.attendance.totalWorkHours)} isNumber={false} />
-            <InputCell path={['attendance', 'accompanyHours']} value={formatDecimal((payslip.attendance as any).accompanyHours || '')} isNumber={false} />
-            <InputCell path={['attendance', 'nightWorkHours']} value={formatDecimal(payslip.attendance.nightWorkHours)} isNumber={false} />
-            <InputCell path={['attendance', 'nightAccompanyHours']} value={formatDecimal((payslip.attendance as any).nightAccompanyHours || '')} isNumber={false} />
-            <InputCell path={['attendance', 'officeWorkHours']} value={formatDecimal((payslip.attendance as any).officeWorkHours || '')} isNumber={false} />
-            <InputCell path={['attendance', 'totalActualHours']} value={formatDecimal((payslip.attendance as any).totalActualHours || '')} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode}
+              path={['attendance', 'normalHours']}
+              value={formatDecimal(payslip.attendance.normalHours)}
+              isNumber={false}
+            />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode}
+              path={['attendance', 'accompanyHours']}
+              value={formatDecimal(payslip.attendance.accompanyHours)}
+              isNumber={false}
+            />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode}
+              path={['attendance', 'nightNormalHours']}
+              value={formatDecimal(payslip.attendance.nightNormalHours)}
+              isNumber={false}
+            />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode}
+              path={['attendance', 'nightAccompanyHours']}
+              value={formatDecimal(payslip.attendance.nightAccompanyHours)}
+              isNumber={false}
+            />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode}
+              path={['attendance', 'officeHours']}
+              value={formatDecimal((Number(payslip.attendance.officeHours || 0) + Number(payslip.attendance.salesHours || 0)))}
+              isNumber={false}
+            />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode}
+              path={['attendance', 'totalWorkHours']}
+              value={formatDecimal(payslip.attendance.totalWorkHours)}
+              isNumber={false}
+            />
             <EmptyCell />
             <EmptyCell />
             <EmptyCell />
@@ -543,15 +597,15 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
             <LabelCell>差引支給額</LabelCell>
           </tr>
           <tr>
-            <InputCell path={['totals', 'taxableYTD']} value={(payslip.totals as any).taxableYTD || 0} />
-            <InputCell path={['dependents']} value={payslip.dependents} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['totals', 'taxableYTD']} value={(payslip.totals as any).taxableYTD || 0} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['dependents']} value={payslip.dependents} isNumber={false} />
             <EmptyCell />
             <EmptyCell />
             <EmptyCell />
-            <InputCell path={['totals', 'bankTransfer']} value={payslip.totals.bankTransfer} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['totals', 'bankTransfer']} value={payslip.totals.bankTransfer} />
             <EmptyCell />
             <EmptyCell />
-            <InputCell path={['totals', 'netPayment']} value={payslip.totals.netPayment} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['totals', 'netPayment']} value={payslip.totals.netPayment} />
           </tr>
         </tbody>
       </table>

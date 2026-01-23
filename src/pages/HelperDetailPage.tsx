@@ -1071,10 +1071,10 @@ const HelperDetailPage: React.FC = () => {
                   </label>
                   <input
                     type="number"
-                    value={helper.standardRemuneration || ''}
+                    value={helper.standardRemuneration ?? 0}
                     onChange={(e) => handleChange('standardRemuneration', parseFloat(e.target.value) || 0)}
                     className="w-full md:w-1/3 px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="300000"
+                    placeholder="0"
                   />
                   <p className="text-xs text-gray-500 mt-1">
                     社会保険料の計算に使用します。未入力の場合は、その月の総支給額から自動的に標準報酬を決定します。
@@ -1100,19 +1100,53 @@ const HelperDetailPage: React.FC = () => {
                       </div>
                     </label>
 
+                    {/* 税区分（甲欄・乙欄） */}
+                    <div className="flex flex-col gap-2">
+                      <span className="text-sm font-medium text-gray-700">税区分</span>
+                      <div className="flex gap-4">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="taxColumnType"
+                            value="main"
+                            checked={helper.taxColumnType !== 'sub'}
+                            onChange={() => handleChange('taxColumnType', 'main')}
+                            disabled={helper.hasWithholdingTax === false}
+                            className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className={`${helper.hasWithholdingTax === false ? 'text-gray-400' : 'text-gray-700'} text-sm`}>甲欄 (主たる給与)</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="taxColumnType"
+                            value="sub"
+                            checked={helper.taxColumnType === 'sub'}
+                            onChange={() => handleChange('taxColumnType', 'sub')}
+                            disabled={helper.hasWithholdingTax === false}
+                            className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className={`${helper.hasWithholdingTax === false ? 'text-gray-400' : 'text-gray-700'} text-sm`}>乙欄 (従たる給与)</span>
+                        </label>
+                      </div>
+                    </div>
+
                     {/* 扶養人数（源泉徴収税計算に使用） */}
-                    <div className="flex items-center gap-3 md:justify-end">
+                    <div className="flex flex-col gap-2 md:items-end">
                       <span className="text-sm font-medium text-gray-700">扶養人数</span>
                       <select
                         value={helper.dependents || 0}
                         onChange={(e) => handleChange('dependents', parseInt(e.target.value))}
-                        disabled={helper.hasWithholdingTax === false}
-                        className="px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
+                        disabled={helper.hasWithholdingTax === false || helper.taxColumnType === 'sub'}
+                        className="w-full md:w-32 px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
                       >
                         {[0, 1, 2, 3, 4, 5, 6, 7].map(num => (
                           <option key={num} value={num}>{num}人</option>
                         ))}
                       </select>
+                      {helper.taxColumnType === 'sub' && (
+                        <p className="text-[10px] text-orange-600 mt-1">※乙欄は扶養控除を適用しません</p>
+                      )}
                     </div>
                   </div>
                 </div>

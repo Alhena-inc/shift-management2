@@ -88,8 +88,9 @@ export function calculatePayrollData(
   // ヘルパーのシフトをフィルタ
   const helperShifts = shifts.filter(
     s => s.helperId === helper.id &&
-         s.cancelStatus !== 'remove_time' &&
-         s.date.startsWith(`${year}-${String(month).padStart(2, '0')}`)
+      !(s.cancelStatus === 'remove_time' || s.cancelStatus === 'canceled_without_time') &&
+      (s.duration || 0) > 0 &&
+      s.date.startsWith(`${year}-${String(month).padStart(2, '0')}`)
   );
 
   // 給与タイプ
@@ -180,8 +181,8 @@ export function calculatePayrollData(
       let nightHours = 0;
       let payCalculation = { regularPay: 0, nightPay: 0, totalPay: 0, regularHours: 0, nightHours: 0 };
 
-      // 時間範囲がある場合
-      if (shift.startTime && shift.endTime) {
+      // 時間範囲があり、かつ時間数（duration）が0より大きい場合のみ計算
+      if (shift.startTime && shift.endTime && shift.duration && shift.duration > 0) {
         const timeRange = `${shift.startTime}-${shift.endTime}`;
         // calculateShiftPayを使用して年末年始の特別料金を適用
         payCalculation = calculateShiftPay(shift.serviceType, timeRange, shift.date);
@@ -194,10 +195,10 @@ export function calculatePayrollData(
         // 年末年始の特別料金を適用
         const monthDay = shift.date.substring(5);
         const isSpecialDate = monthDay === '12-31' ||
-                            monthDay === '01-01' ||
-                            monthDay === '01-02' ||
-                            monthDay === '01-03' ||
-                            monthDay === '01-04';
+          monthDay === '01-01' ||
+          monthDay === '01-02' ||
+          monthDay === '01-03' ||
+          monthDay === '01-04';
         const effectiveRate = isSpecialDate ? 3000 : (config.hourlyRate || 0);
         payCalculation.regularPay = regularHours * effectiveRate;
       }
@@ -255,8 +256,8 @@ export function calculatePayrollData(
     });
 
     dayData.totalHours = dayData.normalHours + dayData.normalNightHours +
-                         dayData.dokoHours + dayData.dokoNightHours +
-                         dayData.jimuHours + dayData.eigyoHours;
+      dayData.dokoHours + dayData.dokoNightHours +
+      dayData.jimuHours + dayData.eigyoHours;
 
     dailyData.push(dayData);
     careListData.push({

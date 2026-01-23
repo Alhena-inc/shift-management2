@@ -179,7 +179,8 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
         // この週のシフトを取得
         const weekShifts = shifts.filter(s =>
           s.helperId === helper.id &&
-          s.cancelStatus !== 'remove_time' &&
+          !(s.cancelStatus === 'remove_time' || s.cancelStatus === 'canceled_without_time') &&
+          (s.duration || 0) > 0 &&
           s.date >= week.startDate &&
           s.date <= week.endDate
         );
@@ -200,8 +201,8 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
         }
 
         weekShifts.forEach(shift => {
-          // 時間範囲がある場合
-          if (shift.startTime && shift.endTime) {
+          // 時間数（duration）が0超かつ時間範囲がある場合のみ計算
+          if (shift.duration && shift.duration > 0 && shift.startTime && shift.endTime) {
             const timeRange = `${shift.startTime}-${shift.endTime}`;
             const payCalculation = calculateShiftPay(shift.serviceType, timeRange, shift.date);
             const nightHours = payCalculation.nightHours;

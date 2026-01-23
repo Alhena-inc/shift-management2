@@ -69,8 +69,6 @@ import { TAX_TABLE_2026 } from './taxTableData/tax_table_2026';
  */
 function calculateReiwa8ComputerTax(salary: number, dependents: number, type: TaxType): number {
   if (type === '乙') {
-    if (salary < 105000) return Math.floor(salary * 0.03063);
-    if (salary >= 740000) return Math.floor((salary - 740000) * 0.4084) + 259200;
     return Math.floor(salary * 0.03063);
   }
 
@@ -112,8 +110,6 @@ function calculateReiwa8ComputerTax(salary: number, dependents: number, type: Ta
  */
 function calculateReiwa7ComputerTax(salary: number, dependents: number, type: TaxType): number {
   if (type === '乙') {
-    if (salary < 88000) return Math.floor(salary * 0.03063);
-    if (salary >= 740000) return Math.floor((salary - 740000) * 0.4084) + 259200;
     return Math.floor(salary * 0.03063);
   }
 

@@ -400,9 +400,10 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
   // 一括PDFダウンロード
   const handleBulkPdfDownload = useCallback(async () => {
     const hasSelection = selectedHelperIds.size > 0;
-    const targetPayslips = hasSelection
-      ? payslips.filter(p => selectedHelperIds.has(p.helperId))
-      : payslips;
+    const targetPayslips = sortedHelpers
+      .filter(h => !hasSelection || selectedHelperIds.has(h.id))
+      .map(h => payslips.find(p => p.helperId === h.id))
+      .filter((p): p is Payslip => p !== undefined);
 
     if (targetPayslips.length === 0) {
       alert('ダウンロードする給与明細がありません');

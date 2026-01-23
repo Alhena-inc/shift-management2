@@ -311,6 +311,7 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
       gender: newHelperGender,
       order: 0,
       personalToken: generateToken(),
+      standardRemuneration: 0,
     };
 
     let updatedHelpers: Helper[];

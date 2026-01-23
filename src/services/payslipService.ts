@@ -326,11 +326,12 @@ export const createEmptyFixedPayslip = (
 
   console.log('📋 保険加入状況（給与明細作成時）:', insuranceTypes);
 
-  // 標準報酬月額（新旧フィールド名に対応）
-  const standardRemuneration =
-    Number(helper.standardRemuneration) ||
-    Number((helper as any).standardMonthlyRemuneration) ||
-    0;
+  // 標準報酬月額（保険加入がある場合のみ設定、0も許容）
+  const standardRemuneration = hasSocialInsurance
+    ? ((helper.standardRemuneration !== undefined && helper.standardRemuneration !== null)
+      ? Number(helper.standardRemuneration)
+      : (Number((helper as any).standardMonthlyRemuneration) || 0))
+    : 0;
 
   console.log('💰 標準報酬月額:', standardRemuneration);
 
@@ -391,6 +392,7 @@ export const createEmptyFixedPayslip = (
       transportAllowance: 0,          // 交通費手当：0円
       emergencyAllowance: 0,          // 緊急時対応加算：0円
       nightAllowance: 0,              // 夜間手当：0円
+      specialAllowance: 0,            // 特別手当：0円
       yearEndNewYearAllowance: 0,     // 年末年始手当：0円
       otherAllowances,                // その他手当
       totalPayment,                   // 支給額合計
@@ -530,7 +532,11 @@ export const createEmptyHourlyPayslip = (
     dependents: 0, // デフォルトは0人（必要に応じて変更）
     age,
     insuranceTypes,
-    standardRemuneration: Number((helper as any).standardRemuneration) || Number((helper as any).standardMonthlyRemuneration) || 0,  // 標準報酬月額
+    standardRemuneration: hasSocialInsurance
+      ? ((helper.standardRemuneration !== undefined && helper.standardRemuneration !== null)
+        ? Number(helper.standardRemuneration)
+        : (Number((helper as any).standardMonthlyRemuneration) || 0))
+      : 0,  // 標準報酬月額
     baseHourlyRate: 0,
     treatmentAllowance: 0,
     totalHourlyRate: 0,
@@ -558,6 +564,8 @@ export const createEmptyHourlyPayslip = (
       expenseReimbursement: 0,
       transportAllowance: 0,
       emergencyAllowance: 0,
+      nightAllowance: 0,
+      specialAllowance: 0,
       otherAllowances: [],
       totalPayment: 0,
     },

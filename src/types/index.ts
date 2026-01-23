@@ -144,6 +144,7 @@ export interface Helper {
   standardRemuneration?: number;          // 標準報酬月額（社会保険料計算用）
   standardMonthlyRemuneration?: number;   // 標準報酬月額（別名、互換性のため）
   hasWithholdingTax?: boolean;            // 源泉徴収する（true=する、false=しない）
+  taxColumnType?: 'main' | 'sub';         // 税区分（main=甲欄, sub=乙欄）
 
   // 保険加入
   insurances?: string[];                  // ['health', 'care', 'pension', 'employment']
@@ -216,7 +217,7 @@ export interface Shift {
   deleted?: boolean;      // 論理削除フラグ
   deletedAt?: any;        // 削除日時（Firestore Timestamp）
   deletedBy?: string;     // 削除者ID
-  cancelStatus?: 'none' | 'keep_time' | 'remove_time';  // キャンセル状態
+  cancelStatus?: 'none' | 'keep_time' | 'remove_time' | 'canceled_with_time' | 'canceled_without_time';  // キャンセル状態
   canceledAt?: any;       // キャンセル日時（Firestore Timestamp）
   // 給与計算関連
   regularHours?: number;  // 通常時間

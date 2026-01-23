@@ -5,12 +5,16 @@ interface MonthlyAttendanceSheetProps {
   month: number;
   dailyAttendance: HourlyDailyAttendance[];
   onChange: (data: HourlyDailyAttendance[]) => void;
+  isPrintMode?: boolean;
+  helperName?: string;
 }
 
 const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
   month,
   dailyAttendance,
-  onChange
+  onChange,
+  isPrintMode = false,
+  helperName
 }) => {
   // 12月の給与計算は翌年1/1〜1/4を含めるが、勤怠表の表示は12/31までにする
   const displayDailyAttendance =
@@ -25,11 +29,11 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
         field === 'totalHours'
           ? value
           : (field === 'normalWork' ? value : updated[dayIndex].normalWork) +
-            (field === 'normalNight' ? value : updated[dayIndex].normalNight) +
-            (field === 'accompanyWork' ? value : updated[dayIndex].accompanyWork) +
-            (field === 'accompanyNight' ? value : updated[dayIndex].accompanyNight) +
-            (field === 'officeWork' ? value : updated[dayIndex].officeWork) +
-            (field === 'salesWork' ? value : updated[dayIndex].salesWork)
+          (field === 'normalNight' ? value : updated[dayIndex].normalNight) +
+          (field === 'accompanyWork' ? value : updated[dayIndex].accompanyWork) +
+          (field === 'accompanyNight' ? value : updated[dayIndex].accompanyNight) +
+          (field === 'officeWork' ? value : updated[dayIndex].officeWork) +
+          (field === 'salesWork' ? value : updated[dayIndex].salesWork)
     };
     onChange(updated);
   };
@@ -60,20 +64,24 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
   const totals = calculateTotals();
 
   const formatHours = (hours: number): string => {
-    return hours > 0 ? `${hours.toFixed(1)}時間` : '';
+    return hours > 0 ? hours.toFixed(2) : '';
   };
 
   const formatTotalCell = (hours: number): string => {
     // 合計行は0でも表示して分かりやすくする
-    const fixed = Number(hours || 0).toFixed(1);
-    const trimmed = fixed.endsWith('.0') ? fixed.slice(0, -2) : fixed;
-    return `${trimmed}時間`;
+    return Number(hours || 0).toFixed(2);
   };
 
   return (
     <div className="bg-white border border-gray-400 font-bold" style={{ width: '100%', minWidth: '100%' }}>
       {/* 青ヘッダー */}
-      <div className="blue-header">{month}月勤怠表</div>
+      <div className="blue-header flex justify-between items-center px-4" style={{ textAlign: 'left' }}>
+        <div className="text-left font-bold" style={{ minWidth: '200px' }}>
+          {helperName ? `氏名: ${helperName} 様` : ''}
+        </div>
+        <div className="text-center flex-1">{month}月勤怠表</div>
+        <div className="text-right" style={{ minWidth: '200px' }}></div>
+      </div>
 
       {/* テーブル */}
       <div>
@@ -102,85 +110,109 @@ const MonthlyAttendanceSheet: React.FC<MonthlyAttendanceSheetProps> = ({
                 </td>
                 <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center', verticalAlign: 'middle' }}>
                   <div className="flex items-center justify-center" style={{ whiteSpace: 'nowrap' }}>
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      value={day.normalWork || ''}
-                      onChange={(e) => updateCell(index, 'normalWork', Number(e.target.value) || 0)}
-                      className="text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
-                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#000000' }}
-                    />
+                    {isPrintMode ? (
+                      <span style={{ fontSize: '9px', width: '28px', textAlign: 'center' }}>{day.normalWork || ''}</span>
+                    ) : (
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        value={day.normalWork || ''}
+                        onChange={(e) => updateCell(index, 'normalWork', Number(e.target.value) || 0)}
+                        className="text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                        style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#000000' }}
+                      />
+                    )}
                     {day.normalWork > 0 && <span style={{ fontSize: '9px', color: '#000000' }}>時間</span>}
                   </div>
                 </td>
                 <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center', verticalAlign: 'middle' }}>
                   <div className="flex items-center justify-center" style={{ whiteSpace: 'nowrap' }}>
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      value={day.normalNight || ''}
-                      onChange={(e) => updateCell(index, 'normalNight', Number(e.target.value) || 0)}
-                      className="text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
-                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#000000' }}
-                    />
+                    {isPrintMode ? (
+                      <span style={{ fontSize: '9px', width: '28px', textAlign: 'center' }}>{day.normalNight || ''}</span>
+                    ) : (
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        value={day.normalNight || ''}
+                        onChange={(e) => updateCell(index, 'normalNight', Number(e.target.value) || 0)}
+                        className="text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                        style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#000000' }}
+                      />
+                    )}
                     {day.normalNight > 0 && <span style={{ fontSize: '9px', color: '#000000' }}>時間</span>}
                   </div>
                 </td>
                 <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center', verticalAlign: 'middle' }}>
                   <div className="flex items-center justify-center" style={{ whiteSpace: 'nowrap' }}>
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      value={day.accompanyWork || ''}
-                      onChange={(e) => updateCell(index, 'accompanyWork', Number(e.target.value) || 0)}
-                      className="text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
-                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#000000' }}
-                    />
+                    {isPrintMode ? (
+                      <span style={{ fontSize: '9px', width: '28px', textAlign: 'center' }}>{day.accompanyWork || ''}</span>
+                    ) : (
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        value={day.accompanyWork || ''}
+                        onChange={(e) => updateCell(index, 'accompanyWork', Number(e.target.value) || 0)}
+                        className="text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                        style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#000000' }}
+                      />
+                    )}
                     {day.accompanyWork > 0 && <span style={{ fontSize: '9px', color: '#000000' }}>時間</span>}
                   </div>
                 </td>
                 <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center', verticalAlign: 'middle' }}>
                   <div className="flex items-center justify-center" style={{ whiteSpace: 'nowrap' }}>
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      value={day.accompanyNight || ''}
-                      onChange={(e) => updateCell(index, 'accompanyNight', Number(e.target.value) || 0)}
-                      className="text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
-                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#000000' }}
-                    />
+                    {isPrintMode ? (
+                      <span style={{ fontSize: '9px', width: '28px', textAlign: 'center' }}>{day.accompanyNight || ''}</span>
+                    ) : (
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        value={day.accompanyNight || ''}
+                        onChange={(e) => updateCell(index, 'accompanyNight', Number(e.target.value) || 0)}
+                        className="text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                        style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#000000' }}
+                      />
+                    )}
                     {day.accompanyNight > 0 && <span style={{ fontSize: '9px', color: '#000000' }}>時間</span>}
                   </div>
                 </td>
                 <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center', verticalAlign: 'middle' }}>
                   <div className="flex items-center justify-center" style={{ whiteSpace: 'nowrap' }}>
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      value={day.officeWork || ''}
-                      onChange={(e) => updateCell(index, 'officeWork', Number(e.target.value) || 0)}
-                      className="text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
-                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#000000' }}
-                    />
+                    {isPrintMode ? (
+                      <span style={{ fontSize: '9px', width: '28px', textAlign: 'center' }}>{day.officeWork || ''}</span>
+                    ) : (
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        value={day.officeWork || ''}
+                        onChange={(e) => updateCell(index, 'officeWork', Number(e.target.value) || 0)}
+                        className="text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                        style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#000000' }}
+                      />
+                    )}
                     {day.officeWork > 0 && <span style={{ fontSize: '9px', color: '#000000' }}>時間</span>}
                   </div>
                 </td>
                 <td className="editable-cell" style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', height: '20px', maxHeight: '20px', overflow: 'hidden', textAlign: 'center', verticalAlign: 'middle' }}>
                   <div className="flex items-center justify-center" style={{ whiteSpace: 'nowrap' }}>
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      value={day.salesWork || ''}
-                      onChange={(e) => updateCell(index, 'salesWork', Number(e.target.value) || 0)}
-                      className="text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
-                      style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#000000' }}
-                    />
+                    {isPrintMode ? (
+                      <span style={{ fontSize: '9px', width: '28px', textAlign: 'center' }}>{day.salesWork || ''}</span>
+                    ) : (
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        value={day.salesWork || ''}
+                        onChange={(e) => updateCell(index, 'salesWork', Number(e.target.value) || 0)}
+                        className="text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                        style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', width: '28px', color: '#000000' }}
+                      />
+                    )}
                     {day.salesWork > 0 && <span style={{ fontSize: '9px', color: '#000000' }}>時間</span>}
                   </div>
                 </td>

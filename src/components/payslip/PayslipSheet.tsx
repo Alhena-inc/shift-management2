@@ -28,22 +28,29 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, helper, onChange, 
 
     // 支給額を再計算（時給制のみ）
     if (!newPayslip.payments.manualTotalPayment) {
-      // 通常ケア時給（身体・重度・家事・通院・行動・移動）
-      const rate = newPayslip.totalHourlyRate;
-      const nightRate = rate * 1.25;
+      // 基本時給と処遇改善単価
+      const baseRate = newPayslip.baseHourlyRate || 0;
+      const treatRate = newPayslip.treatmentAllowance || 0;
 
-      // 同行時給: 1200円
-      const accompanyRate = 1200;
-      const accompanyNightRate = accompanyRate * 1.25;
+      // 基本給（全時間分）
+      const totalHours =
+        newPayslip.attendance.normalHours +
+        newPayslip.attendance.nightNormalHours +
+        newPayslip.attendance.accompanyHours +
+        newPayslip.attendance.nightAccompanyHours +
+        newPayslip.attendance.officeHours +
+        newPayslip.attendance.salesHours;
+      newPayslip.payments.basePay = Math.round(totalHours * baseRate);
 
-      // 事務・営業時給: 1200円
-      const officeRate = 1200;
+      // 処遇改善加算（ケア時間分）
+      newPayslip.payments.treatmentAllowancePay = Math.round(
+        (newPayslip.attendance.normalHours + newPayslip.attendance.nightNormalHours) * treatRate
+      );
 
-      newPayslip.payments.normalWorkPay = Math.round(newPayslip.attendance.normalHours * rate);
-      newPayslip.payments.accompanyPay = Math.round(newPayslip.attendance.accompanyHours * accompanyRate);
-      newPayslip.payments.nightNormalPay = Math.round(newPayslip.attendance.nightNormalHours * nightRate);
-      newPayslip.payments.nightAccompanyPay = Math.round(newPayslip.attendance.nightAccompanyHours * accompanyNightRate);
-      newPayslip.payments.officePay = Math.round((newPayslip.attendance.officeHours + newPayslip.attendance.salesHours) * officeRate);
+      // 深夜手当（割増分のみ）
+      const nightIncreaseNormal = newPayslip.attendance.nightNormalHours * (baseRate + treatRate) * 0.25;
+      const nightIncreaseAccompany = newPayslip.attendance.nightAccompanyHours * 1200 * 0.25;
+      newPayslip.payments.nightAllowance = Math.round(nightIncreaseNormal + nightIncreaseAccompany);
 
       // その他手当の合計
       const otherAllowancesTotal = (newPayslip.payments.otherAllowances || []).reduce(
@@ -51,18 +58,23 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, helper, onChange, 
         0
       );
 
-      // 支給額合計
+      // 支給額合計を再編成後の項目で計算
       newPayslip.payments.totalPayment =
-        newPayslip.payments.normalWorkPay +
-        newPayslip.payments.accompanyPay +
-        newPayslip.payments.nightNormalPay +
-        newPayslip.payments.nightAccompanyPay +
-        newPayslip.payments.officePay +
+        newPayslip.payments.basePay +
+        (newPayslip.payments.treatmentAllowancePay || 0) +
+        (newPayslip.payments.nightAllowance || 0) +
         ((newPayslip.payments as any).yearEndNewYearAllowance || 0) +
         newPayslip.payments.expenseReimbursement +
         newPayslip.payments.transportAllowance +
         newPayslip.payments.emergencyAllowance +
         otherAllowancesTotal;
+
+      // 個別項目は0にして表示させない
+      newPayslip.payments.normalWorkPay = 0;
+      newPayslip.payments.accompanyPay = 0;
+      newPayslip.payments.nightNormalPay = 0;
+      newPayslip.payments.nightAccompanyPay = 0;
+      newPayslip.payments.officePay = 0;
     }
 
     // 差引支給額
@@ -129,7 +141,6 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, helper, onChange, 
           .blue-header {
             background-color: #0066cc;
             color: white;
-            text-align: center;
             font-weight: bold;
             padding: 6px;
             font-size: 13px;
@@ -184,6 +195,8 @@ const PayslipSheet: React.FC<PayslipSheetProps> = ({ payslip, helper, onChange, 
                 month={payslip.month}
                 dailyAttendance={payslip.dailyAttendance}
                 onChange={handleAttendanceChange}
+                isPrintMode={isPrintMode}
+                helperName={helper?.name || payslip.helperName}
               />
             </div>
 

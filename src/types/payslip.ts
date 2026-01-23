@@ -201,6 +201,10 @@ export interface FixedPayslip extends BasePayslip {
     transportAllowance: number;   // 交通費立替・手当
     emergencyAllowance: number;   // 緊急時対応加算
     nightAllowance: number;       // 夜間手当
+    specialAllowance: number;     // 特別手当
+    directorCompensation: number; // 役員報酬
+    accompanyPay: number;         // 同行研修手当
+    officePay: number;            // 事務・営業手当
     otherAllowances: DeductionItem[]; // その他手当
     totalPayment: number;         // 支給額合計
     manualBasePay?: boolean;
@@ -209,6 +213,10 @@ export interface FixedPayslip extends BasePayslip {
     manualTransportAllowance?: boolean;
     manualEmergencyAllowance?: boolean;
     manualNightAllowance?: boolean;
+    manualSpecialAllowance?: boolean;
+    manualDirectorCompensation?: boolean;
+    manualAccompanyPay?: boolean;
+    manualOfficePay?: boolean;
     manualTotalPayment?: boolean; // 手動入力フラグ
   };
 
@@ -320,11 +328,18 @@ export interface HourlyPayslip extends BasePayslip {
     transportAllowance: number;   // 交通費立替・手当
     emergencyAllowance: number;   // 緊急時対応加算
     nightAllowance?: number;      // 夜間手当
+    specialAllowance?: number;    // 特別手当
+    directorCompensation?: number; // 役員報酬
+    basePay?: number;             // 基本給（時給制用、 breakdown表示に使用）
+    treatmentAllowancePay?: number; // 処遇改善加算（合計支給額）
     otherAllowances: DeductionItem[]; // その他手当
     totalPayment: number;         // 支給額合計
+    manualBasePay?: boolean;
+    manualTreatmentAllowancePay?: boolean;
     manualNormalWorkPay?: boolean;
     manualAccompanyPay?: boolean;
     manualOfficePay?: boolean;
+    manualDirectorCompensation?: boolean;
     manualYearEndNewYearAllowance?: boolean;
     manualNightNormalPay?: boolean;
     manualNightAccompanyPay?: boolean;
@@ -332,6 +347,7 @@ export interface HourlyPayslip extends BasePayslip {
     manualTransportAllowance?: boolean;
     manualEmergencyAllowance?: boolean;
     manualNightAllowance?: boolean;
+    manualSpecialAllowance?: boolean;
     manualTotalPayment?: boolean; // 手動入力フラグ
   };
 

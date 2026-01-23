@@ -2,8 +2,8 @@ import { useMemo, useCallback, useEffect, memo, useState, useRef } from 'react';
 import type { Helper, Shift, ServiceType } from '../types';
 import { useScrollDetection } from '../hooks/useScrollDetection';
 import { SERVICE_CONFIG } from '../types';
-import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts, subscribeToDayOffRequestsMap, subscribeToDisplayTextsMap, subscribeToShiftsForMonth, subscribeToScheduledDayOffs } from '../services/firestoreService';
-import { Timestamp } from 'firebase/firestore';
+import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts, subscribeToDayOffRequestsMap, subscribeToDisplayTextsMap, subscribeToShiftsForMonth, subscribeToScheduledDayOffs, clearCancelStatus } from '../services/firestoreService';
+import { Timestamp, deleteField } from 'firebase/firestore';
 import { auth } from '../lib/firebase';
 import { calculateNightHours, calculateRegularHours, calculateTimeDuration } from '../utils/timeCalculations';
 import { calculateShiftPay } from '../utils/salaryCalculations';
@@ -266,14 +266,36 @@ async function saveShiftsByYearMonth(shifts: Shift[]): Promise<void> {
   );
 }
 
-const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: Props) => {
+const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdateShifts: onUpdateShiftsProp }: Props) => {
   console.log('🔄 ShiftTable レンダリング', performance.now());
 
-  // 非同期コールバック（setTimeout/requestAnimationFrame）から最新のshiftsを参照できるようにする
+  // ★ 内部State化：Firestoreのエコーバックを受けずに即座に描画を更新するため
+  const [shifts, setShifts] = useState(shiftsProp);
+
+  // 非同期コールバックから参照するためのRef
   const shiftsRef = useRef<Shift[]>(shifts);
+
+  // ローカル更新のタイムスタンプ（Firestoreからのエコーバックによる上書き防止用）
+  const lastLocalUpdateTimeRef = useRef<number>(0);
+
+  // プロップスからの同期ロジック
   useEffect(() => {
-    shiftsRef.current = shifts;
-  }, [shifts]);
+    const timeSinceLastUpdate = Date.now() - lastLocalUpdateTimeRef.current;
+    if (lastLocalUpdateTimeRef.current > 0 && timeSinceLastUpdate < 2000) {
+      console.log('🛡️ Firestoreからの反映をスキップ（ローカル更新優先）');
+      return;
+    }
+    setShifts(shiftsProp);
+    shiftsRef.current = shiftsProp;
+  }, [shiftsProp]);
+
+  // 更新関数のラッパー：ローカルStateとRefを即時更新しつつ、親(Firestore)へ通知
+  const onUpdateShifts = useCallback((newShifts: Shift[]) => {
+    setShifts(newShifts);
+    shiftsRef.current = newShifts;
+    lastLocalUpdateTimeRef.current = Date.now();
+    onUpdateShiftsProp(newShifts);
+  }, [onUpdateShiftsProp]);
 
   // キャンセル済みシフトのログ
   const canceledShifts = shifts.filter(s => s.cancelStatus);
@@ -430,7 +452,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   const selectedCellRef = useMemo(() => ({
     helperId: '',
     date: '',
-    rowIndex: -1
+    rowIndex: -1,
+    lineIndex: 0
   }), []);
 
   // 特定の位置のシフトを取得
@@ -450,7 +473,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
 
     // すべてのシフトをループ
     shifts.forEach(shift => {
-      if (!shift.startTime || !shift.endTime) return;
+      // キャンセル状態のシフトは集計から除外
+      if (shift.cancelStatus === 'remove_time' || shift.cancelStatus === 'canceled_without_time') {
+        return;
+      }
+      if (!shift.startTime || !shift.endTime || !(shift.duration > 0)) return;
 
       const { helperId, date, serviceType, startTime, endTime } = shift;
       const timeRange = `${startTime}-${endTime}`;
@@ -797,10 +824,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           }
         }
 
-        // 背景色が赤の場合はキャンセル状態
-        if (backgroundColor === '#f87171' || backgroundColor === 'rgb(248, 113, 113)') {
-          cancelStatus = parseFloat(durationStr) === 0 ? 'remove_time' : 'keep_time';
-        }
+        // 既存シフトのキャンセル状態を優先的に使用（背景色ではなくDBデータを信頼）
+        // 既存シフトにcancelStatusがある場合のみ、その状態を維持
+        const existingCancelStatus = s.cancelStatus;
+        // 'none'は有効なキャンセル状態ではないのでundefinedとして扱う
+        cancelStatus = (existingCancelStatus === 'keep_time' || existingCancelStatus === 'remove_time') ? existingCancelStatus : undefined;
 
         const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
         const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
@@ -855,10 +883,9 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             }
           }
 
-          // 背景色が赤の場合はキャンセル状態
-          if (backgroundColor === '#f87171' || backgroundColor === 'rgb(248, 113, 113)') {
-            cancelStatus = parseFloat(durationStr) === 0 ? 'remove_time' : 'keep_time';
-          }
+          // 復元時は背景色ではなく、保存されたUndoデータを信頼
+          // このケースでは新規追加なのでキャンセル状態は持たない
+          cancelStatus = undefined;
 
           const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
           const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*[-~〜]\s*(\d{1,2}:\d{2})/);
@@ -882,8 +909,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
             regularPay: payCalculation.regularPay,
             nightPay: payCalculation.nightPay,
             totalPay: payCalculation.totalPay,
-            deleted: false,
-            ...(cancelStatus && { cancelStatus, canceledAt: Timestamp.now() })
+            deleted: false
           };
           restoredShifts.push(restoredShift);
           console.log(`↶ 削除されたシフトを復元: ${shiftId}`);
@@ -1033,10 +1059,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           }
         }
 
-        // 背景色が赤の場合はキャンセル状態
-        if (backgroundColor === '#f87171' || backgroundColor === 'rgb(248, 113, 113)') {
-          cancelStatus = parseFloat(durationStr) === 0 ? 'remove_time' : 'keep_time';
-        }
+        // 既存シフトのキャンセル状態を優先的に使用
+        const existingCancelStatus = s.cancelStatus;
+        // 'none'は有効なキャンセル状態ではないのでundefinedとして扱う
+        cancelStatus = (existingCancelStatus === 'keep_time' || existingCancelStatus === 'remove_time') ? existingCancelStatus : undefined;
 
         const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
         const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*[-~〜]\s*(\d{1,2}:\d{2})/);
@@ -1702,14 +1728,15 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                 const { startTime, endTime, clientName, serviceType, duration, area, cancelStatus } = shift;
 
                 // キャンセル状態をログ出力
-                if (cancelStatus) {
-                  console.log(`🔴 レンダリングキャッシュ: キャンセルシフトを処理中:`, {
-                    key,
-                    id: shift.id,
-                    cancelStatus: shift.cancelStatus,
-                    clientName: shift.clientName
-                  });
-                }
+                // キャンセル状態をログ出力（パフォーマンス低下の恐れがあるためコメントアウト）
+                // if (cancelStatus) {
+                //   console.log(`🔴 レンダリングキャッシュ: キャンセルシフトを処理中:`, {
+                //     key,
+                //     id: shift.id,
+                //     cancelStatus: shift.cancelStatus,
+                //     clientName: shift.clientName
+                //   });
+                // }
 
                 // 各ラインのデータ
                 const timeString = startTime && endTime ? `${startTime}-${endTime}` : (startTime || endTime ? `${startTime || ''}-${endTime || ''}` : '');
@@ -1769,7 +1796,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     });
 
     return cache;
-  }, [sortedHelpers, weeks, shiftMap, dayOffRequests, scheduledDayOffs, displayTexts]);
+  }, [sortedHelpers, weeks, shiftMap, dayOffRequests, scheduledDayOffs, displayTexts, shifts]);
 
   // キャッシュ準備完了を追跡
   const [isCacheReady, setIsCacheReady] = useState(false);
@@ -1797,6 +1824,26 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
   const syncSelection = useCallback(() => {
     setSelectedRows(new Set(selectedRowsRef.current));
   }, []);
+
+  // 再レンダリング後も青枠（単一選択）を維持し、高速に表示するためのEffect
+  useEffect(() => {
+    if (selectedCellRef.helperId && selectedCellRef.date && selectedCellRef.rowIndex !== -1) {
+      const { helperId, date, rowIndex, lineIndex } = selectedCellRef;
+      // 特定の行（0-3）をターゲットにする
+      const selector = `.editable-cell[data-helper="${helperId}"][data-date="${date}"][data-row="${rowIndex}"][data-line="${lineIndex}"]`;
+      const target = document.querySelector(selector) as HTMLElement;
+
+      if (target) {
+        // 既に付いている場合は何もしない（パフォーマンスのため）
+        if (!target.classList.contains('line-selected')) {
+          // 他のセルの青枠を一掃
+          document.querySelectorAll('.line-selected').forEach(el => el.classList.remove('line-selected'));
+          target.classList.add('line-selected');
+          lastSelectedCellRef.current = target;
+        }
+      }
+    }
+  });
 
   // ドラッグ選択用のref
   const lastProcessedCellRef = useRef<string | null>(null);
@@ -2011,7 +2058,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       (cell as HTMLElement).textContent = copyBufferRef.data[lineIndex] || '';
     });
 
-    // 背景色を設定（休み希望を考慮）
+    // 背景色を設定（休み希望を考慮、キャンセル済みの赤背景は使用しない）
     if (bgCells.length > 0) {
       const parentTd = bgCells[0].closest('td') as HTMLElement;
       if (parentTd) {
@@ -2019,15 +2066,25 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         const dayOffKey = `${helperId}-${date}-${rowIndex}`;
         const isDayOffForThisRow = dayOffRequests.has(dayOffKey);
 
-        // 休み希望がある場合はピンク系の背景色を維持、ない場合はコピー元の背景色を使用
-        const backgroundColor = isDayOffForThisRow
-          ? '#ffcccc' // 休み希望のピンク系
-          : copyBufferRef.backgroundColor;
+        // ★ キャンセル済みの赤背景(#f87171)は使用しない - サービスタイプから正しい背景色を取得
+        let backgroundColor = copyBufferRef.backgroundColor;
+        if (backgroundColor === '#f87171' || backgroundColor === 'rgb(248, 113, 113)') {
+          // コピー元がキャンセル済みだった場合、サービスタイプから背景色を取得
+          if (copyBufferRef.sourceShift) {
+            const config = SERVICE_CONFIG[copyBufferRef.sourceShift.serviceType];
+            backgroundColor = config?.bgColor || '#ffffff';
+          } else {
+            backgroundColor = '#ffffff';
+          }
+        }
 
-        parentTd.style.backgroundColor = backgroundColor;
+        // 休み希望がある場合はピンク系の背景色を維持
+        const finalBgColor = isDayOffForThisRow ? '#ffcccc' : backgroundColor;
+
+        parentTd.style.backgroundColor = finalBgColor;
 
         bgCells.forEach((cell) => {
-          (cell as HTMLElement).style.backgroundColor = backgroundColor;
+          (cell as HTMLElement).style.backgroundColor = finalBgColor;
         });
       }
     }
@@ -2080,8 +2137,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           duration: parseFloat(durationStr) || (copyBufferRef.sourceShift?.duration ?? 0),
           area: area || copyBufferRef.sourceShift?.area || '',
           rowIndex,
-          cancelStatus: copyBufferRef.cancelStatus,
-          canceledAt: copyBufferRef.canceledAt,
+          // ★ ペースト時はキャンセル状態を引き継がない（新規ケアとして貼り付け）
+          // コピー元がキャンセル済みでも、ペースト先は通常のケアとして扱う
+          // cancelStatus: undefined,
+          // canceledAt: undefined,
           regularHours: payCalculation.regularHours,
           nightHours: payCalculation.nightHours,
           regularPay: payCalculation.regularPay,
@@ -2094,10 +2153,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         const updatedShifts = [...shiftsRef.current.filter(s => s.id !== newShift.id), newShift];
         shiftsRef.current = updatedShifts; // ★ Refを同期的に更新して連続ペーストに対応
 
-        // ★ React stateの更新をrequestAnimationFrameで最適化（連続ペースト時のパフォーマンス改善）
-        requestAnimationFrame(() => {
-          onUpdateShifts(updatedShifts);
-        });
+        // ★ React stateの更新を即座に実行（連続ペースト時の不整合を防止）
+        onUpdateShifts(updatedShifts);
 
         // Firestoreに保存
         await saveShiftWithCorrectYearMonth(newShift);
@@ -2159,8 +2216,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           const shiftsToSave: Shift[] = [];
 
           copiedCaresRef.current.forEach((copiedCare, index) => {
+            // ★ ペースト時はキャンセル状態を引き継がない（新規ケアとして貼り付け）
+            const { cancelStatus, canceledAt, ...restData } = copiedCare.data;
             const newShift: Shift = {
-              ...copiedCare.data,
+              ...restData,
               id: `shift-${targetCell.helperId}-${targetCell.date}-${targetCell.rowIndex + index}`,
               helperId: String(targetCell.helperId), // helperIdを文字列に統一
               date: targetCell.date,
@@ -2410,6 +2469,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                   );
                   updatedShifts.push(...shiftsToSave);
                   shiftsRef.current = updatedShifts; // ★ Refを同期的に更新して連続ペーストに対応
+                  lastLocalUpdateTimeRef.current = Date.now(); // ★ 追加：Firestoreからのエコーバック対策
                   onUpdateShifts(updatedShifts);
 
                   // ★ Undoスタックに追加（2次元グループとして）
@@ -2628,6 +2688,7 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                     );
                     updatedShifts.push(...shiftsToSave);
                     shiftsRef.current = updatedShifts; // ★ Refを同期的に更新して連続ペーストに対応
+                    lastLocalUpdateTimeRef.current = Date.now(); // ★ 追加：Firestoreからのエコーバック対策
                     onUpdateShifts(updatedShifts);
 
                     // ★ Undoスタックに追加（グループとして）
@@ -3239,6 +3300,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
         if (targetCell) {
           targetCell.classList.add('line-selected');
           lastSelectedCellRef.current = targetCell;
+          // Refも更新してEffectで維持されるようにする
+          selectedCellRef.helperId = hId;
+          selectedCellRef.date = dt;
+          selectedCellRef.rowIndex = rowIdx;
+          selectedCellRef.lineIndex = 0;
           console.log(`🔵 削除後、1つのセルに青枠を設定: ${hId}-${dt}-${rowIdx}`);
         }
       }
@@ -3254,26 +3320,50 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     const canceledRowsList: string[] = [];
     const activeRowsList: string[] = [];
 
+    // 高速検索用にMapを作成 (O(N)で一度だけ作成)
+    const currentShiftsMap = new Map<string, Shift>();
+    shiftsRef.current.forEach(s => {
+      // idまたはキーで検索できるようにする
+      currentShiftsMap.set(s.id, s);
+      // 念のためhelper-date-row形式でも登録（後方互換）
+      if (s.rowIndex !== undefined) {
+        currentShiftsMap.set(`${s.helperId}-${s.date}-${s.rowIndex}`, s);
+      }
+    });
+
     targetRows.forEach(key => {
       const parts = key.split('-');
       const rowIdx = parseInt(parts[parts.length - 1]);
-      const hId = parts[0];
-      const dt = parts.slice(1, parts.length - 1).join('-');
+      // 日付は3パーツ(YYYY-MM-DD)、IDは残り
+      const dt = parts.slice(parts.length - 4, parts.length - 1).join('-');
+      const hId = parts.slice(0, parts.length - 4).join('-');
 
       // データに基づいてキャンセル状態を判定
+      // ★ currentShiftsMapを使用して高速検索（O(1)）
+      const shiftId = `shift-${hId}-${dt}-${rowIdx}`;
+      const existingShift = currentShiftsMap.get(shiftId);
       const mapKey = `${hId}-${dt}-${rowIdx}`;
       const mapShift = shiftMap.get(mapKey);
-      const shiftId = `shift-${hId}-${dt}-${rowIdx}`;
-      const existingShift = shiftsRef.current.find(s => s.id === shiftId);
 
-      const cancelStatus = mapShift?.cancelStatus || existingShift?.cancelStatus;
-      const isCanceled = cancelStatus === 'keep_time' || cancelStatus === 'remove_time';
+      // ★ shiftMapを優先して使用（手動更新で最新の状態を持っている可能性があるため）
+      // ★ shiftMapを優先して使用（手動更新で最新の状態を持っている可能性があるため）
+      const targetShift = mapShift || existingShift;
+
+      const cancelStatus = targetShift?.cancelStatus;
+      let isCanceled = cancelStatus === 'keep_time' || cancelStatus === 'remove_time' || cancelStatus === 'canceled_with_time' || cancelStatus === 'canceled_without_time';
+
+      // ★ データと見た目の不整合対策コードを削除
+      // 理由: getComputedStyleによる判定が不安定で、実際には赤くなっている（キャンセル状態の）セルでも
+      // キャンセル扱いが取り消されてしまい、「キャンセル取り消し」ボタンが表示されない不具合が発生しているため。
+      // shiftMap（データ）を正とすることで、データ上でキャンセルなら必ずキャンセル取り消しができるようにする。
+
+      // if (isCanceled) { ... } のブロックを削除
 
       if (isCanceled) {
         canceledRowsList.push(key);
       } else {
         // シフトデータが存在する場合のみ有効なシフトとする
-        if (mapShift || existingShift) {
+        if (targetShift) {
           activeRowsList.push(key);
         }
       }
@@ -3293,259 +3383,97 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       undoCancelBtn.style.color = '#059669';
       undoCancelBtn.style.fontWeight = 'bold';
       undoCancelBtn.style.borderTop = '1px solid #e5e7eb';
-      if (undoCancelBtn) {
-        undoCancelBtn.onmouseover = () => { if (undoCancelBtn) undoCancelBtn.style.backgroundColor = '#d1fae5'; };
-        undoCancelBtn.onmouseout = () => { if (undoCancelBtn) undoCancelBtn.style.backgroundColor = 'transparent'; };
-      }
+      undoCancelBtn.onmouseover = () => { undoCancelBtn!.style.backgroundColor = '#d1fae5'; };
+      undoCancelBtn.onmouseout = () => { undoCancelBtn!.style.backgroundColor = 'transparent'; };
+
       undoCancelBtn.onclick = async () => {
-        console.log(`♻️ キャンセル取り消し処理開始 - ${targetRows.length}件`);
+        console.log(`↶ キャンセル取り消し処理開始 - ${targetRows.length}件`);
 
+        const snapshot = [...shiftsRef.current];
+        const updatedShiftsMap = new Map<string, Shift>();
         const restoredShifts: Shift[] = [];
-        const undoGroup: Array<{
-          helperId: string;
-          date: string;
-          rowIndex: number;
-          data: string[];
-          backgroundColor: string;
-        }> = [];
+        const undoGroup: UndoAction[] = [];
 
-        // 全ての行を並列処理で一気に更新
-        await Promise.all(targetRows.map(async (key) => {
+        targetRows.forEach((key) => {
           const parts = key.split('-');
           const rowIdx = parseInt(parts[parts.length - 1]);
           const dt = parts.slice(-4, -1).join('-');
           const hId = parts.slice(0, -4).join('-');
 
-          console.log(`処理中: ${key}`);
-
-          // 既存のシフトデータを取得
           const shiftId = `shift-${hId}-${dt}-${rowIdx}`;
-          const existingShift = shiftsRef.current.find(s => s.id === shiftId);
+          const existingShift = snapshot.find(s => s.id === shiftId);
 
-          if (!existingShift) {
-            console.warn(`シフトが見つかりません: ${shiftId}`);
-            return;
-          }
+          if (!existingShift) return;
 
-          // Undoスタックに現在の状態（キャンセル状態）を保存
+          // Undo用データの収集
           const currentData: string[] = [];
           for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
             const cellSelector = `.editable-cell[data-row="${rowIdx}"][data-line="${lineIndex}"][data-helper="${hId}"][data-date="${dt}"]`;
-            const cell = document.querySelector(cellSelector) as HTMLElement;
-            currentData.push(cell ? cell.textContent || '' : '');
+            const cell = document.querySelector(cellSelector);
+            currentData.push(cell?.textContent || '');
           }
-
           const bgCellSelector = `.editable-cell[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
           const bgCells = document.querySelectorAll(bgCellSelector);
           let currentBgColor = '#ffffff';
           if (bgCells.length > 0) {
             const parentTd = bgCells[0].closest('td') as HTMLElement;
-            if (parentTd) {
-              currentBgColor = parentTd.style.backgroundColor || '#ffffff';
-            }
+            if (parentTd) currentBgColor = parentTd.style.backgroundColor || '#ffffff';
           }
+          undoGroup.push({ helperId: hId, date: dt, rowIndex: rowIdx, data: currentData, backgroundColor: currentBgColor });
 
-          // Undoグループに追加（個別にpushしない）
-          undoGroup.push({
-            helperId: hId,
-            date: dt,
-            rowIndex: rowIdx,
-            data: currentData,
-            backgroundColor: currentBgColor
-          });
-
-          // 既存のシフトデータをベースに、cancelStatusとcanceledAtを削除したオブジェクトを作成
-          const restoredShift: Shift = {
-            ...existingShift
-          };
-
-          // cancelStatusとcanceledAtフィールドを削除
+          // 復元データの作成
+          const restoredShift: Shift = { ...existingShift };
           delete restoredShift.cancelStatus;
           delete restoredShift.canceledAt;
 
-          // 時間情報を復元（remove_time/keep_time両方に対応）
-          // ※ 既存のstartTime/endTimeを使用（Firestoreに保存されている）
+          // 時間情報の復元
           const startTime = existingShift.startTime || '';
           const endTime = existingShift.endTime || '';
-
-          // DOM要素の参照を取得
-          const timeCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="0"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
-          const durationCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="2"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
-
-          // 1行目から時間を読み取る（DOM優先、なければFirestore）
-          const timeCellText = timeCell?.textContent?.trim() || '';
-          const timeMatch = timeCellText.match(/(\d{1,2}:\d{2})\s*[-~]\s*(\d{1,2}:\d{2})/);
-          const actualStartTime = timeMatch ? timeMatch[1] : startTime;
-          const actualEndTime = timeMatch ? timeMatch[2] : endTime;
-
-          if (actualStartTime && actualEndTime) {
-            const timeRange = `${actualStartTime}-${actualEndTime}`;
+          if (startTime && endTime) {
+            const timeRange = `${startTime}-${endTime}`;
             const duration = calculateTimeDuration(timeRange);
-
             restoredShift.duration = parseFloat(duration || '0');
-            restoredShift.startTime = actualStartTime;
-            restoredShift.endTime = actualEndTime;
-
-            // DOM要素にも時間を復元（1行目と3行目）
-            if (timeCell && !timeCellText) {
-              // 1行目が空の場合のみ復元
-              timeCell.textContent = timeRange;
-              console.log(`✅ 1行目に時間範囲を復元: ${timeRange}`);
-            }
-            if (durationCell) {
-              // 3行目は常に復元
-              durationCell.textContent = duration || '';
-              console.log(`✅ 3行目にdurationを復元: ${duration}`);
-            }
-
-            console.log(`✅ 時間を復元完了: ${timeRange}, duration: ${duration}`);
-          } else {
-            console.warn(`⚠️ 時間情報がありません: startTime=${actualStartTime}, endTime=${actualEndTime}`);
+            restoredShift.startTime = startTime;
+            restoredShift.endTime = endTime;
           }
 
-          // 給与を再計算（日付を渡して年末年始判定）
           const timeRange = `${restoredShift.startTime}-${restoredShift.endTime}`;
           const payCalculation = calculateShiftPay(restoredShift.serviceType, timeRange, restoredShift.date);
-          restoredShift.regularHours = payCalculation.regularHours;
-          restoredShift.nightHours = payCalculation.nightHours;
-          restoredShift.regularPay = payCalculation.regularPay;
-          restoredShift.nightPay = payCalculation.nightPay;
-          restoredShift.totalPay = payCalculation.totalPay;
+          Object.assign(restoredShift, payCalculation);
 
-          // 背景色を元に戻す
-          const config = SERVICE_CONFIG[restoredShift.serviceType];
-          const bgColor = config?.bgColor || '#ffffff';
-
-          const restoreCellSelector = `.editable-cell[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
-          const restoreCells = document.querySelectorAll(restoreCellSelector);
-          if (restoreCells.length > 0) {
-            const parentTd = restoreCells[0].closest('td') as HTMLElement;
-            if (parentTd) {
-              parentTd.style.backgroundColor = bgColor;
-            }
-            restoreCells.forEach((cell) => {
-              const element = cell as HTMLElement;
-              const currentOutline = element.style.outline;
-              element.style.backgroundColor = bgColor;
-              if (currentOutline) {
-                element.style.outline = currentOutline;
-              }
-            });
-          }
-          // キャンセル情報をクリア
-          delete restoredShift.cancelStatus;
-          delete restoredShift.canceledAt;
-
-          // 集計を更新
-          updateTotalsForHelperAndDate(hId, dt);
-
-          // Firestoreに保存（一括）
-          try {
-            console.log(`🔄 復元シフトを保存中:`, restoredShift.id);
-
-            await saveShiftWithCorrectYearMonth(restoredShift);
-
-            // shiftMapを更新
-            const mapKey = `${hId}-${dt}-${rowIdx}`;
-            shiftMap.set(mapKey, restoredShift);
-
-            restoredShifts.push(restoredShift);
-            console.log(`✅ Firestoreに保存完了: ${key}`, restoredShift);
-            // 保存成功後、すぐにFirestoreから確認読み込み（デバッグ用）
-            if (import.meta.env.DEV) {
-              setTimeout(async () => {
-                const { doc: docRef, getDoc } = await import('firebase/firestore');
-                const { db } = await import('../lib/firebase');
-                const checkDoc = await getDoc(docRef(db, 'shifts', restoredShift.id));
-                if (checkDoc.exists()) {
-                  const data = checkDoc.data();
-                  console.log(`🔍 保存後の確認:`, {
-                    id: restoredShift.id,
-                    cancelStatus: data.cancelStatus,
-                    canceledAt: data.canceledAt,
-                    hasCancelStatus: 'cancelStatus' in data,
-                    hasCanceledAt: 'canceledAt' in data
-                  });
-                }
-              }, 1000);
-            }
-          } catch (error: any) {
-            console.error('=== キャンセル取り消しエラー詳細 ===');
-            console.error('❌ キャンセル取り消し情報の保存に失敗しました:', error);
-            console.error('エラー詳細:', JSON.stringify(error, null, 2));
-            console.error('エラーコード:', error?.code);
-            console.error('エラーメッセージ:', error?.message);
-            console.error('shiftId:', restoredShift.id);
-            console.error('現在のユーザー:', auth.currentUser?.uid);
-            console.error('復元しようとしたデータ:', {
-              id: restoredShift.id,
-              clientName: restoredShift.clientName,
-              date: restoredShift.date,
-              cancelStatus: restoredShift.cancelStatus,
-              canceledAt: restoredShift.canceledAt
-            });
-
-            // エラー種別に応じたメッセージ
-            let errorMessage = 'キャンセル取り消しの保存に失敗しました。';
-            if (error?.code === 'permission-denied') {
-              errorMessage += 'アクセス権限がありません。ログインし直してください。';
-            } else if (error?.code === 'not-found') {
-              errorMessage += 'ドキュメントが見つかりません。';
-            } else {
-              errorMessage += 'もう一度お試しください。';
-            }
-
-            alert(errorMessage);
-            // 保存に失敗した場合は復元しない
-            return;
-          }
-        }));
-
-        // 複数の変更を1つのグループとしてUndoスタックに追加
-        if (undoGroup.length > 0) {
-          undoStackRef.push(undoGroup);
-          console.log(`📦 Undoグループ保存: ${undoGroup.length}件の変更`);
-        }
-
-        // Redoスタックをクリア
-        redoStackRef.length = 0;
-
-        // shifts配列も更新（復元されたシフトで置き換え）
-        const updatedShifts = shiftsRef.current.map(s => {
-          const restoredShift = restoredShifts.find(rs => rs.id === s.id);
-          if (restoredShift) {
-            return restoredShift;
-          }
-          return s;
+          restoredShifts.push(restoredShift);
+          updatedShiftsMap.set(shiftId, restoredShift);
         });
-        onUpdateShifts(updatedShifts);
 
-        // 複数選択をクリア
+        if (restoredShifts.length === 0) return;
+
+        const finalShifts = snapshot.map(s => updatedShiftsMap.get(s.id) || s);
+        shiftsRef.current = finalShifts;
+        onUpdateShifts(finalShifts);
+
+        saveShiftsByYearMonth(restoredShifts).then(() => {
+          restoredShifts.forEach(rs => {
+            const key = `${rs.helperId}-${rs.date}-${rs.rowIndex}`;
+            shiftMap.set(key, rs);
+          });
+        }).catch(error => {
+          console.error('❌ Firestore保存失敗:', error);
+          alert('一部のデータの保存に失敗しました。');
+        });
+
+        undoStackRef.push(undoGroup);
+        redoStackRef.length = 0;
         selectedRowsRef.current.clear();
         setSelectedRows(new Set());
-
-        // 前回選択されたtdのoutlineのみ削除
         lastSelectedRowTdsRef.current.forEach(td => {
           td.style.removeProperty('outline');
-          td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index');
+          td.style.zIndex = '';
         });
         lastSelectedRowTdsRef.current = [];
-
-        // 前回選択された行の青枠を削除
-        document.querySelectorAll('.line-selected').forEach(el => {
-          el.classList.remove('line-selected');
-        });
-        lastSelectedTdRef.current = null;
-        lastSelectedCellRef.current = null;
-
-        // 要素が存在する場合のみ削除
-        if (document.body.contains(menu)) {
-          menu.remove();
-        }
-        console.log('✅ キャンセル取り消し処理完了');
+        document.querySelectorAll('.line-selected').forEach(el => el.classList.remove('line-selected'));
+        if (document.body.contains(menu)) menu.remove();
       };
-
-      menu.appendChild(undoCancelBtn);
+      if (undoCancelBtn) menu.appendChild(undoCancelBtn);
     }
 
     // キャンセルボタン（時間を残す）= ケア内容はそのまま、背景色のみキャンセル色
@@ -3558,200 +3486,102 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     cancelKeepTimeBtn.onclick = async () => {
       console.log(`📝 キャンセル（時間残す）処理開始 - ${targetRows.length}件`);
 
+      const snapshot = [...shiftsRef.current];
+      const updatedShiftsMap = new Map<string, Shift>();
       const canceledShifts: Shift[] = [];
 
-      // 全ての行を並列処理で一気に更新
-      await Promise.all(targetRows.map(async (key) => {
-
+      targetRows.forEach((key) => {
         const parts = key.split('-');
         const rowIdx = parseInt(parts[parts.length - 1]);
         const dt = parts.slice(-4, -1).join('-');
         const hId = parts.slice(0, -4).join('-');
 
-        // データを読み取る（表示用）
-        const data: string[] = [];
+        const shiftId = `shift-${hId}-${dt}-${rowIdx}`;
+        const existingShift = snapshot.find(s => s.id === shiftId);
 
-        // 4つのラインのデータを取得
+        const data: string[] = [];
         for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
           const cellSelector = `.editable-cell[data-row="${rowIdx}"][data-line="${lineIndex}"][data-helper="${hId}"][data-date="${dt}"]`;
-          const cell = document.querySelector(cellSelector) as HTMLElement;
-          if (cell) {
-            data.push(cell.textContent || '');
-          } else {
-            data.push('');
-          }
+          const cell = document.querySelector(cellSelector);
+          data.push(cell?.textContent || '');
         }
 
-        // セルの取得
-        const bgCellSelector = `.editable-cell[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
-        const bgCells = document.querySelectorAll(bgCellSelector);
-
-        // Undo機能は無効化（キャンセル操作は戻せない）
-
-        // ケア内容はそのまま、背景色のみを赤くする
-        if (bgCells.length > 0) {
-          const parentTd = bgCells[0].closest('td') as HTMLElement;
-          if (parentTd) {
-            parentTd.style.backgroundColor = '#f87171';
-          }
-          bgCells.forEach((cell) => {
-            const element = cell as HTMLElement;
-            const currentOutline = element.style.outline;
-            element.style.backgroundColor = '#f87171';
-            if (currentOutline) {
-              element.style.outline = currentOutline;
-            }
-          });
-        }
-
-        // 集計を更新
-        updateTotalsForHelperAndDate(hId, dt);
-
-        // Firestoreに保存（キャンセル情報を追加）
         const [timeRange, clientInfo, durationStr, area] = data;
+        if (data.every(line => !line.trim())) return;
 
-        // デバッグ：読み取ったデータを確認
-        console.log(`📋 セルから読み取ったデータ: ${key}`, {
-          timeRange,
-          clientInfo,
-          durationStr,
-          area,
-          hasData: data.some(line => line.trim() !== '')
-        });
-
-        if (data.some(line => line.trim() !== '')) {
-          const match = clientInfo.match(/\((.+?)\)/);
-          let serviceType: ServiceType = 'shintai';
-          if (match) {
-            const serviceLabel = match[1];
-            const serviceEntry = Object.entries(SERVICE_CONFIG).find(
-              ([_, config]) => config.label === serviceLabel
-            );
-            if (serviceEntry) {
-              serviceType = serviceEntry[0] as ServiceType;
-            }
-          }
-
-          const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
-          const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
-          const startTime = timeMatch ? timeMatch[1] : '';
-          const endTime = timeMatch ? timeMatch[2] : '';
-
-          // 既存のシフトを確認
-          const shiftId = `shift-${hId}-${dt}-${rowIdx}`;
-          const existingShift = shiftsRef.current.find(s => s.id === shiftId);
-          console.log(`🔍 既存シフト確認: ${shiftId}`, existingShift ? '存在する' : '新規作成');
-
-          const duration = parseFloat(durationStr) || 0;
-
-          // 既存のシフトがある場合は引き継ぎ、ない場合は新規作成
-          const shift: Shift = existingShift ? {
-            ...existingShift,
-            clientName,
-            serviceType,
-            startTime,
-            endTime,
-            duration,
-            area,
-            // 既存のcancelStatusがある場合は削除してからキャンセル処理
-            cancelStatus: undefined,
-            canceledAt: undefined
-          } : {
-            id: shiftId,
-            date: dt,
-            helperId: String(hId), // helperIdを文字列に統一
-            clientName,
-            serviceType,
-            startTime,
-            endTime,
-            duration,
-            area,
-            rowIndex: rowIdx,
-            deleted: false
-          };
-
-          // キャンセル情報を設定（新しいオブジェクトとして生成）
-          const shiftWithCancel: Shift = {
-            ...shift,
-            cancelStatus: duration === 0 ? ('remove_time' as const) : ('keep_time' as const),
-            canceledAt: Timestamp.now()
-          };
-
-          try {
-            console.log(`💾 Firestore保存開始: ${key}`, {
-              id: shiftWithCancel.id,
-              clientName: shiftWithCancel.clientName,
-              cancelStatus: shiftWithCancel.cancelStatus,
-              canceledAt: shiftWithCancel.canceledAt
-            });
-
-            // Firestoreに保存（キャンセル情報も含めて一気に保存）
-            await saveShiftWithCorrectYearMonth(shiftWithCancel);
-
-            // shiftMapを更新
-            const mapKey = `${hId}-${dt}-${rowIdx}`;
-            shiftMap.set(mapKey, shiftWithCancel);
-
-            canceledShifts.push(shiftWithCancel);
-            console.log(`✅ Firestore保存完了: ${key}`, shiftWithCancel);
-          } catch (error) {
-            console.error('❌ キャンセル情報の保存に失敗:', error);
-
-            // 失敗した場合、背景色を元に戻す
-            const bgCellSelector = `.editable-cell[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
-            const bgCells = document.querySelectorAll(bgCellSelector);
-            if (bgCells.length > 0) {
-              const parentTd = bgCells[0].closest('td') as HTMLElement;
-              if (parentTd) {
-                const config = SERVICE_CONFIG[serviceType];
-                parentTd.style.backgroundColor = config?.bgColor || '#ffffff';
-              }
-            }
-
-            alert('キャンセルの保存に失敗しました。もう一度お試しください。');
-            return; // 処理を中断
-          }
-        } else {
-          console.log(`⚠️ セルが空のためスキップ: ${key}`);
+        const match = clientInfo.match(/\((.+?)\)/);
+        let serviceType: ServiceType = 'shintai';
+        if (match) {
+          const serviceLabel = match[1];
+          const serviceEntry = Object.entries(SERVICE_CONFIG).find(([_, config]) => config.label === serviceLabel);
+          if (serviceEntry) serviceType = serviceEntry[0] as ServiceType;
         }
-      }));
 
-      // Undo機能は無効化（キャンセル操作は戻せない）
+        const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
+        const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*[-~]\s*(\d{1,2}:\d{2})/);
+        const startTime = timeMatch ? timeMatch[1] : '';
+        const endTime = timeMatch ? timeMatch[2] : '';
 
-      // shifts配列も更新（cancelStatusを追加）
-      // 既存のシフトを置き換え、新規シフトを追加
+        const shift: Shift = existingShift ? {
+          ...existingShift,
+          clientName,
+          serviceType,
+          startTime,
+          endTime,
+          duration: parseFloat(durationStr) || 0,
+          area
+        } : {
+          id: shiftId,
+          date: dt,
+          helperId: String(hId),
+          clientName,
+          serviceType,
+          startTime,
+          endTime,
+          duration: parseFloat(durationStr) || 0,
+          area,
+          rowIndex: rowIdx,
+          deleted: false
+        };
+
+        const shiftWithCancel: Shift = {
+          ...shift,
+          cancelStatus: shift.duration === 0 ? 'remove_time' : 'keep_time',
+          canceledAt: Timestamp.now()
+        };
+
+        canceledShifts.push(shiftWithCancel);
+        updatedShiftsMap.set(shiftId, shiftWithCancel);
+      });
+
+      if (canceledShifts.length === 0) return;
+
+      const finalShifts = snapshot.map(s => updatedShiftsMap.get(s.id) || s);
       const canceledIds = new Set(canceledShifts.map(cs => cs.id));
-      const updatedShifts = [
-        ...shiftsRef.current.filter(s => !canceledIds.has(s.id)),
-        ...canceledShifts
-      ];
-      onUpdateShifts(updatedShifts);
-      console.log('✅ shifts配列を更新しました:', canceledShifts.length, '件のキャンセルシフト');
+      const allFinalShifts = [...finalShifts.filter(s => !canceledIds.has(s.id)), ...canceledShifts];
 
+      shiftsRef.current = allFinalShifts;
+      onUpdateShifts(allFinalShifts);
 
-      // 複数選択をクリア
+      saveShiftsByYearMonth(canceledShifts).then(() => {
+        canceledShifts.forEach(cs => {
+          const key = `${cs.helperId}-${cs.date}-${cs.rowIndex}`;
+          shiftMap.set(key, cs);
+        });
+      }).catch(err => {
+        console.error('❌ 保存エラー:', err);
+        alert('保存に失敗しました。');
+      });
+
       selectedRowsRef.current.clear();
       setSelectedRows(new Set());
-
-      // 前回選択されたtdのoutlineのみ削除
       lastSelectedRowTdsRef.current.forEach(td => {
         td.style.removeProperty('outline');
-        td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index');
+        td.style.zIndex = '';
       });
       lastSelectedRowTdsRef.current = [];
-
-      // 前回選択された行の青枠を削除
-      document.querySelectorAll('.line-selected').forEach(el => {
-        el.classList.remove('line-selected');
-      });
-      lastSelectedTdRef.current = null;
-      lastSelectedCellRef.current = null;
-
-      // 要素が存在する場合のみ削除
-      if (document.body.contains(menu)) {
-        menu.remove();
-      }
-      console.log('✅ キャンセル（時間残す）処理完了');
+      document.querySelectorAll('.line-selected').forEach(el => el.classList.remove('line-selected'));
+      if (document.body.contains(menu)) menu.remove();
     };
 
     // キャンセルボタン（時間を残さず）= 3行目の稼働時間のみ削除、背景色キャンセル色
@@ -3765,211 +3595,102 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
     cancelRemoveTimeBtn.onclick = async () => {
       console.log(`📝 キャンセル（時間削除）処理開始 - ${targetRows.length}件`);
 
+      const snapshot = [...shiftsRef.current];
+      const updatedShiftsMap = new Map<string, Shift>();
       const canceledShifts: Shift[] = [];
 
-      // 全ての行を並列処理で一気に更新
-      await Promise.all(targetRows.map(async (key) => {
-
+      targetRows.forEach((key) => {
         const parts = key.split('-');
         const rowIdx = parseInt(parts[parts.length - 1]);
         const dt = parts.slice(-4, -1).join('-');
         const hId = parts.slice(0, -4).join('-');
 
-        // データを読み取る（表示用）
-        const data: string[] = [];
+        const shiftId = `shift-${hId}-${dt}-${rowIdx}`;
+        const existingShift = snapshot.find(s => s.id === shiftId);
 
-        // 4つのラインのデータを取得
+        const data: string[] = [];
         for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
           const cellSelector = `.editable-cell[data-row="${rowIdx}"][data-line="${lineIndex}"][data-helper="${hId}"][data-date="${dt}"]`;
-          const cell = document.querySelector(cellSelector) as HTMLElement;
-          if (cell) {
-            data.push(cell.textContent || '');
-          } else {
-            data.push('');
-          }
+          const cell = document.querySelector(cellSelector);
+          data.push(cell?.textContent || '');
         }
 
-        // セルの取得
-        const bgCellSelector = `.editable-cell[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
-        const bgCells = document.querySelectorAll(bgCellSelector);
-
-        // Undo機能は無効化（キャンセル操作は戻せない）
-
-        // 3行目（稼働時間）のみクリア
-        const timeCellSelector = `.editable-cell[data-row="${rowIdx}"][data-line="2"][data-helper="${hId}"][data-date="${dt}"]`;
-        const timeCell = document.querySelector(timeCellSelector) as HTMLElement;
-        if (timeCell) {
-          timeCell.textContent = '';
-        }
-
-        // 背景色を赤くする
-        if (bgCells.length > 0) {
-          const parentTd = bgCells[0].closest('td') as HTMLElement;
-          if (parentTd) {
-            parentTd.style.backgroundColor = '#f87171';
-          }
-          bgCells.forEach((cell) => {
-            const element = cell as HTMLElement;
-            const currentOutline = element.style.outline;
-            element.style.backgroundColor = '#f87171';
-            if (currentOutline) {
-              element.style.outline = currentOutline;
-            }
-          });
-        }
-
-        // 集計を更新
-        updateTotalsForHelperAndDate(hId, dt);
-
-        // Firestoreに保存（キャンセル情報を追加）
         const [timeRange, clientInfo, _durationStr, area] = data;
+        if (data.every(line => !line.trim())) return;
 
-        // デバッグ：読み取ったデータを確認
-        console.log(`📋 セルから読み取ったデータ（時間削除）: ${key}`, {
-          timeRange,
-          clientInfo,
-          durationStr: _durationStr,
-          area,
-          hasData: data.some(line => line.trim() !== '')
-        });
-
-        if (data.some(line => line.trim() !== '')) {
-          const match = clientInfo.match(/\((.+?)\)/);
-          let serviceType: ServiceType = 'shintai';
-          if (match) {
-            const serviceLabel = match[1];
-            const serviceEntry = Object.entries(SERVICE_CONFIG).find(
-              ([_, config]) => config.label === serviceLabel
-            );
-            if (serviceEntry) {
-              serviceType = serviceEntry[0] as ServiceType;
-            }
-          }
-
-          const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
-          const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
-          const startTime = timeMatch ? timeMatch[1] : '';
-          const endTime = timeMatch ? timeMatch[2] : '';
-
-          // 既存のシフトを確認
-          const shiftId = `shift-${hId}-${dt}-${rowIdx}`;
-          const existingShift = shiftsRef.current.find(s => s.id === shiftId);
-          console.log(`🔍 既存シフト確認（時間削除）: ${shiftId}`, existingShift ? '存在する' : '新規作成');
-
-          // 既存のシフトがある場合は引き継ぎ、ない場合は新規作成
-          const shift: Shift = existingShift ? {
-            ...existingShift,
-            clientName,
-            serviceType,
-            startTime,
-            endTime,
-            duration: 0,  // 時間削除なので0
-            area,
-            // 既存のcancelStatusがある場合は削除してからキャンセル処理
-            cancelStatus: undefined,
-            canceledAt: undefined
-          } : {
-            id: shiftId,
-            date: dt,
-            helperId: String(hId), // helperIdを文字列に統一
-            clientName,
-            serviceType,
-            startTime,
-            endTime,
-            duration: 0,  // 時間削除なので0
-            area,
-            rowIndex: rowIdx,
-            deleted: false
-          };
-
-          // キャンセル情報を設定（新しいオブジェクトとして生成）
-          const shiftWithCancel: Shift = {
-            ...shift,
-            cancelStatus: 'remove_time' as const,
-            canceledAt: Timestamp.now()
-          };
-
-          try {
-            console.log(`💾 Firestore保存開始（時間削除）: ${key}`, {
-              id: shiftWithCancel.id,
-              clientName: shiftWithCancel.clientName,
-              cancelStatus: shiftWithCancel.cancelStatus
-            });
-
-            // Firestoreに保存（一括）
-            await saveShiftWithCorrectYearMonth(shiftWithCancel);
-
-            // shiftMapを更新
-            const mapKey = `${hId}-${dt}-${rowIdx}`;
-            shiftMap.set(mapKey, shiftWithCancel);
-
-            canceledShifts.push(shiftWithCancel);
-            console.log(`✅ Firestore保存完了（時間削除）: ${key}`, shiftWithCancel);
-
-          } catch (error) {
-            console.error('❌ キャンセル情報の保存に失敗（時間削除）:', error);
-
-            // 失敗した場合、背景色とテキストを元に戻す
-            const bgCellSelector = `.editable-cell[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
-            const bgCells = document.querySelectorAll(bgCellSelector);
-            if (bgCells.length > 0) {
-              const parentTd = bgCells[0].closest('td') as HTMLElement;
-              if (parentTd) {
-                const config = SERVICE_CONFIG[serviceType];
-                parentTd.style.backgroundColor = config?.bgColor || '#ffffff';
-              }
-            }
-
-            // 時間も元に戻す
-            const timeCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="0"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
-            const durationCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="2"][data-helper="${hId}"][data-date="${dt}"]`) as HTMLElement;
-            if (timeCell && timeRange) timeCell.textContent = timeRange;
-            if (durationCell && _durationStr) durationCell.textContent = _durationStr;
-
-            alert('キャンセルの保存に失敗しました。もう一度お試しください。');
-            return; // 処理を中断
-          }
-        } else {
-          console.log(`⚠️ セルが空のためスキップ（時間削除）: ${key}`);
+        const match = clientInfo.match(/\((.+?)\)/);
+        let serviceType: ServiceType = 'shintai';
+        if (match) {
+          const serviceLabel = match[1];
+          const serviceEntry = Object.entries(SERVICE_CONFIG).find(([_, config]) => config.label === serviceLabel);
+          if (serviceEntry) serviceType = serviceEntry[0] as ServiceType;
         }
-      }));
 
-      // Undo機能は無効化（キャンセル操作は戻せない）
+        const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
+        const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*[-~]\s*(\d{1,2}:\d{2})/);
+        const startTime = timeMatch ? timeMatch[1] : '';
+        const endTime = timeMatch ? timeMatch[2] : '';
 
-      // shifts配列も更新（cancelStatusを追加）
-      // 既存のシフトを置き換え、新規シフトを追加
+        const shift: Shift = existingShift ? {
+          ...existingShift,
+          clientName,
+          serviceType,
+          startTime,
+          endTime,
+          duration: 0,
+          area
+        } : {
+          id: shiftId,
+          date: dt,
+          helperId: String(hId),
+          clientName,
+          serviceType,
+          startTime,
+          endTime,
+          duration: 0,
+          area,
+          rowIndex: rowIdx,
+          deleted: false
+        };
+
+        const shiftWithCancel: Shift = {
+          ...shift,
+          cancelStatus: 'remove_time',
+          canceledAt: Timestamp.now()
+        };
+
+        canceledShifts.push(shiftWithCancel);
+        updatedShiftsMap.set(shiftId, shiftWithCancel);
+      });
+
+      if (canceledShifts.length === 0) return;
+
+      const finalShifts = snapshot.map(s => updatedShiftsMap.get(s.id) || s);
       const canceledIds = new Set(canceledShifts.map(cs => cs.id));
-      const updatedShifts = [
-        ...shiftsRef.current.filter(s => !canceledIds.has(s.id)),
-        ...canceledShifts
-      ];
-      onUpdateShifts(updatedShifts);
-      console.log('✅ shifts配列を更新しました:', canceledShifts.length, '件のキャンセルシフト');
+      const allFinalShifts = [...finalShifts.filter(s => !canceledIds.has(s.id)), ...canceledShifts];
 
+      shiftsRef.current = allFinalShifts;
+      onUpdateShifts(allFinalShifts);
 
-      // 複数選択をクリア
+      saveShiftsByYearMonth(canceledShifts).then(() => {
+        canceledShifts.forEach(cs => {
+          const key = `${cs.helperId}-${cs.date}-${cs.rowIndex}`;
+          shiftMap.set(key, cs);
+        });
+      }).catch(err => {
+        console.error('❌ 保存エラー:', err);
+        alert('保存に失敗しました。');
+      });
+
       selectedRowsRef.current.clear();
       setSelectedRows(new Set());
-
-      // 前回選択されたtdのoutlineのみ削除
       lastSelectedRowTdsRef.current.forEach(td => {
         td.style.removeProperty('outline');
-        td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index');
+        td.style.zIndex = '';
       });
       lastSelectedRowTdsRef.current = [];
-
-      // 前回選択された行の青枠を削除
-      document.querySelectorAll('.line-selected').forEach(el => {
-        el.classList.remove('line-selected');
-      });
-      lastSelectedTdRef.current = null;
-      lastSelectedCellRef.current = null;
-
-      // 要素が存在する場合のみ削除
-      if (document.body.contains(menu)) {
-        menu.remove();
-      }
-      console.log('✅ キャンセル（時間削除）処理完了');
+      document.querySelectorAll('.line-selected').forEach(el => el.classList.remove('line-selected'));
+      if (document.body.contains(menu)) menu.remove();
     };
 
     // キャンセル済みのケアが含まれる場合は「キャンセル取り消し」を表示
@@ -4527,7 +4248,10 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
       helperData.set('shinya_doko', { hours: 0, amount: 0 });
 
       // シフトから集計
-      shifts.filter(s => s.helperId === helper.id && s.cancelStatus !== 'remove_time').forEach(shift => {
+      shifts.filter(s => {
+        const isExcluded = s.cancelStatus === 'remove_time' || s.cancelStatus === 'canceled_without_time';
+        return s.helperId === helper.id && !isExcluded && (s.duration || 0) > 0;
+      }).forEach(shift => {
         const { serviceType, startTime, endTime, duration } = shift;
         const hourlyRate = SERVICE_CONFIG[serviceType]?.hourlyRate || 0;
 
@@ -4611,7 +4335,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
           const dayShifts = shifts.filter(s =>
             s.helperId === helper.id &&
             s.date === day.date &&
-            s.cancelStatus !== 'remove_time'
+            !(s.cancelStatus === 'remove_time' || s.cancelStatus === 'canceled_without_time') &&
+            (s.duration || 0) > 0
           );
 
           dayShifts.forEach(shift => {
@@ -4875,11 +4600,13 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                             if (clickedCell) {
                               clickedCell.classList.add('line-selected');
                               lastSelectedCellRef.current = clickedCell;
+                              selectedCellRef.lineIndex = parseInt(clickedCell.dataset.line || '0');
                             } else {
                               const firstCell = currentTd.querySelector('.editable-cell') as HTMLElement;
                               if (firstCell) {
                                 firstCell.classList.add('line-selected');
                                 lastSelectedCellRef.current = firstCell;
+                                selectedCellRef.lineIndex = 0;
                               }
                             }
 
@@ -5107,6 +4834,11 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                     // ★ クリックした行に青枠を表示
                                     currentCell.classList.add('line-selected');
                                     lastSelectedCellRef.current = currentCell;
+                                    // Refを更新
+                                    selectedCellRef.helperId = helper.id;
+                                    selectedCellRef.date = day.date;
+                                    selectedCellRef.rowIndex = rowIndex;
+                                    selectedCellRef.lineIndex = parseInt(currentCell.dataset.line || '0');
 
                                     // 休み希望のセルかチェック（共通関数を使用）
                                     const isDayOff = checkIsDayOffRow(helper.id, day.date, rowIndex);
@@ -5536,8 +5268,8 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                         duration: parseFloat(durationStr) || 0,
                                         area,
                                         rowIndex: targetRowIndex,
-                                        cancelStatus: existingShift?.cancelStatus,
-                                        canceledAt: existingShift?.canceledAt,
+                                        cancelStatus: undefined,
+                                        canceledAt: undefined,
                                         regularHours: payCalculation.regularHours,
                                         nightHours: payCalculation.nightHours,
                                         regularPay: payCalculation.regularPay,
@@ -5547,12 +5279,19 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                       };
 
                                       try {
-                                        await saveShiftWithCorrectYearMonth(newShift);
+                                        // Firestore保存用のオブジェクトを作成
+                                        // 既存がキャンセル済みだった場合、明示的に deleteField() を送る
+                                        const shiftForFirestore = {
+                                          ...newShift,
+                                          cancelStatus: existingShift?.cancelStatus ? deleteField() : undefined,
+                                          canceledAt: existingShift?.canceledAt ? deleteField() : undefined
+                                        };
+                                        await saveShiftWithCorrectYearMonth(shiftForFirestore as unknown as Shift);
                                         const updatedShifts = shiftsRef.current.filter(s => s.id !== shiftId);
                                         updatedShifts.push(newShift);
                                         onUpdateShifts(updatedShifts);
                                         updateTotalsForHelperAndDate(targetHelperId, targetDate);
-                                        console.log('✅ ペーストデータを保存しました');
+                                        console.log('✅ ペーストデータを保存しました（キャンセル状態解除）');
                                       } catch (error) {
                                         console.error('ペースト保存エラー:', error);
                                       }
@@ -5785,17 +5524,27 @@ const ShiftTableComponent = ({ helpers, shifts, year, month, onUpdateShifts }: P
                                               deleted: false  // 削除フラグを明示的にfalseに設定
                                             };
 
-                                            // Firestoreに保存（正しい年月に - 1月分も自動的に正しく保存される）
+                                            // Firestore保存用のオブジェクトを作成
+                                            // キャンセル状態でない場合は、明示的に deleteField() を送って
+                                            // Firestore上の残留データを消去する（ゾンビキャンセル対策）
+                                            const shiftForFirestore = {
+                                              ...shift,
+                                              cancelStatus: newCancelStatus ? newCancelStatus : deleteField(),
+                                              canceledAt: newCancelStatus ? newCanceledAt : deleteField()
+                                            };
+
                                             console.log('💾 === セル編集保存開始 ===');
                                             console.log('保存するシフト:', {
                                               id: shift.id,
                                               helperId: shift.helperId,
                                               date: shift.date,
                                               clientName: shift.clientName,
-                                              time: `${shift.startTime}-${shift.endTime}`
+                                              time: `${shift.startTime}-${shift.endTime}`,
+                                              cancelStatus: newCancelStatus || '(なし -> 削除)'
                                             });
 
-                                            await saveShiftWithCorrectYearMonth(shift);
+                                            // unknownにキャストして渡す
+                                            await saveShiftWithCorrectYearMonth(shiftForFirestore as unknown as Shift);
                                             console.log('✅ セル編集保存完了:', shift.id);
 
                                             // ローカルのshifts配列を更新（画面の再レンダリング用）
