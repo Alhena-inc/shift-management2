@@ -108,62 +108,68 @@ export const recalculatePayslip = (updated: any, helper?: Helper) => {
     if (!updated.payments) updated.payments = {};
     updated.payments.otherAllowancesTotal = otherAllowancesTotal;
 
-    let basePay = 0;
-    if (updated.baseSalary !== undefined) basePay = (updated.baseSalary || 0);
-    else if (updated.payments?.basePay !== undefined) basePay = updated.payments.basePay || 0;
+    // 各種金額の取得（数値として確実に扱う）
+    // 各種金額の取得（数値として確実に扱う）
+    const displayBasePay = Number(updated.payments?.basePay) || Number(updated.baseSalary) || 0;
 
-    // 総支給額
-    const shouldAddOtherAllowances = updated.baseSalary === undefined;
+    // 処遇改善手当：時給制（baseHourlyRateあり）の場合は、単価(treatmentAllowance)ではなく計算結果(treatmentAllowancePay)のみを使う
+    // 固定給の場合は、固定額(treatmentAllowance)を使う
+    const isHourly = typeof updated.baseHourlyRate === 'number' && updated.baseHourlyRate > 0;
+    const treatAllowanceAmount = isHourly
+        ? Number(updated.payments?.treatmentAllowancePay || 0)
+        : Number(updated.treatmentAllowance || 0);
 
-    if (!updated.payments.manualTotalPayment) {
-        const isHourly = updated.baseHourlyRate !== undefined;
-        updated.payments.totalPayment = basePay +
-            (updated.payments.treatmentAllowancePay || 0) +
-            (updated.payments.accompanyPay || 0) +
-            (updated.payments.officePay || 0) +
-            ((updated.payments as any).yearEndNewYearAllowance || 0) +
-            (updated.payments.emergencyAllowance || 0) +
-            (updated.payments.nightAllowance || 0) +
-            (updated.payments.specialAllowance || 0) +
-            (updated.payments.directorCompensation || 0) +
-            (updated.payments.overtimePay || 0) +
-            (shouldAddOtherAllowances ? otherAllowancesTotal : 0);
+    const accompanyPay = Number(updated.payments?.accompanyPay || 0);
+    const officePay = Number(updated.payments?.officePay || 0);
+    const overtimePay = Number(updated.payments?.overtimePay || 0);
+    const nightAllowance = Number(updated.payments?.nightAllowance || 0);
+    const specialAllowance = Number(updated.payments?.specialAllowance || 0);
+    const directorCompensation = Number(updated.payments?.directorCompensation || 0);
+    const yearEndAllowance = Number((updated.payments as any)?.yearEndNewYearAllowance || 0);
+    const emergencyAllowance = Number(updated.payments?.emergencyAllowance || 0);
+
+    // 総支給額の再計算（手動ロックがあっても、計算不整合を防ぐため常に再計算するロジック）
+    const calculatedTotal =
+        displayBasePay +
+        treatAllowanceAmount +
+        accompanyPay +
+        officePay +
+        yearEndAllowance +
+        emergencyAllowance +
+        nightAllowance +
+        specialAllowance +
+        directorCompensation +
+        overtimePay +
+        otherAllowancesTotal;
+
+    // 手動入力された値が明らかに不整合（基本給さえ含まれていない等）な場合に備え、
+    // 基本的には自動計算された値を優先するようにフラグを無視して更新
+    updated.payments.totalPayment = calculatedTotal;
+    // 手動フラグもリセット（再計算を優先させるため）
+    if (updated.payments.manualTotalPayment) {
+        delete updated.payments.manualTotalPayment;
     }
 
     let monthlySalaryTotal = 0;
     let taxableMonthlySalary = 0;
-    if (updated.baseSalary !== undefined) {
-        // 月給制：(基本給 + 処遇改善 + 残業代 + 夜間手当 + 特別手当 + 役員報酬 + 同行 + 事務営業) + 課税対象のその他手当
-        const core = (updated.baseSalary || 0) +
-            (updated.treatmentAllowance || 0) +
-            (updated.payments.overtimePay || 0) +
-            (updated.payments.nightAllowance || 0) +
-            (updated.payments.specialAllowance || 0) +
-            (updated.payments.directorCompensation || 0) +
-            (updated.payments.accompanyPay || 0) +
-            (updated.payments.officePay || 0);
-        monthlySalaryTotal = core + taxableOther;
-        taxableMonthlySalary = monthlySalaryTotal;
-    } else if (updated.baseHourlyRate !== undefined) {
-        // 時給制：(基本給 + 処遇改善 + 夜間手当 + 年末年始 + 特別手当 + 役員報酬 + 同行 + 事務営業) + 課税対象のその他手当
-        // 非課税設定のものは保険料計算のベース（monthlySalaryTotal）に含めない
-        const core = (updated.payments.basePay || 0) +
-            (updated.payments.treatmentAllowancePay || 0) +
-            (updated.payments.nightAllowance || 0) +
-            (updated.payments.specialAllowance || 0) +
-            (updated.payments.directorCompensation || 0) +
-            (updated.payments.accompanyPay || 0) +
-            (updated.payments.officePay || 0) +
-            ((updated.payments as any).yearEndNewYearAllowance || 0);
-        monthlySalaryTotal = core + taxableOther;
-        taxableMonthlySalary = monthlySalaryTotal;
-    } else {
-        const core = (updated.payments?.normalWorkPay || 0) + (updated.payments?.accompanyPay || 0) +
-            (updated.payments?.nightNormalPay || 0) + (updated.payments?.nightAccompanyPay || 0) + (updated.payments?.officePay || 0) +
-            ((updated.payments as any)?.yearEndNewYearAllowance || 0);
-        monthlySalaryTotal = core + taxableOther;
-        taxableMonthlySalary = monthlySalaryTotal;
-    }
+
+    // 社会保険料等の計算ベース（全ての支給合計から非課税分を引いたもの）
+    const core = displayBasePay +
+        treatAllowanceAmount +
+        overtimePay +
+        nightAllowance +
+        specialAllowance +
+        directorCompensation +
+        accompanyPay +
+        officePay +
+        yearEndAllowance;
+
+    monthlySalaryTotal = core + taxableOther;
+    taxableMonthlySalary = monthlySalaryTotal;
+
+    // monthlySalaryTotal と taxableMonthlySalary は既に上記（core + taxableOther）で計算済みのため、
+    // ここでの古い条件分岐による上書きを削除しました
+
 
     const stdRemuneration = updated.standardRemuneration || getHealthStandardRemuneration(monthlySalaryTotal);
 
