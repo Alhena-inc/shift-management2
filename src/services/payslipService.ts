@@ -32,6 +32,7 @@ const getInsuranceTypes = (employmentType: string | undefined): string[] => {
 // undefinedフィールドを削除する関数
 const removeUndefinedFields = (obj: any): any => {
   if (obj === null || obj === undefined) return obj;
+  if (obj instanceof Timestamp) return obj; // Timestampはそのまま返す
   if (typeof obj !== 'object') return obj;
   if (Array.isArray(obj)) {
     return obj.map(removeUndefinedFields);
@@ -289,14 +290,20 @@ export const createEmptyFixedPayslip = (
   // 保険加入状況をヘルパー情報から取得（新旧フィールド名に対応）
   const insuranceTypes: string[] = [];
 
-  // 社会保険（健康保険・厚生年金）の判定
-  const hasSocialInsurance =
+  // 社会保険（健康保険）
+  if (
     helper.insurances?.includes('health') ||
-    (helper as any).hasSocialInsurance === true ||
-    (helper as any).socialInsurance === true;
+    (!helper.insurances && ((helper as any).hasSocialInsurance === true || (helper as any).socialInsurance === true))
+  ) {
+    insuranceTypes.push('health');
+  }
 
-  if (hasSocialInsurance) {
-    insuranceTypes.push('health', 'pension'); // 社会保険は健康保険と厚生年金をセット
+  // 社会保険（厚生年金）
+  if (
+    helper.insurances?.includes('pension') ||
+    (!helper.insurances && ((helper as any).hasSocialInsurance === true || (helper as any).socialInsurance === true))
+  ) {
+    insuranceTypes.push('pension');
   }
 
   // 介護保険の判定（40歳以上のみ）
@@ -325,6 +332,9 @@ export const createEmptyFixedPayslip = (
   }
 
   console.log('📋 保険加入状況（給与明細作成時）:', insuranceTypes);
+
+  // 社会保険加入判定
+  const hasSocialInsurance = insuranceTypes.includes('health') || insuranceTypes.includes('pension');
 
   // 標準報酬月額（保険加入がある場合のみ設定、0も許容）
   const standardRemuneration = hasSocialInsurance
@@ -444,14 +454,20 @@ export const createEmptyHourlyPayslip = (
   // 保険加入状況をヘルパー情報から取得（新旧フィールド名に対応）
   const insuranceTypes: string[] = [];
 
-  // 社会保険（健康保険・厚生年金）の判定
-  const hasSocialInsurance =
+  // 社会保険（健康保険）
+  if (
     helper.insurances?.includes('health') ||
-    (helper as any).hasSocialInsurance === true ||
-    (helper as any).socialInsurance === true;
+    (!helper.insurances && ((helper as any).hasSocialInsurance === true || (helper as any).socialInsurance === true))
+  ) {
+    insuranceTypes.push('health');
+  }
 
-  if (hasSocialInsurance) {
-    insuranceTypes.push('health', 'pension'); // 社会保険は健康保険と厚生年金をセット
+  // 社会保険（厚生年金）
+  if (
+    helper.insurances?.includes('pension') ||
+    (!helper.insurances && ((helper as any).hasSocialInsurance === true || (helper as any).socialInsurance === true))
+  ) {
+    insuranceTypes.push('pension');
   }
 
   // 介護保険の判定（40歳以上のみ）
@@ -473,6 +489,9 @@ export const createEmptyHourlyPayslip = (
   if (hasEmploymentInsurance) {
     insuranceTypes.push('employment');
   }
+
+  // 社会保険加入判定
+  const hasSocialInsurance = insuranceTypes.includes('health') || insuranceTypes.includes('pension');
 
   console.log('💰 時給給与明細作成:');
   console.log('ヘルパー:', helper.name);

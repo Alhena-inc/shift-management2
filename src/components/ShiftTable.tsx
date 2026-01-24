@@ -11,6 +11,7 @@ import { getRowIndicesFromDayOffValue } from '../utils/timeSlots';
 import { devLog } from '../utils/logger';
 import { updateCancelStatus, removeCancelFields } from '../utils/cancelUtils';
 import { safeRemoveElement, safeQuerySelector, safeSetTextContent, safeSetStyle, safeQuerySelectorAll } from '../utils/safeDOM';
+import { DayData, WeekData, groupByWeek } from '../utils/dateUtils';
 
 // 最適化された入力セルコンポーネント（週払い管理表用）
 interface OptimizedInputCellProps {
@@ -100,19 +101,6 @@ interface Props {
   onUpdateShifts: (shifts: Shift[]) => void;
 }
 
-interface DayData {
-  date: string;
-  dayNumber: number;
-  dayOfWeek: string;
-  dayOfWeekIndex: number;
-  isEmpty?: boolean;  // 空白日フラグ（1日より前の日）
-}
-
-interface WeekData {
-  weekNumber: number;
-  days: DayData[];
-}
-
 // 警告が必要なサービスタイプ
 const WARNING_SERVICE_TYPES: ServiceType[] = [
   'shintai',    // 身体
@@ -139,104 +127,7 @@ function shouldShowWarning(
   return false;
 }
 
-function groupByWeek(year: number, month: number): WeekData[] {
-  const weeks: WeekData[] = [];
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
-
-  // カレンダーベースの週定義（月曜始まり）
-  let currentDay = 1;
-  let weekNumber = 1;
-
-  while (currentDay <= daysInMonth) {
-    const startDay = currentDay;
-    const startDate = new Date(year, month - 1, startDay);
-    const currentDow = startDate.getDay(); // 0(日)〜6(土)
-
-    // 日曜日までの日数（その週の終わり）
-    const daysUntilSunday = currentDow === 0 ? 0 : 7 - currentDow;
-    let endDay = startDay + daysUntilSunday;
-
-    // 月末を超えないように
-    if (endDay > daysInMonth) {
-      endDay = daysInMonth;
-    }
-
-    const currentWeek: DayData[] = [];
-
-    // この週の日付を埋める
-    // カレンダー表示なので、常に月〜日の7つのセルが必要
-    // 月曜始まりなので、1つ目のセルは月曜日
-
-    // 週の開始日が月曜日でない場合、空白セルを追加（1週目の場合）
-    // 開始日が currentDay (例: 1日)
-    // 1日が木曜日(4)の場合、月(1)・火(2)・水(3) は空白
-
-    // 開始日の曜日まで埋めるためのオフセット
-    // 月(1)なら0、火(2)なら1...日(0)なら6
-    const startOffset = currentDow === 0 ? 6 : currentDow - 1;
-
-    if (weekNumber === 1) {
-      // 1週目の前方の空白
-      for (let i = 0; i < startOffset; i++) {
-        currentWeek.push({
-          date: '',
-          dayNumber: 0,
-          dayOfWeek: '',
-          dayOfWeekIndex: -1,
-          isEmpty: true
-        });
-      }
-    }
-
-    // 実データの日付を追加
-    for (let day = startDay; day <= endDay; day++) {
-      const date = new Date(year, month - 1, day);
-      const dow = date.getDay();
-
-      currentWeek.push({
-        date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
-        dayNumber: day,
-        dayOfWeek: dayNames[dow],
-        dayOfWeekIndex: dow,
-        isEmpty: false
-      });
-    }
-
-    // 週の終わりの後方の空白を埋める（7日分になるまで）
-    while (currentWeek.length < 7) {
-      currentWeek.push({
-        date: '',
-        dayNumber: 0,
-        dayOfWeek: '',
-        dayOfWeekIndex: -1,
-        isEmpty: true
-      });
-    }
-
-    weeks.push({ weekNumber, days: currentWeek });
-
-    currentDay = endDay + 1;
-    weekNumber++;
-  }
-
-  // 6週目まで埋める（空の週）
-  while (weeks.length < 6) {
-    weeks.push({
-      weekNumber: weekNumber,
-      days: Array(7).fill(null).map(() => ({
-        date: '',
-        dayNumber: 0,
-        dayOfWeek: '',
-        dayOfWeekIndex: -1,
-        isEmpty: true
-      }))
-    });
-    weekNumber++;
-  }
-
-  return weeks;
-}
+// groupByWeek は ../utils/dateUtils からインポート
 
 // シフトを正しい年月に保存するヘルパー関数
 async function saveShiftWithCorrectYearMonth(shift: Shift): Promise<void> {
@@ -291,6 +182,9 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
   // 更新関数のラッパー：ローカルStateとRefを即時更新しつつ、親(Firestore)へ通知
   const onUpdateShifts = useCallback((newShifts: Shift[]) => {
+    const canceledCount = newShifts.filter(s => s.cancelStatus && s.cancelStatus !== 'none').length;
+    console.log(`🔄 onUpdateShifts: 件数=${newShifts.length}, キャンセル数=${canceledCount}`);
+
     setShifts(newShifts);
     shiftsRef.current = newShifts;
     lastLocalUpdateTimeRef.current = Date.now();
@@ -1762,6 +1656,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
                 const cs = shift.cancelStatus as string;
                 if (cs === 'keep_time' || cs === 'remove_time' || cs === 'canceled_with_time' || cs === 'canceled_without_time') {
+                  if (cs) console.log(`🎯 [CellDisplayCache] キャンセル状態を検知: ${key}, status: ${cs}`);
                   bgColor = '#f87171';  // キャンセル状態は赤
                 } else if (isScheduledDayOff || (serviceType as string) === 'shitei_kyuu') {
                   bgColor = '#22c55e';  // 指定休は緑色
@@ -3443,6 +3338,17 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
           restoredShifts.push(restoredShift);
           updatedShiftsMap.set(shiftId, restoredShift);
+
+          // ★ 即座に背景色を更新（DOM直接操作）
+          // 既存の bgCells と bgCellSelector を利用
+          if (bgCells && bgCells.length > 0) {
+            const parentTd = bgCells[0].closest('td') as HTMLElement;
+            if (parentTd) {
+              // 復元されたサービスタイプに応じた背景色に設定
+              const restoredBgColor = SERVICE_CONFIG[restoredShift.serviceType]?.bgColor || '#ffffff';
+              parentTd.style.backgroundColor = restoredBgColor;
+            }
+          }
         });
 
         if (restoredShifts.length === 0) return;
@@ -3552,6 +3458,19 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
         canceledShifts.push(shiftWithCancel);
         updatedShiftsMap.set(shiftId, shiftWithCancel);
+
+        // ★ 即座に背景色をキャンセル色（赤）に更新（DOM直接操作）
+        const instantBgSelector = `.editable-cell[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
+        const instantBgCells = document.querySelectorAll(instantBgSelector);
+        if (instantBgCells.length > 0) {
+          const parentTd = instantBgCells[0].closest('td') as HTMLElement;
+          if (parentTd) {
+            console.log(`🔴 [KeepTime] 背景色を赤 (#f87171) に設定中: ${hId}-${dt}-${rowIdx}`);
+            parentTd.style.backgroundColor = '#f87171';
+            // 各セル自体の背景色もクリアして親の色が見えるようにする
+            instantBgCells.forEach(cell => (cell as HTMLElement).style.backgroundColor = 'transparent');
+          }
+        }
       });
 
       if (canceledShifts.length === 0) return;
@@ -3661,6 +3580,24 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
         canceledShifts.push(shiftWithCancel);
         updatedShiftsMap.set(shiftId, shiftWithCancel);
+
+        // ★ 即座に背景色をキャンセル色（赤）に更新し、稼働時間を空にする（DOM直接操作）
+        const instantRemoveBgSelector = `.editable-cell[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
+        const instantRemoveBgCells = document.querySelectorAll(instantRemoveBgSelector);
+        if (instantRemoveBgCells.length > 0) {
+          const parentTd = instantRemoveBgCells[0].closest('td') as HTMLElement;
+          if (parentTd) {
+            console.log(`🔴 [RemoveTime] 背景色を赤 (#f87171) に設定中: ${hId}-${dt}-${rowIdx}`);
+            parentTd.style.backgroundColor = '#f87171';
+            // 各セル自体の背景色もクリアして親の色が見えるようにする
+            instantRemoveBgCells.forEach(cell => (cell as HTMLElement).style.backgroundColor = 'transparent');
+          }
+          // 3行目（index=2）の稼働時間を空に更新 (ユーザー指摘の "0" 対策)
+          const durationCell = document.querySelector(`.editable-cell[data-row="${rowIdx}"][data-line="2"][data-helper="${hId}"][data-date="${dt}"]`);
+          if (durationCell) {
+            durationCell.textContent = '';
+          }
+        }
       });
 
       if (canceledShifts.length === 0) return;
@@ -6226,13 +6163,9 @@ export const ShiftTable = memo(ShiftTableComponent, (prevProps, nextProps) => {
     return false;
   }
 
-  // helpers配列の各要素を比較（idとorderのみチェックで十分）
+  // helpers配列の各要素を比較（参照が変わっているかチェック）
   for (let i = 0; i < prevProps.helpers.length; i++) {
-    if (
-      prevProps.helpers[i].id !== nextProps.helpers[i].id ||
-      prevProps.helpers[i].order !== nextProps.helpers[i].order ||
-      prevProps.helpers[i].name !== nextProps.helpers[i].name
-    ) {
+    if (prevProps.helpers[i] !== nextProps.helpers[i]) {
       return false;
     }
   }
@@ -6242,9 +6175,9 @@ export const ShiftTable = memo(ShiftTableComponent, (prevProps, nextProps) => {
     return false;
   }
 
-  // shifts配列の各要素のidのみ比較（詳細な比較は不要・高速化）
+  // shifts配列の各要素を比較（参照が変わっているかチェック）
   for (let i = 0; i < prevProps.shifts.length; i++) {
-    if (prevProps.shifts[i].id !== nextProps.shifts[i].id) {
+    if (prevProps.shifts[i] !== nextProps.shifts[i]) {
       return false;
     }
   }

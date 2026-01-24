@@ -19,6 +19,7 @@ import type { Helper, Shift } from './types';
 import { saveHelpers, loadHelpers, loadShiftsForMonth, subscribeToShiftsForMonth, subscribeToHelpers } from './services/firestoreService';
 import { cleanupDuplicateShifts } from './utils/cleanupDuplicateShifts';
 import { testFirebaseConnection } from './lib/firebase';
+import { reflectShiftsToNextMonth } from './utils/shiftReflection';
 
 function App() {
   // PWA自動リダイレクトを削除（管理者も全体シフトにアクセス可能に）
@@ -241,6 +242,33 @@ function App() {
     });
   }, []);
 
+  // シフトを翌月へ反映
+  const handleReflectNextMonth = useCallback(async () => {
+    const targetYear = currentMonth === 12 ? currentYear + 1 : currentYear;
+    const targetMonth = currentMonth === 12 ? 1 : currentMonth + 1;
+
+    if (!confirm(`${currentYear}年${currentMonth}月のケア内容を、${targetYear}年${targetMonth}月の「同じ週・同じ曜日」の枠に反映しますか？`)) {
+      return;
+    }
+
+    try {
+      const result = await reflectShiftsToNextMonth(currentYear, currentMonth);
+      if (result.success) {
+        alert(`${result.count}件のシフトを${targetYear}年${targetMonth}月に反映しました。`);
+        // 反映先の月に移動するか確認
+        if (confirm(`${targetYear}年${targetMonth}月のシフト表へ移動しますか？`)) {
+          setCurrentYear(targetYear);
+          setCurrentMonth(targetMonth);
+        }
+      } else {
+        alert(`反映に失敗しました: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('シフト反映エラー:', error);
+      alert('エラーが発生しました。');
+    }
+  }, [currentYear, currentMonth]);
+
   const handleNextMonth = useCallback(() => {
     // 即座に状態更新（遅延なし）
     setCurrentMonth(prev => {
@@ -424,6 +452,13 @@ function App() {
               className="px-4 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors"
             >
               🏖️ 休み希望
+            </button>
+            <button
+              onClick={handleReflectNextMonth}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+              title="当月のケア内容を翌月の同じ曜日にコピーします"
+            >
+              📋 翌月へ反映
             </button>
             <button
               onClick={handleOpenCareContentDeleter}

@@ -237,6 +237,8 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
   const [newHelperLastName, setNewHelperLastName] = useState('');
   const [newHelperFirstName, setNewHelperFirstName] = useState('');
   const [newHelperGender, setNewHelperGender] = useState<'male' | 'female'>('male');
+  const [newHelperSalaryType, setNewHelperSalaryType] = useState<'hourly' | 'fixed'>('hourly');
+  const [newHelperEmploymentType, setNewHelperEmploymentType] = useState<string>('parttime');
   const [showAddForm, setShowAddForm] = useState(false);
   const [localHelpers, setLocalHelpers] = useState<Helper[]>(helpers);
   const [hasChanges, setHasChanges] = useState(false);
@@ -290,66 +292,65 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
   }, [localHelpers, onUpdate]);
 
   const handleAddHelper = useCallback(async () => {
-    const lastName = newHelperLastName.trim();
-    const firstName = newHelperFirstName.trim();
-    const displayName = newHelperName.trim() || lastName;
-
-    if (!displayName) {
-      alert('苗字を入力してください');
+    if (!newHelperName.trim()) {
+      alert('ヘルパー名（シフト表表示名）を入力してください');
       return;
     }
 
-    const maleHelpers = localHelpers.filter(h => h.gender === 'male');
-    const femaleHelpers = localHelpers.filter(h => h.gender === 'female');
+    const displayName = newHelperName.trim();
+    const lastName = newHelperLastName.trim() || displayName;
+    const firstName = newHelperFirstName.trim();
 
-    const maxId = Math.max(...localHelpers.map(h => parseInt(h.id)), 0);
+    // デフォルト値の設定
+    const isFixed = newHelperSalaryType === 'fixed';
+
     const newHelper: Helper = {
-      id: String(maxId + 1),
+      id: `helper-${Date.now()}`,
       name: displayName,
-      ...(lastName && { lastName }),
-      ...(firstName && { firstName }),
+      lastName: lastName,
+      firstName: firstName,
       gender: newHelperGender,
-      order: 0,
+      order: localHelpers.length + 1,
       personalToken: generateToken(),
-      standardRemuneration: 0,
+      salaryType: newHelperSalaryType,
+      employmentType: newHelperEmploymentType as any,
+      // 時給制のデフォルト
+      hourlyRate: isFixed ? 0 : 1200,
+      treatmentImprovementPerHour: isFixed ? 0 : 800,
+      officeHourlyRate: 1200,
+      // 固定給のデフォルト
+      baseSalary: isFixed ? 200000 : 0,
+      treatmentAllowance: isFixed ? 20000 : 0,
+      otherAllowances: [],
+      dependents: 0,
+      insurances: [],
+      hasWithholdingTax: true,
     };
 
-    let updatedHelpers: Helper[];
-    if (newHelperGender === 'male') {
-      updatedHelpers = [...maleHelpers, newHelper, ...femaleHelpers];
-    } else {
-      updatedHelpers = [...maleHelpers, ...femaleHelpers, newHelper];
-    }
+    const updatedHelpers = [...localHelpers, newHelper];
 
-    updatedHelpers = updatedHelpers.map((h, idx) => ({ ...h, order: idx + 1 }));
+    // UIを即座に更新
+    setLocalHelpers(updatedHelpers);
+    setNewHelperName('');
+    setNewHelperLastName('');
+    setNewHelperFirstName('');
+    setShowAddForm(false);
+    setHasChanges(false); // 追加時は即座に保存するため変更フラグは折る
 
     setIsSaving(true);
     try {
+      // 親コンポーネント（App.tsx）を通じてFirestoreへ保存
       await onUpdate(updatedHelpers);
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      try {
-        const accessToken = await getGoogleAccessToken();
-        await addHelperColumn(displayName, accessToken);
-      } catch (error) {
-        console.error('Spreadsheet error:', error);
-        // Continue even if spreadsheet fails
-      }
-
-      setLocalHelpers(updatedHelpers);
-      setNewHelperName('');
-      setNewHelperLastName('');
-      setNewHelperFirstName('');
-      setNewHelperGender('male');
-      setShowAddForm(false);
-      alert(`✅ ${displayName}さんを保存しました`);
+      console.log('✅ 新規ヘルパーを保存しました:', displayName);
     } catch (error) {
       console.error('Add helper error:', error);
       alert(`追加に失敗しました: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // 失敗した場合はローカル状態を戻す
+      setLocalHelpers(localHelpers);
     } finally {
       setIsSaving(false);
     }
-  }, [localHelpers, newHelperLastName, newHelperFirstName, newHelperName, newHelperGender, onUpdate]);
+  }, [localHelpers, newHelperLastName, newHelperFirstName, newHelperName, newHelperGender, newHelperSalaryType, newHelperEmploymentType, onUpdate]);
 
   const handleStartEdit = useCallback((helper: Helper) => {
     setEditingHelperId(helper.id);
@@ -628,6 +629,60 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
                     <span className="text-3xl">👩</span>
                     <span className="text-lg font-medium">女性</span>
                   </label>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6 pt-4 border-t border-gray-100">
+                <div>
+                  <label className="block text-lg font-medium mb-3">給与タイプ</label>
+                  <div className="flex gap-4">
+                    <label className={`flex-1 flex items-center justify-center gap-2 p-3 border-2 rounded-lg cursor-pointer transition-colors ${newHelperSalaryType === 'hourly' ? 'border-green-500 bg-green-50' : 'border-gray-200'}`}>
+                      <input
+                        type="radio"
+                        checked={newHelperSalaryType === 'hourly'}
+                        onChange={() => {
+                          setNewHelperSalaryType('hourly');
+                          setNewHelperEmploymentType('parttime');
+                        }}
+                        className="w-4 h-4 text-green-600"
+                      />
+                      <span className="font-bold">時給</span>
+                    </label>
+                    <label className={`flex-1 flex items-center justify-center gap-2 p-3 border-2 rounded-lg cursor-pointer transition-colors ${newHelperSalaryType === 'fixed' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}>
+                      <input
+                        type="radio"
+                        checked={newHelperSalaryType === 'fixed'}
+                        onChange={() => {
+                          setNewHelperSalaryType('fixed');
+                          setNewHelperEmploymentType('fulltime');
+                        }}
+                        className="w-4 h-4 text-blue-600"
+                      />
+                      <span className="font-bold">固定給</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-lg font-medium mb-3">雇用形態</label>
+                  <select
+                    value={newHelperEmploymentType}
+                    onChange={(e) => setNewHelperEmploymentType(e.target.value)}
+                    className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    {newHelperSalaryType === 'hourly' ? (
+                      <>
+                        <option value="parttime">パート・アルバイト</option>
+                        <option value="temporary">派遣社員</option>
+                        <option value="outsourced">業務委託</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="fulltime">正社員</option>
+                        <option value="contract">契約社員</option>
+                      </>
+                    )}
+                  </select>
                 </div>
               </div>
             </div>

@@ -9,7 +9,6 @@ import {
   deletePayslip
 } from '../../services/payslipService';
 import { loadHelpers, loadShiftsForMonth } from '../../services/firestoreService';
-import { sendPayslipToSheets } from '../../services/payrollSheetsService';
 import { generatePayslipFromShifts } from '../../utils/payslipCalculation';
 import { downloadPayslipPdf, downloadBulkPayslipPdf } from '../../services/pdfService';
 import PayslipSheet from './PayslipSheet';
@@ -39,6 +38,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
   const [pdfTargetPayslip, setPdfTargetPayslip] = useState<Payslip | null>(null);
   const [bulkPdfMode, setBulkPdfMode] = useState(false);
   const [pdfExportMode, setPdfExportMode] = useState<'all' | 'payslip' | 'attendance'>('all');
+  const [activeDownloadMenuHelperId, setActiveDownloadMenuHelperId] = useState<string | null>(null);
   const printViewRef = useRef<HTMLDivElement>(null);
 
   // ヘルパーをソート・フィルタリング
@@ -93,6 +93,23 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // メニュー外クリックで閉じる処理
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.download-menu-container')) {
+        setActiveDownloadMenuHelperId(null);
+      }
+    };
+
+    if (activeDownloadMenuHelperId) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [activeDownloadMenuHelperId]);
 
   // 給与明細を削除
   const handleDelete = useCallback(async (payslip: Payslip) => {
@@ -218,7 +235,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
         } catch (error) {
           console.error(`${helper.name}の給与明細作成エラー:`, error);
           errorCount++;
-          errors.push(helper.name);
+          errors.push(`${helper.name}: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
 
@@ -229,7 +246,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
       if (errorCount === 0) {
         alert(`${successCount}人分の給与明細を作成しました`);
       } else {
-        alert(`成功: ${successCount}人\n失敗: ${errorCount}人\n\n失敗したヘルパー:\n${errors.join(', ')}`);
+        alert(`成功: ${successCount}人\n失敗: ${errorCount}人\n\n失敗したヘルパー:\n${errors.join(', ')}\n\nエラー詳細(最初の1件): ${(errors.length > 0 && errors[0].includes(':')) ? errors[0].split(':')[1] : '不明なエラー'}`);
       }
     } catch (error) {
       console.error('一括作成エラー:', error);
@@ -348,35 +365,15 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
     }
   }, [shifts, selectedYear, selectedMonth, loadData]);
 
-  // スプレッドシートにエクスポート
-  const handleExportToSheets = useCallback(async (payslip: Payslip) => {
-    if (!confirm(`${payslip.helperName}さんの給与明細をスプレッドシートにエクスポートしますか？`)) {
-      return;
-    }
 
-    try {
-      // 固定給もHourlyPayslipとして扱う
-      const hourlyPayslip = isHourlyPayslip(payslip) ? payslip : payslip as HourlyPayslip;
-      const result = await sendPayslipToSheets(hourlyPayslip);
-
-      if (result.success && result.sheetUrl) {
-        alert(`スプレッドシートにエクスポートしました\nシート名: ${result.sheetName}`);
-        // スプレッドシートを新しいタブで開く
-        window.open(result.sheetUrl, '_blank');
-      } else {
-        alert(`エクスポートに失敗しました\nエラー: ${result.error}`);
-      }
-    } catch (error) {
-      console.error('エクスポートエラー:', error);
-      alert('エクスポートに失敗しました');
-    }
-  }, []);
 
   // 個別PDF生成
-  const handleDownloadPdf = useCallback(async (payslip: Payslip) => {
+  const handleDownloadPdf = useCallback(async (payslip: Payslip, mode: 'all' | 'payslip' | 'attendance') => {
+    setPdfExportMode(mode);
     setPdfTargetPayslip(payslip);
     setBulkPdfMode(false);
     setGeneratingPdf(true);
+    setActiveDownloadMenuHelperId(null);
   }, []);
 
   // PDF生成実行（印刷ビューがレンダリングされた後に実行）
@@ -587,12 +584,28 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
     }
   };
 
-  // 給与タイプバッジの色
-  const getEmploymentTypeBadge = (employmentType: '契約社員' | 'アルバイト') => {
-    if (employmentType === '契約社員') {
-      return 'bg-blue-100 text-blue-800';
+  // 雇用形態のラベルを取得
+  const getEmploymentTypeLabel = (type?: string) => {
+    switch (type) {
+      case 'fulltime': return '正社員';
+      case 'parttime': return 'パート';
+      case 'contract': return '契約社員';
+      case 'temporary': return '派遣';
+      case 'outsourced': return '業務委託';
+      default: return '未設定';
     }
-    return 'bg-green-100 text-green-800';
+  };
+
+  // 雇用形態バッジの色
+  const getEmploymentTypeBadgeColor = (type?: string) => {
+    switch (type) {
+      case 'fulltime': return 'bg-blue-100 text-blue-800';
+      case 'contract': return 'bg-indigo-100 text-indigo-800';
+      case 'parttime': return 'bg-green-100 text-green-800';
+      case 'temporary': return 'bg-yellow-100 text-yellow-800';
+      case 'outsourced': return 'bg-purple-100 text-purple-800';
+      default: return 'bg-gray-100 text-gray-500';
+    }
   };
 
   // 金額フォーマット
@@ -746,7 +759,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
                     </th>
                     <th className="border border-gray-300 px-2 py-2 text-sm font-medium">No</th>
                     <th className="border border-gray-300 px-3 py-2 text-sm font-medium text-left">ヘルパー名</th>
-                    <th className="border border-gray-300 px-2 py-2 text-sm font-medium">給与タイプ</th>
+                    <th className="border border-gray-300 px-2 py-2 text-sm font-medium">雇用形態</th>
                     <th className="border border-gray-300 px-3 py-2 text-sm font-medium text-right">支給額</th>
                     <th className="border border-gray-300 px-3 py-2 text-sm font-medium text-right">控除額</th>
                     <th className="border border-gray-300 px-3 py-2 text-sm font-medium text-right">差引支給額</th>
@@ -775,13 +788,9 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
                           {helper.name}
                         </td>
                         <td className="border border-gray-300 px-2 py-2 text-sm text-center">
-                          {payslip ? (
-                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${getEmploymentTypeBadge(payslip.employmentType)}`}>
-                              {payslip.employmentType}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400 text-xs">-</span>
-                          )}
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${getEmploymentTypeBadgeColor(helper.employmentType)}`}>
+                            {getEmploymentTypeLabel(helper.employmentType)}
+                          </span>
                         </td>
                         {payslip ? (
                           <>
@@ -811,13 +820,37 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
                                 >
                                   再計算
                                 </button>
-                                <button
-                                  onClick={() => handleExportToSheets(payslip)}
-                                  className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700"
-                                  title="スプレッドシートにエクスポート"
-                                >
-                                  シート出力
-                                </button>
+                                <div className="relative inline-block download-menu-container">
+                                  <button
+                                    onClick={() => setActiveDownloadMenuHelperId(activeDownloadMenuHelperId === helper.id ? null : helper.id)}
+                                    className="px-2 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700 flex items-center gap-1"
+                                    title="PDFとしてダウンロード"
+                                  >
+                                    ダウンロード ▾
+                                  </button>
+                                  {activeDownloadMenuHelperId === helper.id && (
+                                    <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-[60] overflow-hidden">
+                                      <button
+                                        onClick={() => handleDownloadPdf(payslip, 'all')}
+                                        className="w-full text-left px-4 py-2 text-xs hover:bg-purple-50 text-gray-700 border-b border-gray-100"
+                                      >
+                                        📄 明細 + 勤怠表 (両方)
+                                      </button>
+                                      <button
+                                        onClick={() => handleDownloadPdf(payslip, 'payslip')}
+                                        className="w-full text-left px-4 py-2 text-xs hover:bg-purple-50 text-gray-700 border-b border-gray-100"
+                                      >
+                                        💰 明細のみ
+                                      </button>
+                                      <button
+                                        onClick={() => handleDownloadPdf(payslip, 'attendance')}
+                                        className="w-full text-left px-4 py-2 text-xs hover:bg-purple-50 text-gray-700"
+                                      >
+                                        📅 勤怠表・ケア一覧のみ
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
                                 <button
                                   onClick={() => handleDelete(payslip)}
                                   className="px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700"

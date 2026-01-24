@@ -361,6 +361,11 @@ function prepareCloneForCanvas(doc: Document, clonedRoot: HTMLElement, originalR
       -webkit-font-smoothing: antialiased !important;
       box-sizing: border-box !important;
       transform: none !important;
+      box-shadow: none !important;
+      text-shadow: none !important;
+    }
+    body, html {
+      background-color: #ffffff !important;
     }
   `;
   doc.head.appendChild(style);
@@ -397,34 +402,24 @@ async function addPagesToPdf(
 
   // フォールバック: ページ分割クラスがない場合は全体を1ページとして処理
   if (targets.length === 0) {
-    if (page1El && mode === 'payslip') {
-      // Page 1 exist but filtered? No, loop above handles it.
-      // If we are here, it means we found NO matching pages or NO class structure.
-      // If no class structure, we assume single page content.
-      // But if mode is specific, we might return empty?
-      // Let's assume fallback is only for 'all' or simple content.
-      if (mode === 'all') {
-        element.setAttribute('data-pdf-page', token);
-        targets.push({ el: element, pageToken: token });
-      }
-    } else {
-      // Simple fallback
-      element.setAttribute('data-pdf-page', token);
-      targets.push({ el: element, pageToken: token });
-    }
+    element.setAttribute('data-pdf-page', token);
+    targets.push({ el: element, pageToken: token });
   }
+
+  // 余白の設定 (mm)
+  const marginMm = 8;
 
   for (let i = 0; i < targets.length; i++) {
     const { el: targetEl, pageToken } = targets[i];
 
-    // html2canvasでキャンバスに変換
+    // html2canvasでキャンバスに変換 (scale: 2 で鮮明に)
+    const scale = 2;
     const canvas = await html2canvas(targetEl, {
-      scale: window.devicePixelRatio || 2, // スクリーンのピクセル比に合わせる方がボケにくい
+      scale: scale,
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
       onclone: (clonedDoc) => {
-        // クローンされたドキュメントから対応する要素を探す
         const clonedTarget = clonedDoc.querySelector(`[data-pdf-page="${pageToken}"]`) as HTMLElement | null;
         if (clonedTarget) {
           prepareCloneForCanvas(clonedDoc, clonedTarget, targetEl);
@@ -432,29 +427,38 @@ async function addPagesToPdf(
       }
     });
 
-    const marginPx = 40; // 余白を広げる (10px -> 40px)
-    const pageW = canvas.width + marginPx * 2;
-    const pageH = canvas.height + marginPx * 2;
-    const orientation = pageW >= pageH ? 'l' : 'p';
+    // 物理サイズ(mm)を計算
+    // 1px = 0.264583mm (96DPI基準)
+    // canvas.width は scale倍されているので、元のPX数に戻してから変換
+    const contentW = (canvas.width / scale) * PX_TO_MM;
+    const contentH = (canvas.height / scale) * PX_TO_MM;
+
+    // PDFのページサイズをコンテンツ＋余白に合わせる
+    const pdfPageW = contentW + (marginMm * 2);
+    const pdfPageH = contentH + (marginMm * 2);
+    const orientation = pdfPageW >= pdfPageH ? 'l' : 'p';
 
     if (!pdf) {
       pdf = new jsPDF({
         orientation,
-        unit: 'px',
-        format: [pageW, pageH],
+        unit: 'mm',
+        format: [pdfPageW, pdfPageH],
         compress: true,
       });
     } else {
-      pdf.addPage([pageW, pageH], orientation as any);
+      pdf.addPage([pdfPageW, pdfPageH], orientation as any);
     }
 
-    // 画像を追加 (FASTオプションを外して画質優先)
-    pdf.addImage(canvas as any, 'PNG', marginPx, marginPx, canvas.width, canvas.height);
+    // 白色背景を全面に描画
+    pdf.setFillColor(255, 255, 255);
+    pdf.rect(0, 0, pdfPageW, pdfPageH, 'F');
+
+    // 中央に配置
+    pdf.addImage(canvas as any, 'PNG', marginMm, marginMm, contentW, contentH);
   }
 
-  // もしpdfが未作成なら（要素が空など）、ダミー作成
   if (!pdf) {
-    pdf = new jsPDF();
+    pdf = new jsPDF({ orientation: 'l', unit: 'mm' });
   }
 
   return pdf;

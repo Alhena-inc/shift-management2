@@ -1,19 +1,9 @@
 import { memo, useMemo } from 'react';
 import type { Helper, Shift } from '../types';
 import { ShiftCell } from './ShiftCell';
+import { DayData, WeekData } from '../utils/dateUtils';
 
-interface DayData {
-  date: string;
-  dayNumber: number;
-  dayOfWeek: string;
-  dayOfWeekIndex: number;
-  isEmpty?: boolean;
-}
-
-interface WeekData {
-  weekNumber: number;
-  days: DayData[];
-}
+// DayData, WeekData は ../utils/dateUtils からインポート
 
 interface WeekTableProps {
   week: WeekData;
@@ -86,8 +76,8 @@ const WeekRow = memo<{
       const shiftKey = `${helper.id}-${day.date}-${rowIndex}`;
       const shift = shiftMap.get(shiftKey);
       const isDragging = draggedCell?.helperId === helper.id &&
-                        draggedCell?.date === day.date &&
-                        draggedCell?.rowIndex === rowIndex;
+        draggedCell?.date === day.date &&
+        draggedCell?.rowIndex === rowIndex;
 
       return (
         <ShiftCell

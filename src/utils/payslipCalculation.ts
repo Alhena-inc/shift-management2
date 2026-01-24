@@ -335,15 +335,15 @@ export function generateFixedPayslipFromShifts(
   }
 
   // 固定給の基本給を設定（Helperマスタから取得）
-  payslip.baseSalary = helper.baseSalary || 0;
-  payslip.treatmentAllowance = helper.treatmentAllowance || 0;
+  payslip.baseSalary = Number(helper.baseSalary) || 0;
+  payslip.treatmentAllowance = Number(helper.treatmentAllowance) || 0;
 
   // その他手当をHelperマスタから取得
   if (helper.otherAllowances && helper.otherAllowances.length > 0) {
     payslip.payments.otherAllowances = helper.otherAllowances.map(allowance => ({
       name: allowance.name,
-      amount: allowance.amount,
-      taxExempt: allowance.taxExempt
+      amount: Number(allowance.amount) || 0,
+      taxExempt: !!allowance.taxExempt
     }));
   }
 
@@ -370,12 +370,20 @@ export function generateFixedPayslipFromShifts(
   const insuranceTypes: string[] = [];
 
   // 社会保険（健康保険・厚生年金）はセット扱い
-  const hasSocialInsurance =
-    helperInsurances.includes('health') ||
+  // 社会保険（健康保険・厚生年金）
+  const hasLegacySocial =
     (helper as any).hasSocialInsurance === true ||
     (helper as any).socialInsurance === true;
-  if (hasSocialInsurance) {
-    insuranceTypes.push('health', 'pension');
+  const hasInsurancesArray = Array.isArray(helper.insurances);
+
+  // 健康保険
+  if ((hasInsurancesArray && helperInsurances.includes('health')) || (!hasInsurancesArray && hasLegacySocial)) {
+    insuranceTypes.push('health');
+  }
+
+  // 厚生年金
+  if ((hasInsurancesArray && helperInsurances.includes('pension')) || (!hasInsurancesArray && hasLegacySocial)) {
+    insuranceTypes.push('pension');
   }
 
   // 介護保険（40歳以上の場合は自動対象。明示チェックも許容）
@@ -422,6 +430,9 @@ export function generateFixedPayslipFromShifts(
   // 2. ヘルパー設定で固定値（0を含む）が指定されていればそれを使用
   // 3. 指定がなければ（undefinedまたはNaN）、支給総額（保険対象額）から等級表に基づいて自動決定
   let standardRemuneration = 0;
+
+  // 社会保険加入判定
+  const hasSocialInsurance = insuranceTypes.includes('health') || insuranceTypes.includes('pension');
 
   if (hasSocialInsurance) {
     const fixedValue = (helper.standardRemuneration !== undefined && helper.standardRemuneration !== null)
@@ -490,7 +501,7 @@ export function generateFixedPayslipFromShifts(
   }
 
   // 住民税
-  payslip.deductions.residentTax = helper.residentialTax || 0;
+  payslip.deductions.residentTax = Number(helper.residentialTax) || 0;
 
   // 立替金（交通費 + 経費精算 のマイナス値を自動設定）
   const totalExpenses = (payslip.payments.transportAllowance || 0) + (payslip.payments.expenseReimbursement || 0);
@@ -602,8 +613,8 @@ export function generateHourlyPayslipFromShifts(
   console.log(`✅ フィルタ後のシフト数: ${monthShifts.length}件 (対象: ${year}/${month}/1 〜 ${year}/${month}/末)`);
 
   // 基本時給を設定（Helperマスタから取得）
-  payslip.baseHourlyRate = helper.hourlyRate || 1200; // デフォルト1200円
-  payslip.treatmentAllowance = helper.treatmentImprovementPerHour || 800; // デフォルト800円
+  payslip.baseHourlyRate = Number(helper.hourlyRate) || 1200; // デフォルト1200円
+  payslip.treatmentAllowance = Number(helper.treatmentImprovementPerHour) || 800; // デフォルト800円
   payslip.totalHourlyRate = payslip.baseHourlyRate + payslip.treatmentAllowance;
 
   // 年末年始手当（12/31〜1/4は時給3000円扱い。通常の合計時間単価との差額分をここで積み上げる）
@@ -778,8 +789,8 @@ export function generateHourlyPayslipFromShifts(
     helper.otherAllowances.forEach(allowance => {
       payslip.payments.otherAllowances.push({
         name: allowance.name,
-        amount: allowance.amount,
-        taxExempt: allowance.taxExempt
+        amount: Number(allowance.amount) || 0,
+        taxExempt: !!allowance.taxExempt
       });
     });
   }
@@ -796,8 +807,8 @@ export function generateHourlyPayslipFromShifts(
   console.log(`📊 その他手当合計: ${otherAllowancesTotal}円 (${payslip.payments.otherAllowances.map(a => `${a.name}:${a.amount}`).join(', ')})`);
 
   // 処遇改善加算（時給額ではなく合計支給額）を計算
-  const baseRate = payslip.baseHourlyRate;
-  const treatRate = payslip.treatmentAllowance;
+  const baseRate = Number(payslip.baseHourlyRate) || 0;
+  const treatRate = Number(payslip.treatmentAllowance) || 0;
 
   // 基本報酬 = (通常時間 + 深夜通常時間) * 基本時給
   const totalBaseEligibleHours =
@@ -859,12 +870,17 @@ export function generateHourlyPayslipFromShifts(
   const helperInsurances = helper.insurances || [];
   const insuranceTypes: string[] = [];
 
-  const hasSocialInsurance =
-    helperInsurances.includes('health') ||
+  const hasLegacySocial =
     (helper as any).hasSocialInsurance === true ||
     (helper as any).socialInsurance === true;
-  if (hasSocialInsurance) {
-    insuranceTypes.push('health', 'pension');
+  const hasInsurancesArray = Array.isArray(helper.insurances);
+
+  if ((hasInsurancesArray && helperInsurances.includes('health')) || (!hasInsurancesArray && hasLegacySocial)) {
+    insuranceTypes.push('health');
+  }
+
+  if ((hasInsurancesArray && helperInsurances.includes('pension')) || (!hasInsurancesArray && hasLegacySocial)) {
+    insuranceTypes.push('pension');
   }
 
   const hasNursingInsurance =
@@ -905,6 +921,9 @@ export function generateHourlyPayslipFromShifts(
   // 雇用保険料計算用：非課税その他手当のみ（交通費立替・手当は除外）
   const nonTaxableTransportAllowance = nonTaxableOtherAllowances;
   let standardRemuneration = 0;
+
+  // 社会保険加入判定
+  const hasSocialInsurance = insuranceTypes.includes('health') || insuranceTypes.includes('pension');
 
   if (hasSocialInsurance) {
     const fixedValue = (helper.standardRemuneration !== undefined && helper.standardRemuneration !== null)
@@ -965,7 +984,7 @@ export function generateHourlyPayslipFromShifts(
   }
 
   // 住民税
-  payslip.deductions.residentTax = helper.residentialTax || 0;
+  payslip.deductions.residentTax = Number(helper.residentialTax) || 0;
 
   // 立替金（交通費 + 経費精算 のマイナス値を自動設定）
   const totalExpenses = (payslip.payments.transportAllowance || 0) + (payslip.payments.expenseReimbursement || 0);

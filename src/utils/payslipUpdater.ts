@@ -8,8 +8,12 @@ export const deriveInsuranceTypesFromHelper = (h?: Helper, currentTypes: string[
     const isTrue = (val: any) => val === true || val === 'true';
     const result: string[] = [];
 
-    if (ins.includes('health') || isTrue((h as any).hasSocialInsurance) || isTrue((h as any).socialInsurance)) result.push('health');
-    if (ins.includes('pension') || isTrue((h as any).hasSocialInsurance) || isTrue((h as any).socialInsurance)) result.push('pension');
+    const hasLegacySocial = isTrue((h as any).hasSocialInsurance) || isTrue((h as any).socialInsurance);
+    // insurances配列が存在する場合はそれを使用、存在しない場合のみレガシーフラグを使用
+    const hasInsurancesArray = Array.isArray(h.insurances);
+
+    if ((hasInsurancesArray && ins.includes('health')) || (!hasInsurancesArray && hasLegacySocial)) result.push('health');
+    if ((hasInsurancesArray && ins.includes('pension')) || (!hasInsurancesArray && hasLegacySocial)) result.push('pension');
     const age = Number((h as any).age) || 0;
     if (ins.includes('care') || isTrue((h as any).hasNursingInsurance) || isTrue((h as any).nursingInsurance) || age >= 40) result.push('care');
     if (ins.includes('employment') || isTrue((h as any).hasEmploymentInsurance) || isTrue((h as any).employmentInsurance)) result.push('employment');
@@ -181,8 +185,11 @@ export const recalculatePayslip = (updated: any, helper?: Helper) => {
     // (以前のロジックでは強制的にpushしていたのを削除)
 
     // 標準報酬月額を画面上の入力欄に自動反映（手動入力されていない場合）
+    // ただし、実際に社会保険（健康・厚生・介護）のいずれかが計算対象になっている場合のみ表示する
+    const hasSocialInsCalc = calcTypes.some(type => ['health', 'pension', 'care'].includes(type));
+
     if (!updated.manualStandardRemuneration) {
-        updated.standardRemuneration = stdRemuneration;
+        updated.standardRemuneration = hasSocialInsCalc ? stdRemuneration : '';
     }
 
     const insurance = calculateInsurance(stdRemuneration, monthlySalaryTotal, updated.age || 0, calcTypes, nonTaxableOther);

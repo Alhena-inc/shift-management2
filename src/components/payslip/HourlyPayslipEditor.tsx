@@ -142,8 +142,9 @@ export const HourlyPayslipEditor: React.FC<HourlyPayslipEditorProps> = ({
       if (helper?.hasWithholdingTax === false) {
         newPayslip.deductions.incomeTax = 0;
       } else {
+        const taxYear = newPayslip.month === 12 ? (newPayslip.year ? newPayslip.year + 1 : new Date().getFullYear() + 1) : (newPayslip.year || new Date().getFullYear());
         newPayslip.deductions.incomeTax = calculateWithholdingTaxByYear(
-          newPayslip.year || new Date().getFullYear(),
+          taxYear,
           newPayslip.deductions.taxableAmount || 0,
           helper?.dependents || 0,
           '甲'
