@@ -174,10 +174,15 @@ export const recalculatePayslip = (updated: any, helper?: Helper) => {
     const stdRemuneration = updated.standardRemuneration || getHealthStandardRemuneration(monthlySalaryTotal);
 
     // 明示的に標準報酬月額が設定されている場合は、社会保険（健康保険・厚生年金）を計算対象に含める
-    let calcTypes = [...(updated.insuranceTypes || [])];
-    if (updated.standardRemuneration > 0) {
-        if (!calcTypes.includes('health')) calcTypes.push('health');
-        if (!calcTypes.includes('pension')) calcTypes.push('pension');
+    // ただし、ヘルパー設定でOFFにされている場合は強制しないように修正
+    let calcTypes = deriveInsuranceTypesFromHelper(helper, updated.insuranceTypes || []);
+
+    // 標準報酬月額が入っていても、ヘルパー設定で除外されているなら復活させない
+    // (以前のロジックでは強制的にpushしていたのを削除)
+
+    // 標準報酬月額を画面上の入力欄に自動反映（手動入力されていない場合）
+    if (!updated.manualStandardRemuneration) {
+        updated.standardRemuneration = stdRemuneration;
     }
 
     const insurance = calculateInsurance(stdRemuneration, monthlySalaryTotal, updated.age || 0, calcTypes, nonTaxableOther);

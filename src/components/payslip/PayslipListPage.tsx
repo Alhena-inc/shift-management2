@@ -38,6 +38,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
   const [pdfProgress, setPdfProgress] = useState({ current: 0, total: 0 });
   const [pdfTargetPayslip, setPdfTargetPayslip] = useState<Payslip | null>(null);
   const [bulkPdfMode, setBulkPdfMode] = useState(false);
+  const [pdfExportMode, setPdfExportMode] = useState<'all' | 'payslip' | 'attendance'>('all');
   const printViewRef = useRef<HTMLDivElement>(null);
 
   // ヘルパーをソート・フィルタリング
@@ -383,7 +384,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
     if (generatingPdf && pdfTargetPayslip && printViewRef.current && !bulkPdfMode) {
       const generatePdf = async () => {
         try {
-          await downloadPayslipPdf(printViewRef.current!, pdfTargetPayslip);
+          await downloadPayslipPdf(printViewRef.current!, pdfTargetPayslip, pdfExportMode);
         } catch (error) {
           console.error('PDF生成エラー:', error);
           alert('PDFの生成に失敗しました');
@@ -395,7 +396,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
       // 少し待ってからPDF生成（レンダリング完了を待つ）
       setTimeout(generatePdf, 100);
     }
-  }, [generatingPdf, pdfTargetPayslip, bulkPdfMode]);
+  }, [generatingPdf, pdfTargetPayslip, bulkPdfMode, pdfExportMode]);
 
   // 一括PDFダウンロード
   const handleBulkPdfDownload = useCallback(async () => {
@@ -491,7 +492,8 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
         payslipElements,
         selectedYear,
         selectedMonth,
-        (current, total) => setPdfProgress({ current, total })
+        (current, total) => setPdfProgress({ current, total }),
+        pdfExportMode
       );
 
       alert('PDF一括ダウンロードが完了しました');
@@ -508,7 +510,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
       setPdfTargetPayslip(null);
       setPdfProgress({ current: 0, total: 0 });
     }
-  }, [payslips, selectedHelperIds, selectedYear, selectedMonth]);
+  }, [payslips, selectedHelperIds, selectedYear, selectedMonth, pdfExportMode]);
 
   // 一括削除
   const handleBulkDelete = useCallback(async () => {
@@ -676,6 +678,20 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
               </svg>
               選択一括作成{selectedCount > 0 ? `(${selectedCount})` : ''}
             </button>
+
+            {/* PDF出力モード選択 */}
+            <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded border border-gray-200">
+              <label className="text-sm font-medium text-gray-700">出力:</label>
+              <select
+                value={pdfExportMode}
+                onChange={(e) => setPdfExportMode(e.target.value as any)}
+                className="bg-white border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="all">全て(給与+勤怠)</option>
+                <option value="payslip">給与明細のみ</option>
+                <option value="attendance">勤怠・ケアのみ</option>
+              </select>
+            </div>
 
             {/* PDF一括ダウンロードボタン */}
             <button

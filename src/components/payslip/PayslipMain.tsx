@@ -114,7 +114,7 @@ const LabelCell = ({ children, colSpan = 1 }: any) => {
   );
 };
 
-const InputCell = ({ path, value, isNumber = true, colSpan = 1, absoluteNegative = false, isPrintMode = false, onUpdate }: any) => {
+const InputCell = ({ path, value, isNumber = true, colSpan = 1, absoluteNegative = false, showAbsValue = false, displayPlusForNegative = false, isPrintMode = false, onUpdate }: any) => {
   // 数値として評価（文字列の場合も考慮）
   const numericValue = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
   const isValidNumber = !isNaN(numericValue) && value !== '' && value !== null && value !== undefined;
@@ -125,8 +125,14 @@ const InputCell = ({ path, value, isNumber = true, colSpan = 1, absoluteNegative
   // 表示値の計算
   let formattedDisplayValue = '';
   if (isNumber && isValidNumber) {
-    if (isNegative && absoluteNegative) {
+    if (numericValue === 0) {
+      formattedDisplayValue = '';
+    } else if (isNegative && absoluteNegative) {
       formattedDisplayValue = '-' + formatCurrency(Math.abs(numericValue));
+    } else if (isNegative && displayPlusForNegative) {
+      formattedDisplayValue = '+' + formatCurrency(Math.abs(numericValue));
+    } else if (showAbsValue) {
+      formattedDisplayValue = formatCurrency(Math.abs(numericValue));
     } else {
       formattedDisplayValue = formatCurrency(numericValue);
     }
@@ -156,16 +162,41 @@ const InputCell = ({ path, value, isNumber = true, colSpan = 1, absoluteNegative
     );
   }
 
+  // 内部入力状態管理（IME入力や記号入力中の制御のため）
+  const [localValue, setLocalValue] = React.useState(formattedDisplayValue);
+
+  // プロップスの値が変わったらローカルも更新
+  React.useEffect(() => {
+    setLocalValue(formattedDisplayValue);
+  }, [formattedDisplayValue]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputVal = e.target.value;
+    setLocalValue(inputVal); // 入力値を即座に反映（+記号などを許可）
+
+    // 数値解析用のクリーンアップ
+    const cleanVal = inputVal.replace(/^\+/, '');
+
     if (isNumber) {
-      let parsed = parseNumber(inputVal);
-      // absoluteNegative（立替金など）の場合、ユーザーは正の値を入力するが、
-      // 内部的にはマイナス（支給扱い）として保持する必要があるため符号を反転させる
-      if (absoluteNegative && parsed > 0) {
-        parsed = -parsed;
+      const parsed = parseNumber(cleanVal);
+
+      // 数値として有効な場合のみ更新処理を行う
+      if (!isNaN(parsed)) {
+        let finalValue = parsed;
+
+        // displayPlusForNegative（年末調整など）の場合:
+        if (displayPlusForNegative) {
+          if (parsed > 0) finalValue = -parsed;
+          else if (parsed < 0) finalValue = Math.abs(parsed);
+        }
+
+        // absoluteNegative（立替金など）の場合
+        if (absoluteNegative && parsed > 0) {
+          finalValue = -parsed;
+        }
+
+        onUpdate(path, finalValue);
       }
-      onUpdate(path, parsed);
     } else {
       onUpdate(path, inputVal);
     }
@@ -176,8 +207,9 @@ const InputCell = ({ path, value, isNumber = true, colSpan = 1, absoluteNegative
       <input
         type="text"
         data-sync-path={path ? path.join('-') : undefined}
-        value={formattedDisplayValue}
+        value={localValue}
         onChange={handleInputChange}
+        onBlur={() => setLocalValue(formattedDisplayValue)} // フォーカス外れたら整形
         style={{ ...inputStyle, color: isNegative ? '#ff0000' : 'inherit' }}
         placeholder=""
       />
@@ -459,11 +491,11 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
           </tr>
           {/* Row 3 Value */}
           <tr>
-            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'reimbursement']} value={payslip.deductions.reimbursement} absoluteNegative={true} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'reimbursement']} value={payslip.deductions.reimbursement} displayPlusForNegative={true} />
             <EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell />
             <EmptyCell />
-            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'yearEndAdjustment']} value={payslip.deductions.yearEndAdjustment} absoluteNegative={true} />
-            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'deductionTotal']} value={payslip.deductions.deductionTotal} absoluteNegative={true} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'yearEndAdjustment']} value={payslip.deductions.yearEndAdjustment} displayPlusForNegative={true} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'deductionTotal']} value={payslip.deductions.deductionTotal} displayPlusForNegative={true} />
             <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'totalDeduction']} value={payslip.deductions.totalDeduction} />
           </tr>
         </tbody>

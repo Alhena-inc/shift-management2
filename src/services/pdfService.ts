@@ -374,7 +374,8 @@ function prepareCloneForCanvas(doc: Document, clonedRoot: HTMLElement, originalR
 async function addPagesToPdf(
   pdf: jsPDF | null,
   element: HTMLElement,
-  token: string
+  token: string,
+  mode: 'all' | 'payslip' | 'attendance' = 'all'
 ): Promise<jsPDF> {
   // ページ要素を取得
   const page1El = element.querySelector('.page-1') as HTMLElement;
@@ -382,12 +383,13 @@ async function addPagesToPdf(
 
   const targets: { el: HTMLElement; pageToken: string }[] = [];
 
-  if (page1El) {
+  // モードに応じて対象ページを選択
+  if (page1El && (mode === 'all' || mode === 'payslip')) {
     const pageToken = `${token}-page1`;
     page1El.setAttribute('data-pdf-page', pageToken);
     targets.push({ el: page1El, pageToken });
   }
-  if (page2El) {
+  if (page2El && (mode === 'all' || mode === 'attendance')) {
     const pageToken = `${token}-page2`;
     page2El.setAttribute('data-pdf-page', pageToken);
     targets.push({ el: page2El, pageToken });
@@ -395,8 +397,21 @@ async function addPagesToPdf(
 
   // フォールバック: ページ分割クラスがない場合は全体を1ページとして処理
   if (targets.length === 0) {
-    element.setAttribute('data-pdf-page', token);
-    targets.push({ el: element, pageToken: token });
+    if (page1El && mode === 'payslip') {
+      // Page 1 exist but filtered? No, loop above handles it.
+      // If we are here, it means we found NO matching pages or NO class structure.
+      // If no class structure, we assume single page content.
+      // But if mode is specific, we might return empty?
+      // Let's assume fallback is only for 'all' or simple content.
+      if (mode === 'all') {
+        element.setAttribute('data-pdf-page', token);
+        targets.push({ el: element, pageToken: token });
+      }
+    } else {
+      // Simple fallback
+      element.setAttribute('data-pdf-page', token);
+      targets.push({ el: element, pageToken: token });
+    }
   }
 
   for (let i = 0; i < targets.length; i++) {
@@ -450,13 +465,14 @@ async function addPagesToPdf(
  */
 export async function generatePdfFromElement(
   element: HTMLElement,
-  filename: string
+  filename: string,
+  mode: 'all' | 'payslip' | 'attendance' = 'all'
 ): Promise<Blob> {
   const token = `pdfcap-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   element.setAttribute('data-pdf-capture', token);
 
   try {
-    const pdf = await addPagesToPdf(null, element, token);
+    const pdf = await addPagesToPdf(null, element, token, mode);
     return pdf.output('blob');
   } finally {
     element.removeAttribute('data-pdf-capture');
@@ -468,10 +484,12 @@ export async function generatePdfFromElement(
  */
 export async function downloadPayslipPdf(
   element: HTMLElement,
-  payslip: Payslip
+  payslip: Payslip,
+  mode: 'all' | 'payslip' | 'attendance' = 'all'
 ): Promise<void> {
-  const filename = `給与明細_${payslip.helperName}_${payslip.year}年${payslip.month}月.pdf`;
-  const blob = await generatePdfFromElement(element, filename);
+  const modeSuffix = mode === 'payslip' ? '_明細' : mode === 'attendance' ? '_勤怠' : '';
+  const filename = `給与明細_${payslip.helperName}_${payslip.year}年${payslip.month}月${modeSuffix}.pdf`;
+  const blob = await generatePdfFromElement(element, filename, mode);
 
   // ダウンロード
   const url = URL.createObjectURL(blob);
@@ -491,13 +509,15 @@ export async function downloadBulkPayslipPdf(
   payslipElements: { element: HTMLElement; payslip: Payslip }[],
   year: number,
   month: number,
-  onProgress?: (current: number, total: number) => void
+  onProgress?: (current: number, total: number) => void,
+  mode: 'all' | 'payslip' | 'attendance' = 'all'
 ): Promise<void> {
   if (payslipElements.length === 0) {
     throw new Error('ダウンロードする給与明細がありません');
   }
 
   let pdf: jsPDF | null = null;
+
 
   for (let i = 0; i < payslipElements.length; i++) {
     const { element, payslip } = payslipElements[i];
@@ -510,7 +530,7 @@ export async function downloadBulkPayslipPdf(
     }
 
     // 既存のpdfオブジェクトにページを追加していく
-    pdf = await addPagesToPdf(pdf, element, token);
+    pdf = await addPagesToPdf(pdf, element, token, mode);
 
     // 要素のマーク削除
     element.removeAttribute('data-pdf-capture');
