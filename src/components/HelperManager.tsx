@@ -456,6 +456,14 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
   }, [baseUrl]);
 
   const handleSave = useCallback(async () => {
+    // 異常なデータ消失を防ぐガード機能
+    const activeHelpers = localHelpers.filter(h => !h.deleted);
+    if (activeHelpers.length === 0 && helpers.length > 0) {
+      if (!confirm('【警告】有効なヘルパーが0人です（元のデータは' + helpers.length + '人）。このまま保存するとデータが消えてしまう可能性があります。保存を中止しますか？')) {
+        return;
+      }
+    }
+
     setIsSaving(true);
     try {
       await onUpdate(localHelpers);

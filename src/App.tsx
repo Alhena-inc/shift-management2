@@ -16,10 +16,18 @@ import RangeSelectionDemo from './pages/RangeSelectionDemo';
 import { helpers as initialHelpers } from './data/mockData';
 import { SERVICE_CONFIG } from './types';
 import type { Helper, Shift } from './types';
-import { saveHelpers, loadHelpers, loadShiftsForMonth, subscribeToShiftsForMonth, subscribeToHelpers } from './services/firestoreService';
+import {
+  saveHelpers,
+  loadHelpers,
+  loadShiftsForMonth,
+  subscribeToShiftsForMonth,
+  subscribeToHelpers,
+  backupToFirebase // 追加
+} from './services/firestoreService';
 import { cleanupDuplicateShifts } from './utils/cleanupDuplicateShifts';
 import { testFirebaseConnection } from './lib/firebase';
 import { reflectShiftsToNextMonth } from './utils/shiftReflection';
+import { backupToSupabase } from './services/supabaseClient';
 
 function App() {
   // PWA自動リダイレクトを削除（管理者も全体シフトにアクセス可能に）
@@ -315,6 +323,57 @@ function App() {
     setCurrentView('salary');
   }, [currentYear, currentMonth]);
 
+  // 手動でSupabaseにバックアップを送信
+  const handleManualBackup = useCallback(async () => {
+    if (!confirm('現在の全ヘルパー情報と今月のシフト情報をバックアップしますか？')) {
+      return;
+    }
+
+    let results = { firebase: false, supabase: false };
+    let errors: string[] = [];
+
+    try {
+      // 1. Firebase内部バックアップ
+      try {
+        await backupToFirebase('helpers', helpers, '手動実行時の内部バックアップ');
+        await backupToFirebase('shifts', shifts, `${currentYear}年${currentMonth}月の手動内部バックアップ`);
+        results.firebase = true;
+      } catch (err: any) {
+        console.error('Firebase Backup Error:', err);
+        errors.push(`Firebase: ${err.message || '不明なエラー'}`);
+      }
+
+      // 2. Supabaseバックアップ
+      try {
+        const resH = await backupToSupabase('helpers', helpers, '手動実行時のバックアップ');
+        const resS = await backupToSupabase('shifts', shifts, `${currentYear}年${currentMonth}月の手動バックアップ`);
+        if (resH.success && resS.success) {
+          results.supabase = true;
+        } else {
+          errors.push(`Supabase: ${resH.error?.message || resS.error?.message || '不明なエラー'}`);
+        }
+      } catch (err: any) {
+        console.error('Supabase Backup Error:', err);
+        errors.push(`Supabase: ${err.message || '不明なエラー'}`);
+      }
+
+      if (results.firebase || results.supabase) {
+        let msg = '✅ バックアップ結果:\n';
+        msg += `・Firebase: ${results.firebase ? '成功' : '失敗'}\n`;
+        msg += `・Supabase: ${results.supabase ? '成功' : '失敗'}\n`;
+        if (errors.length > 0) {
+          msg += `\n【一部エラー】:\n${errors.join('\n')}`;
+        }
+        alert(msg);
+      } else {
+        alert('❌ 全てのバックアップに失敗しました。\n\n詳細:\n' + errors.join('\n'));
+      }
+    } catch (error: any) {
+      console.error('Fatal backup error:', error);
+      alert('❌ 予期せぬエラーが発生しました：' + (error.message || 'Unknown'));
+    }
+  }, [helpers, shifts, currentYear, currentMonth]);
+
   // その他のボタンハンドラー
   const handleOpenHelperManager = useCallback(() => setCurrentView('addHelper'), []);
   const handleOpenExpenseModal = useCallback(() => setIsExpenseModalOpen(true), []);
@@ -459,6 +518,13 @@ function App() {
               title="当月のケア内容を翌月の同じ曜日にコピーします"
             >
               📋 翌月へ反映
+            </button>
+            <button
+              onClick={handleManualBackup}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+              title="現在のデータをSupabaseに手動でバックアップします"
+            >
+              ☁️ Supabaseに保存
             </button>
             <button
               onClick={handleOpenCareContentDeleter}

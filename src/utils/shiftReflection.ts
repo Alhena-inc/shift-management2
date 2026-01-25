@@ -1,11 +1,10 @@
 import { groupByWeek } from './dateUtils';
 import { loadShiftsForMonth, saveShiftsForMonth } from '../services/firestoreService';
 import type { Shift } from '../types';
-import { calculateTimeDuration } from './timeCalculations';
 import { calculateShiftPay } from './salaryCalculations';
 
-// 反映から除外するサービス種別
-const EXCLUDED_SERVICE_TYPES = ['yotei', 'kaigi', 'yasumi_kibou', 'shitei_kyuu', 'other'];
+// 反映から除外するサービス種別（事務系・予定系を全て除外）
+const EXCLUDED_SERVICE_TYPES = ['yotei', 'kaigi', 'yasumi_kibou', 'shitei_kyuu', 'other', 'jimu', 'eigyo'];
 
 /**
  * 今月のケア内容を翌月へ反映させる
@@ -50,6 +49,7 @@ export const reflectShiftsToNextMonth = async (
         const shiftsToSave: Shift[] = [];
         sourceShifts.forEach(sourceShift => {
             // 除外するサービス種別はスキップ
+            // (eラーニング等の事務・予定関連もこれで除外される)
             if (EXCLUDED_SERVICE_TYPES.includes(sourceShift.serviceType)) {
                 return;
             }
@@ -67,39 +67,28 @@ export const reflectShiftsToNextMonth = async (
                 // IDは helperId-date-rowIndex の形式に合わせて構築
                 const newShiftId = `shift-${sourceShift.helperId}-${targetDate}-${sourceShift.rowIndex}`;
 
-                // キャンセル状態を解除し、必要に応じて時間を復元
-                let duration = sourceShift.duration;
-                let startTime = sourceShift.startTime;
-                let endTime = sourceShift.endTime;
-
-                // もし「時間削除キャンセル」などで duration が 0 になっている場合、
-                // startTime-endTime から duration を再計算する
-                if (duration === 0 && startTime && endTime) {
-                    const timeRange = `${startTime}-${endTime}`;
-                    const calculatedDuration = calculateTimeDuration(timeRange);
-                    if (calculatedDuration) {
-                        duration = parseFloat(calculatedDuration);
-                    }
-                }
-
+                // キャンセル状態を解除し、元の時間を復元
                 const nextShift: Shift = {
                     ...sourceShift,
                     id: newShiftId,
                     date: targetDate,
-                    duration,
-                    startTime,
-                    endTime,
                     // キャンセル状態は初期化（反映先では有効にする）
                     cancelStatus: undefined,
                     canceledAt: undefined,
                     updatedAt: new Date().toISOString()
                 } as any;
 
-                // 給与計算を再適用
+                // 給与・時間計算を再適用（ここでキャンセルにより失われた時間も復元される）
                 if (nextShift.startTime && nextShift.endTime) {
                     const timeRange = `${nextShift.startTime}-${nextShift.endTime}`;
                     const payCalculation = calculateShiftPay(nextShift.serviceType, timeRange, nextShift.date);
+
+                    // 給与計算結果をマージ
                     Object.assign(nextShift, payCalculation);
+
+                    // ★重要: duration も計算後の合計時間に同期させる
+                    // これにより、キャンセルで 0 になっていた場合も反映先で表示されるようになる
+                    nextShift.duration = payCalculation.regularHours + payCalculation.nightHours;
                 }
 
                 shiftsToSave.push(nextShift);

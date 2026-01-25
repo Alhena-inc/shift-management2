@@ -16,10 +16,36 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type { Helper, Shift } from '../types';
+import { backupToSupabase } from './supabaseClient';
 
 // コレクション名
 const HELPERS_COLLECTION = 'helpers';
 const SHIFTS_COLLECTION = 'shifts';
+const BACKUPS_COLLECTION = 'backups';
+
+export const backupToFirebase = async (type: 'helpers' | 'shifts' | 'all', data: any, description?: string): Promise<void> => {
+  try {
+    console.log(`🚀 Firebase内部バックアップ開始: ${type}`);
+    const backupId = `${type}-${Date.now()}`;
+    const backupRef = doc(db, BACKUPS_COLLECTION, backupId);
+
+    // すでにファイル内にあるサニタイズ関数を使用して、Firestoreが嫌がるundefined等を除去する
+    const sanitizedData = sanitizeForFirestore(data);
+
+    await setDoc(backupRef, {
+      type,
+      data: sanitizedData,
+      createdAt: Timestamp.now(),
+      description: description || '自動バックアップ'
+    });
+
+    console.log(`📦 Firebase内部バックアップ作成完了: ${type}`);
+  } catch (error) {
+    console.error('❌ Firebase内部バックアップ失敗:', error);
+    // UI側に通知したいため、あえてエラーを再スローする（App.tsxのcatchで捕まえる）
+    throw error;
+  }
+};
 
 /**
  * Firestore用にデータをサニタイズ（undefinedを除去）
@@ -89,12 +115,11 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
       // データを準備
       const dataToSave = {
         ...helper,
-        // insurancesが未定義の場合は空配列にする（Firestoreに確実に保存）
         insurances: helper.insurances || [],
-        // standardRemunerationとstandardMonthlyRemunerationの両方を同期させて保存
         standardRemuneration: helper.standardRemuneration ?? (helper as any).standardMonthlyRemuneration ?? 0,
         standardMonthlyRemuneration: helper.standardRemuneration ?? (helper as any).standardMonthlyRemuneration ?? 0,
-        updatedAt: Timestamp.now()
+        updatedAt: Timestamp.now(),
+        backupId: `${Date.now()}` // 保存時点のユニークなマーカー
       };
 
       // Firestore用にサニタイズ（undefinedを再帰的に除去）
@@ -118,6 +143,13 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
     // 削除は明示的に deleteHelper を呼び出す必要がある
 
     await batch.commit();
+
+    // ★ 最新の状態を「履歴」として追加保存（呼び出しなしの投げ込み）
+    // 既存のバックアップを消すことは絶対にありません。
+    backupToFirebase('helpers', helpers, 'ヘルパー情報保存時の最新スナップショット');
+
+    // ★ Supabaseに自動バックアップを送信
+    backupToSupabase('helpers', helpers, 'ヘルパー情報の一括保存時のバックアップ');
   } catch (error) {
     console.error('ヘルパー保存エラー:', error);
     throw error;
@@ -231,6 +263,13 @@ export const saveShiftsForMonth = async (_year: number, _month: number, shifts: 
 
     await batch.commit();
     console.log(`✅ Firestore batch.commit()完了 - ${shifts.length}件のシフトを保存しました`);
+
+    // ★ Firebase内部にバックアップを作成
+    backupToFirebase('shifts', shifts, `${_year}年${_month}月のシフト保存時の内部バックアップ`);
+
+    // ★ Supabaseに自動バックアップを送信
+    backupToSupabase('shifts', shifts, `${_year}年${_month}月のシフト保存時のバックアップ`);
+
     console.log('保存したシフトID:', shifts.map(s => s.id).join(', '));
   } catch (error) {
     console.error('❌ シフト保存エラー:', error);
