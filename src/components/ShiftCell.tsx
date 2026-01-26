@@ -185,7 +185,7 @@ export const ShiftCell = memo(({
         boxSizing: 'border-box',
         border: '1px solid #374151',
         borderRight: isLastHelper ? '2px solid #000000' : '1px solid #374151',
-        cursor: isDragging ? 'grabbing' : 'grab',
+        cursor: 'pointer',
         opacity: isDragging ? 0.5 : 1,
         backgroundColor,
         contain: 'strict' as any
@@ -202,8 +202,57 @@ export const ShiftCell = memo(({
             className="editable-cell"
             contentEditable={isEditing && editingLine === lineIndex}
             suppressContentEditableWarning
-            onClick={() => handleCellClick(lineIndex)}
+            onClick={(e) => {
+              e.stopPropagation();
+              // シングルクリックでは選択のみ
+            }}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              handleCellClick(lineIndex);
+
+              const target = e.currentTarget as HTMLElement;
+              setTimeout(() => {
+                target.focus();
+                // キャレットを末尾に移動
+                const range = document.createRange();
+                const sel = window.getSelection();
+                if (sel) {
+                  range.selectNodeContents(target);
+                  range.collapse(false);
+                  sel.removeAllRanges();
+                  sel.addRange(range);
+                }
+              }, 0);
+            }}
             onBlur={(e) => handleBlur(lineIndex, e.currentTarget.textContent || '')}
+            onFocus={(e) => {
+              // 選択状態でもキャレットを出さないための制御
+              // 編集モードでない場合は contentEditable="false" なのでそもそも出ないはずだが念のため
+            }}
+            onKeyDown={(e) => {
+              const isCheckingEditing = isEditing && editingLine === lineIndex;
+
+              if (isCheckingEditing) {
+                if (e.key === 'Backspace' || e.key === 'Delete') {
+                  e.stopPropagation();
+                  return;
+                }
+              } else {
+                if (e.key === 'Backspace' || e.key === 'Delete') {
+                  e.preventDefault();
+                  // 内容を消去して保存
+                  handleBlur(lineIndex, '');
+                  return;
+                }
+
+                // 文字入力で編集開始
+                if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                  // handleCellClick は setIsEditing(true) を呼ぶ
+                  handleCellClick(lineIndex);
+                  // ブラウザのデフォルト入力（文字が入る）のを許可するため preventDefault はしない
+                }
+              }
+            }}
             style={{
               flex: 1,
               padding: '2px 4px',
@@ -211,7 +260,8 @@ export const ShiftCell = memo(({
               lineHeight: '1.2',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap'
+              whiteSpace: 'nowrap',
+              cursor: 'pointer'
             }}
           >
             {text}

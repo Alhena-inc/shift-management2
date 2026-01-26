@@ -85,11 +85,148 @@ table {
   outline: none;
 }
 
-/* 選択された1行を強調（横長の青枠で表示） */
-.editable-cell.line-selected {
-  outline: 2px solid #2563eb !important;
-  outline-offset: -2px !important;
+/* 常に手の形を強制 */
+.editable-cell {
+  cursor: pointer !important;
+}
+
+/* === Googleスプレッドシート風 選択枠 === */
+
+/* 選択されたセル（行）のベーススタイル */
+.line-selected,
+.editable-cell-wrapper:focus-within {
+  position: relative;
   z-index: 5;
+}
+
+/* 青い枠線（border風） */
+.line-selected::after,
+.editable-cell-wrapper:focus-within::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 2px solid #1a73e8;
+  /* Googleブルー */
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* === Spreadsheet UI Behavior (Refined) === */
+
+/* セルのベース構造 */
+.editable-cell-wrapper {
+  position: relative;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  cursor: pointer !important;
+  /* 常に手の形 */
+}
+
+/* 共通フォント設定（ズレ防止・視認性向上） */
+.cell-display,
+.cell-input {
+  font-family: inherit !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  /* ★さらに太く(Medium -> Bold) */
+  color: #000000 !important;
+  /* ★真っ黒に */
+  text-align: center !important;
+  box-sizing: border-box !important;
+  cursor: pointer !important;
+}
+
+/* 表示用Div */
+.cell-display {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  z-index: 5;
+}
+
+/* 入力用Input */
+.cell-input {
+  position: absolute;
+  border: none !important;
+  outline: none !important;
+  background-color: transparent !important;
+  /* ★background ではなく background-color に変更 */
+  padding: 0 !important;
+  margin: 0 !important;
+  z-index: 10;
+}
+
+/* --- [1] Ready Mode (表示用Divが見える) --- */
+.editable-cell-wrapper {
+  outline: none !important;
+  /* ★ブラウザのオレンジ/青枠を消す */
+}
+
+.editable-cell-wrapper .cell-display {
+  display: flex;
+  opacity: 1;
+}
+
+.editable-cell-wrapper .cell-input {
+  display: none;
+  /* 通常時は存在させない */
+}
+
+/* --- [2] Edit Mode (入力用Inputに差し替え) --- */
+.editable-cell-wrapper.is-editing-mode .cell-display {
+  display: none !important;
+}
+
+.editable-cell-wrapper.is-editing-mode .cell-input {
+  display: block !important;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background-color: transparent !important;
+  /* ★白にするのをやめて透明にし、背面の背景色を見せる */
+  color: black !important;
+  caret-color: black !important;
+  padding: 0 4px !important;
+  border: none !important;
+  outline: none !important;
+  z-index: 20;
+}
+
+/* ★ 青い選択枠 (シャープな一層のみ) */
+.line-selected::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border: 2px solid #2563eb !important;
+  /* 濃い青一本 */
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* 編集中のセルは確実に表示 */
+.editable-cell[contenteditable="true"] {
+  outline: none;
+}
+
+/* 二重枠防止 */
+.editable-cell-wrapper input,
+.line-selected input {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
 }
 
 /* 最後のライン（line-3）は下線なし */
@@ -108,11 +245,8 @@ table {
   border-bottom: none;
 }
 
-/* 選択状態のスタイル（JavaScriptで管理） - レイアウト再計算なし */
-/* ★ editable-cellには青枠を設定しない（td要素にのみ設定） */
+/* 選択状態のスタイル */
 .editable-cell.cell-selected {
-  /* box-shadow と outline は削除（td要素で設定するため） */
-  /* 下線は維持（4行区切りを保持） */
   border-bottom: 1px solid #e5e7eb;
 }
 
@@ -120,111 +254,80 @@ table {
   border-bottom: none;
 }
 
-/* 休み希望セル用のスタイル（背景色を確実に維持） */
+/* 休み希望セル用のスタイル */
 .editable-cell[data-dayoff="true"] {
   background-color: #ffcccc !important;
 }
 
-/* 親要素がクリックされても休み希望の背景色を維持 */
 td[data-cell-key] .editable-cell[data-dayoff="true"] {
   background-color: #ffcccc !important;
 }
 
-/* 複数選択状態のスタイル - GPU最適化 */
+/* 複数選択状態のスタイル */
 .shift-cell-multi-selected {
-  will-change: outline-color;
   outline: 2px solid #3b82f6 !important;
   outline-offset: -2px !important;
-  /* GPU加速を有効化 */
-  transform: translateZ(0);
-  backface-visibility: hidden;
 }
 
-/* テーブル行の高さを固定（ケア削除時も行が消えないようにする） */
+/* テーブル行の高さを固定 */
 table {
   border-collapse: collapse;
 }
 
 table tbody tr {
   height: 60px;
-  min-height: 60px;
 }
 
 table tbody td {
   height: 60px;
-  min-height: 60px;
   vertical-align: top;
-  box-sizing: border-box;
 }
 
-/* シフト表のセルサイズを強制（横長の長方形） */
 table tbody td[data-cell-key] {
   width: 80px !important;
   min-width: 80px !important;
   max-width: 80px !important;
   height: 60px !important;
-  min-height: 60px !important;
-  max-height: 60px !important;
 }
 
-/* 空のセルも高さを保持 */
-table tbody td:empty {
-  height: 60px;
-  min-height: 60px;
-}
-
-/* ===== スプレッドシート風 範囲選択スタイル ===== */
-
-/* 範囲選択中のセル - 背景色 */
+/* スプレッドシート風 範囲選択スタイル */
 .range-selected {
   background-color: rgba(66, 133, 244, 0.15) !important;
 }
 
-/* 範囲選択 - 外周ボーダー（上） */
 .range-border-top {
   border-top: 2px solid #4285F4 !important;
 }
 
-/* 範囲選択 - 外周ボーダー（下） */
 .range-border-bottom {
   border-bottom: 2px solid #4285F4 !important;
 }
 
-/* 範囲選択 - 外周ボーダー（左） */
 .range-border-left {
   border-left: 2px solid #4285F4 !important;
 }
 
-/* 範囲選択 - 外周ボーダー（右） */
 .range-border-right {
   border-right: 2px solid #4285F4 !important;
 }
 
-/* 範囲選択時のカーソル */
 .range-selectable {
-  cursor: cell;
+  cursor: pointer;
   user-select: none;
-  -webkit-user-select: none;
 }
 
-/* 範囲選択中（ドラッグ中）のカーソル */
 .range-selecting {
-  cursor: crosshair;
+  cursor: pointer;
 }
 
-/* 選択オーバーレイ - アニメーションなし（即座に反映） */
 .selection-overlay {
-  transition: none;
   pointer-events: none;
 }
 
-/* 範囲選択対象のテーブルセル */
 .range-cell {
   position: relative;
-  transition: background-color 0.05s ease;
 }
 
-/* 範囲選択で選択中のセル - 内部ボーダーを非表示 */
 .range-selected.range-inner {
   border-color: transparent !important;
 }

@@ -13,6 +13,7 @@ import HelperManagementPage from './pages/HelperManagementPage';
 import HelperDetailPage from './pages/HelperDetailPage';
 import PayslipDemo from './pages/PayslipDemo';
 import RangeSelectionDemo from './pages/RangeSelectionDemo';
+import ShiftGridPage from './pages/ShiftGridPage';
 import { helpers as initialHelpers } from './data/mockData';
 import { SERVICE_CONFIG } from './types';
 import type { Helper, Shift } from './types';
@@ -30,8 +31,6 @@ import { reflectShiftsToNextMonth } from './utils/shiftReflection';
 import { backupToSupabase } from './services/supabaseClient';
 
 function App() {
-  // PWA自動リダイレクトを削除（管理者も全体シフトにアクセス可能に）
-
   // URLパスとクエリパラメータをチェック
   const path = window.location.pathname;
   const urlParams = new URLSearchParams(window.location.search);
@@ -111,6 +110,11 @@ function App() {
   // /range-selection-demo の形式の場合（範囲選択デモ）
   if (path === '/range-selection-demo' || path === '/range-selection-demo/') {
     return <RangeSelectionDemo />;
+  }
+
+  // /shift-grid の形式の場合
+  if (path === '/shift-grid' || path === '/shift-grid/') {
+    return <ShiftGridPage />;
   }
 
   // /payslip の形式の場合（給与明細一覧）
@@ -350,7 +354,7 @@ function App() {
         if (resH.success && resS.success) {
           results.supabase = true;
         } else {
-          errors.push(`Supabase: ${resH.error?.message || resS.error?.message || '不明なエラー'}`);
+          errors.push(`Supabase: ${(resH.error as any)?.message || (resS.error as any)?.message || '不明なエラー'}`);
         }
       } catch (err: any) {
         console.error('Supabase Backup Error:', err);

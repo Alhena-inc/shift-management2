@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import type { Helper, Shift } from '../types';
 import { SERVICE_CONFIG } from '../types';
 import { PayslipListPage } from './payslip/PayslipListPage';
+import { calculateNightHours, calculateRegularHours } from '../utils/timeCalculations';
 import { calculateShiftPay } from '../utils/salaryCalculations';
 
 interface Props {
@@ -10,61 +11,6 @@ interface Props {
   year: number;
   month: number;
   onClose: () => void;
-}
-
-// 深夜時間帯（22時～翌朝8時）の時間数を計算する関数
-function calculateNightHours(timeRange: string): number {
-  const match = timeRange.match(/(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})/);
-  if (!match) return 0;
-
-  const [, startHour, startMin, endHour, endMin] = match;
-  let start = parseInt(startHour) * 60 + parseInt(startMin);
-  let end = parseInt(endHour) * 60 + parseInt(endMin);
-
-  if (end <= start) {
-    end += 24 * 60;
-  }
-
-  const nightStart = 22 * 60;
-  const nightEnd = (24 + 8) * 60;
-
-  const overlapStart = Math.max(start, nightStart);
-  const overlapEnd = Math.min(end, nightEnd);
-
-  if (overlapStart < overlapEnd) {
-    return (overlapEnd - overlapStart) / 60;
-  }
-
-  return 0;
-}
-
-// 通常時間帯の時間数を計算する関数
-function calculateRegularHours(timeRange: string): number {
-  const match = timeRange.match(/(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})/);
-  if (!match) return 0;
-
-  const [, startHour, startMin, endHour, endMin] = match;
-  let start = parseInt(startHour) * 60 + parseInt(startMin);
-  let end = parseInt(endHour) * 60 + parseInt(endMin);
-
-  if (end <= start) {
-    end += 24 * 60;
-  }
-
-  const nightStart = 22 * 60;
-  const nightEnd = (24 + 8) * 60;
-
-  let regularMinutes = 0;
-
-  if (start < nightStart) {
-    regularMinutes += Math.min(end, nightStart) - start;
-  }
-
-  if (end > nightEnd) {
-    regularMinutes += end - nightEnd;
-  }
-
-  return regularMinutes / 60;
 }
 
 export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Props) {
