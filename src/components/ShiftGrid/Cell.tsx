@@ -117,14 +117,14 @@ export const Cell: React.FC<CellProps> = ({
                 />
             )}
 
-            {/* 選択枠 (2px青枠) */}
+            {/* 選択枠 (統一 2px青枠) */}
             {isSelected && (
                 <div
-                    className="absolute inset-x-0 inset-y-0 pointer-events-none border-2 border-blue-600 z-30"
+                    className="absolute inset-x-0 inset-y-0 pointer-events-none border-[2px] border-[#0044ff] z-50"
                     style={{ margin: '-1px' }}
                 >
-                    {/* オートフィルハンドル */}
-                    <div className="absolute bottom-[-4px] right-[-4px] w-2 h-2 bg-blue-600 border border-white cursor-crosshair" />
+                    {/* オートフィルハンドル (統一サイズ) */}
+                    <div className="absolute bottom-[-6px] right-[-6px] w-3 h-3 bg-[#0044ff] border border-white cursor-crosshair" />
                 </div>
             )}
         </div>

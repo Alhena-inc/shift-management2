@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { ShiftTable } from './components/ShiftTable';
 import { HelperManager } from './components/HelperManager';
 import { SalaryCalculation } from './components/SalaryCalculation';
@@ -28,7 +28,7 @@ import {
 import { cleanupDuplicateShifts } from './utils/cleanupDuplicateShifts';
 import { testFirebaseConnection } from './lib/firebase';
 import { reflectShiftsToNextMonth } from './utils/shiftReflection';
-import { backupToSupabase } from './services/supabaseClient';
+
 
 function App() {
   // URLパスとクエリパラメータをチェック
@@ -201,10 +201,30 @@ function App() {
     }
   }, []);
 
-  const handleUpdateShifts = useCallback((updatedShifts: Shift[]) => {
-    // ローカルステートを更新（画面の再レンダリング用）
-    // 注：保存は各コンポーネント（ShiftTable.tsx等）で個別に行われるため、ここでは保存しない
-    setShifts(updatedShifts);
+  // setShiftsをデバウンスして再レンダリングを抑制
+  const shiftsUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const latestShiftsRef = useRef<Shift[]>(shifts);
+
+  // shiftsステートが変わったらRefも同期
+  useEffect(() => {
+    latestShiftsRef.current = shifts;
+  }, [shifts]);
+
+  const handleUpdateShifts = useCallback((updatedShifts: Shift[], debounce: boolean = false) => {
+    latestShiftsRef.current = updatedShifts;
+
+    if (debounce) {
+      shiftsUpdateTimerRef.current = setTimeout(() => {
+        setShifts(latestShiftsRef.current);
+        shiftsUpdateTimerRef.current = null;
+      }, 100); // 100ms待機 (応答性向上のため短縮)
+    } else {
+      if (shiftsUpdateTimerRef.current) {
+        clearTimeout(shiftsUpdateTimerRef.current);
+        shiftsUpdateTimerRef.current = null;
+      }
+      setShifts(updatedShifts);
+    }
   }, []);
 
   // 重複シフトをクリーンアップ
@@ -327,54 +347,19 @@ function App() {
     setCurrentView('salary');
   }, [currentYear, currentMonth]);
 
-  // 手動でSupabaseにバックアップを送信
+  // 手動でFirebaseにバックアップを送信
   const handleManualBackup = useCallback(async () => {
-    if (!confirm('現在の全ヘルパー情報と今月のシフト情報をバックアップしますか？')) {
+    if (!confirm('現在の全ヘルパー情報と今月のシフト情報を内部バックアップしますか？')) {
       return;
     }
 
-    let results = { firebase: false, supabase: false };
-    let errors: string[] = [];
-
     try {
-      // 1. Firebase内部バックアップ
-      try {
-        await backupToFirebase('helpers', helpers, '手動実行時の内部バックアップ');
-        await backupToFirebase('shifts', shifts, `${currentYear}年${currentMonth}月の手動内部バックアップ`);
-        results.firebase = true;
-      } catch (err: any) {
-        console.error('Firebase Backup Error:', err);
-        errors.push(`Firebase: ${err.message || '不明なエラー'}`);
-      }
-
-      // 2. Supabaseバックアップ
-      try {
-        const resH = await backupToSupabase('helpers', helpers, '手動実行時のバックアップ');
-        const resS = await backupToSupabase('shifts', shifts, `${currentYear}年${currentMonth}月の手動バックアップ`);
-        if (resH.success && resS.success) {
-          results.supabase = true;
-        } else {
-          errors.push(`Supabase: ${(resH.error as any)?.message || (resS.error as any)?.message || '不明なエラー'}`);
-        }
-      } catch (err: any) {
-        console.error('Supabase Backup Error:', err);
-        errors.push(`Supabase: ${err.message || '不明なエラー'}`);
-      }
-
-      if (results.firebase || results.supabase) {
-        let msg = '✅ バックアップ結果:\n';
-        msg += `・Firebase: ${results.firebase ? '成功' : '失敗'}\n`;
-        msg += `・Supabase: ${results.supabase ? '成功' : '失敗'}\n`;
-        if (errors.length > 0) {
-          msg += `\n【一部エラー】:\n${errors.join('\n')}`;
-        }
-        alert(msg);
-      } else {
-        alert('❌ 全てのバックアップに失敗しました。\n\n詳細:\n' + errors.join('\n'));
-      }
+      await backupToFirebase('helpers', helpers, '手動実行時の内部バックアップ');
+      await backupToFirebase('shifts', shifts, `${currentYear}年${currentMonth}月の手動内部バックアップ`);
+      alert('✅ 内部バックアップを保存しました。');
     } catch (error: any) {
       console.error('Fatal backup error:', error);
-      alert('❌ 予期せぬエラーが発生しました：' + (error.message || 'Unknown'));
+      alert('❌ バックアップに失敗しました：' + (error.message || 'Unknown'));
     }
   }, [helpers, shifts, currentYear, currentMonth]);
 
@@ -526,9 +511,9 @@ function App() {
             <button
               onClick={handleManualBackup}
               className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
-              title="現在のデータをSupabaseに手動でバックアップします"
+              title="現在のデータを内部バックアップします"
             >
-              ☁️ Supabaseに保存
+              ☁️ 内部バックアップ
             </button>
             <button
               onClick={handleOpenCareContentDeleter}

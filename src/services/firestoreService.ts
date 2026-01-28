@@ -16,7 +16,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type { Helper, Shift } from '../types';
-import { backupToSupabase } from './supabaseClient';
+
 
 // コレクション名
 const HELPERS_COLLECTION = 'helpers';
@@ -25,7 +25,7 @@ const BACKUPS_COLLECTION = 'backups';
 
 export const backupToFirebase = async (type: 'helpers' | 'shifts' | 'all', data: any, description?: string): Promise<void> => {
   try {
-    console.log(`🚀 Firebase内部バックアップ開始: ${type}`);
+
     const backupId = `${type}-${Date.now()}`;
     const backupRef = doc(db, BACKUPS_COLLECTION, backupId);
 
@@ -39,7 +39,7 @@ export const backupToFirebase = async (type: 'helpers' | 'shifts' | 'all', data:
       description: description || '自動バックアップ'
     });
 
-    console.log(`📦 Firebase内部バックアップ作成完了: ${type}`);
+
   } catch (error) {
     console.error('❌ Firebase内部バックアップ失敗:', error);
     // UI側に通知したいため、あえてエラーを再スローする（App.tsxのcatchで捕まえる）
@@ -82,7 +82,7 @@ function sanitizeForFirestore(obj: any): any {
     for (const [key, value] of Object.entries(obj)) {
       // undefinedは完全に除外
       if (value === undefined) {
-        console.log(`  🗑️ undefinedフィールドを除外: ${key}`);
+
         continue;
       }
 
@@ -131,9 +131,9 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
         console.error(`⚠️ サニタイズ後もundefinedが残っています (ID: ${helper.id}):`, sanitizedData);
       }
 
-      console.log(`💾 Firestoreに保存するデータ (ID: ${helper.id}):`, sanitizedData);
-      console.log(`📋 insurancesフィールド:`, sanitizedData.insurances);
-      console.log(`💰 標準報酬月額:`, sanitizedData.standardRemuneration);
+      // console.log(`💾 Firestoreに保存するデータ (ID: ${helper.id}):`, sanitizedData);
+      // console.log(`📋 insurancesフィールド:`, sanitizedData.insurances);
+      // console.log(`💰 標準報酬月額:`, sanitizedData.standardRemuneration);
 
       batch.set(helperRef, sanitizedData);
     });
@@ -148,8 +148,7 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
     // 既存のバックアップを消すことは絶対にありません。
     backupToFirebase('helpers', helpers, 'ヘルパー情報保存時の最新スナップショット');
 
-    // ★ Supabaseに自動バックアップを送信
-    backupToSupabase('helpers', helpers, 'ヘルパー情報の一括保存時のバックアップ');
+
   } catch (error) {
     console.error('ヘルパー保存エラー:', error);
     throw error;
@@ -161,7 +160,7 @@ export const deleteHelper = async (helperId: string): Promise<void> => {
   try {
     const helperRef = doc(db, HELPERS_COLLECTION, helperId);
     await deleteDoc(helperRef);
-    console.log(`ヘルパーを削除しました: ${helperId}`);
+    // console.log(`ヘルパーを削除しました: ${helperId}`);
   } catch (error) {
     console.error('ヘルパー削除エラー:', error);
     throw error;
@@ -190,7 +189,7 @@ export const softDeleteHelper = async (helperId: string): Promise<void> => {
       deletedAt: Timestamp.now(),
       updatedAt: Timestamp.now()
     });
-    console.log(`ヘルパーを論理削除しました: ${helperId}`);
+    // console.log(`ヘルパーを論理削除しました: ${helperId}`);
   } catch (error) {
     console.error('ヘルパー論理削除エラー:', error);
     throw error;
@@ -200,11 +199,7 @@ export const softDeleteHelper = async (helperId: string): Promise<void> => {
 // シフトを保存（月ごと）
 export const saveShiftsForMonth = async (_year: number, _month: number, shifts: Shift[]): Promise<void> => {
   try {
-    console.log('📝 saveShiftsForMonth開始:', {
-      shiftsCount: shifts.length,
-      shiftIds: shifts.map(s => s.id),
-      firstShift: shifts[0]
-    });
+
 
     const batch = writeBatch(db);
 
@@ -213,13 +208,7 @@ export const saveShiftsForMonth = async (_year: number, _month: number, shifts: 
 
       // キャンセル関連フィールドがある場合のみログ
       if ('cancelStatus' in shift || 'canceledAt' in shift) {
-        console.log('📦 シフト保存準備（キャンセル関連）:', {
-          id: shift.id,
-          cancelStatusExists: 'cancelStatus' in shift,
-          cancelStatusValue: shift.cancelStatus,
-          canceledAtExists: 'canceledAt' in shift,
-          canceledAtValue: shift.canceledAt
-        });
+
       }
 
       // データを準備（cancelStatusとcanceledAtがない場合は明示的に削除）
@@ -233,13 +222,7 @@ export const saveShiftsForMonth = async (_year: number, _month: number, shifts: 
 
       // キャンセル関連フィールドがある場合のみログ
       if ('cancelStatus' in shift || 'canceledAt' in shift) {
-        console.log('💾 シフト保存（キャンセル関連）:', {
-          id: shift.id,
-          clientName: shift.clientName,
-          cancelStatus: shift.cancelStatus,
-          canceledAt: shift.canceledAt,
-          deleted: shift.deleted
-        });
+
       }
 
       // cancelStatusとcanceledAtがundefinedの場合は、Firestoreからフィールドを削除する
@@ -262,15 +245,14 @@ export const saveShiftsForMonth = async (_year: number, _month: number, shifts: 
     });
 
     await batch.commit();
-    console.log(`✅ Firestore batch.commit()完了 - ${shifts.length}件のシフトを保存しました`);
+    // console.log(`✅ Firestore batch.commit()完了 - ${shifts.length}件のシフトを保存しました`);
 
     // ★ Firebase内部にバックアップを作成
     backupToFirebase('shifts', shifts, `${_year}年${_month}月のシフト保存時の内部バックアップ`);
 
-    // ★ Supabaseに自動バックアップを送信
-    backupToSupabase('shifts', shifts, `${_year}年${_month}月のシフト保存時のバックアップ`);
 
-    console.log('保存したシフトID:', shifts.map(s => s.id).join(', '));
+
+    // console.log('保存したシフトID:', shifts.map(s => s.id).join(', '));
   } catch (error) {
     console.error('❌ シフト保存エラー:', error);
     throw error;
@@ -354,15 +336,7 @@ export const loadShiftsForMonth = async (year: number, month: number): Promise<S
 
         // キャンセル状態のシフトをログ出力
         if (shift.cancelStatus) {
-          console.log('🔴 キャンセル済みシフトを読み込み:', {
-            id: shift.id,
-            date: shift.date,
-            helperId: shift.helperId,
-            clientName: shift.clientName,
-            cancelStatus: shift.cancelStatus,
-            canceledAt: shift.canceledAt,
-            rowIndex: shift.rowIndex
-          });
+
         }
 
         return shift;
@@ -371,13 +345,15 @@ export const loadShiftsForMonth = async (year: number, month: number): Promise<S
       .filter(shift => !shift.deleted);
 
     if (month === 12) {
-      console.log(`✅ 12月のシフトデータ読み込み: ${shifts.length}件 (${startDate} 〜 ${endDate})`);
+      // console.log(`✅ 12月のシフトデータ読み込み: ${shifts.length}件 (${startDate} 〜 ${endDate})`);
     }
 
     // キャンセル状態のシフト数をログ出力
     const canceledCount = shifts.filter(s => s.cancelStatus).length;
     if (canceledCount > 0) {
-      console.log(`🔴 キャンセル済みシフト: ${canceledCount}件を含む`);
+      if (canceledCount > 0) {
+        // console.log(`🔴 キャンセル済みシフト: ${canceledCount}件を含む`);
+      }
     }
 
     return shifts;
@@ -394,7 +370,7 @@ export const loadShiftsForThreeMonths = async (
   helperId?: string
 ): Promise<Shift[]> => {
   try {
-    console.log(`📥 3ヶ月分のシフトを取得開始: ${year}年${month}月を中心に`);
+    // console.log(`📥 3ヶ月分のシフトを取得開始: ${year}年${month}月を中心に`);
 
     // 前月・当月・翌月を計算
     const prevMonth = month === 1 ? 12 : month - 1;
@@ -417,6 +393,7 @@ export const loadShiftsForThreeMonths = async (
       allShifts = allShifts.filter(shift => shift.helperId === helperId);
     }
 
+    /*
     console.log(`✅ 3ヶ月分のシフト取得完了:`, {
       前月: prevShifts.length,
       当月: currentShifts.length,
@@ -424,6 +401,7 @@ export const loadShiftsForThreeMonths = async (
       合計: allShifts.length,
       フィルタ適用: helperId ? 'あり' : 'なし'
     });
+    */
 
     return allShifts;
   } catch (error) {
@@ -460,8 +438,8 @@ export const subscribeToShiftsForMonth = (
     const unsubscribe = onSnapshot(
       shiftsQuery,
       (querySnapshot) => {
-        console.log(`=== Firestore受信データ（${year}年${month}月） ===`);
-        console.log('受信ドキュメント数:', querySnapshot.docs.length);
+        // console.log(`=== Firestore受信データ（${year}年${month}月） ===`);
+        // console.log('受信ドキュメント数:', querySnapshot.docs.length);
 
         const allDocs = querySnapshot.docs.map(doc => {
           const data = doc.data();
@@ -471,6 +449,7 @@ export const subscribeToShiftsForMonth = (
           } as Shift;
         });
 
+        /*
         // 最初の3件を詳細表示
         allDocs.slice(0, 3).forEach((shift, index) => {
           console.log(`[${index + 1}] ID: ${shift.id}`);
@@ -480,11 +459,13 @@ export const subscribeToShiftsForMonth = (
           console.log(`    cancelStatus: ${shift.cancelStatus}`);
           console.log(`    deleted: ${shift.deleted}`);
         });
+        */
 
         const shifts = allDocs
           // 論理削除されていないデータのみフィルタリング
           .filter(shift => !shift.deleted);
 
+        /*
         console.log(`🔄 リアルタイム更新: ${year}年${month}月`, {
           collection: SHIFTS_COLLECTION,
           totalDocs: allDocs.length,
@@ -500,6 +481,7 @@ export const subscribeToShiftsForMonth = (
             deleted: s.deleted
           }))
         });
+        */
 
         onUpdate(shifts);
       },
@@ -520,13 +502,11 @@ export const deleteShift = async (shiftId: string): Promise<void> => {
   try {
     const shiftRef = doc(db, SHIFTS_COLLECTION, shiftId);
 
-    console.log(`🗑️ 削除対象のドキュメント: ${shiftId}`);
-    console.log(`📁 コレクション: ${SHIFTS_COLLECTION}`);
-    console.log(`🔗 ドキュメントパス: ${shiftRef.path}`);
+
 
     await deleteDoc(shiftRef);
-    console.log(`✅ Firestoreからドキュメントを削除しました: ${shiftId}`);
-    console.log(`✅ この削除は永続的です - ページをリロードしても復活しません`);
+    // console.log(`✅ Firestoreからドキュメントを削除しました: ${shiftId}`);
+    // console.log(`✅ この削除は永続的です - ページをリロードしても復活しません`);
   } catch (error) {
     console.error('❌ シフト削除エラー:', error);
     console.error('❌ 削除対象ID:', shiftId);
@@ -559,7 +539,7 @@ export const deleteShiftsForMonth = async (year: number, month: number): Promise
     });
 
     await batch.commit();
-    console.log(`${year}年${month}月のシフトを全て削除しました (${querySnapshot.size}件)`);
+    // console.log(`${year}年${month}月のシフトを全て削除しました (${querySnapshot.size}件)`);
   } catch (error) {
     console.error('月のシフト削除エラー:', error);
     throw error;
@@ -584,7 +564,7 @@ export const deleteShiftsForDate = async (date: string): Promise<void> => {
     });
 
     await batch.commit();
-    console.log(`${date}のシフトを全て削除しました (${querySnapshot.size}件)`);
+    // console.log(`${date}のシフトを全て削除しました (${querySnapshot.size}件)`);
   } catch (error) {
     console.error('日付のシフト削除エラー:', error);
     throw error;
@@ -601,7 +581,7 @@ export const softDeleteShift = async (shiftId: string, deletedBy?: string): Prom
       deletedBy: deletedBy || 'unknown',
       updatedAt: Timestamp.now()
     });
-    console.log(`シフトを論理削除しました: ${shiftId}`);
+    // console.log(`シフトを論理削除しました: ${shiftId}`);
   } catch (error) {
     console.error('シフト論理削除エラー:', error);
     throw error;
@@ -618,7 +598,7 @@ export const restoreShift = async (shiftId: string): Promise<void> => {
       deletedBy: null,
       updatedAt: Timestamp.now()
     });
-    console.log(`シフトを復元しました: ${shiftId}`);
+    // console.log(`シフトを復元しました: ${shiftId}`);
   } catch (error) {
     console.error('シフト復元エラー:', error);
     throw error;
@@ -635,7 +615,7 @@ export const clearCancelStatus = async (shiftId: string): Promise<void> => {
       canceledAt: deleteField(),
       updatedAt: Timestamp.now()
     });
-    console.log(`✅ キャンセル状態をクリアしました: ${shiftId}`);
+    // console.log(`✅ キャンセル状態をクリアしました: ${shiftId}`);
   } catch (error) {
     console.error('❌ キャンセル状態クリアエラー:', error);
     throw error;
@@ -662,7 +642,7 @@ export const loadDeletedShiftsForMonth = async (year: number, month: number): Pr
       id: doc.id
     } as Shift));
 
-    console.log(`${year}年${month}月の削除済みシフトを読み込みました (${deletedShifts.length}件)`);
+    // console.log(`${year}年${month}月の削除済みシフトを読み込みました (${deletedShifts.length}件)`);
     return deletedShifts;
   } catch (error) {
     console.error('削除済みシフト読み込みエラー:', error);
@@ -680,7 +660,7 @@ export const loadHelperByToken = async (token: string): Promise<Helper | null> =
 
     const querySnapshot = await getDocs(helpersQuery);
     if (querySnapshot.empty) {
-      console.log('トークンに一致するヘルパーが見つかりませんでした');
+      // console.log('トークンに一致するヘルパーが見つかりませんでした');
       return null;
     }
 
@@ -690,7 +670,7 @@ export const loadHelperByToken = async (token: string): Promise<Helper | null> =
       id: helperDoc.id
     } as Helper;
 
-    console.log(`ヘルパーを取得しました: ${helper.name}`);
+    // console.log(`ヘルパーを取得しました: ${helper.name}`);
     return helper;
   } catch (error) {
     console.error('ヘルパー取得エラー:', error);
@@ -712,7 +692,7 @@ export const saveDayOffRequests = async (year: number, month: number, requests: 
       updatedAt: Timestamp.now()
     });
 
-    console.log(`🏖️ 休み希望を保存しました: ${docId} (${requests.size}件)`);
+    // console.log(`🏖️ 休み希望を保存しました: ${docId} (${requests.size}件)`);
   } catch (error) {
     console.error('休み希望保存エラー:', error);
     throw error;
@@ -746,11 +726,11 @@ export const loadDayOffRequests = async (year: number, month: number): Promise<M
         }
       }
 
-      console.log(`🏖️ 休み希望を読み込みました: ${docId} (${requests.size}件)`);
+      // console.log(`🏖️ 休み希望を読み込みました: ${docId} (${requests.size}件)`);
       return requests;
     }
 
-    console.log(`🏖️ 休み希望データが見つかりません: ${docId}`);
+    // console.log(`🏖️ 休み希望データが見つかりません: ${docId}`);
     return new Map();
   } catch (error) {
     console.error('休み希望読み込みエラー:', error);
@@ -772,7 +752,7 @@ export const saveScheduledDayOffs = async (year: number, month: number, schedule
       updatedAt: Timestamp.now()
     });
 
-    console.log(`🟢 指定休を保存しました: ${docId} (${scheduledDayOffs.size}件)`);
+    // console.log(`🟢 指定休を保存しました: ${docId} (${scheduledDayOffs.size}件)`);
   } catch (error) {
     console.error('指定休保存エラー:', error);
     throw error;
@@ -798,11 +778,11 @@ export const loadScheduledDayOffs = async (year: number, month: number): Promise
         });
       }
 
-      console.log(`🟢 指定休を読み込みました: ${docId} (${scheduledDayOffs.size}件)`);
+      // console.log(`🟢 指定休を読み込みました: ${docId} (${scheduledDayOffs.size}件)`);
       return scheduledDayOffs;
     }
 
-    console.log(`🟢 指定休データが見つかりません: ${docId}`);
+    // console.log(`🟢 指定休データが見つかりません: ${docId}`);
     return new Map();
   } catch (error) {
     console.error('指定休読み込みエラー:', error);
@@ -824,7 +804,7 @@ export const saveDisplayTexts = async (year: number, month: number, displayTexts
       updatedAt: Timestamp.now()
     });
 
-    console.log(`📝 表示テキストを保存しました: ${docId} (${displayTexts.size}件)`);
+    // console.log(`📝 表示テキストを保存しました: ${docId} (${displayTexts.size}件)`);
   } catch (error) {
     console.error('表示テキスト保存エラー:', error);
     throw error;
@@ -850,11 +830,11 @@ export const loadDisplayTexts = async (year: number, month: number): Promise<Map
         });
       }
 
-      console.log(`📝 表示テキストを読み込みました: ${docId} (${displayTexts.size}件)`);
+      // console.log(`📝 表示テキストを読み込みました: ${docId} (${displayTexts.size}件)`);
       return displayTexts;
     }
 
-    console.log(`📝 表示テキストデータが見つかりません: ${docId}`);
+    // console.log(`📝 表示テキストデータが見つかりません: ${docId}`);
     return new Map();
   } catch (error) {
     console.error('表示テキスト読み込みエラー:', error);
@@ -891,9 +871,8 @@ export const subscribeToDayOffRequestsMap = (
               });
             }
           }
-          console.log(`🏖️ リアルタイム更新: 休み希望 ${docId} (${requests.size}件)`);
         } else {
-          console.log(`🏖️ リアルタイム更新: 休み希望データなし ${docId}`);
+          // console.log(`🏖️ リアルタイム更新: 休み希望データなし ${docId}`);
         }
         onUpdate(requests);
       },
@@ -931,9 +910,8 @@ export const subscribeToDisplayTextsMap = (
               texts.set(item.key, item.value);
             });
           }
-          console.log(`📝 リアルタイム更新: 表示テキスト ${docId} (${texts.size}件)`);
         } else {
-          console.log(`📝 リアルタイム更新: 表示テキストデータなし ${docId}`);
+          // console.log(`📝 リアルタイム更新: 表示テキストデータなし ${docId}`);
         }
         onUpdate(texts);
       },
@@ -972,9 +950,8 @@ export const subscribeToScheduledDayOffs = (
               scheduledDayOffs.set(item.key, item.value);
             });
           }
-          console.log(`🟢 リアルタイム更新: 指定休 ${docId} (${scheduledDayOffs.size}件)`);
         } else {
-          console.log(`🟢 リアルタイム更新: 指定休データなし ${docId}`);
+          // console.log(`🟢 リアルタイム更新: 指定休データなし ${docId}`);
         }
         onUpdate(scheduledDayOffs);
       },

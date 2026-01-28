@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useEffect, memo, useState, useRef } from 'react';
+import { useMemo, useCallback, useEffect, useLayoutEffect, memo, useState, useRef, useTransition } from 'react';
 import type { Helper, Shift, ServiceType } from '../types';
 import { useScrollDetection } from '../hooks/useScrollDetection';
 import { SERVICE_CONFIG } from '../types';
@@ -98,7 +98,7 @@ interface Props {
   shifts: Shift[];
   year: number;
   month: number;
-  onUpdateShifts: (shifts: Shift[]) => void;
+  onUpdateShifts: (shifts: Shift[], debounce?: boolean) => void;
 }
 
 // 警告が必要なサービスタイプ
@@ -157,54 +157,324 @@ async function saveShiftsByYearMonth(shifts: Shift[]): Promise<void> {
   );
 }
 
-const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdateShifts: onUpdateShiftsProp }: Props) => {
-  console.log('🔄 ShiftTable レンダリング', performance.now());
+// セル内の各行を表示するメモ化されたコンポーネント
+const ShiftTableCellLine = memo(({
+  helperId,
+  date,
+  rowIndex,
+  lineIndex,
+  content,
+  isSelected,
+  isEditing,
+  initialInputValue,
+  onDoubleClick,
+  onKeyDown,
+  handleManualShiftSave,
+}: {
+  helperId: string;
+  date: string;
+  rowIndex: number;
+  lineIndex: number;
+  content: string;
+  isSelected: boolean;
+  isEditing: boolean;
+  initialInputValue: string;
+  onDoubleClick: (e: React.MouseEvent, lineIndex: number) => void;
+  onKeyDown: (e: React.KeyboardEvent, lineIndex: number) => void;
+  handleManualShiftSave: any;
+}) => {
+  const inputRef = useRef<HTMLInputElement>(null);
+  // useStateはレンダリングを引き起こすため、Refに変更してパフォーマンス向上
+  const isComposingRef = useRef(false);
 
-  // ★ 内部State化：Firestoreのエコーバックを受けずに即座に描画を更新するため
-  const [shifts, setShifts] = useState(shiftsProp);
+  const enteredEditingRef = useRef(false);
 
-  // 非同期コールバックから参照するためのRef
-  const shiftsRef = useRef<Shift[]>(shifts);
-
-  // ローカル更新のタイムスタンプ（Firestoreからのエコーバックによる上書き防止用）
-  const lastLocalUpdateTimeRef = useRef<number>(0);
-
-  // プロップスからの同期ロジック
+  // 編集モードと表示値の同期
   useEffect(() => {
-    const timeSinceLastUpdate = Date.now() - lastLocalUpdateTimeRef.current;
-    if (lastLocalUpdateTimeRef.current > 0 && timeSinceLastUpdate < 2000) {
-      console.log('🛡️ Firestoreからの反映をスキップ（ローカル更新優先）');
-      return;
+    if (isEditing && inputRef.current) {
+      if (!enteredEditingRef.current) {
+        // 新規入力(initialInputValue)があればそれを使い、なければ既存の内容をセット
+        const val = initialInputValue !== "" ? initialInputValue : content;
+        inputRef.current.value = val;
+
+        // カーソルを末尾に移動（上書き、追加どちらの場合も直感的）
+        const len = val.length;
+        inputRef.current.setSelectionRange(len, len);
+
+        inputRef.current.focus();
+        enteredEditingRef.current = true;
+      }
+    } else {
+      enteredEditingRef.current = false;
+      // 非編集時は常に表示値と同期を保つ
+      if (inputRef.current) {
+        inputRef.current.value = content;
+      }
     }
+  }, [isEditing, initialInputValue, content]);
+
+  return (
+    <div
+      className={`editable-cell-wrapper relative box-border w-full flex items-center justify-center cursor-pointer ${isEditing ? 'line-selected is-editing-mode' : ''}`}
+      tabIndex={0}
+      style={{
+        flex: '1 1 0',
+        minHeight: '21px',
+        maxHeight: '21px',
+        borderBottom: lineIndex < 3 ? '1px solid rgba(0, 0, 0, 0.08)' : 'none',
+      }}
+      data-row={rowIndex}
+      data-line={lineIndex}
+      data-helper={helperId}
+      data-date={date}
+      data-row-key={`${helperId}-${date}-${rowIndex}-${lineIndex}`}
+      onDoubleClick={(e) => onDoubleClick(e, lineIndex)}
+      onKeyDown={(e) => onKeyDown(e, lineIndex)}
+    >
+      {!isEditing && (
+        <div className="cell-display pointer-events-none" style={{ whiteSpace: 'pre-wrap' }}>
+          {content}
+        </div>
+      )}
+      <textarea
+        ref={inputRef as any}
+        className="cell-input"
+        autoComplete="off"
+        rows={1}
+        style={{ resize: 'none', overflow: 'hidden', whiteSpace: 'pre-wrap', lineHeight: '21px' }}
+        onBlur={(e) => {
+          handleManualShiftSave(helperId, date, rowIndex, lineIndex, e.currentTarget.value);
+        }}
+        onKeyDown={(e) => {
+          // IME変換中は完全に無視
+          if (isComposingRef.current) {
+            e.stopPropagation();
+            return;
+          }
+
+          if (e.altKey && e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            const textarea = e.currentTarget;
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const val = textarea.value;
+            const newVal = val.substring(0, start) + "\n" + val.substring(end);
+            textarea.value = newVal;
+            textarea.selectionStart = textarea.selectionEnd = start + 1;
+            return;
+          }
+
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.currentTarget.blur();
+            e.stopPropagation();
+          } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'].includes(e.key)) {
+            // ナビゲーションキーは親へ伝播させる（フォーカス移動のため）
+          } else {
+            // その他の文字入力キーはここで止めて、親の重いリスナーを動かさない（超高速化）
+            e.stopPropagation();
+          }
+        }}
+        onCompositionStart={() => { isComposingRef.current = true; }}
+        onCompositionEnd={() => { isComposingRef.current = false; }}
+        onClick={(e) => e.stopPropagation()}
+      />
+    </div>
+  );
+}, (prev, next) => {
+  return prev.helperId === next.helperId &&
+    prev.date === next.date &&
+    prev.rowIndex === next.rowIndex &&
+    prev.lineIndex === next.lineIndex &&
+    prev.content === next.content &&
+    prev.isSelected === next.isSelected &&
+    prev.isEditing === next.isEditing &&
+    prev.initialInputValue === next.initialInputValue;
+});
+
+// 各セル(td)を表示するメモ化されたコンポーネント
+const ShiftTableTd = memo(({
+  helper,
+  day,
+  rowIndex,
+  cellDisplayData,
+  isLastHelper,
+  isDragged,
+  onMouseDown,
+  handleCellMouseEnter,
+  handleCellSelectionMove,
+  showContextMenu,
+  toggleScheduledDayOff,
+  handleDragStart,
+  handleDragOver,
+  handleDrop,
+  onLineDoubleClick,
+  onLineKeyDown,
+  handleManualShiftSave,
+  selectedRowsRef,
+  initialInputValue,
+  activeCellKey,
+  isEditingMode,
+}: {
+  helper: Helper;
+  day: any;
+  rowIndex: number;
+  cellDisplayData: any;
+  isLastHelper: boolean;
+  isDragged: boolean;
+  onMouseDown: any;
+  handleCellMouseEnter: any;
+  handleCellSelectionMove: any;
+  showContextMenu: any;
+  toggleScheduledDayOff: any;
+  handleDragStart: any;
+  handleDragOver: any;
+  handleDrop: any;
+  onLineDoubleClick: any;
+  onLineKeyDown: any;
+  handleManualShiftSave: any;
+  selectedRowsRef: React.MutableRefObject<Set<string>>;
+  initialInputValue: string;
+  activeCellKey: string | null;
+  isEditingMode: boolean;
+}) => {
+  const rowKey = `${helper.id}-${day.date}-${rowIndex}`;
+
+  return (
+    <td
+      data-cell-key={rowKey}
+      data-helper-id={helper.id}
+      data-date={day.date}
+      data-row-index={rowIndex}
+      className="p-0 relative"
+      draggable={true}
+      style={{
+        width: '80px',
+        minWidth: '80px',
+        maxWidth: '80px',
+        minHeight: '84px',
+        height: '84px',
+        padding: '0',
+        boxSizing: 'border-box',
+        border: cellDisplayData.hasWarning ? '2px solid #f97316' : '1px solid #374151',
+        borderRight: isLastHelper ? '2px solid #000000' : (cellDisplayData.hasWarning ? '2px solid #f97316' : '1px solid #374151'),
+        cursor: 'pointer',
+        opacity: isDragged ? 0.5 : 1,
+        backgroundColor: cellDisplayData.bgColor
+      }}
+      title={cellDisplayData.hasWarning ? '⚠️ 終了時刻が入力されていません' : undefined}
+      onMouseDown={(e) => onMouseDown(e, helper, day, rowIndex)}
+      onContextMenu={(e) => showContextMenu(e, helper.id, day.date, rowIndex)}
+      onDragStart={(e) => handleDragStart(e, helper.id, day.date, rowIndex)}
+      onDragOver={handleDragOver}
+      onDrop={() => handleDrop(helper.id, day.date, rowIndex)}
+    >
+      <div className="w-full h-full flex flex-col">
+        {[0, 1, 2, 3].map((lineIndex) => {
+          const cellKey = `${helper.id}-${day.date}-${rowIndex}-${lineIndex}`;
+          const isEditing = isEditingMode && activeCellKey === cellKey;
+          return (
+            <ShiftTableCellLine
+              key={lineIndex}
+              helperId={helper.id}
+              date={day.date}
+              rowIndex={rowIndex}
+              lineIndex={lineIndex}
+              content={cellDisplayData.lines[lineIndex] || ''}
+              isSelected={false}
+              isEditing={isEditing}
+              initialInputValue={initialInputValue}
+              onDoubleClick={onLineDoubleClick}
+              onKeyDown={onLineKeyDown}
+              handleManualShiftSave={handleManualShiftSave}
+            />
+          );
+        })}
+      </div>
+    </td>
+  );
+}, (prev, next) => {
+  // 基本データが同じかチェック
+  if (prev.helper.id !== next.helper.id || prev.day.date !== next.day.date || prev.rowIndex !== next.rowIndex) return false;
+  if (prev.isLastHelper !== next.isLastHelper || prev.isDragged !== next.isDragged) return false;
+  if (prev.initialInputValue !== next.initialInputValue) return false;
+
+  const rowKey = `${prev.helper.id}-${prev.day.date}-${prev.rowIndex}`;
+  const prevIsActive = prev.activeCellKey && prev.activeCellKey.startsWith(rowKey);
+  const nextIsActive = next.activeCellKey && next.activeCellKey.startsWith(rowKey);
+
+  if (prevIsActive !== nextIsActive) return false;
+  if (nextIsActive && prev.isEditingMode !== next.isEditingMode) return false;
+
+  if (prev.cellDisplayData !== next.cellDisplayData) {
+    const pData = prev.cellDisplayData;
+    const nData = next.cellDisplayData;
+    if (pData.bgColor !== nData.bgColor || pData.hasWarning !== nData.hasWarning) return false;
+    if (pData.lines[0] !== nData.lines[0] || pData.lines[1] !== nData.lines[1] ||
+      pData.lines[2] !== nData.lines[2] || pData.lines[3] !== nData.lines[3]) return false;
+  }
+
+  return true;
+});
+
+const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdateShifts: onUpdateShiftsProp }: Props) => {
+  const [isEditingMode, setIsEditingMode] = useState(false);
+  const [activeCellKey, setActiveCellKey] = useState<string | null>(null);
+  const [initialInputValue, setInitialInputValue] = useState("");
+  const [isCacheReady, setIsCacheReady] = useState(false);
+  const [_isPending, startTransition] = useTransition();
+  const lastSelectedWrapperRef = useRef<HTMLElement | null>(null);
+  const tbodyRef = useRef<HTMLTableSectionElement>(null);
+  const selectionOverlayRef = useRef<HTMLDivElement>(null);
+  const selectedCellRef = useRef<{ helperId: string; date: string; rowIndex: number; lineIndex: number } | null>(null);
+
+  const lastSelectedCellRef = useRef<HTMLElement | null>(null);
+  const lastSelectedTdRef = useRef<HTMLElement | null>(null);
+  const lastSelectedRowTdsRef = useRef<HTMLElement[]>([]);
+  const isComposingRef = useRef(false);
+  const isDraggingForSelectionRef = useRef(false);
+  const selectedRowsRef = useRef<Set<string>>(new Set());
+  const syncSelectionTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // ★ 既存の選択枠（手動追加分）を最速で全て消すヘルパー
+  const clearManualSelection = useCallback(() => {
+    if (lastSelectedRowTdsRef.current) {
+      lastSelectedRowTdsRef.current.forEach(td => {
+        td.classList.remove('td-selected', 'shift-cell-multi-selected');
+        td.style.removeProperty('z-index');
+      });
+      lastSelectedRowTdsRef.current = [];
+    }
+  }, []);
+
+  const [shifts, setShifts] = useState(shiftsProp);
+  const shiftsRef = useRef<Shift[]>(shiftsProp);
+  const lastLocalUpdateTimeRef = useRef<number>(0);
+  const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (isEditingMode) return;
+    const timeSinceLastUpdate = Date.now() - lastLocalUpdateTimeRef.current;
+    if (lastLocalUpdateTimeRef.current > 0 && timeSinceLastUpdate < 2000) return;
     setShifts(shiftsProp);
     shiftsRef.current = shiftsProp;
-  }, [shiftsProp]);
+  }, [shiftsProp, isEditingMode]);
 
-  // 更新関数のラッパー：ローカルStateとRefを即時更新しつつ、親(Firestore)へ通知
-  const onUpdateShifts = useCallback((newShifts: Shift[]) => {
-    const canceledCount = newShifts.filter(s => s.cancelStatus && s.cancelStatus !== 'none').length;
-    console.log(`🔄 onUpdateShifts: 件数=${newShifts.length}, キャンセル数=${canceledCount}`);
-
-    setShifts(newShifts);
+  const handleShiftsUpdate = useCallback((newShifts: Shift[], debounce = false) => {
     shiftsRef.current = newShifts;
+    setShifts(newShifts);
     lastLocalUpdateTimeRef.current = Date.now();
-    onUpdateShiftsProp(newShifts);
+    const syncToParent = () => {
+      onUpdateShiftsProp(newShifts);
+    };
+    if (debounce) {
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+      syncTimerRef.current = setTimeout(syncToParent, 800);
+    } else {
+      syncToParent();
+    }
   }, [onUpdateShiftsProp]);
-
-  // キャンセル済みシフトのログ
-  const canceledShifts = shifts.filter(s => s.cancelStatus);
-  if (canceledShifts.length > 0) {
-    console.log(`🔴 ShiftTable: キャンセル済みシフト ${canceledShifts.length}件を受信:`,
-      canceledShifts.map(s => ({
-        id: s.id,
-        date: s.date,
-        helperId: s.helperId,
-        clientName: s.clientName,
-        cancelStatus: s.cancelStatus,
-        rowIndex: s.rowIndex
-      }))
-    );
-  }
 
   // タスク1: シフトデータをMapに変換（高速アクセス用）
   const shiftMap = useMemo(() => {
@@ -214,17 +484,11 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       if (s.rowIndex !== undefined) {
         const key = `${s.helperId}-${s.date}-${s.rowIndex}`;
         map.set(key, s);
-        // キャンセル状態のシフトをカウント
         if (s.cancelStatus) {
           canceledCount++;
         }
       }
     });
-
-    if (canceledCount > 0) {
-      console.log(`🔴 ShiftMap: キャンセル済みシフト ${canceledCount}件をMapに追加`);
-    }
-
     return map;
   }, [shifts]);
 
@@ -244,33 +508,43 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
   // 指定休管理（キー: "helperId-date", 値: true）- その日の縦列全体が緑色になる
   const [scheduledDayOffs, setScheduledDayOffs] = useState<Map<string, boolean>>(new Map());
 
-  // 表示テキスト管理（キー: "helperId-date", 値: 表示テキスト）
   const [displayTexts, setDisplayTexts] = useState<Map<string, string>>(new Map());
 
+  // ★ IME入力やキー操作直後のフォーカス巻き戻りを防ぐための抑制タイムスタンプ
+  const focusChangeTimeRef = useRef<number>(0);
+
+
   const sortedHelpers = useMemo(() => {
+    // 高速化のため、対象年月のデータを持つヘルパーIDをSetで事前抽出
+    const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+
+    const helperIdsWithShifts = new Set(shifts.map(s => s.helperId));
+
+    const helperIdsWithDayOff = new Set<string>();
+    dayOffRequests.forEach((_, key) => {
+      if (key.includes(monthStr)) {
+        const hId = key.split('-')[0];
+        helperIdsWithDayOff.add(hId);
+      }
+    });
+
+    const helperIdsWithScheduled = new Set<string>();
+    scheduledDayOffs.forEach((_, key) => {
+      if (key.includes(monthStr)) {
+        const hId = key.split('-')[0];
+        helperIdsWithScheduled.add(hId);
+      }
+    });
+
     return helpers
       .filter(helper => {
         // 削除されていないヘルパーは常に表示
         if (!helper.deleted) return true;
 
-        // 削除されている場合、その月にデータ（シフト、休み希望、指定休）があるかチェック
-        const monthStr = `${year}-${String(month).padStart(2, '0')}`;
-
-        // 1. シフトがあるか
-        const hasShifts = shifts.some(s => s.helperId === helper.id);
-        if (hasShifts) return true;
-
-        // 2. 休み希望があるか
-        const hasDayOff = Array.from(dayOffRequests.keys()).some(key =>
-          key.startsWith(`${helper.id}-`) && key.includes(monthStr)
-        );
-        if (hasDayOff) return true;
-
-        // 3. 指定休があるか
-        const hasScheduled = Array.from(scheduledDayOffs.keys()).some(key =>
-          key.startsWith(`${helper.id}-`) && key.includes(monthStr)
-        );
-        if (hasScheduled) return true;
+        // 削除されている場合、その月にデータがあるかチェック
+        if (helperIdsWithShifts.has(helper.id)) return true;
+        if (helperIdsWithDayOff.has(helper.id)) return true;
+        if (helperIdsWithScheduled.has(helper.id)) return true;
 
         return false;
       })
@@ -278,15 +552,21 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
   }, [helpers, shifts, dayOffRequests, scheduledDayOffs, year, month]);
   const weeks = useMemo(() => groupByWeek(year, month), [year, month]);
 
-  // 前回選択されたセルを記録（高速クリーンアップ用）
-  const lastSelectedCellRef = useRef<HTMLElement | null>(null);
-  const lastSelectedTdRef = useRef<HTMLElement | null>(null);  // ★ 追加: 前回選択されたtd要素
-  const lastSelectedRowTdsRef = useRef<HTMLElement[]>([]);
-  // ★ IME入力中かどうかを管理するRef
-  const isComposingRef = useRef(false);
-  // Shift+ドラッグ用のref（遅延なし）
-  const isDraggingForSelectionRef = useRef(false);
-  const selectedRowsRef = useRef<Set<string>>(new Set());
+
+  const syncSelection = useCallback((immediate = false) => {
+    if (immediate) {
+      if (syncSelectionTimerRef.current) clearTimeout(syncSelectionTimerRef.current);
+      setSelectedRows(new Set(selectedRowsRef.current));
+      return;
+    }
+
+    if (syncSelectionTimerRef.current) return; // 既に予約済みなら何もしない
+
+    syncSelectionTimerRef.current = setTimeout(() => {
+      setSelectedRows(new Set(selectedRowsRef.current));
+      syncSelectionTimerRef.current = null;
+    }, 100); // 100msごとに同期
+  }, []);
 
   // コピー&ペースト用
   const copiedCaresRef = useRef<Array<{ helperId: string; date: string; rowIndex: number; data: Shift }>>([]);
@@ -335,13 +615,6 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     shifts: [] as Shift[]
   }), []);
 
-  // 現在選択されているセル
-  const selectedCellRef = useMemo(() => ({
-    helperId: '',
-    date: '',
-    rowIndex: -1,
-    lineIndex: 0
-  }), []);
 
   // DOMから直接セルの内容を読み取って集計する関数
   // タスク4: 集計計算をメモ化（DOM操作なし、shiftMapから直接計算）
@@ -356,33 +629,25 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       }
       if (!shift.startTime || !shift.endTime || !(shift.duration > 0)) return;
 
-      const { helperId, date, serviceType, startTime, endTime } = shift;
+      const { helperId, date, serviceType, startTime, endTime, duration } = shift;
       const timeRange = `${startTime}-${endTime}`;
 
       // 深夜時間と通常時間を計算
       const nightHours = calculateNightHours(timeRange);
       const regularHours = calculateRegularHours(timeRange);
 
-      // 各サービスタイプの集計キーを作成して加算
-      Object.keys(SERVICE_CONFIG).forEach(targetServiceType => {
-        const key = `${helperId}-${date}-${targetServiceType}`;
-        const current = totals.get(key) || 0;
+      // 深夜時間の集計
+      if (nightHours > 0) {
+        const nightTarget = serviceType === 'doko' ? 'shinya_doko' : 'shinya';
+        const nightKey = `${helperId}-${date}-${nightTarget}`;
+        totals.set(nightKey, (totals.get(nightKey) || 0) + nightHours);
+      }
 
-        if (targetServiceType === 'shinya') {
-          // 深夜：同行以外のすべてのサービスの深夜時間を合計
-          if (serviceType !== 'doko' && nightHours > 0) {
-            totals.set(key, current + nightHours);
-          }
-        } else if (targetServiceType === 'shinya_doko') {
-          // 深夜(同行)：同行の深夜時間を合計
-          if (serviceType === 'doko' && nightHours > 0) {
-            totals.set(key, current + nightHours);
-          }
-        } else if (serviceType === targetServiceType) {
-          // 通常のサービスタイプ：そのサービスの通常時間を合計
-          totals.set(key, current + regularHours);
-        }
-      });
+      // 該当サービスの通常時間集計
+      if (regularHours > 0) {
+        const serviceKey = `${helperId}-${date}-${serviceType}`;
+        totals.set(serviceKey, (totals.get(serviceKey) || 0) + regularHours);
+      }
     });
 
     return totals;
@@ -395,85 +660,431 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
   // 特定のヘルパーと日付の集計行を直接DOM更新する関数（安全版）
   const updateTotalsForHelperAndDate = useCallback((helperId: string, date: string) => {
+    const currentShifts = shiftsRef.current;
+    const relevantShifts = currentShifts.filter(s => s.helperId === helperId && s.date === date);
+
+    // サービスごとの時間を計算
+    const totalsPerService = new Map<string, number>();
+    relevantShifts.forEach(shift => {
+      if (shift.cancelStatus === 'remove_time' || shift.cancelStatus === 'canceled_without_time') return;
+      if (!shift.startTime || !shift.endTime || !(shift.duration > 0)) return;
+
+      const timeRange = `${shift.startTime}-${shift.endTime}`;
+      const nightHours = calculateNightHours(timeRange);
+      const regularHours = calculateRegularHours(timeRange);
+
+      if (nightHours > 0) {
+        const nightTarget = shift.serviceType === 'doko' ? 'shinya_doko' : 'shinya';
+        totalsPerService.set(nightTarget, (totalsPerService.get(nightTarget) || 0) + nightHours);
+      }
+      if (regularHours > 0) {
+        totalsPerService.set(shift.serviceType, (totalsPerService.get(shift.serviceType) || 0) + regularHours);
+      }
+    });
+
     Object.keys(SERVICE_CONFIG).forEach((serviceType) => {
-      const total = calculateServiceTotal(helperId, date, serviceType);
+      const total = totalsPerService.get(serviceType) || 0;
       const totalCellSelector = `[data-total-cell="${helperId}-${date}-${serviceType}"]`;
-      const totalCell = safeQuerySelector<HTMLElement>(totalCellSelector);
+      const totalCell = document.querySelector(totalCellSelector) as HTMLElement;
       if (totalCell) {
-        // td要素の中のdivを探してテキストを更新
         const divElement = totalCell.querySelector('div');
         if (divElement) {
-          safeSetTextContent(divElement as HTMLElement, total.toFixed(1));
+          divElement.textContent = total > 0 ? total.toFixed(1) : '';
         }
       }
     });
-  }, [calculateServiceTotal]);
+  }, []);
 
   // ★ 手動入力をReact stateとFirestoreに保存する関数
   const handleManualShiftSave = useCallback(async (helperId: string, date: string, rowIndex: number, lineIndex: number, newValue: string) => {
+    setInitialInputValue(""); // 編集終了時に初期値をクリア
+    setIsEditingMode(false);
+    setActiveCellKey(null);
     const cellKey = `${helperId}-${date}-${rowIndex}`;
-    const existingShift = shiftMap.get(cellKey);
+    const existingShift = shiftsRef.current.find(s => `${s.helperId}-${s.date}-${s.rowIndex}` === cellKey);
 
-    // 現在のセル内の全データを取得
-    let timeRange = (existingShift?.startTime && existingShift?.endTime) ? `${existingShift.startTime} - ${existingShift.endTime}` : (existingShift?.startTime || '');
-    let clientInfo = existingShift ? (existingShift.serviceType !== 'other' ? `${existingShift.clientName} (${SERVICE_CONFIG[existingShift.serviceType]?.label || ''})` : existingShift.clientName) : '';
-    let duration = existingShift?.duration?.toString() || '';
-    let area = existingShift?.area || '';
+    // 現在のセル内に「表示されている」全データを正確に取得
+    const lines: string[] = ['', '', '', ''];
+    for (let i = 0; i < 4; i++) {
+      if (i === lineIndex) {
+        lines[i] = newValue;
+      } else {
+        if (existingShift) {
+          if (i === 0) lines[i] = (existingShift.startTime && existingShift.endTime) ? `${existingShift.startTime}-${existingShift.endTime}` : (existingShift.startTime || '');
+          else if (i === 1) lines[i] = existingShift.serviceType !== 'other' ? `${existingShift.clientName}(${SERVICE_CONFIG[existingShift.serviceType]?.label || ''})` : existingShift.clientName;
+          else if (i === 2) lines[i] = existingShift.duration ? existingShift.duration.toString() : '';
+          else if (i === 3) lines[i] = existingShift.area || '';
+        }
+      }
+    }
 
-    if (lineIndex === 0) timeRange = newValue;
-    else if (lineIndex === 1) clientInfo = newValue;
-    else if (lineIndex === 2) duration = newValue;
-    else if (lineIndex === 3) area = newValue;
+    const timeRange = lines[0];
+    const clientInfo = lines[1];
+    const duration = lines[2];
+    const area = lines[3];
 
-    // パース
-    const match = clientInfo.match(/\((.+?)\)/);
+    const match = clientInfo.match(/[(\uFF08](.+?)[)\uFF09]/);
     let serviceType: ServiceType = 'other';
     if (match) {
       const serviceLabel = match[1];
       const serviceEntry = Object.entries(SERVICE_CONFIG).find(([_, config]) => config.label === serviceLabel);
       if (serviceEntry) serviceType = serviceEntry[0] as ServiceType;
+    } else if (existingShift && lineIndex !== 1) {
+      serviceType = existingShift.serviceType;
     }
-    const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
 
-    const timeMatch = timeRange.match(/(\d{1,2}:\d{2})(?:\s*-\s*(\d{1,2}:\d{2}))?/);
-    const startTimeResult = timeMatch ? timeMatch[1] : (lineIndex === 0 ? newValue : (existingShift?.startTime || ''));
-    const endTimeResult = timeMatch && timeMatch[2] ? timeMatch[2] : (existingShift?.endTime || '');
+    const clientName = clientInfo.replace(/[(\uFF08].+?[)\uFF09]/g, '').trim();
 
-    // 時間入力の場合は稼働時間を自動計算
+    // ★ 背景色の即時反映（行による制限を撤廃）
+    const config = SERVICE_CONFIG[serviceType];
+    const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
+    if (td && config) {
+      td.style.backgroundColor = config.bgColor;
+    }
+
+    const timeMatch = timeRange.match(/(\d{1,2}:\d{2})(?:\s*[~－-]\s*(\d{1,2}:\d{2}))?/);
+    let startTimeResult = '';
+    let endTimeResult = '';
+
+    if (timeMatch) {
+      startTimeResult = timeMatch[1];
+      endTimeResult = timeMatch[2] || '';
+    } else if (timeRange.trim() !== '') {
+      startTimeResult = timeRange;
+    }
+
     let finalDuration = parseFloat(duration) || 0;
     if (lineIndex === 0 && startTimeResult && endTimeResult) {
       const calculated = calculateTimeDuration(`${startTimeResult} - ${endTimeResult}`);
-      if (calculated) finalDuration = parseFloat(calculated);
+      if (calculated) {
+        finalDuration = parseFloat(calculated);
+
+        // ★ 3行目の時間数を即座にDOM反映（Reactのレンダリング待ちを回避）
+        const durationCellWrapper = document.querySelector(`.editable-cell-wrapper[data-row-key="${helperId}-${date}-${rowIndex}-2"]`);
+        if (durationCellWrapper) {
+          const displayEl = durationCellWrapper.querySelector('.cell-display');
+          if (displayEl) {
+            displayEl.textContent = finalDuration.toString();
+          }
+        }
+      }
     }
 
     const newShift: Shift = {
       regularHours: 0, nightHours: 0, regularPay: 0, nightPay: 0, totalPay: 0,
-      ...(existingShift || {}), // ★既存データを先に展開（ベースにする）
+      ...(existingShift || {}),
       id: existingShift?.id || `shift-${helperId}-${date}-${rowIndex}`,
       date,
       helperId,
-      clientName,
+      clientName: (lineIndex === 1) ? clientName : (existingShift?.clientName || clientName),
       serviceType,
       startTime: startTimeResult,
       endTime: endTimeResult,
       duration: finalDuration,
-      area,
+      area: (lineIndex === 3) ? area : (existingShift?.area || area),
       rowIndex,
     };
 
-    // データの保存（先にReact Stateを更新して背景色を即時反映させる）
-    const updatedShifts = [...shiftsRef.current.filter(s => s.id !== newShift.id)];
+    const updatedShifts = [...shiftsRef.current.filter(s =>
+      s.id !== newShift.id &&
+      !(s.helperId === helperId && s.date === date && s.rowIndex === rowIndex)
+    )];
 
-    // 非同期でFirestoreに保存（awaitせずにバックグラウンドで処理）
-    if (clientName || startTimeResult || endTimeResult || duration || area) {
+    // 全てのラインが空になったかチェック
+    const isAllLinesEmpty = lines.every(line => line.trim() === "");
+
+    if (!isAllLinesEmpty) {
       updatedShifts.push(newShift);
-      onUpdateShifts(updatedShifts);
+      handleShiftsUpdate(updatedShifts, true);
       saveShiftWithCorrectYearMonth(newShift);
-    } else {
-      onUpdateShifts(updatedShifts);
-      deleteShift(newShift.id);
+    } else if (existingShift) {
+      handleShiftsUpdate(updatedShifts, true);
+      deleteShift(existingShift.id);
     }
-  }, [shiftMap, onUpdateShifts, saveShiftWithCorrectYearMonth]);
+
+    setTimeout(() => updateTotalsForHelperAndDate(helperId, date), 10);
+  }, [updateTotalsForHelperAndDate, handleShiftsUpdate]);
+
+  // ★ 選択オーバーレイ（青い枠）とスプレッドシート風操作の実装
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    // 前回の残存オーバーレイを削除
+    document.querySelectorAll('.selection-overlay-dynamic').forEach(el => el.remove());
+
+    // 初期スタイル適用
+    if (selectionOverlayRef.current) {
+      Object.assign(selectionOverlayRef.current.style, {
+        boxSizing: 'border-box',
+        border: '2px solid #0044ff',
+        backgroundColor: 'rgba(0, 68, 255, 0.05)',
+        display: 'none',
+        pointerEvents: 'none',
+        zIndex: '3000'
+      });
+    }
+
+    const updateSelectionFromTd = (td: HTMLElement, lineIndex: number) => {
+      // 既存の動的オーバーレイ（不正確な絶対座標ベース）を非表示にする
+      if (selectionOverlayRef.current) {
+        selectionOverlayRef.current.style.display = 'none';
+      }
+
+      // ★ 高速化: ピンポイントで削除 (O(1))
+      // これを最初に行うことで、ループ処理のコストを回避し、即座に反応させる
+      if (lastSelectedWrapperRef.current) {
+        lastSelectedWrapperRef.current.classList.remove('line-selected');
+        lastSelectedWrapperRef.current = null;
+      }
+
+      // 新しくクリックされたセルのWrapperに選択クラスを適用
+      const targetWrapper = td.querySelector(`.editable-cell-wrapper[data-line="${lineIndex}"]`) as HTMLElement;
+      if (targetWrapper) {
+        targetWrapper.classList.add('line-selected');
+        // フォーカスもここで当ててしまう（待つ必要なし）
+        targetWrapper.focus({ preventScroll: true });
+        lastSelectedWrapperRef.current = targetWrapper;
+      }
+
+      // ★ 念のためのゴミ掃除（二重表示防止）は非同期で後回し
+      // メインの処理をブロックしない
+      setTimeout(() => {
+        const selectedElements = document.getElementsByClassName('line-selected');
+        // 正解のWrapper以外が光っていたら消す
+        if (selectedElements.length > 1 || (selectedElements.length === 1 && selectedElements[0] !== targetWrapper)) {
+          for (let i = 0; i < selectedElements.length; i++) {
+            if (selectedElements[i] !== targetWrapper) {
+              selectedElements[i].classList.remove('line-selected');
+            }
+          }
+        }
+      }, 0);
+
+      const hId = td.dataset.helperId!;
+      const dStr = td.dataset.date!;
+      const rIdx = parseInt(td.dataset.rowIndex!);
+      const cellKey = td.dataset.cellKey!;
+
+      selectedCellRef.current = { helperId: hId, date: dStr, rowIndex: rIdx, lineIndex };
+
+      // React状態更新（非同期）
+      startTransition(() => {
+        selectedRowsRef.current.clear();
+        selectedRowsRef.current.add(`${cellKey}-${lineIndex}`);
+        syncSelection();
+      });
+    };
+
+    const handleNativeMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Input内でのクリック（カーソル移動など）はブラウザ標準動作を維持
+      if (target.closest('.cell-input')) return;
+
+      const td = target.closest('td[data-cell-key]') as HTMLElement;
+      if (!td) return;
+
+      const tdRect = td.getBoundingClientRect();
+      // クライアント座標系でのクリック位置（Y）
+      const clientY = e.clientY;
+      const top = tdRect.top;
+
+      // セル内の相対Y座標（borderの1px分を考慮して補正する場合はここで行うが、
+      // getBoundingClientRectはborderを含むため、単純な割り算で十分なはず。
+      // ただし、もし上部のborderをクリックしたと判定されると上に行く可能性があるため、
+      // 0〜3の範囲に確実に収める）
+      const cellHeight = tdRect.height;
+      const oneLineHeight = cellHeight / 4;
+
+      const relativeY = clientY - top;
+
+      // 0, 1, 2, 3 のインデックスを計算
+      const clickedLineIndex = Math.max(0, Math.min(3, Math.floor(relativeY / oneLineHeight)));
+
+      const newActiveKey = `${td.dataset.helperId}-${td.dataset.date}-${td.dataset.rowIndex}-${clickedLineIndex}`;
+
+      // 既に編集モードかつ、同じセルをクリックした場合は、編集を継続（Inputフォーカス維持）
+      if (isEditingMode && activeCellKey === newActiveKey) {
+        return;
+      }
+
+      // それ以外（別のセルをクリック、または現在選択モード）は、選択モードに切り替え
+      // 即座に編集モードを終了
+      if (isEditingMode) {
+        setIsEditingMode(false);
+        setActiveCellKey(null);
+      }
+
+      // ★ setTimeoutを削除し、即座に選択枠を更新（"超高速"対応）
+      // これにより、Reactの再レンダリングよりも先にDOM上のクラスが更新される
+      updateSelectionFromTd(td, clickedLineIndex);
+    };
+
+
+    const handleNativeKeyDown = (e: KeyboardEvent) => {
+      // IME入力中は何もしない
+      if (isComposingRef.current) return;
+
+      // 編集モード中は何もしない（Inputに任せる）
+      if (isEditingMode || document.querySelector('.editable-cell-wrapper.is-editing-mode')) return;
+
+      if (!selectedCellRef.current) return;
+      const curr = selectedCellRef.current;
+      const currentTd = document.querySelector(`td[data-cell-key="${curr.helperId}-${curr.date}-${curr.rowIndex}"]`) as HTMLTableCellElement;
+      if (!currentTd) return;
+
+      let targetTd: HTMLElement | null = currentTd;
+      let targetLineIndex = curr.lineIndex;
+      let handled = true;
+
+      switch (e.key) {
+        case 'ArrowRight':
+          targetTd = currentTd.nextElementSibling as HTMLElement;
+          break;
+        case 'ArrowLeft':
+          targetTd = currentTd.previousElementSibling as HTMLElement;
+          break;
+        case 'ArrowDown':
+          if (curr.lineIndex < 3) {
+            targetLineIndex = curr.lineIndex + 1;
+          } else {
+            const tr = currentTd.closest('tr');
+            const nextTr = tr?.nextElementSibling;
+            if (nextTr && nextTr.children[currentTd.cellIndex]) {
+              targetTd = nextTr.children[currentTd.cellIndex] as HTMLElement;
+              targetLineIndex = 0;
+            }
+          }
+          break;
+        case 'ArrowUp':
+          if (curr.lineIndex > 0) {
+            targetLineIndex = curr.lineIndex - 1;
+          } else {
+            const trUp = currentTd.closest('tr');
+            const prevTr = trUp?.previousElementSibling;
+            if (prevTr && prevTr.children[currentTd.cellIndex]) {
+              targetTd = prevTr.children[currentTd.cellIndex] as HTMLElement;
+              targetLineIndex = 3;
+            }
+          }
+          break;
+        case 'Enter':
+          e.preventDefault();
+          // 編集モードへ移行（値は維持）
+          setInitialInputValue("");
+          startTransition(() => {
+            setIsEditingMode(true);
+            setActiveCellKey(`${curr.helperId}-${curr.date}-${curr.rowIndex}-${curr.lineIndex}`);
+          });
+          break;
+
+        case 'F2':
+          // 編集モードへ移行（値は維持）
+          setInitialInputValue("");
+          startTransition(() => {
+            setIsEditingMode(true);
+            setActiveCellKey(`${curr.helperId}-${curr.date}-${curr.rowIndex}-${curr.lineIndex}`);
+          });
+          e.preventDefault();
+          break;
+        case 'Backspace':
+        case 'Delete':
+          // 内容クリア
+          handleManualShiftSave(curr.helperId, curr.date, curr.rowIndex, curr.lineIndex, "");
+          break;
+        case 'Tab':
+          if (e.shiftKey) {
+            targetTd = currentTd.previousElementSibling as HTMLElement;
+          } else {
+            targetTd = currentTd.nextElementSibling as HTMLElement;
+          }
+          e.preventDefault();
+          break;
+        case 'Escape':
+          // 選択解除
+          if (selectionOverlayRef.current) selectionOverlayRef.current.style.display = 'none';
+          selectedCellRef.current = null;
+          setActiveCellKey(null);
+          selectedRowsRef.current.clear();
+          syncSelection();
+          break;
+        default:
+          if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            // 上書き入力を開始
+            // 遅延の原因: setInitialInputValue -> re-render -> input focus -> value set
+            // 修正後: state更新と同時に、DOMを強制的に編集モード風に見せることはできないが、
+            // Reactのバッチ処理を活用して一括更新
+            setInitialInputValue(e.key);
+
+            // ★重要: ここで flushSync を使うと同期的にDOM更新できるが、React18では startTransition で優先度を下げるのが標準。
+            // しかし「入力」は優先度最高にすべき。
+            // よって startTransition を外して即時更新を試みる。
+            setIsEditingMode(true);
+            setActiveCellKey(`${curr.helperId}-${curr.date}-${curr.rowIndex}-${curr.lineIndex}`);
+          } else {
+            handled = false;
+          }
+          break;
+      }
+
+      if (targetTd && (targetTd !== currentTd || targetLineIndex !== curr.lineIndex)) {
+        updateSelectionFromTd(targetTd as HTMLElement, targetLineIndex);
+      }
+
+      if (handled && e.key !== 'Enter') {
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
+          e.preventDefault();
+        }
+      }
+    };
+
+
+    container.addEventListener('mousedown', handleNativeMouseDown, { capture: true });
+    container.addEventListener('keydown', handleNativeKeyDown);
+
+    return () => {
+      container.removeEventListener('mousedown', handleNativeMouseDown);
+      container.removeEventListener('keydown', handleNativeKeyDown);
+      document.querySelectorAll('.selection-overlay-dynamic').forEach(el => el.remove());
+    };
+  }, [isCacheReady, handleManualShiftSave, isEditingMode, activeCellKey, syncSelection]);
+
+  // ★ Reactのレンダリングでスタイルがリセットされるのを防ぐ（CSSクラスの維持）
+  // ★ Reactのレンダリングでスタイルがリセットされるのを防ぐ（CSSクラスの維持）
+  // ＆ 二重表示防止のための自己修復（Self-Healing）
+  useLayoutEffect(() => {
+    // 編集モード中はオーバーレイ（JS動的生成分）は不要
+    if (selectionOverlayRef.current) {
+      selectionOverlayRef.current.style.display = 'none';
+    }
+
+    if (isEditingMode) return;
+
+    // 現在選択されているべきセルの特定
+    let currentWrapper: HTMLElement | null = null;
+    if (selectedCellRef.current) {
+      const { helperId, date, rowIndex, lineIndex } = selectedCellRef.current;
+      const cellKey = `${helperId}-${date}-${rowIndex}`;
+      currentWrapper = document.querySelector(`td[data-cell-key="${cellKey}"] .editable-cell-wrapper[data-line="${lineIndex}"]`) as HTMLElement;
+    }
+
+    // ★重要: DOM上の全ての line-selected をスキャンし、正解以外は全て削除（Single Highlander Rule）
+    const selectedElements = document.getElementsByClassName('line-selected');
+    // live collectionなので後ろから消すか、whileで消す
+    const elementsToRemove: Element[] = [];
+    for (let i = 0; i < selectedElements.length; i++) {
+      if (selectedElements[i] !== currentWrapper) {
+        elementsToRemove.push(selectedElements[i]);
+      }
+    }
+    elementsToRemove.forEach(el => el.classList.remove('line-selected'));
+
+    // 正解のセルにクラスを付与
+    if (currentWrapper && !currentWrapper.classList.contains('line-selected')) {
+      currentWrapper.classList.add('line-selected');
+      lastSelectedWrapperRef.current = currentWrapper;
+    }
+  });
 
   // Undoアクションの型
   type UndoActionData = {
@@ -620,10 +1231,25 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     // 集計行を更新
     updateTotalsForHelperAndDate(helperId, date);
 
+    // ★ ケア削除時に休み希望も一緒に削除（バグ修正）
+    const dayOffKey = `${helperId}-${date}-${rowIndex}`;
+    if (dayOffRequests.has(dayOffKey)) {
+      setDayOffRequests(prev => {
+        const next = new Map(prev);
+        next.delete(dayOffKey);
+        console.log(`🗑️ ケア削除に伴い休み希望も削除: ${dayOffKey}`);
+        // Firestoreにも保存
+        saveDayOffRequests(year, month, next).catch(error => {
+          console.error('❌ 休み希望の削除に失敗しました:', error);
+        });
+        return next;
+      });
+    }
+
     // React stateの更新（Firestoreの完了を待たずに即座に行う）
     if (!skipStateUpdate) {
       const updatedShifts = shiftsRef.current.filter(s => s.id !== shiftId);
-      onUpdateShifts(updatedShifts);
+      handleShiftsUpdate(updatedShifts);
 
       // ★ 画面上の文字（DOM）も即座にクリアして「文字が残る」のを防ぐ
       bgCells.forEach(cell => {
@@ -646,7 +1272,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     }
 
     return { shiftId, undoData }; // 削除したシフトIDとUndoデータを返す
-  }, [updateTotalsForHelperAndDate, undoStackRef, onUpdateShifts, dayOffRequests]);
+  }, [updateTotalsForHelperAndDate, undoStackRef, handleShiftsUpdate, dayOffRequests, year, month]);
 
   // Undo関数
   const undo = useCallback(() => {
@@ -660,7 +1286,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     // 配列（グループ）かどうかをチェック
     const actions = Array.isArray(lastAction) ? lastAction : [lastAction];
 
-    console.log(`↶ Undo実行: ${actions.length}件の変更を戻します`);
+
 
     // Redoスタック用のグループを作成
     const redoGroup: Array<{
@@ -857,7 +1483,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
             deleted: false
           };
           restoredShifts.push(restoredShift);
-          console.log(`↶ 削除されたシフトを復元: ${shiftId}`);
+
         }
       }
     });
@@ -866,7 +1492,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     const finalShifts = [...updatedShifts, ...restoredShifts];
 
     // 画面を即座に更新（タイムラグなし）
-    onUpdateShifts(finalShifts);
+    handleShiftsUpdate(finalShifts);
 
     // Firestoreへの保存を並列実行（画面更新をブロックしない）
     const allShiftsToSave = [...updatedShifts.filter(s => actions.find(a => s.id === `shift-${a.helperId}-${a.date}-${a.rowIndex}`)), ...restoredShifts];
@@ -874,16 +1500,16 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       // 削除フラグがある場合は論理削除
       if (shiftToSave.deleted) {
         softDeleteShift(shiftToSave.id)
-          .then(() => console.log('↶ Undoしました（削除状態に戻す）'))
+
           .catch((error: unknown) => console.error('Undo後の保存に失敗しました:', error));
       } else {
         // 通常の保存
         saveShiftWithCorrectYearMonth(shiftToSave)
-          .then(() => console.log('↶ Undoしました（Firestoreに保存完了）', shiftToSave))
+
           .catch((error: unknown) => console.error('Undo後の保存に失敗しました:', error));
       }
     });
-  }, [undoStackRef, redoStackRef, updateTotalsForHelperAndDate, year, month, shifts, onUpdateShifts]);
+  }, [undoStackRef, redoStackRef, updateTotalsForHelperAndDate, year, month, shifts, handleShiftsUpdate]);
 
   // Redo関数
   const redo = useCallback(() => {
@@ -897,7 +1523,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     // 配列（グループ）かどうかをチェック
     const actions = Array.isArray(lastRedo) ? lastRedo : [lastRedo];
 
-    console.log(`↷ Redo実行: ${actions.length}件の変更をやり直します`);
+
 
     // Undoスタック用のグループを作成
     const undoGroup: Array<{
@@ -1038,7 +1664,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     });
 
     // 画面を即座に更新（タイムラグなし）
-    onUpdateShifts(updatedShifts);
+    handleShiftsUpdate(updatedShifts);
 
     // Firestoreへの保存を並列実行（画面更新をブロックしない）
     actions.forEach((action) => {
@@ -1048,17 +1674,15 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         // 削除フラグがある場合は論理削除
         if (updatedShift.deleted) {
           softDeleteShift(shiftId)
-            .then(() => console.log('↷ Redoしました（削除状態に戻す）'))
             .catch((error: unknown) => console.error('Redo後の保存に失敗しました:', error));
         } else {
           // 通常の保存
           saveShiftWithCorrectYearMonth(updatedShift)
-            .then(() => console.log('↷ Redoしました（Firestoreに保存完了）', updatedShift))
             .catch((error: unknown) => console.error('Redo後の保存に失敗しました:', error));
         }
       }
     });
-  }, [redoStackRef, undoStackRef, updateTotalsForHelperAndDate, year, month, shifts, onUpdateShifts]);
+  }, [redoStackRef, undoStackRef, updateTotalsForHelperAndDate, year, month, shifts, handleShiftsUpdate]);
 
   // 休み希望を読み込み（リアルタイム）
   useEffect(() => {
@@ -1172,10 +1796,10 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           saveDayOffRequests(year, month, currentMonthRequests),
           saveDayOffRequests(nextYear, 1, nextMonthRequests)
         ]);
-        console.log(`✅ 休み希望をFirestoreに保存しました: ${year}年${month}月 (${currentMonthRequests.size}件) + ${nextYear}年1月 (${nextMonthRequests.size}件)`);
+
       } else {
         await saveDayOffRequests(year, month, requests);
-        console.log(`✅ 休み希望をFirestoreに保存しました (${requests.size}件)`);
+
       }
     } catch (error) {
       console.error('❌ 休み希望の保存に失敗しました:', error);
@@ -1204,10 +1828,10 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           saveScheduledDayOffs(year, month, currentMonthScheduled),
           saveScheduledDayOffs(nextYear, 1, nextMonthScheduled)
         ]);
-        console.log(`✅ 指定休をFirestoreに保存しました: ${year}年${month}月 (${currentMonthScheduled.size}件) + ${nextYear}年1月 (${nextMonthScheduled.size}件)`);
+
       } else {
         await saveScheduledDayOffs(year, month, scheduledDayOffsData);
-        console.log(`✅ 指定休をFirestoreに保存しました (${scheduledDayOffsData.size}件)`);
+
       }
     } catch (error) {
       console.error('❌ 指定休の保存に失敗しました:', error);
@@ -1267,7 +1891,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       }
 
       const data = await response.json();
-      console.log('📦 取得したデータ:', data);
+
 
       if (!data.success) {
         console.warn('❌ 交通費・経費データの取得に失敗しました (API Error)');
@@ -1338,7 +1962,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         return undefined;
       };
 
-      console.log('👥 登録されているヘルパー:', Array.from(helperNameToId.keys()));
+
 
       const monthKey = `${year}-${String(month).padStart(2, '0')}`;
       const updatedHelpers = [...helpers];
@@ -1382,14 +2006,14 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       if (!skipConfirmation && overwriteList.length > 0) {
         const confirmMessage = `以下のデータを上書きします。よろしいですか？\n\n${overwriteList.join('\n')}`;
         if (!confirm(confirmMessage)) {
-          console.log('❌ ユーザーがキャンセルしました');
+
           return;
         }
       }
 
       // 交通費データを反映
       if (data.kotsuhi?.list) {
-        console.log('🚃 交通費データ:', data.kotsuhi.list);
+
         data.kotsuhi.list.forEach((item: { name: string; amount: number }) => {
           const helperId = findHelperId(item.name);
           if (helperId) {
@@ -1397,7 +2021,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
             if (helperIndex !== -1) {
               const currentAmount = updatedHelpers[helperIndex].monthlyPayments?.[monthKey]?.transportationAllowance || 0;
 
-              console.log(`  ${item.name}: ${currentAmount} → ${item.amount}`);
+
 
               // 金額が変わっている場合のみ更新
               if (currentAmount !== item.amount) {
@@ -1413,7 +2037,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                 };
                 hasChanges = true;
                 updateSummary.push(`✅ ${item.name}: 交通費 ¥${item.amount.toLocaleString()}`);
-                console.log(`  ✅ ${item.name}の交通費を更新しました`);
+
               }
             }
           } else {
@@ -1425,7 +2049,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
       // 経費データを反映
       if (data.keihi?.list) {
-        console.log('📝 経費データ:', data.keihi.list);
+
         data.keihi.list.forEach((item: { name: string; amount: number }) => {
           const helperId = findHelperId(item.name);
           if (helperId) {
@@ -1433,7 +2057,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
             if (helperIndex !== -1) {
               const currentAmount = updatedHelpers[helperIndex].monthlyPayments?.[monthKey]?.advanceExpense || 0;
 
-              console.log(`  ${item.name}: ${currentAmount} → ${item.amount}`);
+
 
               // 金額が変わっている場合のみ更新
               if (currentAmount !== item.amount) {
@@ -1449,7 +2073,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                 };
                 hasChanges = true;
                 updateSummary.push(`✅ ${item.name}: 経費 ¥${item.amount.toLocaleString()}`);
-                console.log(`  ✅ ${item.name}の経費を更新しました`);
+
               }
             }
           } else {
@@ -1462,7 +2086,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       // 変更があった場合のみFirestoreに保存
       if (hasChanges) {
         await saveHelpers(updatedHelpers);
-        console.log('✅ 交通費・経費データを更新しました');
+
 
         // ローカルのmonthlyPaymentsも更新
         const newPayments: Record<string, {
@@ -1512,18 +2136,30 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     }
   }, [helpers, year, month]);
 
+  // 交通費・経費データの取得済みフラグ（年月ごとの重複取得防止）
+  const lastFetchedMonthRef = useRef<string | null>(null);
+
   // ページ読み込み時・月が変わったときに自動的に交通費・経費データを取得
   useEffect(() => {
     // 初回読み込み時とヘルパーデータがある場合に実行
     if (helpers.length > 0) {
+      const currentMonthKey = `${year}-${month}`;
+
+      // すでに同じ月のデータを取得済みの場合はスキップ
+      if (lastFetchedMonthRef.current === currentMonthKey) {
+        return;
+      }
+
       // 少し遅延させてから実行（ヘルパーデータの読み込み完了を待つ）
       const timer = setTimeout(() => {
         fetchAndUpdateExpenseData(true); // 自動取得なので確認なし
+        lastFetchedMonthRef.current = currentMonthKey;
       }, 1000);
 
       return () => clearTimeout(timer);
     }
-  }, [year, month, helpers.length]);
+  }, [year, month, helpers.length, fetchAndUpdateExpenseData]);
+
 
   // 給与データを更新・保存する関数（デバウンス付き）
   const updateMonthlyPayment = useCallback((
@@ -1603,138 +2239,96 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     sortedHelpers.forEach(helper => {
       weeks.forEach(week => {
         week.days.forEach(day => {
-          if (!day.isEmpty) {
-            for (let rowIndex = 0; rowIndex < 5; rowIndex++) {
-              const key = `${helper.id}-${day.date}-${rowIndex}`;
-              const shift = shiftMap.get(key);
+          if (day.isEmpty) return;
 
-              // 指定休をチェック（日付全体）
-              const scheduledDayOffKey = `${helper.id}-${day.date}`;
-              const isScheduledDayOff = scheduledDayOffs.has(scheduledDayOffKey);
+          const dayOffKey = `${helper.id}-${day.date}`;
+          const isScheduledDayOff = scheduledDayOffs.has(dayOffKey);
+          const dayOffValue = dayOffRequests.get(dayOffKey);
+          const oldFormatDayOffRows = dayOffValue ? getRowIndicesFromDayOffValue(dayOffValue) : [];
 
-              // 新形式のキー（行ごと）をチェック
-              const rowSpecificKey = `${helper.id}-${day.date}-${rowIndex}`;
-              const isRowSpecificDayOff = dayOffRequests.has(rowSpecificKey);
+          // 表示テキストの計算（勝手な補完を抑制し、指定休や休み希望がある場合のみ表示）
+          const rawDisplayText = displayTexts.get(dayOffKey) || '';
 
-              // 旧形式のキー（日付全体）をチェック（後方互換性）
-              const dayOffKey = `${helper.id}-${day.date}`;
-              const dayOffValue = dayOffRequests.get(dayOffKey);
-              const isOldFormatDayOff = dayOffValue ? getRowIndicesFromDayOffValue(dayOffValue).includes(rowIndex) : false;
+          for (let rowIndex = 0; rowIndex < 5; rowIndex++) {
+            const key = `${helper.id}-${day.date}-${rowIndex}`;
+            const shift = shiftMap.get(key);
+            const isRowSpecificDayOff = dayOffRequests.has(key);
+            const isDayOffForThisRow = isRowSpecificDayOff || oldFormatDayOffRows.includes(rowIndex);
 
-              // 休み希望の該当行を判定（新形式 または 旧形式）
-              const isDayOffForThisRow = isRowSpecificDayOff || isOldFormatDayOff;
+            if (!shift) {
+              let bgColor = '#ffffff';
+              let lines = ['', '', '', ''];
 
-              // 表示テキストを取得し正規化
-              let rawDisplayText = displayTexts.get(dayOffKey);
-              const displayText = (rawDisplayText === '休' || rawDisplayText === '終日' || !rawDisplayText)
-                ? '休み希望'
-                : rawDisplayText;
+              // 指定休 or 休み希望がある場合の処理
+              if (isScheduledDayOff) {
+                // 指定休は緑色
+                bgColor = '#22c55e';
+                // テキストは最初の行のみ表示
+                if (rowIndex === 0) lines = [rawDisplayText || '休み希望', '', '', ''];
+              } else if (isDayOffForThisRow) {
+                // 休み希望はピンク系
+                bgColor = '#ffcccc';
 
-              if (!shift) {
-                // 指定休が最優先、次に休み希望
-                let bgColor = '#ffffff';
-                let lines = ['', '', '', ''];
-
-                if (isScheduledDayOff) {
-                  bgColor = '#22c55e';  // 指定休は緑色
-                  // 指定休の表示テキスト（最初の行のみ）
-                  if (rowIndex === 0) {
-                    lines = [displayText || '終日', '', '', ''];
-                  }
-                } else if (isDayOffForThisRow) {
-                  bgColor = '#ffcccc';  // 休み希望はピンク系
-
-                  // もっと厳密な先頭行判定（この日の中で最初の休み希望行か判定）
-                  let isFirstRowOfBlock = false;
-                  if (rowIndex === 0) {
-                    isFirstRowOfBlock = true;
-                  } else {
-                    let hasDayOffBefore = false;
-                    for (let i = 0; i < rowIndex; i++) {
-                      if (checkIsDayOffRow(helper.id, day.date, i)) {
-                        hasDayOffBefore = true;
-                        break;
-                      }
-                    }
-                    isFirstRowOfBlock = !hasDayOffBefore;
-                  }
-
-                  if (isFirstRowOfBlock) {
-                    lines = [displayText, '', '', ''];
+                // 該当日の最初の休み希望行のみテキストを表示
+                let hasDayOffBefore = false;
+                for (let i = 0; i < rowIndex; i++) {
+                  if (dayOffRequests.has(`${helper.id}-${day.date}-${i}`) || oldFormatDayOffRows.includes(i)) {
+                    hasDayOffBefore = true;
+                    break;
                   }
                 }
-
-                cache.set(key, {
-                  lines,
-                  bgColor,
-                  hasWarning: false
-                });
-              } else {
-                const { startTime, endTime, clientName, serviceType, duration, area, cancelStatus } = shift;
-
-                // キャンセル状態をログ出力
-                // キャンセル状態をログ出力（パフォーマンス低下の恐れがあるためコメントアウト）
-                // if (cancelStatus) {
-                //   console.log(`🔴 レンダリングキャッシュ: キャンセルシフトを処理中:`, {
-                //     key,
-                //     id: shift.id,
-                //     cancelStatus: shift.cancelStatus,
-                //     clientName: shift.clientName
-                //   });
-                // }
-
-                // 各ラインのデータ
-                const timeString = startTime && endTime ? `${startTime}-${endTime}` : (startTime || endTime ? `${startTime || ''}-${endTime || ''}` : '');
-                const lines = [
-                  timeString,
-                  (serviceType === 'other' || serviceType === 'yotei')
-                    ? clientName
-                    : (clientName ? `${clientName}(${SERVICE_CONFIG[serviceType]?.label || ''})` : `(${SERVICE_CONFIG[serviceType]?.label || ''})`),
-                  duration ? duration.toString() : '',
-                  area || ''
-                ];
-
-                // 警告が必要かチェック
-                const hasWarning = shouldShowWarning(startTime, endTime, serviceType);
-
-                // 背景色を設定（優先度：キャンセル > 指定休 > ケア内容 > 部分休み希望 > デフォルト）
-                let bgColor = '#ffffff';
-                const hasActualCare = serviceType && SERVICE_CONFIG[serviceType] &&
-                  (serviceType as string) !== 'yasumi_kibou' &&
-                  (serviceType as string) !== 'shitei_kyuu' &&
-                  (serviceType as string) !== 'other' &&
-                  (clientName || startTime || endTime);
-
-                const cs = shift.cancelStatus as string;
-                if (cs === 'keep_time' || cs === 'remove_time' || cs === 'canceled_with_time' || cs === 'canceled_without_time') {
-                  if (cs) console.log(`🎯 [CellDisplayCache] キャンセル状態を検知: ${key}, status: ${cs}`);
-                  bgColor = '#f87171';  // キャンセル状態は赤
-                } else if (isScheduledDayOff || (serviceType as string) === 'shitei_kyuu') {
-                  bgColor = '#22c55e';  // 指定休は緑色
-                } else if (hasActualCare) {
-                  // ケア内容がある場合はケアの背景色を優先（終日休み希望でもケアがあればケア色）
-                  bgColor = SERVICE_CONFIG[serviceType].bgColor;
-                } else if (isRowSpecificDayOff || (serviceType as string) === 'yasumi_kibou') {
-                  // 部分（行ごと）の休み希望の場合のみピンク背景
-                  bgColor = '#ffcccc';
-                } else if (isOldFormatDayOff) {
-                  // 終日休み希望でケアがない場合もピンク
-                  bgColor = '#ffcccc';
-                } else if (serviceType && SERVICE_CONFIG[serviceType] && (serviceType as string) !== 'other') {
-                  // その他のサービスタイプの色
-                  bgColor = SERVICE_CONFIG[serviceType].bgColor;
-                }
-
-                // 休み希望が有効だがケア（Shift）がある場合は、ケア内容を表示
-                // ケアがない場合のみ「休み希望」を表示（上の `if (!shift)` 側で処理されるはずだが念のため）
-                const isHolidayActive = isRowSpecificDayOff || isOldFormatDayOff;
-                if (isHolidayActive && !hasActualCare) {
-                  // 休み希望で実際のケアがない場合は「休み希望」と表示
-                  // ただし、shiftがある場合はそのままケア内容を表示
-                }
-
-                cache.set(key, { lines, bgColor, hasWarning });
+                if (!hasDayOffBefore) lines = [rawDisplayText || '休み希望', '', '', ''];
               }
+
+              cache.set(key, { lines, bgColor, hasWarning: false });
+            } else {
+              const { startTime, endTime, clientName, serviceType, duration, area, cancelStatus } = shift;
+
+              // キャンセル状態をログ出力
+              // キャンセル状態をログ出力（パフォーマンス低下の恐れがあるためコメントアウト）
+              // if (cancelStatus) {
+              //   console.log(`🔴 レンダリングキャッシュ: キャンセルシフトを処理中:`, {
+              //     key,
+              //     id: shift.id,
+              //     cancelStatus: shift.cancelStatus,
+              //     clientName: shift.clientName
+              //   });
+              // }
+
+              // 各ラインのデータ
+              const timeString = startTime && endTime ? `${startTime}-${endTime}` : (startTime || endTime ? `${startTime || ''}-${endTime || ''}` : '');
+              const lines = [
+                timeString,
+                (serviceType === 'other' || serviceType === 'yotei')
+                  ? clientName
+                  : (clientName ? `${clientName}(${SERVICE_CONFIG[serviceType]?.label || ''})` : `(${SERVICE_CONFIG[serviceType]?.label || ''})`),
+                duration ? duration.toString() : '',
+                area || ''
+              ];
+
+              // 警告が必要かチェック
+              const hasWarning = shouldShowWarning(startTime, endTime, serviceType);
+
+              // 背景色を設定（優先度：キャンセル > 指定休 > ケア内容 > 部分休み希望 > デフォルト）
+              let bgColor = '#ffffff';
+              const hasActualCare = serviceType && SERVICE_CONFIG[serviceType] &&
+                (serviceType as string) !== 'yasumi_kibou' &&
+                (serviceType as string) !== 'shitei_kyuu' &&
+                (serviceType as string) !== 'other' &&
+                (clientName || startTime || endTime);
+
+              const cs = shift.cancelStatus as string;
+              if (cs === 'keep_time' || cs === 'remove_time' || cs === 'canceled_with_time' || cs === 'canceled_without_time') {
+                bgColor = '#f87171';
+              } else if (isScheduledDayOff || (serviceType as string) === 'shitei_kyuu') {
+                bgColor = '#22c55e';
+              } else if (hasActualCare) {
+                bgColor = SERVICE_CONFIG[serviceType].bgColor;
+              } else if (isRowSpecificDayOff || (serviceType as string) === 'yasumi_kibou' || oldFormatDayOffRows.includes(rowIndex)) {
+                bgColor = '#ffcccc';
+              }
+
+              cache.set(key, { lines, bgColor, hasWarning });
             }
           }
         });
@@ -1742,10 +2336,155 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     });
 
     return cache;
-  }, [sortedHelpers, weeks, shiftMap, dayOffRequests, scheduledDayOffs, displayTexts, shifts]);
+  }, [sortedHelpers, weeks, shiftMap, dayOffRequests, scheduledDayOffs, displayTexts]);
+
+  const onLineDoubleClick = useCallback((e: React.MouseEvent, lineIndex: number) => {
+    e.stopPropagation();
+    const wrapper = e.currentTarget as HTMLElement;
+    const helperId = wrapper.dataset.helper!;
+    const date = wrapper.dataset.date!;
+    const rowIndex = parseInt(wrapper.dataset.row!);
+
+    // ★ 最速で枠を移動
+    // wrapper.classList.add('line-selected'); // 青枠削除
+    lastSelectedWrapperRef.current = wrapper;
+
+    setActiveCellKey(`${helperId}-${date}-${rowIndex}-${lineIndex}`);
+    setIsEditingMode(true);
+  }, [clearManualSelection]);
+
+  const onLineKeyDown = useCallback((e: React.KeyboardEvent, lineIndex: number) => {
+    const wrapper = e.currentTarget as HTMLElement;
+    const input = wrapper.querySelector('input') as HTMLInputElement;
+
+    // ★ ナビゲーションキーの判定
+    const isNavKey = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'].includes(e.key);
+
+    // input内でイベントが発生した場合
+    if (e.target !== e.currentTarget) {
+      // ナビゲーションキー (Enter, Tab, 矢印) 以外は、ブラウザの標準動作（文字入力やカーソル移動）を優先させる
+      if (!isNavKey) return;
+
+      // 入力中の「左右矢印」は文字間移動に使いたいのでスキップ
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') return;
+    }
+
+    // ダイレクト入力 / F2編集
+    const isPrintableKey = e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey;
+    if (e.target === e.currentTarget) {
+      if (e.key === 'F2') {
+        e.preventDefault();
+        setInitialInputValue(""); // 既存の内容を維持
+        setIsEditingMode(true);
+        return;
+      }
+      if (isPrintableKey) {
+        e.preventDefault();
+        setInitialInputValue(e.key); // 入力値で上書き
+        setIsEditingMode(true);
+        return;
+      }
+    }
+
+    // 特殊キーの判定
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      if (e.target !== e.currentTarget) return; // input内でのBS/Delはパス通す
+      e.preventDefault();
+      const helperId = wrapper.dataset.helper!;
+      const date = wrapper.dataset.date!;
+      const rowIndex = parseInt(wrapper.dataset.row!);
+      handleManualShiftSave(helperId, date, rowIndex, lineIndex, '');
+      return;
+    }
+
+    if (e.key === "Escape") {
+      e.preventDefault();
+      clearManualSelection(); // Escape時は手動でクリア
+      setActiveCellKey(null);
+      setIsEditingMode(false);
+      return;
+    }
+
+    // ナビゲーション実行
+    if (isNavKey) {
+      if (e.key === 'Enter' && e.nativeEvent.isComposing) return; // IME確定のEnterは無視
+
+      e.preventDefault();
+      const currentTd = wrapper.closest('td') as HTMLElement;
+      if (!currentTd) return;
+
+      let targetWrapper: HTMLElement | null = null;
+
+      if (e.key === 'ArrowDown' || (e.key === 'Enter' && !e.shiftKey)) {
+        if (lineIndex < 3) {
+          targetWrapper = currentTd.querySelector(`.editable-cell-wrapper[data-line="${lineIndex + 1}"]`);
+        } else {
+          // 下の行(tr)の同じカラムのセル
+          const tr = currentTd.parentElement as HTMLTableRowElement;
+          const nextTr = tr.nextElementSibling as HTMLTableRowElement;
+          if (nextTr) {
+            const cellIndex = Array.from(tr.cells).indexOf(currentTd as HTMLTableCellElement);
+            const nextTd = nextTr.cells[cellIndex];
+            if (nextTd) {
+              targetWrapper = nextTd.querySelector(`.editable-cell-wrapper[data-line="0"]`);
+            }
+          }
+        }
+      } else if (e.key === 'ArrowUp' || (e.key === 'Enter' && e.shiftKey)) {
+        if (lineIndex > 0) {
+          targetWrapper = currentTd.querySelector(`.editable-cell-wrapper[data-line="${lineIndex - 1}"]`);
+        } else {
+          // 上の行(tr)の同じカラムのセル
+          const tr = currentTd.parentElement as HTMLTableRowElement;
+          const prevTr = tr.previousElementSibling as HTMLTableRowElement;
+          if (prevTr) {
+            const cellIndex = Array.from(tr.cells).indexOf(currentTd as HTMLTableCellElement);
+            const prevTd = prevTr.cells[cellIndex];
+            if (prevTd) {
+              targetWrapper = prevTd.querySelector(`.editable-cell-wrapper[data-line="3"]`);
+            }
+          }
+        }
+      } else if (e.key === 'ArrowRight' || (e.key === 'Tab' && !e.shiftKey)) {
+        const nextTd = currentTd.nextElementSibling as HTMLElement;
+        if (nextTd && nextTd.dataset.cellKey) {
+          targetWrapper = nextTd.querySelector(`.editable-cell-wrapper[data-line="${lineIndex}"]`);
+        }
+      } else if (e.key === 'ArrowLeft' || (e.key === 'Tab' && e.shiftKey)) {
+        const prevTd = currentTd.previousElementSibling as HTMLElement;
+        if (prevTd && prevTd.dataset.cellKey) {
+          targetWrapper = prevTd.querySelector(`.editable-cell-wrapper[data-line="${lineIndex}"]`);
+        }
+      }
+
+      if (targetWrapper) {
+        const nextHelperId = targetWrapper.dataset.helper!;
+        const nextDate = targetWrapper.dataset.date!;
+        const nextRowIndex = parseInt(targetWrapper.dataset.row!);
+        const nextLineIndex = parseInt((targetWrapper as any).dataset.line || "0");
+
+        focusChangeTimeRef.current = Date.now();
+        // ★ 最速で枠を移動
+        clearManualSelection();
+        // targetWrapper.classList.add('line-selected'); // 青枠削除
+        lastSelectedWrapperRef.current = targetWrapper;
+        targetWrapper.focus();
+
+        setActiveCellKey(`${nextHelperId}-${nextDate}-${nextRowIndex}-${nextLineIndex}`);
+        setIsEditingMode(false);
+
+        // フォーカスだけはブラウザの仕様上直接当てる必要がある
+        targetWrapper.focus();
+      }
+      return;
+    }
+
+    // 編集開始（F2 または 通常の文字入力）
+
+  }, [handleManualShiftSave, syncSelection]);
+
 
   // キャッシュ準備完了を追跡
-  const [isCacheReady, setIsCacheReady] = useState(false);
 
   useEffect(() => {
     // キャッシュが構築されたら準備完了フラグを立てる
@@ -1766,10 +2505,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
   }, [cellDisplayCache]);
 
 
-  // refからstateへ同期（描画用）
-  const syncSelection = useCallback(() => {
-    setSelectedRows(new Set(selectedRowsRef.current));
-  }, []);
+
 
 
 
@@ -1807,12 +2543,11 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     if (!selectedRowsRef.current.has(cellKey)) {
       selectedRowsRef.current.add(cellKey);
 
-      // DOM直接操作で即座に青枠表示（背景色は変更しない）
+      // クラス付与で青枠表示（削除）
       const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
       if (td) {
-        td.style.setProperty('outline', '3px solid #2563eb', 'important');
-        td.style.setProperty('outline-offset', '-3px', 'important');
-        td.style.setProperty('z-index', '10', 'important');
+        // td.classList.add('shift-cell-multi-selected');
+        // td.style.setProperty('z-index', '2000', 'important');
         lastSelectedRowTdsRef.current.push(td);
       }
     }
@@ -1863,12 +2598,11 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     selectedRowsRef.current.add(cellKey);
     lastProcessedCellRef.current = cellKey; // このセルは処理済みとして記録
 
-    // DOM直接操作で即座に青枠表示
+    // クラス付与で青枠表示（削除）
     const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
     if (td) {
-      td.style.setProperty('outline', '3px solid #2563eb', 'important');
-      td.style.setProperty('outline-offset', '-3px', 'important');
-      td.style.setProperty('z-index', '10', 'important');
+      // td.classList.add('td-selected');
+      // td.style.setProperty('z-index', '2000', 'important');
       // 重複しないようにチェックしてから追加
       if (!lastSelectedRowTdsRef.current.includes(td)) {
         lastSelectedRowTdsRef.current.push(td);
@@ -1878,16 +2612,42 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     console.log(`🔵 Shift+クリック: ${cellKey} を選択に追加 (合計: ${selectedRowsRef.current.size}個)`);
 
     // ★重要：同時に single-selection の anchor も更新して、再レンダリング時のジャンプを防止
-    selectedCellRef.helperId = helperId;
-    selectedCellRef.date = date;
-    selectedCellRef.rowIndex = rowIndex;
-    // セルをクリックしたのと同じ扱いにするため、1段目をデフォルトとする（あるいは現在の値を維持）
-    if (selectedCellRef.lineIndex < 0) selectedCellRef.lineIndex = 0;
+    selectedCellRef.current = {
+      helperId,
+      date,
+      rowIndex,
+      lineIndex: (selectedCellRef.current?.lineIndex ?? 0) < 0 ? 0 : (selectedCellRef.current?.lineIndex ?? 0)
+    };
 
     // documentレベルでpointermoveを監視
     document.addEventListener('pointermove', handlePointerMove, { passive: true });
     document.addEventListener('pointerup', handlePointerUp, { once: true });
   }, [handlePointerMove, handlePointerUp]);
+
+  const onCellMouseDown = useCallback((e: any, h: any, d: any, r: any) => {
+    // 右クリックは無視
+    if (e.button === 2) return;
+
+    // 入力フィールド（input本体）をクリックした場合は、編集モードを維持するため何もしない
+    const dragTarget = e.target as HTMLElement;
+    if (dragTarget.tagName === 'INPUT') return;
+
+    // contentEditableの要素をクリックした場合はドラッグを無効化
+    const isEditing = dragTarget.contentEditable === 'true' || dragTarget.closest('[contenteditable="true"]');
+    e.currentTarget.draggable = !isEditing;
+
+    // Shift+クリック/ドラッグで複数選択
+    if (e.shiftKey) {
+      e.stopPropagation(); // Shift操作はここで行う
+      handleCellPointerDown(e as any, h.id, d.date, r);
+      return;
+    }
+
+    // ★ 通常のクリック処理は handleNativeMouseDown (capture=true) に任せるため、
+    // ここでは何もしない（競合防止）。
+    // handleNativeMouseDown が既に DOM 更新と state 更新のトリガーを行っている。
+    // ここで再度 state 更新を行うと、タイミングによって「下のセル」にずれるなどのバグの原因になる。
+  }, [handleCellPointerDown]);
 
   const handleCellMouseEnter = useCallback((_e: React.MouseEvent, helperId: string, date: string, rowIndex: number) => {
     // ペースト先のセルを記録
@@ -2089,7 +2849,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         shiftsRef.current = updatedShifts; // ★ Refを同期的に更新して連続ペーストに対応
 
         // ★ React stateの更新を即座に実行（連続ペースト時の不整合を防止）
-        onUpdateShifts(updatedShifts);
+        handleShiftsUpdate(updatedShifts);
 
         // Firestoreに保存
         await saveShiftWithCorrectYearMonth(newShift);
@@ -2100,13 +2860,17 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     saveData();
 
     // ★ 選択状態を更新（ペースト先を選択状態に）
-    selectedCellRef.helperId = helperId;
-    selectedCellRef.date = date;
-    selectedCellRef.rowIndex = rowIndex;
+    if (selectedCellRef.current) {
+      selectedCellRef.current.helperId = helperId;
+      selectedCellRef.current.date = date;
+      selectedCellRef.current.rowIndex = rowIndex;
+    } else {
+      selectedCellRef.current = { helperId, date, rowIndex, lineIndex: 0 };
+    }
     currentTargetCellRef.current = { helperId, date, rowIndex };
 
     console.log('✅ セルにペーストしました:', copyBufferRef.data);
-  }, [copyBufferRef, updateTotalsForHelperAndDate, year, month, dayOffRequests, selectedCellRef, currentTargetCellRef, undoStackRef, redoStackRef, onUpdateShifts, saveShiftWithCorrectYearMonth]);
+  }, [copyBufferRef, updateTotalsForHelperAndDate, year, month, dayOffRequests, selectedCellRef, currentTargetCellRef, undoStackRef, redoStackRef, handleShiftsUpdate, saveShiftWithCorrectYearMonth]);
 
   // キーボードイベント（Cmd+C / Cmd+V / Cmd+Z / Cmd+Shift+Z / 直接入力）のリスナー
   useEffect(() => {
@@ -2135,9 +2899,9 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         }
 
         // 単一選択の場合
-        if (selectedCellRef.helperId && selectedCellRef.rowIndex >= 0) {
+        if (selectedCellRef.current?.helperId && selectedCellRef.current.rowIndex >= 0) {
           e.preventDefault();
-          copyCellData(selectedCellRef.helperId, selectedCellRef.date, selectedCellRef.rowIndex);
+          copyCellData(selectedCellRef.current.helperId, selectedCellRef.current.date, selectedCellRef.current.rowIndex);
         }
         return;
       }
@@ -2169,7 +2933,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
             // Reactステートを先に更新してUIを即座に反映（最新の値を確実に使用する）
             const updatedShifts = [...shiftsRef.current.filter(s => !shiftsToSave.some(newS => newS.id === s.id)), ...shiftsToSave];
             shiftsRef.current = updatedShifts; // ★ Refを同期的に更新して連続ペーストに対応
-            onUpdateShifts(updatedShifts);
+            handleShiftsUpdate(updatedShifts);
 
             // Firestoreに保存
             await saveShiftsByYearMonth(shiftsToSave);
@@ -2180,13 +2944,13 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           return;
         }
 
-        if (selectedCellRef.helperId && selectedCellRef.rowIndex >= 0) {
+        if (selectedCellRef.current?.helperId && selectedCellRef.current.rowIndex >= 0) {
           e.preventDefault();
 
           // ★ 内部コピーバッファにデータがある場合は優先使用
           if (copyBufferRef.hasCopiedData && copyBufferRef.data.some(line => line.trim() !== '')) {
             console.log('📌 内部コピーバッファからペーストします');
-            pasteCellData(selectedCellRef.helperId, selectedCellRef.date, selectedCellRef.rowIndex);
+            pasteCellData(selectedCellRef.current.helperId, selectedCellRef.current.date, selectedCellRef.current.rowIndex);
             return;
           }
 
@@ -2197,11 +2961,12 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
             if (hasTabDelimiter) {
               // 2次元データ（複数列）のペースト処理
-              const startDate = selectedCellRef.date;
-              const startRowIndex = selectedCellRef.rowIndex;
+              if (!selectedCellRef.current) return;
+              const startDate = selectedCellRef.current.date;
+              const startRowIndex = selectedCellRef.current.rowIndex;
 
               // ペースト開始位置のヘルパーのindexを取得
-              const startHelperIndex = sortedHelpers.findIndex(h => h.id === selectedCellRef.helperId);
+              const startHelperIndex = sortedHelpers.findIndex(h => h.id === selectedCellRef.current?.helperId);
               if (startHelperIndex === -1) {
                 console.error('開始ヘルパーが見つかりません');
                 return;
@@ -2405,7 +3170,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                   updatedShifts.push(...shiftsToSave);
                   shiftsRef.current = updatedShifts; // ★ Refを同期的に更新して連続ペーストに対応
                   lastLocalUpdateTimeRef.current = Date.now(); // ★ 追加：Firestoreからのエコーバック対策
-                  onUpdateShifts(updatedShifts);
+                  handleShiftsUpdate(updatedShifts);
 
                   // ★ Undoスタックに追加（2次元グループとして）
                   if (undoGroup2D.length > 0) {
@@ -2430,9 +3195,16 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                 // 複数行データの場合：1列のシフトとして処理
                 console.log(`📋 スプレッドシートからペースト: ${lines.length}行`);
 
-                const helperId = selectedCellRef.helperId;
-                const date = selectedCellRef.date;
-                const startRowIndex = selectedCellRef.rowIndex;
+                let hId = "";
+                let dStr = "";
+                let sRowIndex = 0;
+                if (selectedCellRef.current) {
+                  hId = selectedCellRef.current.helperId;
+                  dStr = selectedCellRef.current.date;
+                  sRowIndex = selectedCellRef.current.rowIndex;
+                } else {
+                  return;
+                }
 
                 // 4行ごとにグループ化（1つのシフト = 4行）
                 const shiftGroups: string[][] = [];
@@ -2451,17 +3223,17 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                 // ★ Undo用：ペースト前の状態を保存
                 const undoGroup: UndoActionData[] = [];
                 for (let groupIndex = 0; groupIndex < shiftGroups.length; groupIndex++) {
-                  const currentRow = startRowIndex + groupIndex;
+                  const currentRow = sRowIndex + groupIndex;
                   const beforeData: string[] = [];
                   let beforeBackgroundColor = '#ffffff';
 
                   for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
-                    const cellSelector = `.editable-cell[data-row="${currentRow}"][data-line="${lineIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
+                    const cellSelector = `.editable-cell[data-row="${currentRow}"][data-line="${lineIndex}"][data-helper="${hId}"][data-date="${dStr}"]`;
                     const cell = document.querySelector(cellSelector) as HTMLElement;
                     beforeData.push(cell ? cell.textContent || '' : '');
                   }
 
-                  const bgCellSelector = `.editable-cell[data-row="${currentRow}"][data-helper="${helperId}"][data-date="${date}"]`;
+                  const bgCellSelector = `.editable-cell[data-row="${currentRow}"][data-helper="${hId}"][data-date="${dStr}"]`;
                   const bgCells = document.querySelectorAll(bgCellSelector);
                   if (bgCells.length > 0) {
                     const parentTd = bgCells[0].closest('td') as HTMLElement;
@@ -2471,8 +3243,8 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                   }
 
                   undoGroup.push({
-                    helperId,
-                    date,
+                    helperId: hId,
+                    date: dStr,
                     rowIndex: currentRow,
                     data: beforeData,
                     backgroundColor: beforeBackgroundColor
@@ -2483,12 +3255,12 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
                 // 各シフトグループを順番に配置
                 for (let groupIndex = 0; groupIndex < shiftGroups.length; groupIndex++) {
-                  const currentRow = (startRowIndex + groupIndex).toString();
+                  const currentRow = (sRowIndex + groupIndex).toString();
                   const dataToSave = shiftGroups[groupIndex];
 
                   // DOM要素にデータを設定
                   for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
-                    const targetSelector = `.editable-cell[data-row="${currentRow}"][data-line="${lineIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
+                    const targetSelector = `.editable-cell[data-row="${currentRow}"][data-line="${lineIndex}"][data-helper="${hId}"][data-date="${dStr}"]`;
                     const targetCell = document.querySelector(targetSelector) as HTMLElement;
 
                     if (targetCell) {
@@ -2498,9 +3270,9 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                       // ※ 休み希望/指定休の行では自動入力しない
                       if (lineIndex === 0 && dataToSave[lineIndex]) {
                         const rowIndexNum = parseInt(currentRow);
-                        const isDayOffRow = checkIsDayOffRow(helperId, date, rowIndexNum);
-                        const isScheduled = scheduledDayOffs.has(`${helperId}-${date}`);
-                        const durationSelector = `.editable-cell[data-row="${currentRow}"][data-line="2"][data-helper="${helperId}"][data-date="${date}"]`;
+                        const isDayOffRow = checkIsDayOffRow(hId, dStr, rowIndexNum);
+                        const isScheduled = scheduledDayOffs.has(`${hId}-${dStr}`);
+                        const durationSelector = `.editable-cell[data-row="${currentRow}"][data-line="2"][data-helper="${hId}"][data-date="${dStr}"]`;
                         const durationCell = document.querySelector(durationSelector) as HTMLElement;
 
                         if (isDayOffRow || isScheduled) {
@@ -2528,7 +3300,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                             const [_, config] = serviceEntry;
 
                             // 休み希望のチェック
-                            const dayOffKey = `${helperId}-${date}-${currentRow}`;
+                            const dayOffKey = `${hId}-${dStr}-${currentRow}`;
                             const isDayOffForThisRow = dayOffRequests.has(dayOffKey);
 
                             // 休み希望がある場合はピンク系、ない場合はサービス種別の色
@@ -2541,7 +3313,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                               (parentTd as HTMLElement).style.backgroundColor = bgColor;
                             }
 
-                            const cellSelector = `[data-row="${currentRow}"][data-helper="${helperId}"][data-date="${date}"].editable-cell`;
+                            const cellSelector = `[data-row="${currentRow}"][data-helper="${hId}"][data-date="${dStr}"].editable-cell`;
                             const cellElements = document.querySelectorAll(cellSelector);
                             cellElements.forEach((cell) => {
                               (cell as HTMLElement).style.backgroundColor = bgColor;
@@ -2575,7 +3347,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                     const startTime = timeMatch ? timeMatch[1] : '';
                     const endTime = timeMatch && timeMatch[2] ? timeMatch[2] : '';
 
-                    const shiftId = `shift-${helperId}-${date}-${currentRow}`;
+                    const shiftId = `shift-${hId}-${dStr}-${currentRow}`;
                     const existingShift = shiftsRef.current.find(s => s.id === shiftId);
                     const newCancelStatus = existingShift?.cancelStatus;
                     const newCanceledAt = existingShift?.canceledAt;
@@ -2583,12 +3355,12 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                     // 給与を計算（会議とその他は計算しない）
                     const payCalculation = (serviceType === 'kaigi' || serviceType === 'other' || serviceType === 'yotei')
                       ? { regularHours: 0, nightHours: 0, regularPay: 0, nightPay: 0, totalPay: 0 }
-                      : calculateShiftPay(serviceType, timeRange, date);
+                      : calculateShiftPay(serviceType, timeRange, dStr);
 
                     const shift: Shift = {
                       id: shiftId,
-                      date,
-                      helperId: String(helperId), // helperIdを文字列に統一
+                      date: dStr,
+                      helperId: String(hId), // helperIdを文字列に統一
                       clientName,
                       serviceType,
                       startTime,
@@ -2610,7 +3382,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                 }
 
                 // 集計を更新
-                updateTotalsForHelperAndDate(helperId, date);
+                updateTotalsForHelperAndDate(hId, dStr);
 
                 // Firestoreに一括保存
                 if (shiftsToSave.length > 0) {
@@ -2624,7 +3396,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                     updatedShifts.push(...shiftsToSave);
                     shiftsRef.current = updatedShifts; // ★ Refを同期的に更新して連続ペーストに対応
                     lastLocalUpdateTimeRef.current = Date.now(); // ★ 追加：Firestoreからのエコーバック対策
-                    onUpdateShifts(updatedShifts);
+                    handleShiftsUpdate(updatedShifts);
 
                     // ★ Undoスタックに追加（グループとして）
                     if (undoGroup.length > 0) {
@@ -2640,13 +3412,17 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                 }
               } else {
                 // 単一行データの場合：内部コピーバッファからペースト
-                pasteCellData(selectedCellRef.helperId, selectedCellRef.date, selectedCellRef.rowIndex);
+                if (selectedCellRef.current) {
+                  pasteCellData(selectedCellRef.current.helperId, selectedCellRef.current.date, selectedCellRef.current.rowIndex);
+                }
               }
             }
           }).catch(error => {
             console.error('クリップボードの読み取りに失敗しました:', error);
             // フォールバック：内部コピーバッファを使用
-            pasteCellData(selectedCellRef.helperId, selectedCellRef.date, selectedCellRef.rowIndex);
+            if (selectedCellRef.current) {
+              pasteCellData(selectedCellRef.current.helperId, selectedCellRef.current.date, selectedCellRef.current.rowIndex);
+            }
           });
         }
         return;
@@ -2666,49 +3442,40 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         return;
       }
 
-      // 既にどこかのセルが「本番編集モード（縦線あり）」中かチェック
-      const actuallyEditingCell = document.querySelector('.editable-cell[contenteditable="true"]:not([data-waiting-typing="true"])');
-      if (actuallyEditingCell) {
-        // 既に本番編集モードのセルがある場合は、グローバルキーボードハンドラーは何もしない
-        return;
-      }
+      // 編集中の場合はグローバルハンドラーをスキップ（input側のハンドラーに任せる）
+      if (isEditingMode) return;
 
       // 青い枠が表示されている状態で、通常の文字キーが押されたら編集モードに入る
-      if (lastSelectedCellRef.current) {
-        const cell = lastSelectedCellRef.current;
-
-        // 特殊キーは除外（矢印、Enter、Escape、Tab、Shift、Ctrl、Alt、Metaなど）
+      if (activeCellKey) {
+        // 特殊キーは除外
         const specialKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape', 'Tab', 'Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12'];
 
-        // Cmd/Ctrl修飾キーが押されている場合も除外
         if (e.metaKey || e.ctrlKey || e.altKey || specialKeys.includes(e.key)) {
           return;
         }
 
         if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete') {
-          // 待機状態を解除してカーソルを表示
-          cell.removeAttribute('data-waiting-typing');
-
           if (e.key === 'Backspace' || e.key === 'Delete') {
             e.preventDefault();
-            cell.textContent = '';
+            // State経由で値を空にして保存
+            const [h, d, r, l] = activeCellKey.split('-');
+            handleManualShiftSave(h, d, parseInt(r), parseInt(l), '');
+          } else {
+            // 文字入力なら編集モード開始
+            setIsEditingMode(true);
           }
-
-          // 青い枠を削除
-          cell.style.removeProperty('box-shadow');
-          cell.style.removeProperty('outline');
         }
       }
 
-      // Escapeキー: 複数選択を解除
+      // Escapeキー: 選択を解除
       if (e.key === 'Escape') {
+        setActiveCellKey(null);
+        setIsEditingMode(false);
         selectedRowsRef.current.clear();
-        // DOM要素のoutlineも削除
         lastSelectedRowTdsRef.current.forEach(td => {
           td.style.removeProperty('outline');
-          td.style.removeProperty('outline-offset'); td.style.removeProperty('z-index');
+          td.style.removeProperty('outline-offset');
           td.style.removeProperty('z-index');
-
         });
         lastSelectedRowTdsRef.current = [];
         syncSelection();
@@ -2768,10 +3535,10 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     const filteredShifts = shiftsRef.current.filter(s => s.date !== targetDate);
     const updatedShifts = [...filteredShifts, ...newShifts];
 
-    onUpdateShifts(updatedShifts);
+    handleShiftsUpdate(updatedShifts);
 
     console.log(`✅ ${dateCopyBufferRef.date}のケア内容を${targetDate}にペーストしました`);
-  }, [dateCopyBufferRef, shifts, onUpdateShifts]);
+  }, [dateCopyBufferRef, shifts, handleShiftsUpdate]);
 
   // 日付ヘッダー用のコンテキストメニューを表示する関数
   const showDateContextMenu = useCallback((e: React.MouseEvent, date: string) => {
@@ -2858,16 +3625,19 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     selectedRowsRef.current.add(cellKey);
 
     // ★重要：ドラッグ中も anchor を更新して、再レンダリング時のジャンプを防止
-    selectedCellRef.helperId = helperId;
-    selectedCellRef.date = date;
-    selectedCellRef.rowIndex = rowIndex;
+    selectedCellRef.current = {
+      ...selectedCellRef.current,
+      helperId,
+      date,
+      rowIndex,
+      lineIndex: selectedCellRef.current?.lineIndex ?? 0
+    };
 
     // ドラッグ中もDOMを直接操作して即座にフィードバック
     const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
     if (td) {
-      td.style.setProperty('outline', '3px solid #2563eb', 'important');
-      td.style.setProperty('outline-offset', '-3px', 'important');
-      td.style.setProperty('z-index', '10', 'important');
+      td.classList.add('shift-cell-multi-selected');
+      td.style.setProperty('z-index', '2000', 'important');
       lastSelectedRowTdsRef.current.push(td);
     }
 
@@ -3091,10 +3861,29 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     const existingMenu = document.getElementById('context-menu');
     safeRemoveElement(existingMenu);
 
-    // 複数選択されているかチェック
     const rowKey = `${helperId}-${date}-${rowIndex}`;
+    const hasShift = shiftMap.has(rowKey);
+    const clickedIsDayOff = checkIsDayOffRow(helperId, date, rowIndex);
+
+    // 複数選択されているかチェック
     const isMultipleSelection = selectedRows.size > 0 && selectedRows.has(rowKey);
     const targetRows = isMultipleSelection ? Array.from(selectedRows) : [rowKey];
+
+    // ★ 追加: ケア（シフト）も休み希望も入っていない場所ではメニューを表示しない
+    // 複数選択の場合は、選択範囲内に一つでもデータがあれば表示する
+    const hasAnyData = isMultipleSelection
+      ? targetRows.some(key => {
+        const parts = key.split('-');
+        const rIdx = parseInt(parts[parts.length - 1]);
+        const dt = parts.slice(-4, -1).join('-');
+        const hId = parts.slice(0, -4).join('-');
+        return shiftMap.has(key) || checkIsDayOffRow(hId, dt, rIdx);
+      })
+      : (hasShift || clickedIsDayOff);
+
+    if (!hasAnyData) {
+      return;
+    }
 
     // 新しいメニューを作成
     const menu = document.createElement('div');
@@ -3168,7 +3957,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       // 一括でReact stateを更新（すべての削除が完了してから）
       const deletedIdSet = new Set(deletedShiftIds);
       const updatedShifts = shiftsRef.current.filter(s => !deletedIdSet.has(s.id));
-      onUpdateShifts(updatedShifts);
+      handleShiftsUpdate(updatedShifts);
       console.log(`✅ React stateから ${deletedShiftIds.length}件を一括削除完了`);
 
       // 複数選択をクリア
@@ -3198,19 +3987,10 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         const dt = parts.slice(-4, -1).join('-');
         const hId = parts.slice(0, -4).join('-');
 
-        // 同じ位置のセルを探して青枠を付ける
-        const cellSelector = `.editable-cell[data-helper="${hId}"][data-date="${dt}"][data-row="${rowIdx}"][data-line="0"]`;
-        const targetCell = document.querySelector(cellSelector) as HTMLElement;
-        if (targetCell) {
-          targetCell.classList.add('line-selected');
-          lastSelectedCellRef.current = targetCell;
-          // Refも更新してEffectで維持されるようにする
-          selectedCellRef.helperId = hId;
-          selectedCellRef.date = dt;
-          selectedCellRef.rowIndex = rowIdx;
-          selectedCellRef.lineIndex = 0;
-          console.log(`🔵 削除後、1つのセルに青枠を設定: ${hId}-${dt}-${rowIdx}`);
-        }
+        // 同じ位置のセルを探して青枠を付ける（ステート更新に一本化）
+        setActiveCellKey(`${hId}-${dt}-${rowIdx}-0`);
+        setIsEditingMode(false);
+        console.log(`🔵 削除後、1つのセルに青枠を設定: ${hId}-${dt}-${rowIdx}-0`);
       }
 
       // 要素が存在する場合のみ削除
@@ -3364,7 +4144,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
         const finalShifts = snapshot.map(s => updatedShiftsMap.get(s.id) || s);
         shiftsRef.current = finalShifts;
-        onUpdateShifts(finalShifts);
+        handleShiftsUpdate(finalShifts);
 
         saveShiftsByYearMonth(restoredShifts).then(() => {
           restoredShifts.forEach(rs => {
@@ -3489,7 +4269,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       const allFinalShifts = [...finalShifts.filter(s => !canceledIds.has(s.id)), ...canceledShifts];
 
       shiftsRef.current = allFinalShifts;
-      onUpdateShifts(allFinalShifts);
+      handleShiftsUpdate(allFinalShifts);
 
       saveShiftsByYearMonth(canceledShifts).then(() => {
         canceledShifts.forEach(cs => {
@@ -3616,7 +4396,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       const allFinalShifts = [...finalShifts.filter(s => !canceledIds.has(s.id)), ...canceledShifts];
 
       shiftsRef.current = allFinalShifts;
-      onUpdateShifts(allFinalShifts);
+      handleShiftsUpdate(allFinalShifts);
 
       saveShiftsByYearMonth(canceledShifts).then(() => {
         canceledShifts.forEach(cs => {
@@ -3808,7 +4588,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         // まずローカルをref基準で即時更新（直後のonBlur等でotherに上書きされないように）
         const next = [...shiftsRef.current.filter(s => !updatedIds.has(s.id)), ...updatedShifts];
         shiftsRef.current = next;
-        onUpdateShifts(next);
+        handleShiftsUpdate(next);
 
         // Firestoreは一括保存（セルごとのPromise.allより安定）
         const delays = [0, 400, 1200];
@@ -3930,17 +4710,34 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       };
       menu.appendChild(deleteDayOffBtn);
     }
+
+    // 指定休の設定/解除ボタンを追加
+    const isScheduled = scheduledDayOffs.has(`${helperId}-${date}`);
+    const scheduledBtn = document.createElement('div');
+    scheduledBtn.textContent = isScheduled ? '🟢 指定休（緑背景）を解除' : '🟢 指定休（緑背景）を設定';
+    scheduledBtn.style.padding = '8px 16px';
+    scheduledBtn.style.cursor = 'pointer';
+    scheduledBtn.style.borderTop = '1px solid #e5e7eb';
+    scheduledBtn.onmouseover = () => scheduledBtn.style.backgroundColor = '#f3f4f6';
+    scheduledBtn.onmouseout = () => scheduledBtn.style.backgroundColor = 'transparent';
+    scheduledBtn.onclick = () => {
+      toggleScheduledDayOff(helperId, date);
+      menu.remove();
+    };
+    menu.appendChild(scheduledBtn);
     document.body.appendChild(menu);
 
     // 外部クリックでメニューを閉じる
-    const closeMenu = () => {
-      menu.remove();
-      document.removeEventListener('click', closeMenu);
+    const closeMenu = (event: MouseEvent) => {
+      if (!menu.contains(event.target as Node)) {
+        menu.remove();
+        document.removeEventListener('mousedown', closeMenu, { capture: true });
+      }
     };
     setTimeout(() => {
-      document.addEventListener('click', closeMenu);
+      document.addEventListener('mousedown', closeMenu, { capture: true });
     }, 0);
-  }, [deleteCare, selectedRows, setSelectedRows, dayOffRequests, toggleDayOff, saveDayOffToFirestore, checkIsDayOffRow, scheduledDayOffs, shiftMap, shifts, onUpdateShifts]);
+  }, [deleteCare, selectedRows, setSelectedRows, dayOffRequests, toggleDayOff, saveDayOffToFirestore, checkIsDayOffRow, scheduledDayOffs, shiftMap, shifts, handleShiftsUpdate]);
 
   // ドラッグ開始
   const handleDragStart = useCallback((e: React.DragEvent, helperId: string, date: string, rowIndex: number) => {
@@ -4182,6 +4979,13 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
   const serviceTypeSummary = useMemo(() => {
     const summary = new Map<string, Map<ServiceType | 'shinya' | 'shinya_doko', { hours: number; amount: number }>>();
 
+    // 高速化のため、shiftsをhelperIdでインデックス化
+    const shiftsByHelper = new Map<string, Shift[]>();
+    shifts.forEach(s => {
+      if (!shiftsByHelper.has(s.helperId)) shiftsByHelper.set(s.helperId, []);
+      shiftsByHelper.get(s.helperId)!.push(s);
+    });
+
     sortedHelpers.forEach(helper => {
       const helperData = new Map<ServiceType | 'shinya' | 'shinya_doko', { hours: number; amount: number }>();
 
@@ -4194,10 +4998,11 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       helperData.set('shinya_doko', { hours: 0, amount: 0 });
 
       // シフトから集計
-      shifts.filter(s => {
+      (shiftsByHelper.get(helper.id) || []).filter(s => {
         const isExcluded = s.cancelStatus === 'remove_time' || s.cancelStatus === 'canceled_without_time';
-        return s.helperId === helper.id && !isExcluded && (s.duration || 0) > 0;
+        return !isExcluded && (s.duration || 0) > 0;
       }).forEach(shift => {
+
         const { serviceType, startTime, endTime, duration } = shift;
         const hourlyRate = SERVICE_CONFIG[serviceType]?.hourlyRate || 0;
 
@@ -4259,6 +5064,14 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       amount: number;
     }>>();
 
+    // 高速化のため、shiftsをhelperIdとdateでインデックス化
+    const shiftLookupMap = new Map<string, Shift[]>();
+    shifts.forEach(s => {
+      const key = `${s.helperId}-${s.date}`;
+      if (!shiftLookupMap.has(key)) shiftLookupMap.set(key, []);
+      shiftLookupMap.get(key)!.push(s);
+    });
+
     sortedHelpers.forEach(helper => {
       const weeklyData: Array<{
         regularHours: number;
@@ -4278,12 +5091,12 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         week.days.forEach(day => {
           if (day.isEmpty) return;
 
-          const dayShifts = shifts.filter(s =>
-            s.helperId === helper.id &&
-            s.date === day.date &&
+          const lookupKey = `${helper.id}-${day.date}`;
+          const dayShifts = (shiftLookupMap.get(lookupKey) || []).filter(s =>
             !(s.cancelStatus === 'remove_time' || s.cancelStatus === 'canceled_without_time') &&
             (s.duration || 0) > 0
           );
+
 
           dayShifts.forEach(shift => {
             if (shift.startTime && shift.endTime) {
@@ -4351,8 +5164,16 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
   return (
     <div
       ref={containerRef}
-      className="overflow-x-auto pb-4"
+      className="overflow-x-auto pb-4 relative z-0 outline-none"
+      style={{ position: 'relative' }}
+      tabIndex={0}
     >
+      <div
+        ref={selectionOverlayRef}
+        className="selection-overlay absolute pointer-events-none z-[2005]"
+      // style is managed by ref/JS to prevent React conflicts
+      ></div>
+
       {weeks.map((week) => (
         <div key={week.weekNumber} className="mb-8">
           <table
@@ -4428,7 +5249,10 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
               </tr>
             </thead>
 
-            <tbody style={{ contain: 'layout style paint' }}>
+            <tbody
+              style={{ contain: 'layout style paint', position: 'relative' }}
+            >
+
               {/* 入力スペース（5行） */}
               {[0, 1, 2, 3, 4].map((rowIndex) => (
                 <tr key={`input-${rowIndex}`} style={{ height: '84px', minHeight: '84px' }}>
@@ -4463,531 +5287,42 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                       // タスク3: セルデータを取得（DOM操作なし、Mapから直接取得）
                       const cellDisplayData = getCellDisplayData(helper.id, day.date, rowIndex);
 
-                      // 通常の日の場合は編集可能なセルを表示
-                      const rowKey = `${helper.id}-${day.date}-${rowIndex}`;
-                      const isSelectedRow = selectedRows.has(rowKey);
-
                       return (
-                        <td
+                        <ShiftTableTd
                           key={`${day.date}-${helper.id}-input-${rowIndex}`}
-                          data-cell-key={`${helper.id}-${day.date}-${rowIndex}`}
-                          className="p-0 relative"
-                          draggable={true}
-                          style={{
-                            width: '80px',
-                            minWidth: '80px',
-                            maxWidth: '80px',
-                            minHeight: '84px',
-                            height: '84px',
-                            padding: '0',
-                            boxSizing: 'border-box',
-                            border: cellDisplayData.hasWarning ? '3px solid #f97316' : '1px solid #374151',
-                            borderRight: isLastHelper ? '2px solid #000000' : (cellDisplayData.hasWarning ? '3px solid #f97316' : '1px solid #374151'),
-                            cursor: 'pointer',
-                            opacity: draggedCell && draggedCell.helperId === helper.id && draggedCell.date === day.date && draggedCell.rowIndex === rowIndex ? 0.5 : 1,
-                            backgroundColor: cellDisplayData.bgColor
-                            // セル全体の青枠は非表示（行ごとの枠のみ表示）
-                          }}
-                          title={cellDisplayData.hasWarning ? '⚠️ 終了時刻が入力されていません' : undefined}
-                          onMouseDown={(e) => {
-                            // 右クリックは無視
-                            if (e.button === 2) return;
-
-                            // イベント伝播を即座に止めて最速化
-                            e.stopPropagation();
-
-                            // contentEditableの要素をクリックした場合はドラッグを無効化
-                            const dragTarget = e.target as HTMLElement;
-                            const isEditing = dragTarget.contentEditable === 'true' || dragTarget.closest('[contenteditable="true"]');
-                            e.currentTarget.draggable = !isEditing;
-
-                            // Shift+クリック/ドラッグで複数選択
-                            if (e.shiftKey) {
-                              handleCellPointerDown(e as any, helper.id, day.date, rowIndex);
-                              return;
-                            }
-
-                            // ★★★ スプレッドシート級の即時反応ロジック ★★★
-
-                            // 1. 既存の青枠を全削除し、編集モードも一括解除（DOM直接操作）
-                            const existingSelections = document.querySelectorAll('.line-selected, .cell-selected');
-                            for (let i = 0; i < existingSelections.length; i++) {
-                              existingSelections[i].classList.remove('line-selected', 'cell-selected');
-                            }
-
-                            // 全てのセルの編集モードを解除
-                            const allCells = document.querySelectorAll('.editable-cell[contenteditable="true"]');
-                            allCells.forEach(el => {
-                              el.setAttribute('contenteditable', 'false');
-                              (el as HTMLElement).style.userSelect = 'none';
-                              (el as HTMLElement).style.webkitUserSelect = 'none';
-                            });
-
-                            lastSelectedRowTdsRef.current.forEach(td => {
-                              td.style.removeProperty('outline');
-                              td.style.removeProperty('outline-offset');
-                              td.style.removeProperty('z-index');
-                            });
-                            lastSelectedRowTdsRef.current = [];
-
-                            // 2. 内部メモリを即座に更新
-                            selectedRowsRef.current.clear();
-                            const cellKey = `${helper.id}-${day.date}-${rowIndex}`;
-                            selectedRowsRef.current.add(cellKey);
-
-                            const currentTd = e.currentTarget as HTMLElement;
-                            lastSelectedTdRef.current = currentTd;
-
-                            // ★★★ スプレッドシート級の即時反応ロジック（座標ベース） ★★★
-                            const rect = currentTd.getBoundingClientRect();
-                            const yOffset = e.clientY - rect.top;
-                            // 1行15px (60px / 4)
-                            const preciseLineIndex = Math.min(3, Math.floor(yOffset / (rect.height / 4)));
-
-                            // 1. 全ての編集モードと選択枠を一括解除
-                            document.querySelectorAll('.line-selected, .cell-selected').forEach(el => {
-                              el.classList.remove('line-selected', 'cell-selected');
-                            });
-                            document.querySelectorAll('.editable-cell[contenteditable="true"]').forEach(el => {
-                              el.setAttribute('contenteditable', 'false');
-                              el.removeAttribute('data-waiting-typing');
-                              (el as HTMLElement).style.userSelect = 'none';
-                              (el as HTMLElement).style.webkitUserSelect = 'none';
-                            });
-
-                            // 2. 内部メモリの即時更新
-                            selectedRowsRef.current.clear();
-                            selectedRowsRef.current.add(cellKey); // cellKey was already defined above
-                            selectedCellRef.helperId = helper.id;
-                            selectedCellRef.date = day.date;
-                            selectedCellRef.rowIndex = rowIndex;
-                            selectedCellRef.lineIndex = preciseLineIndex;
-
-                            // 3. 正確なターゲット行を特定
-                            const targetLineCell = currentTd.querySelector(`.editable-cell[data-line="${preciseLineIndex}"]`) as HTMLElement;
-                            if (targetLineCell) {
-                              targetLineCell.classList.add('line-selected');
-                              lastSelectedCellRef.current = targetLineCell;
-
-                              // ★ 修正: ここではcontenteditableにせず、フォーカスのみ行う
-                              targetLineCell.focus();
-                            }
-
-                            // ペースト先・ドラッグ開始フラグの更新
-                            currentTargetCellRef.current = { helperId: helper.id, date: day.date, rowIndex };
-                            isSelectingCellsRef.current = true;
-                          }}
-                          onMouseEnter={(e) => {
-                            handleCellMouseEnter(e, helper.id, day.date, rowIndex);
-                            // セル選択の継続
-                            handleCellSelectionMove(helper.id, day.date, rowIndex);
-                          }}
-                          onContextMenu={(e) => {
-                            showContextMenu(e, helper.id, day.date, rowIndex);
-                          }}
-                          onDoubleClick={(e) => {
-                            const target = e.target as HTMLElement;
-                            const cell = target.closest('.editable-cell') as HTMLElement;
-                            if (cell) {
-                              e.stopPropagation();
-
-                              // ★ 以前選択されていたセルの青枠とcontenteditable解除
-                              if (lastSelectedCellRef.current && lastSelectedCellRef.current !== cell) {
-                                lastSelectedCellRef.current.classList.remove('line-selected', 'cell-selected');
-                                lastSelectedCellRef.current.setAttribute('contenteditable', 'false');
-                                lastSelectedCellRef.current.removeAttribute('data-waiting-typing');
-                              }
-
-                              // ★ 他のline-selectedも全て解除
-                              document.querySelectorAll('.line-selected').forEach(el => {
-                                if (el !== cell) {
-                                  el.classList.remove('line-selected');
-                                }
-                              });
-
-                              // ★ 編集モードに入る
-                              cell.removeAttribute('data-waiting-typing');
-                              // 元の内容を保存（Escapeで復元するため）
-                              cell.dataset.originalContent = cell.textContent || '';
-                              cell.setAttribute('contenteditable', 'true');
-                              cell.classList.add('line-selected');
-                              cell.style.userSelect = 'text';
-                              cell.focus();
-
-                              // カーソルを最後へ
-                              const range = document.createRange();
-                              const sel = window.getSelection();
-                              range.selectNodeContents(cell);
-                              range.collapse(false);
-                              sel?.removeAllRanges();
-                              sel?.addRange(range);
-
-                              lastSelectedCellRef.current = cell;
-                              return;
-                            }
-                            // セル選択されている場合は指定休を設定
-                            if (selectedRows.size > 0) {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              toggleScheduledDayOff(helper.id, day.date);
-                            }
-                          }}
-                          onDragStart={(e) => handleDragStart(e, helper.id, day.date, rowIndex)}
-                          onDragOver={handleDragOver}
-                          onDrop={() => handleDrop(helper.id, day.date, rowIndex)}
-                        >
-                          {/* 常にコンテンツを表示 */}
-                          <div className="w-full h-full flex flex-col">
-                            {/* 4行に等分割（20px x 4 = 80px） */}
-                            {[0, 1, 2, 3].map((lineIndex) => {
-                              const cellContent = cellDisplayData.lines[lineIndex] || '';
-
-                              return (
-                                <div
-                                  key={`${helperIndex}-${dayIndex}-${lineIndex}`}
-                                  className="editable-cell-wrapper relative box-border w-full flex items-center justify-center cursor-pointer"
-                                  tabIndex={0} // ★Wrapper自体をフォーカス可能にする
-                                  style={{
-                                    height: '21px',
-                                    minHeight: '21px',
-                                    borderBottom: lineIndex < 3 ? '1px solid rgba(0, 0, 0, 0.08)' : 'none',
-                                    cursor: 'pointer'
-                                  }}
-                                  data-row={rowIndex}
-                                  data-line={lineIndex}
-                                  data-col={`${helperIndex}-${dayIndex}`}
-                                  data-helper={helper.id}
-                                  data-date={day.date}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const wrapper = e.currentTarget;
-
-                                    // 全ての選択を解除
-                                    document.querySelectorAll('.line-selected').forEach(el => el.classList.remove('line-selected'));
-                                    wrapper.classList.add('line-selected');
-                                    wrapper.focus(); // Wrapperにフォーカス
-                                  }}
-                                  onDoubleClick={(e) => {
-                                    e.stopPropagation();
-                                    const wrapper = e.currentTarget;
-                                    const input = wrapper.querySelector('input') as HTMLInputElement;
-
-                                    wrapper.classList.add('is-editing-mode', 'line-selected');
-                                    if (input) {
-                                      input.value = cellContent; // 編集開始時にcellContentを反映
-                                      input.focus();
-                                      const len = input.value.length;
-                                      input.setSelectionRange(len, len);
-                                    }
-                                  }}
-                                  onKeyDown={(e) => {
-                                    const wrapper = e.currentTarget;
-                                    const input = wrapper.querySelector('input') as HTMLInputElement;
-
-                                    // IME変換中は一切のナビゲーションを無効化（ブラウザに任せる）
-                                    if (e.nativeEvent.isComposing || isComposingRef.current) {
-                                      return;
-                                    }
-
-                                    // Edit Mode時のBackspace処理
-                                    if (wrapper.classList.contains('is-editing-mode')) {
-                                      // Edit Mode中はinputがフォーカスを持つため、このハンドラは発火しないはず
-                                      // もし発火した場合は、inputのネイティブ動作を優先
-                                      return;
-                                    }
-
-                                    // Ready Mode時のBackspace処理
-                                    if (e.key === 'Backspace' || e.key === 'Delete') {
-                                      e.preventDefault();
-                                      if (input) {
-                                        input.value = '';
-                                        const span = input.previousElementSibling;
-                                        if (span instanceof HTMLElement) {
-                                          span.textContent = '';
-                                          // ★即座にStateとFirestoreへ空文字保存を実行
-                                          handleManualShiftSave(helper.id, day.date, rowIndex, lineIndex, '');
-                                        }
-                                      }
-                                      return;
-                                    }
-
-                                    // Escape: 選択解除
-                                    if (e.key === "Escape") {
-                                      e.preventDefault();
-                                      wrapper.classList.remove('line-selected');
-                                      wrapper.blur(); // フォーカスを外す
-                                      return;
-                                    }
-
-                                    // Enter: 下に移動（Excel風）
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      const currentWrapper = wrapper as HTMLElement;
-                                      const nextWrapper = currentWrapper?.nextElementSibling as HTMLElement;
-
-                                      // 全ての選択を解除
-                                      document.querySelectorAll('.line-selected').forEach(el => el.classList.remove('line-selected'));
-
-                                      if (nextWrapper && nextWrapper.classList.contains('editable-cell-wrapper')) {
-                                        nextWrapper.classList.add('line-selected');
-                                        nextWrapper.focus();
-                                      } else {
-                                        // 次の行の同じ列へ
-                                        const currentTd = currentWrapper?.closest('td');
-                                        const currentTr = currentTd?.parentElement;
-                                        if (!currentTr || !currentTd) return;
-                                        const tdArray = Array.from(currentTr.children);
-                                        const colIndex = tdArray.indexOf(currentTd);
-
-                                        const nextTr = currentTr.nextElementSibling as HTMLElement;
-                                        if (nextTr && nextTr.children[colIndex]) {
-                                          const nextTd = nextTr.children[colIndex] as HTMLElement;
-                                          const nextInputWrapper = nextTd.querySelector('.editable-cell-wrapper') as HTMLElement;
-                                          if (nextInputWrapper) {
-                                            nextInputWrapper.classList.add('line-selected');
-                                            nextInputWrapper.focus();
-                                          }
-                                        }
-                                      }
-                                      return;
-                                    }
-
-                                    // F2 または 文字入力で編集モードへ
-                                    if (e.key === 'F2' || (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey)) {
-                                      e.preventDefault();
-                                      wrapper.classList.add('is-editing-mode');
-                                      if (input) {
-                                        input.value = (e.key.length === 1) ? e.key : cellContent;
-                                        input.focus();
-                                      }
-                                      return;
-                                    }
-
-                                    // Arrow Keys: 
-                                    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
-                                      e.preventDefault();
-                                      // ... (以前の移動ロジックを流用)
-                                      const currentWrapper = wrapper;
-                                      if (e.key === "ArrowUp") {
-                                        const prevWrapper = currentWrapper?.previousElementSibling;
-                                        if (prevWrapper instanceof HTMLElement) {
-                                          prevWrapper.focus();
-                                        } else {
-                                          // 上の行へ
-                                          const currentTd = currentWrapper?.closest('td');
-                                          const currentTr = currentTd?.parentElement;
-                                          const colIndex = Array.from(currentTr?.children || []).indexOf(currentTd as Element);
-                                          const prevTr = currentTr?.previousElementSibling;
-                                          if (prevTr?.children[colIndex]) {
-                                            const target = (prevTr.children[colIndex] as HTMLElement).querySelectorAll('.editable-cell-wrapper')[3] as HTMLElement; // 一番下の行
-                                            target?.focus();
-                                          }
-                                        }
-                                      } else if (e.key === "ArrowDown") {
-                                        const nextWrapper = currentWrapper?.nextElementSibling;
-                                        if (nextWrapper instanceof HTMLElement) {
-                                          nextWrapper.focus();
-                                        } else {
-                                          // 下の行へ
-                                          const currentTd = currentWrapper?.closest('td');
-                                          const currentTr = currentTd?.parentElement;
-                                          const colIndex = Array.from(currentTr?.children || []).indexOf(currentTd as Element);
-                                          const nextTr = currentTr?.nextElementSibling;
-                                          if (nextTr?.children[colIndex]) {
-                                            const target = (nextTr.children[colIndex] as HTMLElement).querySelectorAll('.editable-cell-wrapper')[0] as HTMLElement; // 一番上の行
-                                            target?.focus();
-                                          }
-                                        }
-                                      } else if (e.key === "ArrowLeft") {
-                                        // 左のセルへ（行は維持）
-                                        const currentTd = currentWrapper?.closest('td');
-                                        const prevTd = currentTd?.previousElementSibling;
-                                        if (prevTd instanceof HTMLElement) {
-                                          const target = prevTd.querySelectorAll('.editable-cell-wrapper')[lineIndex] as HTMLElement;
-                                          target?.focus();
-                                        }
-                                      } else if (e.key === "ArrowRight") {
-                                        // 右のセルへ
-                                        const currentTd = currentWrapper?.closest('td');
-                                        const nextTd = currentTd?.nextElementSibling;
-                                        if (nextTd instanceof HTMLElement) {
-                                          const target = nextTd.querySelectorAll('.editable-cell-wrapper')[lineIndex] as HTMLElement;
-                                          target?.focus();
-                                        }
-                                      }
-                                      return;
-                                    }
-                                  }}
-                                >
-                                  {/* 表示用 Div (Ready Modeで見える) */}
-                                  <div
-                                    className="cell-display absolute inset-0 flex items-center justify-center pointer-events-none"
-                                    style={{
-                                      zIndex: 5,
-                                      fontWeight: (lineIndex === 0 || lineIndex === 1) ? 'bold' : 'normal',
-                                    }}
-                                  >
-                                    {lineIndex === 0 && cellDisplayData.hasWarning && cellContent ? (
-                                      <span className="flex items-center gap-0.5">⚠️<span>{cellContent}</span></span>
-                                    ) : cellContent}
-                                  </div>
-
-                                  {/* 編集用 Input (Edit Modeで見える) */}
-                                  <input
-                                    className="cell-input editable-cell"
-                                    style={{
-                                      zIndex: 10,
-                                    }}
-                                    defaultValue="" // ★Readyモード中は空にして二重表示を防ぐ
-                                    data-line={lineIndex}
-                                    data-row={rowIndex}
-                                    data-helper={helper.id}
-                                    data-date={day.date}
-                                    onFocus={(e) => {
-                                      const input = e.target;
-                                      const wrapper = input.parentElement;
-
-                                      // 他のすべての選択状態を解除
-                                      document.querySelectorAll('.line-selected').forEach(el => el.classList.remove('line-selected'));
-                                      // document.querySelectorAll('.is-editing').forEach(el => {
-                                      //   el.classList.remove('is-editing');
-                                      //   (el as any).readOnly = true;
-                                      // });
-
-                                      if (wrapper && !wrapper.classList.contains('line-selected')) {
-                                        wrapper.classList.add('line-selected');
-                                      }
-
-                                      // input.readOnly = true; // フォーカス直後は Ready モード
-                                      lastSelectedCellRef.current = input;
-
-                                      selectedCellRef.helperId = helper.id;
-                                      selectedCellRef.date = day.date;
-                                      selectedCellRef.rowIndex = rowIndex;
-                                      selectedCellRef.lineIndex = lineIndex;
-
-                                      input.select();
-                                    }}
-                                    // input 自身の onClick は削除（Wrapper で管理）
-
-                                    onBlur={(e) => {
-                                      const input = e.target;
-                                      const wrapper = input.parentElement;
-                                      if (wrapper) wrapper.classList.remove('is-editing-mode');
-
-                                      const newVal = input.value;
-                                      const span = input.previousElementSibling as HTMLElement;
-                                      if (span) {
-                                        span.textContent = newVal;
-                                        // ★StateとFirestoreへの保存を実行
-                                        handleManualShiftSave(helper.id, day.date, rowIndex, lineIndex, newVal);
-                                      }
-                                      isComposingRef.current = false;
-                                    }}
-                                    onCompositionStart={(e) => {
-                                      isComposingRef.current = true;
-                                      // 入力が始まったら即座にEditモードへ
-                                      const input = e.currentTarget;
-                                      const wrapper = input.parentElement;
-                                      if (wrapper) wrapper.classList.add('is-editing-mode');
-                                    }}
-                                    onCompositionEnd={() => {
-                                      isComposingRef.current = false;
-                                    }}
-                                    onKeyDown={(e) => {
-                                      const input = e.target as HTMLInputElement;
-                                      const wrapper = input.parentElement;
-
-                                      // 1. IME変換中は一切のナビゲーションを無効化（ブラウザに任せる）
-                                      if (e.nativeEvent.isComposing || isComposingRef.current) {
-                                        return;
-                                      }
-
-                                      // Edit Mode時のBackspace処理
-                                      if (e.key === 'Backspace' || e.key === 'Delete') {
-                                        e.stopPropagation(); // 親要素への伝播を止め、inputのネイティブ動作（文字削除）を優先させる
-                                        return;
-                                      }
-
-                                      // Escape: 編集キャンセル or 選択解除
-                                      if (e.key === "Escape") {
-                                        e.preventDefault();
-                                        wrapper?.classList.remove('is-editing-mode');
-                                        // 値を元に戻すロジックが必要ならここに追加
-                                        const span = input.previousElementSibling as HTMLElement;
-                                        if (span) {
-                                          input.value = span.textContent || '';
-                                        }
-                                        wrapper?.focus(); // Wrapperにフォーカスを戻す
-                                        return;
-                                      }
-
-                                      // Enter: 確定して下へ移動
-                                      if (e.key === "Enter") {
-                                        e.preventDefault();
-                                        const newVal = input.value;
-                                        const span = input.previousElementSibling as HTMLElement;
-                                        if (span) {
-                                          span.textContent = newVal;
-                                          // ★StateとFirestoreへの保存を実行
-                                          handleManualShiftSave(helper.id, day.date, rowIndex, lineIndex, newVal);
-                                        }
-
-                                        // 編集モードを終了
-                                        wrapper?.classList.remove('is-editing-mode');
-
-                                        // 下への移動ロジック
-                                        const currentWrapper = wrapper as HTMLElement;
-                                        const nextWrapper = currentWrapper?.nextElementSibling as HTMLElement;
-
-                                        // 全ての選択を解除
-                                        document.querySelectorAll('.line-selected').forEach(el => el.classList.remove('line-selected'));
-
-                                        if (nextWrapper && nextWrapper.classList.contains('editable-cell-wrapper')) {
-                                          nextWrapper.classList.add('line-selected');
-                                          nextWrapper.focus();
-                                        } else {
-                                          // セル内の最後の行なので、次の行の同じ列へ
-                                          const currentTd = currentWrapper?.closest('td');
-                                          const currentTr = currentTd?.parentElement;
-                                          if (!currentTr || !currentTd) return;
-                                          const tdArray = Array.from(currentTr.children);
-                                          const colIndex = tdArray.indexOf(currentTd);
-
-                                          const nextTr = currentTr.nextElementSibling as HTMLElement;
-                                          if (nextTr && nextTr.children[colIndex]) {
-                                            const nextTd = nextTr.children[colIndex] as HTMLElement;
-                                            const nextInputWrapper = nextTd.querySelector('.editable-cell-wrapper') as HTMLElement;
-                                            if (nextInputWrapper) {
-                                              nextInputWrapper.classList.add('line-selected');
-                                              nextInputWrapper.focus();
-                                            }
-                                          }
-                                        }
-                                        return;
-                                      }
-
-                                      // Arrow Keys: Editモード中は、キャレット移動のためにデフォルト挙動を許可（移動しない）
-                                      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
-                                        // input内でカーソル移動
-                                        return;
-                                      }
-                                    }}
-                                  />
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </td>
+                          helper={helper}
+                          day={day}
+                          rowIndex={rowIndex}
+                          cellDisplayData={cellDisplayData}
+                          isLastHelper={isLastHelper}
+                          isDragged={!!(draggedCell && draggedCell.helperId === helper.id && draggedCell.date === day.date && draggedCell.rowIndex === rowIndex)}
+                          onMouseDown={onCellMouseDown}
+                          handleCellMouseEnter={handleCellMouseEnter}
+                          handleCellSelectionMove={handleCellSelectionMove}
+                          showContextMenu={showContextMenu}
+                          toggleScheduledDayOff={toggleScheduledDayOff}
+                          handleDragStart={handleDragStart}
+                          handleDragOver={handleDragOver}
+                          handleDrop={handleDrop}
+                          onLineDoubleClick={onLineDoubleClick}
+                          onLineKeyDown={onLineKeyDown}
+                          handleManualShiftSave={handleManualShiftSave}
+                          selectedRowsRef={selectedRowsRef}
+                          initialInputValue={initialInputValue}
+                          activeCellKey={activeCellKey}
+                          isEditingMode={isEditingMode}
+                        />
                       );
                     })
                   )}
+
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      ))}
+      ))
+      }
 
       {/* 以下、月次集計テーブル */}
       <div className="mt-12 mb-8">
@@ -5506,7 +5841,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           </table>
         </div>
       </div>
-    </div >
+    </div>
   );
 };
 
