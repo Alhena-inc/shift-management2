@@ -192,6 +192,12 @@ const ShiftTableCellLine = memo(({
   // 編集モードと表示値の同期
   useEffect(() => {
     if (isEditing && inputRef.current) {
+      // ★ 既にフォーカスがある場合は、直接DOMで編集モードに入ったとみなしてスキップ
+      if (document.activeElement === inputRef.current) {
+        enteredEditingRef.current = true;
+        return;
+      }
+
       if (!enteredEditingRef.current) {
         // 新規入力(initialInputValue)があればそれを使い、なければ既存の内容をセット
         const val = initialInputValue !== "" ? initialInputValue : content;
@@ -201,7 +207,14 @@ const ShiftTableCellLine = memo(({
         const len = val.length;
         inputRef.current.setSelectionRange(len, len);
 
-        inputRef.current.focus();
+        // ★ CSSの opacity/pointer-events が適用された後にフォーカスを設定
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (inputRef.current) {
+              inputRef.current.focus();
+            }
+          });
+        });
         enteredEditingRef.current = true;
       }
     } else {
@@ -265,11 +278,37 @@ const ShiftTableCellLine = memo(({
             return;
           }
 
+          if (e.key === 'Enter') {
+            // 編集モード中にEnterキー → 保存して下のセルに移動
+            e.preventDefault();
+            e.stopPropagation();
+
+            const value = e.currentTarget.value;
+            const textarea = e.currentTarget;
+
+            // ★ 現在のセルの編集モードを即座に終了
+            const currentWrapper = textarea.closest('.editable-cell-wrapper') as HTMLElement;
+            if (currentWrapper) {
+              currentWrapper.classList.remove('is-editing-mode', 'line-selected');
+            }
+            textarea.style.opacity = '0';
+            textarea.style.pointerEvents = 'none';
+
+            // ★ 下のセルに移動（カスタムイベントで親に通知 - refはこのスコープでアクセス不可）
+            const event = new CustomEvent('shift-navigate-down', {
+              detail: { helperId, date, rowIndex, lineIndex, value },
+              bubbles: true
+            });
+            textarea.dispatchEvent(event);
+
+            return;
+          }
+
           if (e.key === 'Escape') {
             e.preventDefault();
             e.currentTarget.blur();
             e.stopPropagation();
-          } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'].includes(e.key)) {
+          } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
             // ナビゲーションキーは親へ伝播させる（フォーカス移動のため）
           } else {
             // その他の文字入力キーはここで止めて、親の重いリスナーを動かさない（超高速化）
@@ -404,8 +443,16 @@ const ShiftTableTd = memo(({
   const prevIsActive = prev.activeCellKey && prev.activeCellKey.startsWith(rowKey);
   const nextIsActive = next.activeCellKey && next.activeCellKey.startsWith(rowKey);
 
-  if (prevIsActive !== nextIsActive) return false;
-  if (nextIsActive && prev.isEditingMode !== next.isEditingMode) return false;
+  // ★ activeCellKeyが変更された場合は再レンダリング
+  if (prev.activeCellKey !== next.activeCellKey) {
+    // このセルに関係する場合は再レンダリング
+    if (prevIsActive || nextIsActive) return false;
+  }
+
+  // ★ isEditingModeが変更された場合、このセルがアクティブなら再レンダリング
+  if (prev.isEditingMode !== next.isEditingMode) {
+    if (prevIsActive || nextIsActive) return false;
+  }
 
   if (prev.cellDisplayData !== next.cellDisplayData) {
     const pData = prev.cellDisplayData;
@@ -420,8 +467,15 @@ const ShiftTableTd = memo(({
 
 const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdateShifts: onUpdateShiftsProp }: Props) => {
   const [isEditingMode, setIsEditingMode] = useState(false);
-  const [activeCellKey, setActiveCellKey] = useState<string | null>(null);
   const [initialInputValue, setInitialInputValue] = useState("");
+  const [activeCellKey, setActiveCellKey] = useState<string | null>(null);
+
+  // ★ Event Listener用のRef (useEffectの再実行を防ぐため)
+  const activeCellKeyRef = useRef(activeCellKey);
+  const isEditingModeRef = useRef(isEditingMode);
+
+  useEffect(() => { activeCellKeyRef.current = activeCellKey; }, [activeCellKey]);
+  useEffect(() => { isEditingModeRef.current = isEditingMode; }, [isEditingMode]);
   const [isCacheReady, setIsCacheReady] = useState(false);
   const [_isPending, startTransition] = useTransition();
   const lastSelectedWrapperRef = useRef<HTMLElement | null>(null);
@@ -831,6 +885,43 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         selectionOverlayRef.current.style.display = 'none';
       }
 
+      // ★ 編集モードのセルを終了（高速化）
+      // querySelectorAll('.is-editing-mode') は遅いので、activeCellKeyを使ってピンポイントで探す
+      const currentActiveKey = activeCellKeyRef.current;
+      if (currentActiveKey) {
+        const [hId, dt, rIdx, lIdx] = currentActiveKey.split('-');
+        if (hId && dt && rIdx && lIdx) {
+          const oldCellSelector = `td[data-cell-key="${hId}-${dt}-${rIdx}"] .editable-cell-wrapper[data-line="${lIdx}"]`;
+          const oldWrapper = document.querySelector(oldCellSelector);
+          if (oldWrapper && oldWrapper.classList.contains('is-editing-mode')) {
+            oldWrapper.classList.remove('is-editing-mode');
+            const textarea = oldWrapper.querySelector('.cell-input') as HTMLTextAreaElement;
+            if (textarea) {
+              textarea.style.opacity = '0';
+              textarea.style.pointerEvents = 'none';
+              textarea.blur();
+            }
+          }
+        }
+      }
+
+      // 念のため、他の迷子の編集モードも掃除（ただしquerySelectorAllは重いので、activeKeyで見つからなかった場合のみ、あるいは非同期で）
+      // ここでは同期的に確実に消すため、シンプルなクエリを使うが、通常は↑で十分
+      const strayEditing = document.querySelector('.editable-cell-wrapper.is-editing-mode');
+      if (strayEditing) {
+        strayEditing.classList.remove('is-editing-mode');
+        const ta = strayEditing.querySelector('.cell-input') as HTMLTextAreaElement;
+        if (ta) {
+          ta.style.opacity = '0';
+          ta.style.pointerEvents = 'none';
+          ta.blur();
+        }
+      }
+
+      // 編集モードstateもリセット
+      setIsEditingMode(false);
+      setActiveCellKey(null);
+
       // ★ 高速化: ピンポイントで削除 (O(1))
       // これを最初に行うことで、ループ処理のコストを回避し、即座に反応させる
       if (lastSelectedWrapperRef.current) {
@@ -842,24 +933,19 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       const targetWrapper = td.querySelector(`.editable-cell-wrapper[data-line="${lineIndex}"]`) as HTMLElement;
       if (targetWrapper) {
         targetWrapper.classList.add('line-selected');
-        // フォーカスもここで当ててしまう（待つ必要なし）
-        targetWrapper.focus({ preventScroll: true });
+        // ★ 常時フォーカス戦略: textareaに直接フォーカス
+        const textarea = targetWrapper.querySelector('.cell-input') as HTMLTextAreaElement;
+        if (textarea) {
+          textarea.focus({ preventScroll: true });
+        } else {
+          targetWrapper.focus({ preventScroll: true });
+        }
         lastSelectedWrapperRef.current = targetWrapper;
       }
 
       // ★ 念のためのゴミ掃除（二重表示防止）は非同期で後回し
       // メインの処理をブロックしない
-      setTimeout(() => {
-        const selectedElements = document.getElementsByClassName('line-selected');
-        // 正解のWrapper以外が光っていたら消す
-        if (selectedElements.length > 1 || (selectedElements.length === 1 && selectedElements[0] !== targetWrapper)) {
-          for (let i = 0; i < selectedElements.length; i++) {
-            if (selectedElements[i] !== targetWrapper) {
-              selectedElements[i].classList.remove('line-selected');
-            }
-          }
-        }
-      }, 0);
+      // setTimeout(() => { ... }, 0); // 削除：DOM操作が重くなる可能性があるため
 
       const hId = td.dataset.helperId!;
       const dStr = td.dataset.date!;
@@ -889,10 +975,6 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       const clientY = e.clientY;
       const top = tdRect.top;
 
-      // セル内の相対Y座標（borderの1px分を考慮して補正する場合はここで行うが、
-      // getBoundingClientRectはborderを含むため、単純な割り算で十分なはず。
-      // ただし、もし上部のborderをクリックしたと判定されると上に行く可能性があるため、
-      // 0〜3の範囲に確実に収める）
       const cellHeight = tdRect.height;
       const oneLineHeight = cellHeight / 4;
 
@@ -903,14 +985,18 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
       const newActiveKey = `${td.dataset.helperId}-${td.dataset.date}-${td.dataset.rowIndex}-${clickedLineIndex}`;
 
+      // Refを使って最新の状態を確認
+      const currentIsEditing = isEditingModeRef.current;
+      const currentActiveKey = activeCellKeyRef.current;
+
       // 既に編集モードかつ、同じセルをクリックした場合は、編集を継続（Inputフォーカス維持）
-      if (isEditingMode && activeCellKey === newActiveKey) {
+      if (currentIsEditing && currentActiveKey === newActiveKey) {
         return;
       }
 
       // それ以外（別のセルをクリック、または現在選択モード）は、選択モードに切り替え
       // 即座に編集モードを終了
-      if (isEditingMode) {
+      if (currentIsEditing) {
         setIsEditingMode(false);
         setActiveCellKey(null);
       }
@@ -970,13 +1056,37 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           break;
         case 'Enter':
           e.preventDefault();
-          // 編集モードへ移行（値は維持）
-          setInitialInputValue("");
-          startTransition(() => {
+          e.stopPropagation();
+          // ★ 編集モードへ移行 - DOMを直接操作して即座にカーソルを表示
+          {
+            const targetWrapper = currentTd.querySelector(`.editable-cell-wrapper[data-line="${curr.lineIndex}"]`) as HTMLElement;
+            if (targetWrapper) {
+              // is-editing-mode クラスを追加
+              targetWrapper.classList.add('is-editing-mode');
+              targetWrapper.classList.add('line-selected');
+              // 内部のtextareaにフォーカス
+              const textarea = targetWrapper.querySelector('.cell-input') as HTMLTextAreaElement;
+              if (textarea) {
+                // ★ 既存の表示内容を取得してtextareaに設定
+                const displayDiv = targetWrapper.querySelector('.cell-display');
+                const currentContent = displayDiv?.textContent || '';
+                textarea.value = currentContent;
+
+                textarea.style.opacity = '1';
+                textarea.style.pointerEvents = 'auto';
+                // ★ 即座にフォーカスを設定（requestAnimationFrameなし）
+                textarea.focus();
+                // カーソルを末尾に設定
+                const len = textarea.value.length;
+                textarea.setSelectionRange(len, len);
+              }
+            }
+            // React stateも更新（同期用）
+            setInitialInputValue("");
             setIsEditingMode(true);
             setActiveCellKey(`${curr.helperId}-${curr.date}-${curr.rowIndex}-${curr.lineIndex}`);
-          });
-          break;
+          }
+          return; // ★ breakではなくreturnで即座に終了
 
         case 'F2':
           // 編集モードへ移行（値は維持）
@@ -1009,18 +1119,37 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           syncSelection();
           break;
         default:
-          if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            // 上書き入力を開始
-            // 遅延の原因: setInitialInputValue -> re-render -> input focus -> value set
-            // 修正後: state更新と同時に、DOMを強制的に編集モード風に見せることはできないが、
-            // Reactのバッチ処理を活用して一括更新
-            setInitialInputValue(e.key);
 
-            // ★重要: ここで flushSync を使うと同期的にDOM更新できるが、React18では startTransition で優先度を下げるのが標準。
-            // しかし「入力」は優先度最高にすべき。
-            // よって startTransition を外して即時更新を試みる。
+          if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            // ★ 常時フォーカス戦略: キー入力をそのまま受け入れる
+            // e.preventDefault() は呼び出さない
+
+            const targetWrapper = currentTd.querySelector(`.editable-cell-wrapper[data-line="${curr.lineIndex}"]`) as HTMLElement;
+            if (targetWrapper) {
+              targetWrapper.classList.add('is-editing-mode', 'line-selected');
+              const textarea = targetWrapper.querySelector('.cell-input') as HTMLTextAreaElement;
+              if (textarea) {
+                // 上書きモードなので既存内容をクリアしてから受ける
+                textarea.value = '';
+                textarea.style.opacity = '1';
+                textarea.style.pointerEvents = 'auto';
+
+                // フォーカスは既にあるはずだが念のため
+                if (document.activeElement !== textarea) {
+                  textarea.focus();
+                }
+              }
+            }
+
+            // React stateも更新
+            // React stateも更新
+            // ★重要: 入力されたキーを初期値としてセットすることで、
+            // 再レンダリング時にtextareaの値がリセットされるのを防ぐ
+            setInitialInputValue(e.key);
             setIsEditingMode(true);
             setActiveCellKey(`${curr.helperId}-${curr.date}-${curr.rowIndex}-${curr.lineIndex}`);
+
+            // returnせずにイベントを伝播させることで、「n」が入力されIMEが開始される
           } else {
             handled = false;
           }
@@ -1039,17 +1168,98 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     };
 
 
+    // 編集モード中にEnterキーで下のセルに移動するためのカスタムイベントハンドラ
+    const handleNavigateDown = (e: Event) => {
+      console.log('🔵 handleNavigateDown called');
+      const customEvent = e as CustomEvent<{ helperId: string; date: string; rowIndex: number; lineIndex: number; value?: string }>;
+      const { helperId, date, rowIndex, lineIndex, value } = customEvent.detail;
+      console.log('🔵 detail:', { helperId, date, rowIndex, lineIndex, value });
+
+      // ★ 編集モードを即座に終了
+      setIsEditingMode(false);
+      setActiveCellKey(null);
+
+      const currentTd = document.querySelector(`td[data-cell-key="${helperId}-${date}-${rowIndex}"]`) as HTMLTableCellElement;
+      console.log('🔵 currentTd:', currentTd);
+      if (!currentTd) return;
+
+      let targetTd: HTMLElement | null = currentTd;
+      let targetLineIndex = lineIndex;
+
+      // 下のラインに移動
+      if (lineIndex < 3) {
+        targetLineIndex = lineIndex + 1;
+      } else {
+        // 次の行の最初のラインに移動
+        const tr = currentTd.closest('tr');
+        const nextTr = tr?.nextElementSibling;
+        if (nextTr && nextTr.children[currentTd.cellIndex]) {
+          targetTd = nextTr.children[currentTd.cellIndex] as HTMLElement;
+          targetLineIndex = 0;
+        }
+      }
+      console.log('🔵 targetTd:', targetTd, 'targetLineIndex:', targetLineIndex);
+
+      if (targetTd) {
+        // ★ 高速化: updateSelectionFromTdを呼ばず、直接DOM操作のみ
+        // 前の選択を削除
+        if (lastSelectedWrapperRef.current) {
+          lastSelectedWrapperRef.current.classList.remove('line-selected');
+        }
+        // 他のis-editing-modeも削除
+        document.querySelectorAll('.is-editing-mode').forEach(el => {
+          el.classList.remove('is-editing-mode');
+          const ta = el.querySelector('.cell-input') as HTMLTextAreaElement;
+          if (ta) {
+            ta.style.opacity = '0';
+            ta.style.pointerEvents = 'none';
+          }
+        });
+
+        // 新しいセルに選択を適用
+        const targetWrapper = targetTd.querySelector(`.editable-cell-wrapper[data-line="${targetLineIndex}"]`) as HTMLElement;
+        console.log('🔵 targetWrapper:', targetWrapper);
+        if (targetWrapper) {
+          targetWrapper.classList.add('line-selected');
+
+          // ★ 常時フォーカス戦略: textareaに直接フォーカス
+          const textarea = targetWrapper.querySelector('.cell-input') as HTMLTextAreaElement;
+          if (textarea) {
+            textarea.focus({ preventScroll: true });
+          } else {
+            targetWrapper.focus({ preventScroll: true });
+          }
+
+          lastSelectedWrapperRef.current = targetWrapper;
+        }
+
+        // selectedCellRefを更新
+        const newHelperId = targetTd.dataset.helperId!;
+        const newDate = targetTd.dataset.date!;
+        const newRowIndex = parseInt(targetTd.dataset.rowIndex!);
+        selectedCellRef.current = { helperId: newHelperId, date: newDate, rowIndex: newRowIndex, lineIndex: targetLineIndex };
+      }
+
+      // ★ 保存は非同期で後から実行（UI反応を遅延させない）
+      if (value !== undefined) {
+        setTimeout(() => {
+          handleManualShiftSave(helperId, date, rowIndex, lineIndex, value);
+        }, 0);
+      }
+    };
+
     container.addEventListener('mousedown', handleNativeMouseDown, { capture: true });
     container.addEventListener('keydown', handleNativeKeyDown);
+    container.addEventListener('shift-navigate-down', handleNavigateDown);
 
     return () => {
       container.removeEventListener('mousedown', handleNativeMouseDown);
       container.removeEventListener('keydown', handleNativeKeyDown);
+      container.removeEventListener('shift-navigate-down', handleNavigateDown);
       document.querySelectorAll('.selection-overlay-dynamic').forEach(el => el.remove());
     };
-  }, [isCacheReady, handleManualShiftSave, isEditingMode, activeCellKey, syncSelection]);
+  }, [isCacheReady, handleManualShiftSave, syncSelection]);
 
-  // ★ Reactのレンダリングでスタイルがリセットされるのを防ぐ（CSSクラスの維持）
   // ★ Reactのレンダリングでスタイルがリセットされるのを防ぐ（CSSクラスの維持）
   // ＆ 二重表示防止のための自己修復（Self-Healing）
   useLayoutEffect(() => {
