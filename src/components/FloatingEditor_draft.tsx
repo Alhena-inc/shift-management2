@@ -1,3 +1,4 @@
+import React, { useState, useRef, useLayoutEffect } from 'react';
 
 // ★ 浮動エディタ：セル自体を再レンダリングせず、グリッドの上に重ねて編集する
 const FloatingEditor = ({
