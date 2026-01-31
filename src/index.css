@@ -90,32 +90,69 @@ table {
   cursor: pointer !important;
 }
 
-/* === Googleスプレッドシート風 選択枠 (td/wrapperレベルで統一) === */
+/* === Googleスプレッドシート完全再現: 選択枠 & オートフィルハンドル === */
 
-.line-selected,
+.line-selected {
+  position: relative !important;
+  z-index: 2001;
+  /* 枠線を最前面に */
+}
+
+/* 2pxの青い枠線 (外側ではなく内側に描画してレイアウト崩れを防止) */
+.line-selected::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  /* 境界線と重なるように配置 */
+  border: 2px solid #1a73e8 !important;
+  /* スプレッドシート純正色に近い青 */
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+/* オートフィルハンドル (右下の青い正方形) */
+.line-selected::before {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  width: 7px;
+  height: 7px;
+  background-color: #1a73e8;
+  border: 1px solid white;
+  z-index: 2002;
+  cursor: crosshair;
+  /* 十字カーソル */
+  pointer-events: auto;
+  /* ここだけはクリック可能にする */
+}
+
+/* 編集モード中でも青枠を維持する */
+.line-selected.is-editing-mode::after {
+  border: 2px solid #1a73e8 !important;
+  z-index: 2005;
+  /* 入力欄より前面に枠を出す */
+}
+
+/* 編集モード中はハンドルを隠す（入力の邪魔になるため） */
+.line-selected.is-editing-mode::before {
+  display: none;
+}
+
+/* 複数選択時の共通枠（将来用） */
 .td-selected,
 .shift-cell-multi-selected {
   position: relative !important;
 }
 
-/* ★ 統一された青枠 (2px基準) 
-   outlineは表の境界線と重なると太さが変わるため、擬似要素のborderを使用 */
-.line-selected::after,
 .td-selected::after,
 .shift-cell-multi-selected::after {
   content: '';
   position: absolute;
-  /* セルの境界線の「真上」に配置するために調整 */
-  inset: -1px;
-  border: 2px solid #0044ff !important;
+  inset: 0;
+  border: 1px solid #1a73e8;
+  background-color: rgba(26, 115, 232, 0.1);
   pointer-events: none;
-  z-index: 2000;
-  /* 全ての境界線（黒線2pxやオレンジ枠等）より前面に */
-}
-
-/* 単一ライン選択時は wrapper に適用される */
-.editable-cell-wrapper.line-selected::after {
-  z-index: 2001;
 }
 
 /* === Spreadsheet UI Behavior (Refined) === */
@@ -140,9 +177,8 @@ table {
   font-family: inherit !important;
   font-size: 11px !important;
   font-weight: 700 !important;
-  /* ★さらに太く(Medium -> Bold) */
+  /* ★ 500 (Medium) から 700 (Bold) に戻して視認性を向上 */
   color: #000000 !important;
-  /* ★真っ黒に */
   text-align: center !important;
   box-sizing: border-box !important;
   cursor: pointer !important;

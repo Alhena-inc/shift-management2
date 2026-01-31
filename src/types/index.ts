@@ -219,6 +219,7 @@ export interface Shift {
   deletedBy?: string;     // 削除者ID
   cancelStatus?: 'none' | 'keep_time' | 'remove_time' | 'canceled_with_time' | 'canceled_without_time';  // キャンセル状態
   canceledAt?: any;       // キャンセル日時（Firestore Timestamp）
+  content?: string;       // 従業員シフト管理用の自由入力内容
   // 給与計算関連
   regularHours?: number;  // 通常時間
   nightHours?: number;    // 深夜時間（22:00-08:00）

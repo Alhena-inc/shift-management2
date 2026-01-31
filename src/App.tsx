@@ -14,6 +14,8 @@ import HelperDetailPage from './pages/HelperDetailPage';
 import PayslipDemo from './pages/PayslipDemo';
 import RangeSelectionDemo from './pages/RangeSelectionDemo';
 import ShiftGridPage from './pages/ShiftGridPage';
+import EmployeeShiftGridPage from './pages/EmployeeShiftGridPage';
+
 import { helpers as initialHelpers } from './data/mockData';
 import { SERVICE_CONFIG } from './types';
 import type { Helper, Shift } from './types';
@@ -117,6 +119,11 @@ function App() {
     return <ShiftGridPage />;
   }
 
+  // /employee-shift の形式の場合（従業員シフト管理）
+  if (path === '/employee-shift' || path === '/employee-shift/') {
+    return <EmployeeShiftGridPage />;
+  }
+
   // /payslip の形式の場合（給与明細一覧）
   if (path === '/payslip' || path === '/payslip/') {
     return <PayslipListPage onClose={() => window.location.href = '/'} />;
@@ -134,18 +141,18 @@ function App() {
   }
 
   // /shift の形式の場合（シフト管理画面）
-  // デフォルトで表示される
+  const shiftCollection = 'shifts';
+
   const [helpers, setHelpers] = useState<Helper[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
+
+  // 従業員モード削除のため、常にshiftsを使用
+  const displayShifts = shifts;
 
   // 現在の年月を自動的に取得
   const now = new Date();
   const currentYearValue = now.getFullYear();
   const currentMonthValue = now.getMonth() + 1; // JavaScriptのgetMonth()は0-11を返すので+1
-
-  // デバッグログ
-  console.log('🗓️ 現在の日時:', now.toLocaleString('ja-JP'));
-  console.log('🗓️ 取得した年月:', currentYearValue + '年' + currentMonthValue + '月');
 
   const [currentYear, setCurrentYear] = useState(currentYearValue);
   const [currentMonth, setCurrentMonth] = useState(currentMonthValue);
@@ -161,7 +168,6 @@ function App() {
 
   // ヘルパー情報を読み込み（リアルタイム監視）
   useEffect(() => {
-    console.log('📡 ヘルパーのリアルタイム監視を開始');
     const unsubscribe = subscribeToHelpers(async (loadedHelpers) => {
       if (loadedHelpers.length > 0) {
         setHelpers(loadedHelpers);
@@ -173,23 +179,20 @@ function App() {
     });
 
     return () => {
-      console.log('🔌 ヘルパー監視を解除');
       unsubscribe();
     };
   }, []);
 
   // シフト情報を読み込み（リアルタイム監視）
   useEffect(() => {
-    console.log(`📡 シフトのリアルタイム監視を開始: ${currentYear}年${currentMonth}月`);
     const unsubscribe = subscribeToShiftsForMonth(currentYear, currentMonth, (allShifts) => {
       setShifts(allShifts);
-    });
+    }, shiftCollection);
 
     return () => {
-      console.log('🔌 シフト監視を解除');
       unsubscribe();
     };
-  }, [currentYear, currentMonth]);
+  }, [currentYear, currentMonth, shiftCollection]);
 
   const handleUpdateHelpers = useCallback(async (updatedHelpers: Helper[]) => {
     setHelpers(updatedHelpers);
@@ -227,8 +230,12 @@ function App() {
     }
   }, []);
 
+
+
+
   // 重複シフトをクリーンアップ
   const handleCleanupDuplicates = useCallback(async () => {
+
     if (!confirm(`${currentYear}年${currentMonth}月の重複シフトを削除しますか？`)) {
       return;
     }
@@ -240,7 +247,7 @@ function App() {
         alert(`${result.message}\n\n削除された重複: ${result.duplicatesRemoved}件`);
 
         // シフトを再読み込み
-        const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth);
+        const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth, shiftCollection);
         let januaryShifts: Shift[] = [];
 
         if (currentMonth === 12) {
@@ -276,6 +283,7 @@ function App() {
 
   // シフトを翌月へ反映
   const handleReflectNextMonth = useCallback(async () => {
+
     const targetYear = currentMonth === 12 ? currentYear + 1 : currentYear;
     const targetMonth = currentMonth === 12 ? 1 : currentMonth + 1;
 
@@ -324,13 +332,13 @@ function App() {
     await new Promise(resolve => setTimeout(resolve, 200));
 
     // 最新データをFirestoreから再読み込み
-    const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth);
+    const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth, shiftCollection);
 
     // 12月の場合は翌年1月1〜4日のシフトも読み込む
     let allShifts = loadedShifts;
     if (currentMonth === 12) {
       const nextYear = currentYear + 1;
-      const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1);
+      const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1, shiftCollection);
 
       // 1月1日〜4日のみをフィルター
       const januaryShifts = allJanuaryShifts.filter(shift => {
@@ -345,7 +353,7 @@ function App() {
 
     // 給与計算画面を開く
     setCurrentView('salary');
-  }, [currentYear, currentMonth]);
+  }, [currentYear, currentMonth, shiftCollection]);
 
   // 手動でFirebaseにバックアップを送信
   const handleManualBackup = useCallback(async () => {
@@ -552,13 +560,13 @@ function App() {
             currentMonth={currentMonth}
             onDeleteComplete={async () => {
               // 削除完了後、シフトデータを再読み込み
-              const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth);
+              const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth, shiftCollection);
 
               // 12月の場合は翌年1月のシフトも読み込む
               let januaryShifts: Shift[] = [];
               if (currentMonth === 12) {
                 const nextYear = currentYear + 1;
-                const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1);
+                const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1, shiftCollection);
 
                 // 1月1日〜4日のみをフィルター
                 januaryShifts = allJanuaryShifts.filter(shift => {

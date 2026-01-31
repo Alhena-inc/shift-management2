@@ -13,8 +13,8 @@ const HomePage: React.FC = () => {
     },
     {
       icon: '📅',
-      title: 'シフト管理',
-      description: 'シフトの作成・確認',
+      title: 'ヘルパーシフト管理',
+      description: 'スタッフの勤務表作成・確認',
       path: '/shift',
       gradient: 'from-emerald-500 to-emerald-600',
       iconBg: 'bg-emerald-100',
@@ -38,6 +38,7 @@ const HomePage: React.FC = () => {
       iconBg: 'bg-amber-100',
       iconColor: 'text-amber-600'
     },
+
     {
       icon: '📝',
       title: '従業員フォーム管理',

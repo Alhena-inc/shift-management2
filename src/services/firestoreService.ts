@@ -23,7 +23,8 @@ const HELPERS_COLLECTION = 'helpers';
 const SHIFTS_COLLECTION = 'shifts';
 const BACKUPS_COLLECTION = 'backups';
 
-export const backupToFirebase = async (type: 'helpers' | 'shifts' | 'all', data: any, description?: string): Promise<void> => {
+// バックアップ関数: typeは任意のコレクション名文字列を受け入れるように変更
+export const backupToFirebase = async (type: string, data: any, description?: string): Promise<void> => {
   try {
 
     const backupId = `${type}-${Date.now()}`;
@@ -197,14 +198,14 @@ export const softDeleteHelper = async (helperId: string): Promise<void> => {
 };
 
 // シフトを保存（月ごと）
-export const saveShiftsForMonth = async (_year: number, _month: number, shifts: Shift[]): Promise<void> => {
+export const saveShiftsForMonth = async (_year: number, _month: number, shifts: Shift[], collectionName: string = SHIFTS_COLLECTION): Promise<void> => {
   try {
 
 
     const batch = writeBatch(db);
 
     shifts.forEach(shift => {
-      const shiftRef = doc(db, SHIFTS_COLLECTION, shift.id);
+      const shiftRef = doc(db, collectionName, shift.id);
 
       // キャンセル関連フィールドがある場合のみログ
       if ('cancelStatus' in shift || 'canceledAt' in shift) {
@@ -248,7 +249,7 @@ export const saveShiftsForMonth = async (_year: number, _month: number, shifts: 
     // console.log(`✅ Firestore batch.commit()完了 - ${shifts.length}件のシフトを保存しました`);
 
     // ★ Firebase内部にバックアップを作成
-    backupToFirebase('shifts', shifts, `${_year}年${_month}月のシフト保存時の内部バックアップ`);
+    backupToFirebase('shifts', shifts, `${_year}年${_month}月のシフト保存時の内部バックアップ (${collectionName})`);
 
 
 
@@ -260,9 +261,9 @@ export const saveShiftsForMonth = async (_year: number, _month: number, shifts: 
 };
 
 // 単一のシフトを保存
-export const saveShift = async (shift: Shift): Promise<void> => {
+export const saveShift = async (shift: Shift, collectionName: string = SHIFTS_COLLECTION): Promise<void> => {
   try {
-    const shiftRef = doc(db, SHIFTS_COLLECTION, shift.id);
+    const shiftRef = doc(db, collectionName, shift.id);
 
     // データを準備
     const shiftData = {
@@ -308,7 +309,7 @@ export const loadHelpers = async (): Promise<Helper[]> => {
 
 // 月のシフトを読み込み（論理削除されたものを除外）
 // 12月のみ翌年1/4までのデータも含める
-export const loadShiftsForMonth = async (year: number, month: number): Promise<Shift[]> => {
+export const loadShiftsForMonth = async (year: number, month: number, collectionName: string = SHIFTS_COLLECTION): Promise<Shift[]> => {
   try {
     // その月の開始日と終了日を作成
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
@@ -317,7 +318,7 @@ export const loadShiftsForMonth = async (year: number, month: number): Promise<S
 
     // その月のシフトをクエリ（月単位で厳密に取得）
     const shiftsQuery = query(
-      collection(db, SHIFTS_COLLECTION),
+      collection(db, collectionName),
       where('date', '>=', startDate),
       where('date', '<=', endDate)
     );
@@ -414,7 +415,8 @@ export const loadShiftsForThreeMonths = async (
 export const subscribeToShiftsForMonth = (
   year: number,
   month: number,
-  onUpdate: (shifts: Shift[]) => void
+  onUpdate: (shifts: Shift[]) => void,
+  collectionName: string = SHIFTS_COLLECTION
 ): (() => void) => {
   try {
     // その月の開始日と終了日を作成
@@ -498,9 +500,9 @@ export const subscribeToShiftsForMonth = (
 };
 
 // シフトを完全削除
-export const deleteShift = async (shiftId: string): Promise<void> => {
+export const deleteShift = async (shiftId: string, collectionName: string = SHIFTS_COLLECTION): Promise<void> => {
   try {
-    const shiftRef = doc(db, SHIFTS_COLLECTION, shiftId);
+    const shiftRef = doc(db, collectionName, shiftId);
 
 
 
@@ -572,9 +574,9 @@ export const deleteShiftsForDate = async (date: string): Promise<void> => {
 };
 
 // シフトを論理削除
-export const softDeleteShift = async (shiftId: string, deletedBy?: string): Promise<void> => {
+export const softDeleteShift = async (shiftId: string, collectionName: string = SHIFTS_COLLECTION, deletedBy?: string): Promise<void> => {
   try {
-    const shiftRef = doc(db, SHIFTS_COLLECTION, shiftId);
+    const shiftRef = doc(db, collectionName, shiftId);
     await updateDoc(shiftRef, {
       deleted: true,
       deletedAt: Timestamp.now(),
@@ -965,4 +967,28 @@ export const subscribeToScheduledDayOffs = (
     console.error('指定休リアルタイムリスナー設定エラー:', error);
     return () => { };
   }
+};
+
+// シフトを移動（アトミック操作）
+// 移動元の論理削除と移動先の新規作成を一括で行う
+export const moveShift = async (
+  sourceShiftId: string,
+  newShift: Shift,
+  collectionName: string = SHIFTS_COLLECTION
+): Promise<void> => {
+  const batch = writeBatch(db);
+
+  // 1. 移動元の論理削除
+  const sourceRef = doc(db, collectionName, sourceShiftId);
+  batch.update(sourceRef, {
+    deleted: true,
+    deletedAt: Timestamp.now()
+  });
+
+  // 2. 移動先の新規作成（IDを指定）
+  const cleanShift = sanitizeForFirestore(newShift);
+  const targetRef = doc(db, collectionName, newShift.id);
+  batch.set(targetRef, cleanShift);
+
+  await batch.commit();
 };
