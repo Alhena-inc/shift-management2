@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth } from './lib/firebase';
 import { Login } from './components/Login';
-import { Header } from './components/Header';
+import { Layout } from './components/Layout';
 import { ShiftTable } from './components/ShiftTable';
 import { HelperManager } from './components/HelperManager';
 import { SalaryCalculation } from './components/SalaryCalculation';
@@ -53,16 +53,6 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // ログアウト処理
-  const handleLogout = useCallback(async () => {
-    try {
-      await signOut(auth);
-      console.log('✅ ログアウトしました');
-    } catch (error) {
-      console.error('❌ ログアウトエラー:', error);
-      alert('ログアウトに失敗しました');
-    }
-  }, []);
 
   // URLパスとクエリパラメータをチェック
   const path = window.location.pathname;
@@ -502,14 +492,7 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-gray-50">
-        {/* ヘッダー */}
-        <Header
-          user={user}
-          title={`${currentYear}年${currentMonth}月 シフト表`}
-          onLogout={handleLogout}
-        />
-
+      <Layout user={user}>
         <div className="p-4">
 
         <div className="flex justify-between items-start mb-4">
@@ -638,7 +621,7 @@ function App() {
           />
         )}
       </div>
-    </div>
+    </Layout>
     </ErrorBoundary>
   );
 }
