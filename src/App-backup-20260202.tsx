@@ -1,7 +1,4 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { auth } from './lib/firebase';
-import { Login } from './components/Login';
 import { ShiftTable } from './components/ShiftTable';
 import { HelperManager } from './components/HelperManager';
 import { SalaryCalculation } from './components/SalaryCalculation';
@@ -36,56 +33,12 @@ import { reflectShiftsToNextMonth } from './utils/shiftReflection';
 
 
 function App() {
-  // ========== 認証状態管理 ==========
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
-
-  // 認証状態の監視
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      console.log('🔐 認証状態変更:', user ? user.email : '未ログイン');
-      setUser(user);
-      setIsAuthLoading(false);
-    });
-
-    // クリーンアップ
-    return () => unsubscribe();
-  }, []);
-
-  // ログアウト処理
-  const handleLogout = useCallback(async () => {
-    try {
-      await signOut(auth);
-      console.log('✅ ログアウトしました');
-    } catch (error) {
-      console.error('❌ ログアウトエラー:', error);
-      alert('ログアウトに失敗しました');
-    }
-  }, []);
-
   // URLパスとクエリパラメータをチェック
   const path = window.location.pathname;
   const urlParams = new URLSearchParams(window.location.search);
   const queryToken = urlParams.get('token');
   const isPwaMode = urlParams.get('pwa') === '1';
   const personalMatch = path.match(/^\/personal\/(.+)$/);
-
-  // ========== ローディング中の表示 ==========
-  if (isAuthLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // ========== 未ログイン時はログイン画面を表示 ==========
-  if (!user) {
-    return <Login />;
-  }
 
   // PWAインストールモードの場合、インストール手順を表示
   if (isPwaMode && queryToken) {
@@ -502,19 +455,6 @@ function App() {
   return (
     <ErrorBoundary>
       <div className="p-4">
-        {/* ユーザー情報とログアウトボタン */}
-        <div className="absolute top-4 right-4 flex items-center gap-3 bg-white rounded-lg shadow-sm px-4 py-2 z-50">
-          <span className="text-sm text-gray-600">
-            {user.email}
-          </span>
-          <button
-            onClick={handleLogout}
-            className="text-sm text-red-600 hover:text-red-700 font-medium"
-          >
-            ログアウト
-          </button>
-        </div>
-
         <div className="flex justify-between items-start mb-4">
           <div>
             <div className="flex items-center gap-4 mb-2">
