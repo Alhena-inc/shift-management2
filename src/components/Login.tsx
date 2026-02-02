@@ -1,6 +1,16 @@
 import React, { useState } from 'react';
-import { signInWithPopup } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { signInWithPopup, signOut } from 'firebase/auth';
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  serverTimestamp,
+  collection,
+  query,
+  where,
+  getDocs
+} from 'firebase/firestore';
 import { auth, googleProvider, db } from '../lib/firebase';
 
 export const Login: React.FC = () => {
@@ -8,45 +18,86 @@ export const Login: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   /**
-   * Googleログイン処理
+   * ホワイトリスト方式のGoogleログイン処理
+   * helpersコレクションに事前登録されたメールアドレスのみログイン可能
    */
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     setError(null);
 
     try {
-      // Googleログインポップアップを表示
+      // ========== Step 1: Google認証実行 ==========
+      console.log('📝 Google認証を開始します...');
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
 
-      console.log('✅ ログイン成功:', user.email);
+      console.log('✅ Google認証成功:', user.email);
 
-      // Firestoreのusersコレクションでユーザー情報を確認
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
+      // ========== Step 2: ホワイトリスト照合 ==========
+      console.log('🔍 ホワイトリスト照合中...');
 
-      if (!userDoc.exists()) {
-        // 初回ログイン時：ユーザー情報を保存
-        console.log('📝 初回ログイン - ユーザー情報を保存します');
+      // helpersコレクションでメールアドレスを検索
+      const helpersRef = collection(db, 'helpers');
+      const q = query(helpersRef, where('email', '==', user.email));
+      const querySnapshot = await getDocs(q);
 
-        await setDoc(userDocRef, {
-          name: user.displayName || '名無しユーザー',
-          email: user.email,
-          role: 'staff', // デフォルトロール
-          photoURL: user.photoURL || null,
-          createdAt: serverTimestamp(),
+      // ========== Step 3: 分岐処理 ==========
+      if (!querySnapshot.empty) {
+        // ======== ケースA: 登録済みユーザー（許可） ========
+        console.log('✅ 登録済みユーザーです');
+
+        const helperDoc = querySnapshot.docs[0];
+        const helperData = helperDoc.data();
+        const helperId = helperDoc.id;
+
+        // helpersドキュメントにuidを追記
+        console.log('📝 helpersドキュメントにuidを紐付け中...');
+        await updateDoc(doc(db, 'helpers', helperId), {
+          uid: user.uid,
           lastLoginAt: serverTimestamp(),
-          uid: user.uid
+          photoURL: user.photoURL || null,
+          displayName: user.displayName || helperData.name || '名無しユーザー'
         });
 
-        console.log('✅ ユーザー情報を保存しました');
-      } else {
-        // 既存ユーザー：最終ログイン時刻を更新
-        console.log('👤 既存ユーザー - 最終ログイン時刻を更新します');
-
+        // usersコレクションにもデータを作成/更新（アプリ内の統一管理用）
+        console.log('📝 usersコレクションを更新中...');
+        const userDocRef = doc(db, 'users', user.uid);
         await setDoc(userDocRef, {
+          uid: user.uid,
+          email: user.email,
+          name: user.displayName || helperData.name || '名無しユーザー',
+          role: helperData.role || 'staff', // helpersから権限を取得
+          helperId: helperId, // helpersとの紐付け
+          photoURL: user.photoURL || null,
+          createdAt: serverTimestamp(),
           lastLoginAt: serverTimestamp()
-        }, { merge: true });
+        }, { merge: true }); // 既存データがある場合はマージ
+
+        console.log('✅ ログイン処理完了');
+        console.log('👤 ユーザー権限:', helperData.role || 'staff');
+
+        // roleに基づく処理（必要に応じて）
+        // if (helperData.role === 'admin') {
+        //   window.location.href = '/admin';
+        // } else {
+        //   window.location.href = '/staff';
+        // }
+
+      } else {
+        // ======== ケースB: 未登録ユーザー（拒否） ========
+        console.warn('⚠️ 未登録のメールアドレスです:', user.email);
+
+        // 即座にサインアウト
+        await signOut(auth);
+        console.log('🚪 強制サインアウトを実行しました');
+
+        // エラーメッセージを設定
+        setError(
+          `このメールアドレス（${user.email}）は登録されていません。\n` +
+          '管理者に連絡して、アクセス権限の付与を依頼してください。'
+        );
+
+        return; // ここで処理を終了
       }
 
       // ログイン成功後の処理はApp.tsxのonAuthStateChangedで処理される
@@ -63,8 +114,17 @@ export const Login: React.FC = () => {
         setError('ネットワークエラーが発生しました。接続を確認してください。');
       } else if (error.code === 'auth/invalid-api-key') {
         setError('APIキーが無効です。管理者に連絡してください。');
+      } else if (error.code === 'permission-denied') {
+        setError('データベースへのアクセス権限がありません。管理者に連絡してください。');
       } else {
         setError(error.message || 'ログインに失敗しました');
+      }
+
+      // エラー時もサインアウトしておく（安全のため）
+      try {
+        await signOut(auth);
+      } catch (signOutError) {
+        console.error('サインアウトエラー:', signOutError);
       }
     } finally {
       setIsLoading(false);
@@ -86,19 +146,22 @@ export const Login: React.FC = () => {
             シフト管理システム
           </h1>
           <p className="text-gray-600 mt-2">
-            アカウントにログインしてください
+            事前登録されたアカウントでログインしてください
           </p>
         </div>
 
         {/* エラーメッセージ */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <div className="flex items-center">
-              <svg className="w-5 h-5 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="flex items-start">
+              <svg className="w-5 h-5 text-red-500 mr-2 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <p className="text-red-700 text-sm">{error}</p>
+              <div className="flex-1">
+                <p className="text-red-700 text-sm font-semibold mb-1">アクセス拒否</p>
+                <p className="text-red-600 text-sm whitespace-pre-line">{error}</p>
+              </div>
             </div>
           </div>
         )}
@@ -124,7 +187,7 @@ export const Login: React.FC = () => {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              <span>ログイン中...</span>
+              <span>認証中...</span>
             </>
           ) : (
             <>
@@ -140,11 +203,21 @@ export const Login: React.FC = () => {
           )}
         </button>
 
-        {/* ヘルプテキスト */}
-        <div className="mt-8 text-center">
-          <p className="text-xs text-gray-500">
-            ログインすることで、利用規約とプライバシーポリシーに同意したものとみなされます
-          </p>
+        {/* 注意事項 */}
+        <div className="mt-8 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+          <div className="flex items-start">
+            <svg className="w-5 h-5 text-amber-500 mr-2 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div className="flex-1">
+              <p className="text-amber-700 text-sm font-semibold mb-1">ご注意</p>
+              <p className="text-amber-600 text-xs">
+                このシステムは招待制です。事前に管理者から登録されたメールアドレスでのみログインできます。
+                アクセス権限が必要な場合は、システム管理者にお問い合わせください。
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* デバッグ情報（開発環境のみ） */}
@@ -152,7 +225,8 @@ export const Login: React.FC = () => {
           <div className="mt-6 p-4 bg-gray-50 rounded-lg">
             <p className="text-xs text-gray-600 font-mono">
               環境: {import.meta.env.MODE}<br />
-              Firebase Project: {import.meta.env.VITE_FIREBASE_PROJECT_ID || 'shift-management-2'}
+              Firebase Project: {import.meta.env.VITE_FIREBASE_PROJECT_ID || 'shift-management-2'}<br />
+              認証モード: ホワイトリスト方式（招待制）
             </p>
           </div>
         )}
