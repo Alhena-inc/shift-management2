@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth } from './lib/firebase';
 import { Login } from './components/Login';
+import { Header } from './components/Header';
 import { ShiftTable } from './components/ShiftTable';
 import { HelperManager } from './components/HelperManager';
 import { SalaryCalculation } from './components/SalaryCalculation';
@@ -501,19 +502,15 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <div className="p-4">
-        {/* ユーザー情報とログアウトボタン */}
-        <div className="absolute top-4 right-4 flex items-center gap-3 bg-white rounded-lg shadow-sm px-4 py-2 z-50">
-          <span className="text-sm text-gray-600">
-            {user.email}
-          </span>
-          <button
-            onClick={handleLogout}
-            className="text-sm text-red-600 hover:text-red-700 font-medium"
-          >
-            ログアウト
-          </button>
-        </div>
+      <div className="min-h-screen bg-gray-50">
+        {/* ヘッダー */}
+        <Header
+          user={user}
+          title={`${currentYear}年${currentMonth}月 シフト表`}
+          onLogout={handleLogout}
+        />
+
+        <div className="p-4">
 
         <div className="flex justify-between items-start mb-4">
           <div>
@@ -641,6 +638,7 @@ function App() {
           />
         )}
       </div>
+    </div>
     </ErrorBoundary>
   );
 }
