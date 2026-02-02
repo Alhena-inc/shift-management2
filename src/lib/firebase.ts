@@ -2,15 +2,32 @@ import { initializeApp, getApps } from 'firebase/app';
 import { getFirestore, collection, addDoc } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 
-// Firebase設定（新しいプロジェクト: shift-management-2）
+// Firebase設定（環境変数から取得）
 const firebaseConfig = {
-  apiKey: "AIzaSyC1vD0Ey5fjq_lRM7Et-qJvMmTuNEMXLoA",
-  authDomain: "shift-management-2.firebaseapp.com",
-  projectId: "shift-management-2",
-  storageBucket: "shift-management-2.firebasestorage.app",
-  messagingSenderId: "47345281388",
-  appId: "1:47345281388:web:9cc3578734fdae556fab49"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyC1vD0Ey5fjq_lRM7Et-qJvMmTuNEMXLoA",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "shift-management-2.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "shift-management-2",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "shift-management-2.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "47345281388",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:47345281388:web:9cc3578734fdae556fab49"
 };
+
+// 開発環境で環境変数が設定されていない場合の警告
+if (import.meta.env.DEV) {
+  const missingVars = [];
+  if (!import.meta.env.VITE_FIREBASE_API_KEY) missingVars.push('VITE_FIREBASE_API_KEY');
+  if (!import.meta.env.VITE_FIREBASE_AUTH_DOMAIN) missingVars.push('VITE_FIREBASE_AUTH_DOMAIN');
+  if (!import.meta.env.VITE_FIREBASE_PROJECT_ID) missingVars.push('VITE_FIREBASE_PROJECT_ID');
+  if (!import.meta.env.VITE_FIREBASE_STORAGE_BUCKET) missingVars.push('VITE_FIREBASE_STORAGE_BUCKET');
+  if (!import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID) missingVars.push('VITE_FIREBASE_MESSAGING_SENDER_ID');
+  if (!import.meta.env.VITE_FIREBASE_APP_ID) missingVars.push('VITE_FIREBASE_APP_ID');
+
+  if (missingVars.length > 0) {
+    console.warn('⚠️ Firebase環境変数が設定されていません。デフォルト値を使用しています:');
+    console.warn('  未設定の変数:', missingVars.join(', '));
+    console.warn('  .envファイルに設定することを推奨します。');
+  }
+}
 
 // Firebase初期化（既に初期化されている場合は再利用）
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
