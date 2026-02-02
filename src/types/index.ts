@@ -92,6 +92,7 @@ export interface Helper {
   nameKana?: string;      // フリガナ
   gender: 'male' | 'female';
   order: number;
+  role?: 'admin' | 'staff';  // 権限（admin=管理者, staff=スタッフ）デフォルトはstaff
   personalToken?: string;  // 個人シフト表用のユニークトークン
   spreadsheetGid?: string; // Googleスプレッドシートの個人シートID（gid）
   cashPayment?: boolean;   // 手渡し支払いフラグ
