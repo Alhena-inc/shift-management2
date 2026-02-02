@@ -139,7 +139,11 @@ function App() {
 
   // / の形式の場合（ホームページ）
   if (path === '/' || path === '') {
-    return <HomePage />;
+    return (
+      <Layout user={user}>
+        <HomePage />
+      </Layout>
+    );
   }
 
   // /payslip-demo の形式の場合（給与明細デモ）
@@ -164,7 +168,11 @@ function App() {
 
   // /payslip の形式の場合（給与明細一覧）
   if (path === '/payslip' || path === '/payslip/') {
-    return <PayslipListPage onClose={() => window.location.href = '/'} />;
+    return (
+      <Layout user={user}>
+        <PayslipListPage onClose={() => window.location.href = '/'} />
+      </Layout>
+    );
   }
 
   // /helpers/:id の形式の場合（ヘルパー詳細・編集）
@@ -175,7 +183,11 @@ function App() {
 
   // /helpers の形式の場合（ヘルパー管理一覧）
   if (path === '/helpers' || path === '/helpers/') {
-    return <HelperManagementPage />;
+    return (
+      <Layout user={user}>
+        <HelperManagementPage />
+      </Layout>
+    );
   }
 
   // /shift の形式の場合（シフト管理画面）

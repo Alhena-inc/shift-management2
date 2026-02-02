@@ -70,10 +70,10 @@ const HomePage: React.FC = () => {
         touchAction: 'pan-y pinch-zoom'
       }}
     >
-      {/* ヘッダー */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+      {/* ヘッダーは削除（Layoutコンポーネントで提供） */}
+      <div className="pt-8">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
               <span className="text-white text-xl">🏠</span>
             </div>
@@ -86,10 +86,10 @@ const HomePage: React.FC = () => {
             {today}
           </div>
         </div>
-      </header>
+      </div>
 
       {/* メインコンテンツ */}
-      <main className="max-w-6xl mx-auto px-6 py-12">
+      <main className="max-w-6xl mx-auto px-6 py-8">
         {/* ウェルカムセクション */}
         <div className="mb-10">
           <h2 className="text-2xl font-bold text-gray-800 mb-2">

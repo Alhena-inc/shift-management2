@@ -44,13 +44,21 @@ export const Login: React.FC = () => {
       // ========== Step 3: 分岐処理 ==========
       if (!querySnapshot.empty) {
         // ======== ケースA: 登録済みユーザー（許可） ========
-        console.log('✅ 登録済みユーザーです');
-
         const helperDoc = querySnapshot.docs[0];
         const helperData = helperDoc.data();
         const helperId = helperDoc.id;
 
-        // helpersドキュメントにuidを追記
+        // メールアドレスが正確に一致するか確認（セキュリティ強化）
+        if (helperData.email !== user.email) {
+          console.warn('⚠️ メールアドレスの不一致を検出');
+          await signOut(auth);
+          setError('セキュリティエラー: アクセスが拒否されました');
+          return;
+        }
+
+        console.log('✅ 登録済みユーザーです:', helperData.name);
+
+        // helpersドキュメントにuidを追記（メールが一致した場合のみ）
         console.log('📝 helpersドキュメントにuidを紐付け中...');
         await updateDoc(doc(db, 'helpers', helperId), {
           uid: user.uid,
@@ -65,7 +73,7 @@ export const Login: React.FC = () => {
         await setDoc(userDocRef, {
           uid: user.uid,
           email: user.email,
-          name: user.displayName || helperData.name || '名無しユーザー',
+          name: helperData.name || user.displayName || '名無しユーザー',  // helpersの名前を優先
           role: helperData.role || 'staff', // helpersから権限を取得
           helperId: helperId, // helpersとの紐付け
           photoURL: user.photoURL || null,
@@ -74,6 +82,7 @@ export const Login: React.FC = () => {
         }, { merge: true }); // 既存データがある場合はマージ
 
         console.log('✅ ログイン処理完了');
+        console.log('👤 ユーザー名:', helperData.name);
         console.log('👤 ユーザー権限:', helperData.role || 'staff');
 
         // roleに基づく処理（必要に応じて）
