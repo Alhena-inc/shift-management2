@@ -60,21 +60,33 @@ export const Login: React.FC = () => {
 
         // helpersドキュメントにuidを追記（メールが一致した場合のみ）
         console.log('📝 helpersドキュメントにuidを紐付け中...');
-        await updateDoc(doc(db, 'helpers', helperId), {
+
+        // displayNameは会社名でなければ更新、会社名なら更新しない
+        const updateData: any = {
           uid: user.uid,
           lastLoginAt: serverTimestamp(),
-          photoURL: user.photoURL || null,
-          displayName: user.displayName || helperData.name || '名無しユーザー'
-        });
+          photoURL: user.photoURL || null
+        };
+
+        // displayNameが会社名でない場合のみ更新
+        if (user.displayName && !user.displayName.includes('合同会社') && !user.displayName.includes('株式会社')) {
+          updateData.displayName = user.displayName;
+        }
+
+        await updateDoc(doc(db, 'helpers', helperId), updateData);
 
         // usersコレクションにもデータを作成/更新（アプリ内の統一管理用）
         console.log('📝 usersコレクションを更新中...');
         const userDocRef = doc(db, 'users', user.uid);
+
+        // info@alhena.co.jpは自動的に管理者権限を付与
+        const userRole = user.email === 'info@alhena.co.jp' ? 'admin' : (helperData.role || 'staff');
+
         await setDoc(userDocRef, {
           uid: user.uid,
           email: user.email,
           name: helperData.name || user.displayName || '名無しユーザー',  // helpersの名前を優先
-          role: helperData.role || 'staff', // helpersから権限を取得
+          role: userRole, // info@alhena.co.jpは管理者、その他はhelpersから取得
           helperId: helperId, // helpersとの紐付け
           photoURL: user.photoURL || null,
           createdAt: serverTimestamp(),
@@ -83,7 +95,10 @@ export const Login: React.FC = () => {
 
         console.log('✅ ログイン処理完了');
         console.log('👤 ユーザー名:', helperData.name);
-        console.log('👤 ユーザー権限:', helperData.role || 'staff');
+        console.log('👤 ユーザー権限:', userRole);
+        if (user.email === 'info@alhena.co.jp') {
+          console.log('🔴 管理者アカウントとしてログイン');
+        }
 
         // roleに基づく処理（必要に応じて）
         // if (helperData.role === 'admin') {

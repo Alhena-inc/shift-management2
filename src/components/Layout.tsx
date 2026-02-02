@@ -22,28 +22,68 @@ export const Layout: React.FC<LayoutProps> = ({ user, children }) => {
       }
 
       try {
-        // Firestoreのusersコレクションから名前とロールを取得
+        console.log('📝 ユーザー情報取得開始:', user.email);
+
+        // まずusersコレクションから権限情報を取得（ログイン時に作成/更新される）
         const userDoc = await getDoc(doc(db, 'users', user.uid));
+        let userName = '';
+        let userRole: 'admin' | 'staff' = 'staff';
 
         if (userDoc.exists()) {
           const userData = userDoc.data();
-          setUserName(userData.name || user.displayName || 'ゲスト');
-          setUserRole(userData.role || 'staff');
-        } else {
-          // usersコレクションになければhelpersコレクションをメールアドレスで検索
+          console.log('📋 usersから取得:', {
+            name: userData.name,
+            role: userData.role,
+            email: userData.email
+          });
+
+          // 「Alhena合同会社」のような会社名を除外
+          if (userData.name && !userData.name.includes('合同会社') && !userData.name.includes('株式会社')) {
+            userName = userData.name;
+          }
+
+          // info@alhena.co.jpは必ず管理者として扱う
+          userRole = user.email === 'info@alhena.co.jp' ? 'admin' : (userData.role || 'staff');
+        }
+
+        // usersに名前がない、または不適切な場合はhelpersコレクションを確認
+        if (!userName) {
           const helpersRef = collection(db, 'helpers');
           const q = query(helpersRef, where('email', '==', user.email));
           const querySnapshot = await getDocs(q);
 
           if (!querySnapshot.empty) {
             const helperData = querySnapshot.docs[0].data();
-            setUserName(helperData.name || user.displayName || 'ゲスト');
-            setUserRole(helperData.role || 'staff');
-          } else {
-            // どちらにもなければGoogleの表示名を使用
-            setUserName(user.displayName || 'ゲスト');
-            setUserRole('staff');
+            console.log('✅ helpersから名前を取得:', {
+              name: helperData.name,
+              displayName: helperData.displayName,
+              email: helperData.email
+            });
+
+            // nameフィールドを優先、なければdisplayNameを使用（会社名を除外）
+            userName = helperData.name;
+
+            if (!userName && helperData.displayName) {
+              // displayNameが会社名でないか確認
+              if (!helperData.displayName.includes('合同会社') && !helperData.displayName.includes('株式会社')) {
+                userName = helperData.displayName;
+              }
+            }
           }
+        }
+
+        // 適切な名前が取得できなければGoogleアカウント情報を使用
+        if (!userName) {
+          console.warn('⚠️ Firestoreに適切な名前なし。Google情報を使用');
+          userName = user.displayName || user.email?.split('@')[0] || 'ゲスト';
+        }
+
+        setUserName(userName);
+        setUserRole(userRole);
+
+        // info@alhena.co.jpの場合は管理者権限を明示的にログ
+        if (user.email === 'info@alhena.co.jp') {
+          console.log('🔴 管理者アカウントとして認識:', userName);
         }
       } catch (error) {
         console.error('ユーザー情報の取得に失敗:', error);

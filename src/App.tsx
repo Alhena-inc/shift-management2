@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { auth } from './lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from './lib/firebase';
 import { Login } from './components/Login';
 import { Layout } from './components/Layout';
 import { ShiftTable } from './components/ShiftTable';
@@ -40,12 +41,43 @@ function App() {
   // ========== 認証状態管理 ==========
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [userRole, setUserRole] = useState<'admin' | 'staff' | null>(null);
 
   // 認証状態の監視
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       console.log('🔐 認証状態変更:', user ? user.email : '未ログイン');
       setUser(user);
+
+      // ユーザーの権限を取得
+      if (user) {
+        try {
+          // info@alhena.co.jpは必ず管理者として扱う
+          if (user.email === 'info@alhena.co.jp') {
+            setUserRole('admin');
+            console.log('🔴 管理者アカウントとして認識');
+          } else {
+            const userDoc = await getDoc(doc(db, 'users', user.uid));
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              setUserRole(userData.role || 'staff');
+            } else {
+              setUserRole('staff');
+            }
+          }
+        } catch (error) {
+          console.error('権限取得エラー:', error);
+          // エラー時でもinfo@alhena.co.jpは管理者として扱う
+          if (user.email === 'info@alhena.co.jp') {
+            setUserRole('admin');
+          } else {
+            setUserRole('staff');
+          }
+        }
+      } else {
+        setUserRole(null);
+      }
+
       setIsAuthLoading(false);
     });
 
@@ -53,6 +85,232 @@ function App() {
     return () => unsubscribe();
   }, []);
 
+
+  // ========== /shiftページ用のstate定義（早期returnより前に定義） ==========
+  const shiftCollection = 'shifts';
+  const [helpers, setHelpers] = useState<Helper[]>([]);
+  const [shifts, setShifts] = useState<Shift[]>([]);
+
+  // 現在の年月を自動的に取得
+  const now = new Date();
+  const currentYearValue = now.getFullYear();
+  const currentMonthValue = now.getMonth() + 1;
+
+  const [currentYear, setCurrentYear] = useState(currentYearValue);
+  const [currentMonth, setCurrentMonth] = useState(currentMonthValue);
+  const [currentView, setCurrentView] = useState<'shift' | 'addHelper' | 'salary' | 'dayOff'>('shift');
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [isCareContentDeleterOpen, setIsCareContentDeleterOpen] = useState(false);
+
+  // デバウンス用のRef
+  const shiftsUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const latestShiftsRef = useRef<Shift[]>(shifts);
+
+  // Firebase接続テスト（初回のみ）
+  useEffect(() => {
+    testFirebaseConnection();
+  }, []);
+
+  // ヘルパー情報を読み込み（リアルタイム監視）
+  useEffect(() => {
+    const unsubscribe = subscribeToHelpers(async (loadedHelpers) => {
+      if (loadedHelpers.length > 0) {
+        setHelpers(loadedHelpers);
+      } else {
+        // Firestoreが空の場合のみ、初期データを一度だけ保存
+        await saveHelpers(initialHelpers);
+      }
+      setIsInitialized(true);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  // シフト情報を読み込み（リアルタイム監視）
+  useEffect(() => {
+    const unsubscribe = subscribeToShiftsForMonth(currentYear, currentMonth, (allShifts) => {
+      setShifts(allShifts);
+    }, shiftCollection);
+
+    return () => {
+      unsubscribe();
+    };
+  }, [currentYear, currentMonth, shiftCollection]);
+
+  // shiftsステートが変わったらRefも同期
+  useEffect(() => {
+    latestShiftsRef.current = shifts;
+  }, [shifts]);
+
+  // ========== コールバック関数の定義（早期returnより前） ==========
+  const handleUpdateHelpers = useCallback(async (updatedHelpers: Helper[]) => {
+    setHelpers(updatedHelpers);
+    try {
+      await saveHelpers(updatedHelpers);
+    } catch (error) {
+      console.error('❌ ヘルパー情報の保存に失敗しました:', error);
+      throw error;
+    }
+  }, []);
+
+  const handleUpdateShifts = useCallback((updatedShifts: Shift[], debounce: boolean = false) => {
+    latestShiftsRef.current = updatedShifts;
+
+    if (debounce) {
+      shiftsUpdateTimerRef.current = setTimeout(() => {
+        setShifts(latestShiftsRef.current);
+        shiftsUpdateTimerRef.current = null;
+      }, 100);
+    } else {
+      if (shiftsUpdateTimerRef.current) {
+        clearTimeout(shiftsUpdateTimerRef.current);
+        shiftsUpdateTimerRef.current = null;
+      }
+      setShifts(updatedShifts);
+    }
+  }, []);
+
+  const handleCleanupDuplicates = useCallback(async () => {
+    if (!confirm(`${currentYear}年${currentMonth}月の重複シフトを削除しますか？`)) {
+      return;
+    }
+
+    try {
+      const result = await cleanupDuplicateShifts(currentYear, currentMonth);
+
+      if (result.success) {
+        alert(`${result.message}\n\n削除された重複: ${result.duplicatesRemoved}件`);
+
+        const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth, shiftCollection);
+        let januaryShifts: Shift[] = [];
+
+        if (currentMonth === 12) {
+          const nextYear = currentYear + 1;
+          const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1);
+          januaryShifts = allJanuaryShifts.filter(shift => {
+            const day = parseInt(shift.date.split('-')[2]);
+            return day >= 1 && day <= 4;
+          });
+        }
+
+        const allShifts = [...loadedShifts, ...januaryShifts];
+        setShifts(allShifts);
+      } else {
+        alert('重複削除に失敗しました');
+      }
+    } catch (error) {
+      console.error('重複削除エラー:', error);
+      alert('エラーが発生しました');
+    }
+  }, [currentYear, currentMonth, shiftCollection]);
+
+  const handlePreviousMonth = useCallback(() => {
+    setCurrentMonth(prev => {
+      if (prev === 1) {
+        setCurrentYear(year => year - 1);
+        return 12;
+      }
+      return prev - 1;
+    });
+  }, []);
+
+  const handleReflectNextMonth = useCallback(async () => {
+    const targetYear = currentMonth === 12 ? currentYear + 1 : currentYear;
+    const targetMonth = currentMonth === 12 ? 1 : currentMonth + 1;
+
+    if (!confirm(`${currentYear}年${currentMonth}月のケア内容を、${targetYear}年${targetMonth}月の「同じ週・同じ曜日」の枠に反映しますか？`)) {
+      return;
+    }
+
+    try {
+      const result = await reflectShiftsToNextMonth(currentYear, currentMonth);
+      if (result.success) {
+        alert(`${result.count}件のシフトを${targetYear}年${targetMonth}月に反映しました。`);
+        if (confirm(`${targetYear}年${targetMonth}月のシフト表へ移動しますか？`)) {
+          setCurrentYear(targetYear);
+          setCurrentMonth(targetMonth);
+        }
+      } else {
+        alert(`反映に失敗しました: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('シフト反映エラー:', error);
+      alert('エラーが発生しました。');
+    }
+  }, [currentYear, currentMonth]);
+
+  const handleNextMonth = useCallback(() => {
+    setCurrentMonth(prev => {
+      if (prev === 12) {
+        setCurrentYear(year => year + 1);
+        return 1;
+      }
+      return prev + 1;
+    });
+  }, []);
+
+  const handleOpenSalaryCalculation = useCallback(async () => {
+    const editingCells = document.querySelectorAll('.editable-cell[contenteditable="true"]');
+    editingCells.forEach(cell => {
+      (cell as HTMLElement).blur();
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth, shiftCollection);
+
+    let allShifts = loadedShifts;
+    if (currentMonth === 12) {
+      const nextYear = currentYear + 1;
+      const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1, shiftCollection);
+
+      const januaryShifts = allJanuaryShifts.filter(shift => {
+        const day = parseInt(shift.date.split('-')[2]);
+        return day >= 1 && day <= 4;
+      });
+
+      allShifts = [...loadedShifts, ...januaryShifts];
+    }
+
+    setShifts(allShifts);
+    setCurrentView('salary');
+  }, [currentYear, currentMonth, shiftCollection]);
+
+  const handleManualBackup = useCallback(async () => {
+    if (!confirm('現在の全ヘルパー情報と今月のシフト情報を内部バックアップしますか？')) {
+      return;
+    }
+
+    try {
+      await backupToFirebase('helpers', helpers, '手動実行時の内部バックアップ');
+      await backupToFirebase('shifts', shifts, `${currentYear}年${currentMonth}月の手動内部バックアップ`);
+      alert('✅ 内部バックアップを保存しました。');
+    } catch (error: any) {
+      console.error('Fatal backup error:', error);
+      alert('❌ バックアップに失敗しました：' + (error.message || 'Unknown'));
+    }
+  }, [helpers, shifts, currentYear, currentMonth]);
+
+  const handleOpenHelperManager = useCallback(() => setCurrentView('addHelper'), []);
+  const handleOpenExpenseModal = useCallback(() => setIsExpenseModalOpen(true), []);
+  const handleOpenDayOffManager = useCallback(() => setCurrentView('dayOff'), []);
+  const handleOpenCareContentDeleter = useCallback(() => setIsCareContentDeleterOpen(true), []);
+
+  const serviceConfigDisplay = useMemo(() => {
+    return Object.entries(SERVICE_CONFIG)
+      .filter(([key, config]) => {
+        const hiddenTypes = ['shinya', 'shinya_doko', 'kaigi', 'other', 'yasumi_kibou', 'shitei_kyuu', 'yotei'];
+        return !hiddenTypes.includes(key) && config.label !== '';
+      })
+      .map(([key, config]) => (
+        <span key={key} className="px-2 py-1 rounded" style={{ backgroundColor: config.bgColor, borderLeft: `3px solid ${config.color}` }}>
+          {config.label}
+        </span>
+      ));
+  }, []);
 
   // URLパスとクエリパラメータをチェック
   const path = window.location.pathname;
@@ -191,256 +449,8 @@ function App() {
   }
 
   // /shift の形式の場合（シフト管理画面）
-  const shiftCollection = 'shifts';
-
-  const [helpers, setHelpers] = useState<Helper[]>([]);
-  const [shifts, setShifts] = useState<Shift[]>([]);
-
   // 従業員モード削除のため、常にshiftsを使用
   const displayShifts = shifts;
-
-  // 現在の年月を自動的に取得
-  const now = new Date();
-  const currentYearValue = now.getFullYear();
-  const currentMonthValue = now.getMonth() + 1; // JavaScriptのgetMonth()は0-11を返すので+1
-
-  const [currentYear, setCurrentYear] = useState(currentYearValue);
-  const [currentMonth, setCurrentMonth] = useState(currentMonthValue);
-  const [currentView, setCurrentView] = useState<'shift' | 'addHelper' | 'salary' | 'dayOff'>('shift');
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
-  const [isCareContentDeleterOpen, setIsCareContentDeleterOpen] = useState(false);
-
-  // Firebase接続テスト（初回のみ）
-  useEffect(() => {
-    testFirebaseConnection();
-  }, []);
-
-  // ヘルパー情報を読み込み（リアルタイム監視）
-  useEffect(() => {
-    const unsubscribe = subscribeToHelpers(async (loadedHelpers) => {
-      if (loadedHelpers.length > 0) {
-        setHelpers(loadedHelpers);
-      } else {
-        // Firestoreが空の場合のみ、初期データを一度だけ保存
-        await saveHelpers(initialHelpers);
-      }
-      setIsInitialized(true);
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, []);
-
-  // シフト情報を読み込み（リアルタイム監視）
-  useEffect(() => {
-    const unsubscribe = subscribeToShiftsForMonth(currentYear, currentMonth, (allShifts) => {
-      setShifts(allShifts);
-    }, shiftCollection);
-
-    return () => {
-      unsubscribe();
-    };
-  }, [currentYear, currentMonth, shiftCollection]);
-
-  const handleUpdateHelpers = useCallback(async (updatedHelpers: Helper[]) => {
-    setHelpers(updatedHelpers);
-    try {
-      await saveHelpers(updatedHelpers);
-    } catch (error) {
-      console.error('❌ ヘルパー情報の保存に失敗しました:', error);
-      throw error;
-    }
-  }, []);
-
-  // setShiftsをデバウンスして再レンダリングを抑制
-  const shiftsUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const latestShiftsRef = useRef<Shift[]>(shifts);
-
-  // shiftsステートが変わったらRefも同期
-  useEffect(() => {
-    latestShiftsRef.current = shifts;
-  }, [shifts]);
-
-  const handleUpdateShifts = useCallback((updatedShifts: Shift[], debounce: boolean = false) => {
-    latestShiftsRef.current = updatedShifts;
-
-    if (debounce) {
-      shiftsUpdateTimerRef.current = setTimeout(() => {
-        setShifts(latestShiftsRef.current);
-        shiftsUpdateTimerRef.current = null;
-      }, 100); // 100ms待機 (応答性向上のため短縮)
-    } else {
-      if (shiftsUpdateTimerRef.current) {
-        clearTimeout(shiftsUpdateTimerRef.current);
-        shiftsUpdateTimerRef.current = null;
-      }
-      setShifts(updatedShifts);
-    }
-  }, []);
-
-
-
-
-  // 重複シフトをクリーンアップ
-  const handleCleanupDuplicates = useCallback(async () => {
-
-    if (!confirm(`${currentYear}年${currentMonth}月の重複シフトを削除しますか？`)) {
-      return;
-    }
-
-    try {
-      const result = await cleanupDuplicateShifts(currentYear, currentMonth);
-
-      if (result.success) {
-        alert(`${result.message}\n\n削除された重複: ${result.duplicatesRemoved}件`);
-
-        // シフトを再読み込み
-        const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth, shiftCollection);
-        let januaryShifts: Shift[] = [];
-
-        if (currentMonth === 12) {
-          const nextYear = currentYear + 1;
-          const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1);
-          januaryShifts = allJanuaryShifts.filter(shift => {
-            const day = parseInt(shift.date.split('-')[2]);
-            return day >= 1 && day <= 4;
-          });
-        }
-
-        const allShifts = [...loadedShifts, ...januaryShifts];
-        setShifts(allShifts);
-      } else {
-        alert('重複削除に失敗しました');
-      }
-    } catch (error) {
-      console.error('重複削除エラー:', error);
-      alert('エラーが発生しました');
-    }
-  }, [currentYear, currentMonth]);
-
-  const handlePreviousMonth = useCallback(() => {
-    // 即座に状態更新（遅延なし）
-    setCurrentMonth(prev => {
-      if (prev === 1) {
-        setCurrentYear(year => year - 1);
-        return 12;
-      }
-      return prev - 1;
-    });
-  }, []);
-
-  // シフトを翌月へ反映
-  const handleReflectNextMonth = useCallback(async () => {
-
-    const targetYear = currentMonth === 12 ? currentYear + 1 : currentYear;
-    const targetMonth = currentMonth === 12 ? 1 : currentMonth + 1;
-
-    if (!confirm(`${currentYear}年${currentMonth}月のケア内容を、${targetYear}年${targetMonth}月の「同じ週・同じ曜日」の枠に反映しますか？`)) {
-      return;
-    }
-
-    try {
-      const result = await reflectShiftsToNextMonth(currentYear, currentMonth);
-      if (result.success) {
-        alert(`${result.count}件のシフトを${targetYear}年${targetMonth}月に反映しました。`);
-        // 反映先の月に移動するか確認
-        if (confirm(`${targetYear}年${targetMonth}月のシフト表へ移動しますか？`)) {
-          setCurrentYear(targetYear);
-          setCurrentMonth(targetMonth);
-        }
-      } else {
-        alert(`反映に失敗しました: ${result.error}`);
-      }
-    } catch (error) {
-      console.error('シフト反映エラー:', error);
-      alert('エラーが発生しました。');
-    }
-  }, [currentYear, currentMonth]);
-
-  const handleNextMonth = useCallback(() => {
-    // 即座に状態更新（遅延なし）
-    setCurrentMonth(prev => {
-      if (prev === 12) {
-        setCurrentYear(year => year + 1);
-        return 1;
-      }
-      return prev + 1;
-    });
-  }, []);
-
-  // 給与計算ボタンのハンドラー
-  const handleOpenSalaryCalculation = useCallback(async () => {
-    // 編集中のセルをすべてblurする
-    const editingCells = document.querySelectorAll('.editable-cell[contenteditable="true"]');
-    editingCells.forEach(cell => {
-      (cell as HTMLElement).blur();
-    });
-
-    // 少し待って保存を完了
-    await new Promise(resolve => setTimeout(resolve, 200));
-
-    // 最新データをFirestoreから再読み込み
-    const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth, shiftCollection);
-
-    // 12月の場合は翌年1月1〜4日のシフトも読み込む
-    let allShifts = loadedShifts;
-    if (currentMonth === 12) {
-      const nextYear = currentYear + 1;
-      const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1, shiftCollection);
-
-      // 1月1日〜4日のみをフィルター
-      const januaryShifts = allJanuaryShifts.filter(shift => {
-        const day = parseInt(shift.date.split('-')[2]);
-        return day >= 1 && day <= 4;
-      });
-
-      allShifts = [...loadedShifts, ...januaryShifts];
-    }
-
-    setShifts(allShifts);
-
-    // 給与計算画面を開く
-    setCurrentView('salary');
-  }, [currentYear, currentMonth, shiftCollection]);
-
-  // 手動でFirebaseにバックアップを送信
-  const handleManualBackup = useCallback(async () => {
-    if (!confirm('現在の全ヘルパー情報と今月のシフト情報を内部バックアップしますか？')) {
-      return;
-    }
-
-    try {
-      await backupToFirebase('helpers', helpers, '手動実行時の内部バックアップ');
-      await backupToFirebase('shifts', shifts, `${currentYear}年${currentMonth}月の手動内部バックアップ`);
-      alert('✅ 内部バックアップを保存しました。');
-    } catch (error: any) {
-      console.error('Fatal backup error:', error);
-      alert('❌ バックアップに失敗しました：' + (error.message || 'Unknown'));
-    }
-  }, [helpers, shifts, currentYear, currentMonth]);
-
-  // その他のボタンハンドラー
-  const handleOpenHelperManager = useCallback(() => setCurrentView('addHelper'), []);
-  const handleOpenExpenseModal = useCallback(() => setIsExpenseModalOpen(true), []);
-  const handleOpenDayOffManager = useCallback(() => setCurrentView('dayOff'), []);
-  const handleOpenCareContentDeleter = useCallback(() => setIsCareContentDeleterOpen(true), []);
-
-  // SERVICE_CONFIGの表示をメモ化
-  const serviceConfigDisplay = useMemo(() => {
-    return Object.entries(SERVICE_CONFIG)
-      .filter(([key, config]) => {
-        // 非表示にするサービスタイプ: 深夜系、給与算出なし、ラベル空
-        const hiddenTypes = ['shinya', 'shinya_doko', 'kaigi', 'other', 'yasumi_kibou', 'shitei_kyuu', 'yotei'];
-        return !hiddenTypes.includes(key) && config.label !== '';
-      })
-      .map(([key, config]) => (
-        <span key={key} className="px-2 py-1 rounded" style={{ backgroundColor: config.bgColor, borderLeft: `3px solid ${config.color}` }}>
-          {config.label}
-        </span>
-      ));
-  }, []);
 
   // ヘルパー管理画面
   if (currentView === 'addHelper') {
@@ -502,6 +512,7 @@ function App() {
     );
   }
 
+
   return (
     <ErrorBoundary>
       <Layout user={user}>
@@ -543,44 +554,57 @@ function App() {
               💰 給与計算
             </button>
 
-            <button
-              onClick={handleOpenHelperManager}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-            >
-              👥 ヘルパー管理
-            </button>
-            <button
-              onClick={handleOpenExpenseModal}
-              className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
-            >
-              📊 交通費・経費
-            </button>
+            {/* 管理者のみ表示 */}
+            {userRole === 'admin' && (
+              <>
+                <button
+                  onClick={handleOpenHelperManager}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  👥 ヘルパー管理
+                </button>
+
+                <button
+                  onClick={handleOpenExpenseModal}
+                  className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
+                >
+                  📊 交通費・経費
+                </button>
+              </>
+            )}
+
             <button
               onClick={handleOpenDayOffManager}
               className="px-4 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors"
             >
               🏖️ 休み希望
             </button>
-            <button
-              onClick={handleReflectNextMonth}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-              title="当月のケア内容を翌月の同じ曜日にコピーします"
-            >
-              📋 翌月へ反映
-            </button>
-            <button
-              onClick={handleManualBackup}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
-              title="現在のデータを内部バックアップします"
-            >
-              ☁️ 内部バックアップ
-            </button>
-            <button
-              onClick={handleOpenCareContentDeleter}
-              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-            >
-              🗑️ シフトデータ削除
-            </button>
+
+            {/* 管理者のみ表示 */}
+            {userRole === 'admin' && (
+              <>
+                <button
+                  onClick={handleReflectNextMonth}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                  title="当月のケア内容を翌月の同じ曜日にコピーします"
+                >
+                  📋 翌月へ反映
+                </button>
+                <button
+                  onClick={handleManualBackup}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+                  title="現在のデータを内部バックアップします"
+                >
+                  ☁️ 内部バックアップ
+                </button>
+                <button
+                  onClick={handleOpenCareContentDeleter}
+                  className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                >
+                  🗑️ シフトデータ削除
+                </button>
+              </>
+            )}
           </div>
         </div>
 
