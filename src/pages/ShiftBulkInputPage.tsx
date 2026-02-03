@@ -39,6 +39,7 @@ const ShiftBulkInputPage: React.FC = () => {
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [selectedHelperId, setSelectedHelperId] = useState<string>('');
+  const [defaultServiceType, setDefaultServiceType] = useState<ServiceType | ''>('');
   const [helpers, setHelpers] = useState<Helper[]>([]);
   const [existingShifts, setExistingShifts] = useState<Shift[]>([]);
 
@@ -76,7 +77,8 @@ const ShiftBulkInputPage: React.FC = () => {
     return timeStr
       .replace(/[０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)) // 全角数字を半角に
       .replace(/：/g, ':') // 全角コロンを半角に
-      .replace(/[~～〜～ー－−–—]/g, '-'); // 様々なダッシュ記号を統一
+      .replace(/[~～〜～ー－−–—]/g, '-') // 様々なダッシュ記号を統一
+      .replace(/[\s　]+/g, ' '); // 全角スペースを半角に統一し、連続スペースを1つに
   };
 
   // サービスタイプのラベルからServiceTypeへのマッピング
@@ -127,27 +129,43 @@ const ShiftBulkInputPage: React.FC = () => {
     const shifts: ParsedShiftLine[] = [];
 
     for (let i = 0; i < lines.length; i++) {
-      const line = normalizeTimeString(lines[i].trim());
+      const originalLine = lines[i].trim();
+      const line = normalizeTimeString(originalLine);
 
-      // 日付、時間、利用者名を抽出する正規表現
-      // 例: "2/2 14:00-19:00 三田(身体)" または "2/3 23:00-8:30中島"（スペースなし）
-      const pattern = /^(\d{1,2})\/(\d{1,2})\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*(.+)$/;
-      const match = line.match(pattern);
+      // 日付、時間、利用者名を抽出する正規表現（より柔軟なパターン）
+      // 例: "2/2 14:00-19:00 三田(身体)" または "2/3 23:00-8:30中島"
+      const patterns = [
+        // スペースありパターン（時刻の分は省略可）
+        /^(\d{1,2})\/(\d{1,2})\s+(\d{1,2}(?::\d{2})?)\s*-\s*(\d{1,2}(?::\d{2})?)\s+(.+)$/,
+        // スペースなしパターン（時刻の分は省略可）
+        /^(\d{1,2})\/(\d{1,2})\s+(\d{1,2}(?::\d{2})?)\s*-\s*(\d{1,2}(?::\d{2})?)(.+)$/,
+      ];
+
+      let match: RegExpMatchArray | null = null;
+      for (const pattern of patterns) {
+        match = line.match(pattern);
+        if (match) break;
+      }
 
       if (!match) {
+        console.log(`パース失敗: "${line}"`); // デバッグ用
         shifts.push({
           date: '',
           startTime: '',
           endTime: '',
           clientName: '',
           isValid: false,
-          errorMessage: `形式が正しくありません`,
-          originalLine: lines[i],
+          errorMessage: `形式が正しくありません: "${originalLine}"`,
+          originalLine: originalLine,
         });
         continue;
       }
 
-      const [, monthDay, day, startTime, endTime, clientNameWithService] = match;
+      const [, month, day, startTimeRaw, endTimeRaw, clientNameWithService] = match;
+
+      // 時刻フォーマットを正規化（時のみの場合は :00 を追加）
+      const startTime = startTimeRaw.includes(':') ? startTimeRaw : `${startTimeRaw}:00`;
+      const endTime = endTimeRaw.includes(':') ? endTimeRaw : `${endTimeRaw}:00`;
 
       // 利用者名とサービスタイプを分離
       let clientName = clientNameWithService.trim();
@@ -230,12 +248,16 @@ const ShiftBulkInputPage: React.FC = () => {
         // 時間計算
         const duration = calculateDuration(shift.startTime, shift.endTime);
 
-        // サービスタイプの決定（指定がある場合はそれを使用、なければデフォルト）
+        // サービスタイプの決定（優先順位: 個別指定 > デフォルト設定 > 自動判定）
         let serviceType: ServiceType;
         if (shift.serviceType) {
+          // 個別に指定されている場合
           serviceType = shift.serviceType;
+        } else if (defaultServiceType) {
+          // デフォルトサービスが設定されている場合
+          serviceType = defaultServiceType;
         } else {
-          // デフォルトのサービスタイプを判定（深夜なら深夜、それ以外は身体）
+          // 自動判定（深夜なら深夜、それ以外は身体）
           const isNightShift = shift.startTime.includes('23:') || shift.startTime.includes('0:');
           serviceType = isNightShift ? 'shinya' : 'shintai';
         }
@@ -308,7 +330,7 @@ const ShiftBulkInputPage: React.FC = () => {
       <div className="max-w-6xl mx-auto p-6">
         <div className="bg-white rounded-lg shadow-lg p-6">
           {/* 年月とヘルパー選択 */}
-          <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">年</label>
               <select
@@ -343,6 +365,19 @@ const ShiftBulkInputPage: React.FC = () => {
                 <option value="">選択してください</option>
                 {helpers.map(helper => (
                   <option key={helper.id} value={helper.id}>{helper.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">デフォルトサービス</label>
+              <select
+                value={defaultServiceType}
+                onChange={(e) => setDefaultServiceType(e.target.value as ServiceType | '')}
+                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+              >
+                <option value="">自動判定</option>
+                {Object.entries(serviceTypeMap).map(([label, type]) => (
+                  <option key={type} value={type}>{label}</option>
                 ))}
               </select>
             </div>
