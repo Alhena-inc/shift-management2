@@ -105,14 +105,14 @@ const HomePage: React.FC = () => {
       requiredRole: 'admin' as const  // 管理者のみ
     },
     {
-      icon: '📝',
-      title: '従業員フォーム管理',
-      description: '応募者情報の確認・承認',
-      path: '/employee-forms',
+      icon: '📋',
+      title: 'シフト一括追加',
+      description: 'シフトデータを一括で追加',
+      path: '/shift-bulk-input',
       gradient: 'from-pink-500 to-pink-600',
       iconBg: 'bg-pink-100',
       iconColor: 'text-pink-600',
-      requiredRole: 'admin' as const  // 管理者のみ
+      requiredRole: null  // 全員アクセス可能
     },
     {
       icon: '🔐',

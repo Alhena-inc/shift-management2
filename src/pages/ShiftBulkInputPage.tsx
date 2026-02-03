@@ -1,15 +1,8 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import type { Helper, Shift } from '../types';
-import { SERVICE_CONFIG } from '../types';
-
-interface ShiftBulkInputProps {
-  isOpen: boolean;
-  onClose: () => void;
-  helpers: Helper[];
-  currentYear: number;
-  currentMonth: number;
-  onAddShifts: (shifts: Shift[]) => void;
-}
+import { subscribeToShiftsForMonth, saveShift } from '../services/firestoreService';
 
 interface ParsedShiftLine {
   date: string;
@@ -29,21 +22,52 @@ interface ParsedShiftData {
   shifts: ParsedShiftLine[];
 }
 
-export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
-  isOpen,
-  onClose,
-  helpers,
-  currentYear,
-  currentMonth,
-  onAddShifts,
-}) => {
+const ShiftBulkInputPage: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const [parsedData, setParsedData] = useState<ParsedShiftData | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // 現在の年月を取得
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [selectedHelperId, setSelectedHelperId] = useState<string>('');
+  const [helpers, setHelpers] = useState<Helper[]>([]);
+  const [existingShifts, setExistingShifts] = useState<Shift[]>([]);
+
+  // ヘルパー一覧を取得
+  useEffect(() => {
+    const loadHelpers = async () => {
+      try {
+        const helpersSnapshot = await getDocs(collection(db, 'helpers'));
+        const helpersData = helpersSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Helper[];
+        setHelpers(helpersData.filter(h => !h.deleted));
+      } catch (error) {
+        console.error('ヘルパー情報の取得に失敗:', error);
+      }
+    };
+    loadHelpers();
+  }, []);
+
+  // 選択された月のシフトを購読
+  useEffect(() => {
+    const unsubscribe = subscribeToShiftsForMonth(
+      selectedYear,
+      selectedMonth,
+      (shifts) => {
+        setExistingShifts(shifts);
+      }
+    );
+    return () => unsubscribe();
+  }, [selectedYear, selectedMonth]);
 
   // 時間文字列を正規化（全角→半角、様々な区切り文字に対応）
   const normalizeTimeString = (timeStr: string): string => {
@@ -56,6 +80,7 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
   // テキストを解析
   const parseText = useCallback(() => {
     setError(null);
+    setSuccessMessage(null);
 
     if (!selectedHelperId) {
       setError('ヘルパーを選択してください');
@@ -103,11 +128,7 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
       const [, monthDay, day, startTime, endTime, clientName] = match;
 
       // 日付を作成（選択された年月を使用）
-      let targetYear = selectedYear;
-      let targetMonth = selectedMonth;
-
-      // 深夜勤務で日をまたぐ場合の処理は後で実装
-      const dateStr = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const dateStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
       shifts.push({
         date: dateStr,
@@ -128,58 +149,6 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
     });
   }, [inputText, helpers, selectedYear, selectedMonth, selectedHelperId]);
 
-  // シフトに反映
-  const applyShifts = useCallback(() => {
-    if (!parsedData || !parsedData.helperId) return;
-
-    setIsProcessing(true);
-
-    const newShifts: Shift[] = [];
-    const validShifts = parsedData.shifts.filter(s => s.isValid);
-
-    validShifts.forEach((shift, index) => {
-      // 時間計算
-      const timeRange = `${shift.startTime}-${shift.endTime}`;
-      const duration = calculateDuration(shift.startTime, shift.endTime);
-
-      // デフォルトのサービスタイプを判定（深夜なら深夜、それ以外は身体）
-      const isNightShift = shift.startTime.includes('23:') || shift.startTime.includes('0:');
-      const serviceType = isNightShift ? 'shinya' : 'shintai';
-
-      const newShift: Shift = {
-        id: `shift-${parsedData.helperId}-${shift.date}-${index}`,
-        helperId: parsedData.helperId!,
-        date: shift.date,
-        startTime: shift.startTime,
-        endTime: shift.endTime,
-        clientName: shift.clientName,
-        serviceType: serviceType,
-        duration: duration,
-        rowIndex: index,
-        area: '',
-        regularHours: 0,
-        nightHours: 0,
-        regularPay: 0,
-        nightPay: 0,
-        totalPay: 0,
-      };
-
-      newShifts.push(newShift);
-    });
-
-    // シフトを追加
-    onAddShifts(newShifts);
-
-    // 成功メッセージ
-    alert(`✅ ${newShifts.length}件のシフトを追加しました`);
-
-    // リセット
-    setInputText('');
-    setParsedData(null);
-    setIsProcessing(false);
-    onClose();
-  }, [parsedData, onAddShifts, onClose]);
-
   // 時間計算関数
   const calculateDuration = (startTime: string, endTime: string): number => {
     const [startHour, startMin] = startTime.split(':').map(Number);
@@ -196,29 +165,95 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
     return (endMinutes - startMinutes) / 60;
   };
 
-  if (!isOpen) return null;
+  // シフトに反映
+  const applyShifts = useCallback(async () => {
+    if (!parsedData || !parsedData.helperId) return;
+
+    setIsProcessing(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const validShifts = parsedData.shifts.filter(s => s.isValid);
+      let successCount = 0;
+
+      for (const shift of validShifts) {
+        // 時間計算
+        const duration = calculateDuration(shift.startTime, shift.endTime);
+
+        // デフォルトのサービスタイプを判定（深夜なら深夜、それ以外は身体）
+        const isNightShift = shift.startTime.includes('23:') || shift.startTime.includes('0:');
+        const serviceType = isNightShift ? 'shinya' : 'shintai';
+
+        // 既存のシフトの最大rowIndexを取得
+        const helperShifts = existingShifts.filter(s =>
+          s.helperId === parsedData.helperId &&
+          s.date === shift.date
+        );
+        const maxRowIndex = helperShifts.length > 0
+          ? Math.max(...helperShifts.map(s => s.rowIndex || 0))
+          : -1;
+
+        const newShift: Shift = {
+          id: `shift-${parsedData.helperId}-${shift.date}-${Date.now()}-${Math.random()}`,
+          helperId: parsedData.helperId!,
+          date: shift.date,
+          startTime: shift.startTime,
+          endTime: shift.endTime,
+          clientName: shift.clientName,
+          serviceType: serviceType,
+          duration: duration,
+          rowIndex: maxRowIndex + 1,
+          area: '',
+          regularHours: 0,
+          nightHours: 0,
+          regularPay: 0,
+          nightPay: 0,
+          totalPay: 0,
+        };
+
+        // Firestoreに保存
+        await saveShift(newShift);
+        successCount++;
+      }
+
+      // 成功メッセージ
+      setSuccessMessage(`✅ ${successCount}件のシフトを追加しました`);
+
+      // リセット
+      setInputText('');
+      setParsedData(null);
+    } catch (error) {
+      console.error('シフト追加エラー:', error);
+      setError('シフトの追加に失敗しました');
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [parsedData, existingShifts, selectedYear, selectedMonth]);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
-        {/* ヘッダー */}
-        <div className="bg-gradient-to-r from-cyan-500 to-cyan-600 text-white p-4 flex justify-between items-center">
-          <h2 className="text-xl font-bold flex items-center gap-2">
+    <div className="min-h-screen bg-gray-50">
+      {/* ヘッダー */}
+      <div className="bg-gradient-to-r from-cyan-500 to-cyan-600 text-white p-4">
+        <div className="max-w-6xl mx-auto flex justify-between items-center">
+          <h1 className="text-2xl font-bold flex items-center gap-2">
             <span>📋</span>
             <span>シフト一括追加</span>
-          </h2>
+          </h1>
           <button
-            onClick={onClose}
-            className="text-white hover:bg-white hover:bg-opacity-20 p-1 rounded"
+            onClick={() => window.location.href = '/'}
+            className="px-4 py-2 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-colors"
           >
-            ✕
+            ホームに戻る
           </button>
         </div>
+      </div>
 
-        {/* 本体 */}
-        <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 180px)' }}>
+      {/* 本体 */}
+      <div className="max-w-6xl mx-auto p-6">
+        <div className="bg-white rounded-lg shadow-lg p-6">
           {/* 年月とヘルパー選択 */}
-          <div className="mb-4 grid grid-cols-3 gap-4">
+          <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">年</label>
               <select
@@ -251,7 +286,7 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
               >
                 <option value="">選択してください</option>
-                {helpers.filter(h => !h.deleted).map(helper => (
+                {helpers.map(helper => (
                   <option key={helper.id} value={helper.id}>{helper.name}</option>
                 ))}
               </select>
@@ -259,7 +294,7 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
           </div>
 
           {/* 入力説明 */}
-          <div className="mb-4 p-4 bg-blue-50 rounded-lg">
+          <div className="mb-6 p-4 bg-blue-50 rounded-lg">
             <h3 className="font-bold text-blue-800 mb-2">📝 入力形式</h3>
             <div className="text-sm text-gray-700 space-y-1">
               <p>日付 時間 利用者名の形式で入力（例：2/2 14:00~19:00 三田）</p>
@@ -273,7 +308,7 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
             </div>
           </div>
 
-          {/* エラー表示 */}
+          {/* メッセージ表示 */}
           {error && (
             <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-red-700 flex items-center gap-2">
@@ -282,16 +317,24 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
               </p>
             </div>
           )}
+          {successMessage && (
+            <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-green-700 flex items-center gap-2">
+                <span>✅</span>
+                <span>{successMessage}</span>
+              </p>
+            </div>
+          )}
 
           {/* テキスト入力エリア */}
-          <div className="mb-4">
+          <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               シフトデータを貼り付け
             </label>
             <textarea
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              className="w-full h-48 p-3 border border-gray-300 rounded-lg font-mono text-sm"
+              className="w-full h-48 p-3 border border-gray-300 rounded-lg font-mono text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
               placeholder={`2/2 14:00~19:00 三田
 2/3 23:00~8:30 中島
 2/4 17:00~18:30 山口
@@ -301,11 +344,13 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
 
           {/* 解析結果のプレビュー */}
           {parsedData && (
-            <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
               <h3 className="font-bold text-gray-800 mb-3">📊 解析結果</h3>
               <div className="mb-3">
                 <span className="font-semibold">ヘルパー：</span>
                 <span className="ml-2">{parsedData.helperName}</span>
+                <span className="ml-4 font-semibold">期間：</span>
+                <span className="ml-2">{parsedData.year}年{parsedData.month}月</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -347,44 +392,51 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
               </div>
             </div>
           )}
-        </div>
 
-        {/* フッター */}
-        <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-          >
-            キャンセル
-          </button>
-          {!parsedData && (
-            <button
-              onClick={parseText}
-              disabled={!inputText.trim()}
-              className={`px-4 py-2 rounded-lg ${
-                inputText.trim()
-                  ? 'bg-blue-500 text-white hover:bg-blue-600'
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              }`}
-            >
-              解析
-            </button>
-          )}
-          {parsedData && (
-            <button
-              onClick={applyShifts}
-              disabled={isProcessing || parsedData.shifts.filter(s => s.isValid).length === 0}
-              className={`px-4 py-2 rounded-lg ${
-                !isProcessing && parsedData.shifts.filter(s => s.isValid).length > 0
-                  ? 'bg-green-500 text-white hover:bg-green-600'
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              }`}
-            >
-              {isProcessing ? '処理中...' : 'シフトに反映'}
-            </button>
-          )}
+          {/* アクションボタン */}
+          <div className="flex justify-end gap-3">
+            {!parsedData && (
+              <button
+                onClick={parseText}
+                disabled={!inputText.trim()}
+                className={`px-6 py-2 rounded-lg font-medium ${
+                  inputText.trim()
+                    ? 'bg-blue-500 text-white hover:bg-blue-600'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                解析
+              </button>
+            )}
+            {parsedData && (
+              <>
+                <button
+                  onClick={() => {
+                    setParsedData(null);
+                    setSuccessMessage(null);
+                  }}
+                  className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                >
+                  やり直す
+                </button>
+                <button
+                  onClick={applyShifts}
+                  disabled={isProcessing || parsedData.shifts.filter(s => s.isValid).length === 0}
+                  className={`px-6 py-2 rounded-lg font-medium ${
+                    !isProcessing && parsedData.shifts.filter(s => s.isValid).length > 0
+                      ? 'bg-green-500 text-white hover:bg-green-600'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  {isProcessing ? '処理中...' : 'シフトに反映'}
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
   );
 };
+
+export default ShiftBulkInputPage;

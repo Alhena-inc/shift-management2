@@ -21,6 +21,7 @@ import PayslipDemo from './pages/PayslipDemo';
 import RangeSelectionDemo from './pages/RangeSelectionDemo';
 import ShiftGridPage from './pages/ShiftGridPage';
 import EmployeeShiftGridPage from './pages/EmployeeShiftGridPage';
+import ShiftBulkInputPage from './pages/ShiftBulkInputPage';
 
 import { helpers as initialHelpers } from './data/mockData';
 import { SERVICE_CONFIG } from './types';
@@ -425,6 +426,15 @@ function App() {
   // /employee-shift の形式の場合（従業員シフト管理）
   if (path === '/employee-shift' || path === '/employee-shift/') {
     return <EmployeeShiftGridPage />;
+  }
+
+  // /shift-bulk-input の形式の場合（シフト一括追加）- 全員アクセス可能
+  if (path === '/shift-bulk-input' || path === '/shift-bulk-input/') {
+    return (
+      <Layout user={user}>
+        <ShiftBulkInputPage />
+      </Layout>
+    );
   }
 
   // /payslip の形式の場合（給与明細一覧）- 管理者のみ
