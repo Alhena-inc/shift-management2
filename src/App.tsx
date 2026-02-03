@@ -601,30 +601,30 @@ function App() {
             </div>
           </div>
           <div className="flex gap-3 flex-wrap">
-            {/* 管理者のみ表示 */}
+            {/* 給与計算は管理者のみ */}
             {userRole === 'admin' && (
-              <>
-                <button
-                  onClick={handleOpenSalaryCalculation}
-                  className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
-                >
-                  💰 給与計算
-                </button>
-                <button
-                  onClick={handleOpenHelperManager}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-                >
-                  👥 ヘルパー管理
-                </button>
-
-                <button
-                  onClick={handleOpenExpenseModal}
-                  className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
-                >
-                  📊 交通費・経費
-                </button>
-              </>
+              <button
+                onClick={handleOpenSalaryCalculation}
+                className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+              >
+                💰 給与計算
+              </button>
             )}
+
+            {/* スタッフも利用可能なメニュー */}
+            <button
+              onClick={handleOpenHelperManager}
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+            >
+              👥 ヘルパー管理
+            </button>
+
+            <button
+              onClick={handleOpenExpenseModal}
+              className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
+            >
+              📊 交通費・経費
+            </button>
 
             <button
               onClick={handleOpenDayOffManager}
@@ -633,31 +633,31 @@ function App() {
               🏖️ 休み希望
             </button>
 
-            {/* 管理者のみ表示 */}
+            <button
+              onClick={handleReflectNextMonth}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+              title="当月のケア内容を翌月の同じ曜日にコピーします"
+            >
+              📋 翌月へ反映
+            </button>
+
+            {/* 内部バックアップは管理者のみ */}
             {userRole === 'admin' && (
-              <>
-                <button
-                  onClick={handleReflectNextMonth}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-                  title="当月のケア内容を翌月の同じ曜日にコピーします"
-                >
-                  📋 翌月へ反映
-                </button>
-                <button
-                  onClick={handleManualBackup}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
-                  title="現在のデータを内部バックアップします"
-                >
-                  ☁️ 内部バックアップ
-                </button>
-                <button
-                  onClick={handleOpenCareContentDeleter}
-                  className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-                >
-                  🗑️ シフトデータ削除
-                </button>
-              </>
+              <button
+                onClick={handleManualBackup}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+                title="現在のデータを内部バックアップします"
+              >
+                ☁️ 内部バックアップ
+              </button>
             )}
+
+            <button
+              onClick={handleOpenCareContentDeleter}
+              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+            >
+              🗑️ シフトデータ削除
+            </button>
           </div>
         </div>
 
