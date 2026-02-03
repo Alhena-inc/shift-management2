@@ -11,6 +11,7 @@ interface ParsedShiftLine {
   endTime: string;
   clientName: string;
   serviceType?: ServiceType;
+  area?: string;
   isValid: boolean;
   errorMessage?: string;
   originalLine: string;
@@ -167,12 +168,22 @@ const ShiftBulkInputPage: React.FC = () => {
       const startTime = startTimeRaw.includes(':') ? startTimeRaw : `${startTimeRaw}:00`;
       const endTime = endTimeRaw.includes(':') ? endTimeRaw : `${endTimeRaw}:00`;
 
-      // 利用者名とサービスタイプを分離
-      let clientName = clientNameWithService.trim();
+      // 利用者名、サービスタイプ、地区を分離
+      let remainingText = clientNameWithService.trim();
       let serviceType: ServiceType | undefined;
+      let area: string | undefined;
+
+      // まず地区を抽出（末尾の「〜区」「〜市」などを探す）
+      const areaMatch = remainingText.match(/^(.+?)\s*([^(（\s]+(?:区|市|町|村))$/);
+      if (areaMatch) {
+        remainingText = areaMatch[1].trim();
+        area = areaMatch[2].trim();
+      }
 
       // 括弧があるかチェック (全角括弧も考慮)
-      const serviceMatch = clientNameWithService.match(/(.+?)[\(（](.+?)[\)）]$/);
+      const serviceMatch = remainingText.match(/^(.+?)[\(（](.+?)[\)）]$/);
+      let clientName = remainingText;
+
       if (serviceMatch) {
         clientName = serviceMatch[1].trim();
         const serviceLabel = serviceMatch[2].trim();
@@ -187,9 +198,17 @@ const ShiftBulkInputPage: React.FC = () => {
             clientName: '',
             isValid: false,
             errorMessage: `サービスタイプ「${serviceLabel}」が不明です`,
-            originalLine: lines[i],
+            originalLine: originalLine,
           });
           continue;
+        }
+
+        // サービスタイプの後に地区が来る場合の処理
+        if (!area) {
+          const afterServiceMatch = clientNameWithService.match(/[\)）]\s*([^(（\s]+(?:区|市|町|村))$/);
+          if (afterServiceMatch) {
+            area = afterServiceMatch[1].trim();
+          }
         }
       }
 
@@ -202,8 +221,9 @@ const ShiftBulkInputPage: React.FC = () => {
         endTime,
         clientName: clientName,
         serviceType: serviceType,
+        area: area,
         isValid: true,
-        originalLine: lines[i],
+        originalLine: originalLine,
       });
     }
 
@@ -281,7 +301,7 @@ const ShiftBulkInputPage: React.FC = () => {
           serviceType: serviceType,
           duration: duration,
           rowIndex: maxRowIndex + 1,
-          area: '',
+          area: shift.area || '',
           regularHours: 0,
           nightHours: 0,
           regularPay: 0,
@@ -387,15 +407,16 @@ const ShiftBulkInputPage: React.FC = () => {
           <div className="mb-6 p-4 bg-blue-50 rounded-lg">
             <h3 className="font-bold text-blue-800 mb-2">📝 入力形式</h3>
             <div className="text-sm text-gray-700 space-y-1">
-              <p>日付 時間 利用者名(サービス名)の形式で入力</p>
-              <p className="text-xs">※サービス名は省略可能です。省略時は時間帯により自動判定されます。</p>
+              <p>日付 時間 利用者名(サービス名)地区の形式で入力</p>
+              <p className="text-xs">※サービス名・地区は省略可能です。省略時はサービスは時間帯により自動判定されます。</p>
             </div>
             <div className="mt-3 p-3 bg-white rounded border border-gray-200">
               <pre className="text-xs font-mono text-gray-600">
-{`2/2 17:00~18:30 山口(身体)
-2/2 21:00~8:15 定兼(家事)
-2/6 11:30~18:00 三田(身体)
-2/9 17:00~18:30 山口(重度)`}
+{`3/1 10:00~17:00 山本翔愛(身体)住之江区
+3/4 17:30~19:30 山本翔愛(身体)住之江区
+3/5 17:00~19:30 佐々木(重度)住之江区
+3/6 17:00~19:30 佐々木(重度)住之江区
+3/11 17:30~19:30 山本翔愛(身体)住之江区`}
               </pre>
             </div>
 
@@ -445,10 +466,9 @@ const ShiftBulkInputPage: React.FC = () => {
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               className="w-full h-48 p-3 bg-white border border-gray-300 rounded-lg font-mono text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-              placeholder={`2/2 17:00~18:30 山口(身体)
-2/2 21:00~8:15 定兼(家事)
-2/6 11:30~18:00 三田(身体)
-2/9 17:00~18:30 山口(重度)
+              placeholder={`3/1 10:00~17:00 山本翔愛(身体)住之江区
+3/4 17:30~19:30 山本翔愛(身体)住之江区
+3/5 17:00~19:30 佐々木(重度)住之江区
 ...`}
             />
           </div>
@@ -470,6 +490,7 @@ const ShiftBulkInputPage: React.FC = () => {
                       <th className="px-3 py-2 text-left">日付</th>
                       <th className="px-3 py-2 text-left">時間</th>
                       <th className="px-3 py-2 text-left">利用者</th>
+                      <th className="px-3 py-2 text-left">地区</th>
                       <th className="px-3 py-2 text-left">サービス</th>
                       <th className="px-3 py-2 text-left">状態</th>
                     </tr>
@@ -485,6 +506,9 @@ const ShiftBulkInputPage: React.FC = () => {
                         </td>
                         <td className="px-3 py-2">
                           {shift.isValid ? shift.clientName : '-'}
+                        </td>
+                        <td className="px-3 py-2">
+                          {shift.isValid && shift.area ? shift.area : '-'}
                         </td>
                         <td className="px-3 py-2">
                           {shift.isValid && shift.serviceType ? (
