@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import type { Helper, Shift } from '../types';
+import type { Helper, Shift, ServiceType } from '../types';
 import { SERVICE_CONFIG } from '../types';
 
 interface ShiftBulkInputProps {
@@ -16,6 +16,7 @@ interface ParsedShiftLine {
   startTime: string;
   endTime: string;
   clientName: string;
+  serviceType?: ServiceType;
   isValid: boolean;
   errorMessage?: string;
   originalLine: string;
@@ -51,6 +52,26 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
       .replace(/[０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)) // 全角数字を半角に
       .replace(/：/g, ':') // 全角コロンを半角に
       .replace(/[~～〜～ー－−–—]/g, '-'); // 様々なダッシュ記号を統一
+  };
+
+  // サービスタイプのラベルからServiceTypeへのマッピング
+  const serviceTypeMap: Record<string, ServiceType> = {
+    '家事': 'kaji',
+    '重度': 'judo',
+    '身体': 'shintai',
+    '休み希望': 'yasumi_kibou',
+    '同行': 'doko',
+    '指定休': 'shitei_kyuu',
+    '予定': 'yotei',
+    '行動': 'kodo_engo',
+    '深夜': 'shinya',
+    '深夜(同行)': 'shinya_doko',
+    '深夜同行': 'shinya_doko',
+    '通院': 'tsuin',
+    '移動': 'ido',
+    '事務': 'jimu',
+    '営業': 'eigyo',
+    '会議': 'kaigi',
   };
 
   // テキストを解析
@@ -100,7 +121,33 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
         continue;
       }
 
-      const [, monthDay, day, startTime, endTime, clientName] = match;
+      const [, monthDay, day, startTime, endTime, clientNameWithService] = match;
+
+      // 利用者名とサービスタイプを分離
+      let clientName = clientNameWithService.trim();
+      let serviceType: ServiceType | undefined;
+
+      // 括弧があるかチェック (全角括弧も考慮)
+      const serviceMatch = clientNameWithService.match(/(.+?)[\(（](.+?)[\)）]$/);
+      if (serviceMatch) {
+        clientName = serviceMatch[1].trim();
+        const serviceLabel = serviceMatch[2].trim();
+        serviceType = serviceTypeMap[serviceLabel];
+
+        if (!serviceType) {
+          // マップに存在しないサービスタイプの場合はエラー
+          shifts.push({
+            date: '',
+            startTime: '',
+            endTime: '',
+            clientName: '',
+            isValid: false,
+            errorMessage: `サービスタイプ「${serviceLabel}」が不明です`,
+            originalLine: lines[i],
+          });
+          continue;
+        }
+      }
 
       // 日付を作成（選択された年月を使用）
       let targetYear = selectedYear;
@@ -113,7 +160,8 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
         date: dateStr,
         startTime,
         endTime,
-        clientName: clientName.trim(),
+        clientName: clientName,
+        serviceType: serviceType,
         isValid: true,
         originalLine: lines[i],
       });
@@ -142,9 +190,15 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
       const timeRange = `${shift.startTime}-${shift.endTime}`;
       const duration = calculateDuration(shift.startTime, shift.endTime);
 
-      // デフォルトのサービスタイプを判定（深夜なら深夜、それ以外は身体）
-      const isNightShift = shift.startTime.includes('23:') || shift.startTime.includes('0:');
-      const serviceType = isNightShift ? 'shinya' : 'shintai';
+      // サービスタイプの決定（指定がある場合はそれを使用、なければデフォルト）
+      let serviceType: ServiceType;
+      if (shift.serviceType) {
+        serviceType = shift.serviceType;
+      } else {
+        // デフォルトのサービスタイプを判定（深夜なら深夜、それ以外は身体）
+        const isNightShift = shift.startTime.includes('23:') || shift.startTime.includes('0:');
+        serviceType = isNightShift ? 'shinya' : 'shintai';
+      }
 
       const newShift: Shift = {
         id: `shift-${parsedData.helperId}-${shift.date}-${index}`,
@@ -224,7 +278,7 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
               >
                 {[2024, 2025, 2026].map(year => (
                   <option key={year} value={year}>{year}年</option>
@@ -236,7 +290,7 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
               >
                 {[...Array(12)].map((_, i) => (
                   <option key={i + 1} value={i + 1}>{i + 1}月</option>
@@ -248,7 +302,7 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
               <select
                 value={selectedHelperId}
                 onChange={(e) => setSelectedHelperId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
               >
                 <option value="">選択してください</option>
                 {helpers.filter(h => !h.deleted).map(helper => (
@@ -262,14 +316,34 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
           <div className="mb-4 p-4 bg-blue-50 rounded-lg">
             <h3 className="font-bold text-blue-800 mb-2">📝 入力形式</h3>
             <div className="text-sm text-gray-700 space-y-1">
-              <p>日付 時間 利用者名の形式で入力（例：2/2 14:00~19:00 三田）</p>
+              <p>日付 時間 利用者名(サービス名)の形式で入力</p>
+              <p className="text-xs">※サービス名は省略可能です。省略時は時間帯により自動判定されます。</p>
             </div>
             <div className="mt-3 p-3 bg-white rounded border border-gray-200">
               <pre className="text-xs font-mono text-gray-600">
-{`2/2 14:00~19:00 三田
-2/3 23:00~8:30 中島
-2/4 17:00~18:30 山口`}
+{`2/2 17:00~18:30 山口(身体)
+2/2 21:00~8:15 定兼(家事)
+2/6 11:30~18:00 三田(身体)
+2/9 17:00~18:30 山口(重度)`}
               </pre>
+            </div>
+
+            <div className="mt-3">
+              <p className="text-xs font-semibold text-blue-700 mb-2">利用可能なサービス名：</p>
+              <div className="flex flex-wrap gap-1">
+                {Object.entries(serviceTypeMap).map(([label, type]) => (
+                  <span
+                    key={type}
+                    className="px-2 py-1 text-xs rounded"
+                    style={{
+                      backgroundColor: SERVICE_CONFIG[type].bgColor,
+                      color: SERVICE_CONFIG[type].color
+                    }}
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -291,10 +365,11 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
             <textarea
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              className="w-full h-48 p-3 border border-gray-300 rounded-lg font-mono text-sm"
-              placeholder={`2/2 14:00~19:00 三田
-2/3 23:00~8:30 中島
-2/4 17:00~18:30 山口
+              className="w-full h-48 p-3 bg-white border border-gray-300 rounded-lg font-mono text-sm"
+              placeholder={`2/2 17:00~18:30 山口(身体)
+2/2 21:00~8:15 定兼(家事)
+2/6 11:30~18:00 三田(身体)
+2/9 17:00~18:30 山口(重度)
 ...`}
             />
           </div>
@@ -314,6 +389,7 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
                       <th className="px-3 py-2 text-left">日付</th>
                       <th className="px-3 py-2 text-left">時間</th>
                       <th className="px-3 py-2 text-left">利用者</th>
+                      <th className="px-3 py-2 text-left">サービス</th>
                       <th className="px-3 py-2 text-left">状態</th>
                     </tr>
                   </thead>
@@ -328,6 +404,19 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
                         </td>
                         <td className="px-3 py-2">
                           {shift.isValid ? shift.clientName : '-'}
+                        </td>
+                        <td className="px-3 py-2">
+                          {shift.isValid && shift.serviceType ? (
+                            <span className="px-2 py-1 text-xs rounded"
+                              style={{
+                                backgroundColor: SERVICE_CONFIG[shift.serviceType].bgColor,
+                                color: SERVICE_CONFIG[shift.serviceType].color
+                              }}>
+                              {SERVICE_CONFIG[shift.serviceType].label}
+                            </span>
+                          ) : shift.isValid ? (
+                            <span className="text-gray-400 text-xs">自動判定</span>
+                          ) : '-'}
                         </td>
                         <td className="px-3 py-2">
                           {shift.isValid ? (
