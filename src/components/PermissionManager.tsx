@@ -117,7 +117,7 @@ export const PermissionManager: React.FC<PermissionManagerProps> = ({ onClose })
         {/* ヘルパー一覧 */}
         <div className="flex-1 overflow-y-auto p-6">
           <table className="w-full">
-            <thead className="bg-gray-50 sticky top-0">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="text-left p-3 font-medium text-gray-700">名前</th>
                 <th className="text-left p-3 font-medium text-gray-700">メールアドレス</th>
@@ -173,7 +173,7 @@ export const PermissionManager: React.FC<PermissionManagerProps> = ({ onClose })
                         <select
                           value={currentRole}
                           onChange={(e) => handleRoleChange(helper.id, e.target.value as 'admin' | 'staff')}
-                          className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="px-3 py-1 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
                           <option value="staff">スタッフ</option>
                           <option value="admin">管理者</option>
