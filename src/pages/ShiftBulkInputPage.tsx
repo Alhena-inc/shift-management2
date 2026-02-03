@@ -259,7 +259,7 @@ const ShiftBulkInputPage: React.FC = () => {
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
               >
                 {[2024, 2025, 2026].map(year => (
                   <option key={year} value={year}>{year}年</option>
@@ -271,7 +271,7 @@ const ShiftBulkInputPage: React.FC = () => {
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
               >
                 {[...Array(12)].map((_, i) => (
                   <option key={i + 1} value={i + 1}>{i + 1}月</option>
@@ -283,7 +283,7 @@ const ShiftBulkInputPage: React.FC = () => {
               <select
                 value={selectedHelperId}
                 onChange={(e) => setSelectedHelperId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
               >
                 <option value="">選択してください</option>
                 {helpers.map(helper => (
@@ -334,7 +334,7 @@ const ShiftBulkInputPage: React.FC = () => {
             <textarea
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              className="w-full h-48 p-3 border border-gray-300 rounded-lg font-mono text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+              className="w-full h-48 p-3 bg-white border border-gray-300 rounded-lg font-mono text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
               placeholder={`2/2 14:00~19:00 三田
 2/3 23:00~8:30 中島
 2/4 17:00~18:30 山口
