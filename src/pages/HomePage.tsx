@@ -97,12 +97,12 @@ const HomePage: React.FC = () => {
     {
       icon: '💰',
       title: '給与明細',
-      description: role === 'admin' ? '給与明細の作成・確認' : '自分の給与明細を確認',
+      description: '給与明細の作成・確認',
       path: '/payslip',
       gradient: 'from-amber-500 to-amber-600',
       iconBg: 'bg-amber-100',
       iconColor: 'text-amber-600',
-      requiredRole: null  // 全員アクセス可能（ただし内容は権限で制御）
+      requiredRole: 'admin' as const  // 管理者のみ
     },
     {
       icon: '📝',
