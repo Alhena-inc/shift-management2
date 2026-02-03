@@ -87,74 +87,60 @@ const HomePage: React.FC = () => {
   // メニュー項目を権限に基づいてフィルタリング
   const allMenuItems: Array<{
     icon: string;
+    iconBgColor: string;
     title: string;
     description: string;
     path: string | null;
     onClick?: () => void;
-    gradient: string;
-    iconBg: string;
-    iconColor: string;
     requiredRole: 'admin' | null;
   }> = [
     {
       icon: 'calendar_month',
+      iconBgColor: '#E3F2FD',  // 薄い青
       title: 'シフト管理',
-      description: 'シフトの作成・編集・確認',
+      description: 'スケジュールの編集・閲覧を行います',
       path: '/shift',
-      gradient: 'from-shift-400 to-shift-600',
-      iconBg: 'bg-shift-50 dark:bg-shift-900/20',
-      iconColor: 'text-shift-600 dark:text-shift-400',
       requiredRole: null  // 全員アクセス可能
     },
     {
       icon: 'group',
+      iconBgColor: '#FFF3E0',  // 薄いオレンジ
       title: 'ヘルパー管理',
-      description: 'スタッフ情報の登録・編集',
+      description: 'スタッフプロフィールと稼働状況の管理',
       path: '/helpers',
-      gradient: 'from-helper-400 to-helper-600',
-      iconBg: 'bg-helper-50 dark:bg-helper-900/20',
-      iconColor: 'text-helper-600 dark:text-helper-400',
       requiredRole: 'admin' as const  // 管理者のみ
     },
     {
       icon: 'person',
+      iconBgColor: '#E8F5E9',  // 薄い緑
       title: '利用者管理',
-      description: '利用者情報の登録・編集',
+      description: '利用者データベースとケアプランの確認',
       path: '/users',
-      gradient: 'from-user-400 to-user-600',
-      iconBg: 'bg-user-50 dark:bg-user-900/20',
-      iconColor: 'text-user-600 dark:text-user-400',
       requiredRole: 'admin' as const  // 管理者のみ
     },
     {
-      icon: 'payments',
+      icon: 'receipt_long',
+      iconBgColor: '#F3E5F5',  // 薄い紫
       title: '給与明細',
-      description: '給与明細の作成・確認',
+      description: '月次給与計算の確認と明細書の発行',
       path: '/payslip',
-      gradient: 'from-payslip-400 to-payslip-600',
-      iconBg: 'bg-payslip-50 dark:bg-payslip-900/20',
-      iconColor: 'text-payslip-600 dark:text-payslip-400',
       requiredRole: 'admin' as const  // 管理者のみ
     },
     {
       icon: 'playlist_add',
+      iconBgColor: '#FFE8E8',  // 薄いピンク
       title: 'シフト一括追加',
-      description: 'シフトデータを一括で追加',
+      description: '複数のシフトをパターンから迅速に追加',
       path: '/shift-bulk-input',
-      gradient: 'from-bulk-400 to-bulk-600',
-      iconBg: 'bg-bulk-50 dark:bg-bulk-900/20',
-      iconColor: 'text-bulk-600 dark:text-bulk-400',
       requiredRole: null  // 全員アクセス可能
     },
     {
-      icon: 'admin_panel_settings',
+      icon: 'security',
+      iconBgColor: '#FFF8E1',  // 薄い黄色
       title: '権限管理',
-      description: 'ヘルパーの権限を設定',
+      description: '管理者設定とシステムアクセス権限の変更',
       path: null,
       onClick: () => setShowPermissionManager(true),
-      gradient: 'from-permission-400 to-permission-600',
-      iconBg: 'bg-permission-50 dark:bg-permission-900/20',
-      iconColor: 'text-permission-600 dark:text-permission-400',
       requiredRole: 'admin' as const  // 管理者のみ
     },
   ];
@@ -185,181 +171,143 @@ const HomePage: React.FC = () => {
 
   return (
     <div
-      className="min-h-screen"
+      className="min-h-screen bg-gray-50"
       style={{
         overscrollBehaviorX: 'none',
         touchAction: 'pan-y pinch-zoom'
       }}
     >
-      {/* ヘッダーセクション */}
-      <div className="bg-gradient-to-br from-primary/5 to-indigo-100/50 dark:from-primary/10 dark:to-indigo-900/20 py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between mb-6">
+      {/* ヘッダーセクション - シンプルで明るいデザイン */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-3 mb-2">
-                <h1 className="text-3xl font-display font-bold text-gray-900 dark:text-gray-100">
-                  訪問介護事業所のあ
-                </h1>
-                <RoleBadge role={role} />
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <span className="material-symbols-outlined text-blue-600">
+                      apps
+                    </span>
+                  </div>
+                  <h1 className="text-2xl font-bold text-gray-900">
+                    シフトマスター
+                  </h1>
+                </div>
               </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 font-body">
-                Alhena合同会社 - {today}
+              <p className="text-sm text-gray-600">
+                訪問介護事業所のあ - 今日の業務を確認・管理しましょう
               </p>
             </div>
             {helperName && (
               <div className="text-right">
-                <p className="text-lg font-body text-gray-700 dark:text-gray-300">
-                  ようこそ
+                <p className="text-sm text-gray-500">
+                  {today}
                 </p>
-                <p className="text-xl font-display font-semibold text-gray-900 dark:text-gray-100">
-                  {helperName}さん
+                <p className="text-base font-medium text-gray-900 mt-1">
+                  こんにちは、{helperName}さん
                 </p>
               </div>
             )}
           </div>
-
-          {/* クイックステータス */}
-          {role === 'admin' && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-white dark:bg-surface-dark rounded-xl p-4 shadow-card dark:shadow-none border border-gray-100 dark:border-gray-700">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-shift-100 dark:bg-shift-900/30 rounded-lg">
-                    <span className="material-symbols-outlined text-xl text-shift-600 dark:text-shift-400">
-                      event_note
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 font-body">今月のシフト</p>
-                    <p className="text-2xl font-display font-bold text-gray-800 dark:text-gray-200">
-                      {stats.monthlyShifts || '--'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-white dark:bg-surface-dark rounded-xl p-4 shadow-card dark:shadow-none border border-gray-100 dark:border-gray-700">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-helper-100 dark:bg-helper-900/30 rounded-lg">
-                    <span className="material-symbols-outlined text-xl text-helper-600 dark:text-helper-400">
-                      badge
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 font-body">ヘルパー数</p>
-                    <p className="text-2xl font-display font-bold text-gray-800 dark:text-gray-200">
-                      {stats.helpers || '--'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-white dark:bg-surface-dark rounded-xl p-4 shadow-card dark:shadow-none border border-gray-100 dark:border-gray-700">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-user-100 dark:bg-user-900/30 rounded-lg">
-                    <span className="material-symbols-outlined text-xl text-user-600 dark:text-user-400">
-                      supervised_user_circle
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 font-body">利用者数</p>
-                    <p className="text-2xl font-display font-bold text-gray-800 dark:text-gray-200">
-                      {stats.users || '--'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-white dark:bg-surface-dark rounded-xl p-4 shadow-card dark:shadow-none border border-gray-100 dark:border-gray-700">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg">
-                    <span className="material-symbols-outlined text-xl text-indigo-600 dark:text-indigo-400">
-                      today
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 font-body">今日の予定</p>
-                    <p className="text-2xl font-display font-bold text-gray-800 dark:text-gray-200">
-                      {stats.todaySchedule || '--'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
       {/* メインコンテンツ */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* メニューグリッド */}
+        {/* ウェルカムメッセージ */}
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">
+              管理メニュー
+            </h2>
+            <p className="text-sm text-gray-600 mt-1">
+              {role === 'admin' ? '全機能利用可能' : '利用可能な機能を選択してください'}
+            </p>
+          </div>
+          <RoleBadge role={role} />
+        </div>
+
+        {/* メニューグリッド - 明るくシンプルなカードデザイン */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {menuItems.map((item) => (
             <div
               key={(item.path || '') + item.title}
               onClick={() => handleNavigate(item.path, item.onClick)}
-              className="group relative bg-white dark:bg-surface-dark rounded-2xl shadow-card dark:shadow-none hover:shadow-hover dark:hover:shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1"
+              className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow duration-200 cursor-pointer border border-gray-100"
             >
-              {/* グラデーションオーバーレイ */}
-              <div className={`absolute inset-0 bg-gradient-to-br ${item.gradient} opacity-0 group-hover:opacity-5 transition-opacity duration-300`} />
-
-              <div className="relative p-6">
+              <div className="flex flex-col">
                 {/* アイコン */}
-                <div className={`w-14 h-14 ${item.iconBg} rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300`}>
-                  <span className={`material-symbols-outlined text-2xl ${item.iconColor}`}>
+                <div
+                  className="w-12 h-12 rounded-lg flex items-center justify-center mb-4"
+                  style={{ backgroundColor: item.iconBgColor }}
+                >
+                  <span className="material-symbols-outlined text-gray-700 text-2xl">
                     {item.icon}
                   </span>
                 </div>
 
-                {/* テキスト */}
-                <h3 className="text-lg font-display font-bold text-gray-900 dark:text-gray-100 mb-2 group-hover:text-primary dark:group-hover:text-primary transition-colors">
+                {/* タイトルと説明 */}
+                <h3 className="text-base font-bold text-gray-900 mb-2">
                   {item.title}
                 </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 font-body mb-4">
+                <p className="text-sm text-gray-600 leading-relaxed">
                   {item.description}
                 </p>
 
-                {/* アクションボタン */}
-                <div className="flex items-center text-primary dark:text-primary group-hover:gap-3 transition-all">
-                  <span className="text-sm font-medium">アクセス</span>
-                  <span className="material-symbols-outlined text-lg group-hover:translate-x-1 transition-transform">
-                    arrow_forward
+                {/* アクセスリンク */}
+                <div className="mt-4 flex items-center text-blue-600 text-sm">
+                  <span>アクセス</span>
+                  <span className="material-symbols-outlined text-lg ml-1">
+                    arrow_outward
                   </span>
                 </div>
               </div>
-
-              {/* 下部のカラーバー */}
-              <div className={`h-1 bg-gradient-to-r ${item.gradient} transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left`} />
             </div>
           ))}
         </div>
 
-        {/* 追加情報セクション */}
-        <div className="mt-12 bg-gradient-to-r from-primary/10 to-indigo-100/50 dark:from-primary/20 dark:to-indigo-900/30 rounded-2xl p-6">
-          <h2 className="text-xl font-display font-bold text-gray-900 dark:text-gray-100 mb-4">
+        {/* システム情報セクション */}
+        <div className="mt-12 bg-white rounded-xl p-6 border border-gray-100">
+          <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <span className="material-symbols-outlined text-gray-600">
+              info
+            </span>
             システム情報
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex items-center gap-3">
-              <span className="material-symbols-outlined text-gray-600 dark:text-gray-400">
-                security
-              </span>
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 bg-blue-100 rounded flex items-center justify-center flex-shrink-0">
+                <span className="material-symbols-outlined text-blue-600 text-base">
+                  security
+                </span>
+              </div>
               <div>
-                <p className="text-sm font-body text-gray-600 dark:text-gray-400">
-                  アクセス権限
-                </p>
-                <p className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                <p className="text-sm text-gray-600">アクセス権限</p>
+                <p className="text-sm font-semibold text-gray-900">
                   {role === 'admin' ? '全機能利用可能' : '制限付きアクセス'}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="material-symbols-outlined text-gray-600 dark:text-gray-400">
-                update
-              </span>
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 bg-green-100 rounded flex items-center justify-center flex-shrink-0">
+                <span className="material-symbols-outlined text-green-600 text-base">
+                  update
+                </span>
+              </div>
               <div>
-                <p className="text-sm font-body text-gray-600 dark:text-gray-400">
-                  最終更新
-                </p>
-                <p className="text-base font-semibold text-gray-900 dark:text-gray-100">
-                  2024年2月
-                </p>
+                <p className="text-sm text-gray-600">最終更新</p>
+                <p className="text-sm font-semibold text-gray-900">2024年2月</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 bg-purple-100 rounded flex items-center justify-center flex-shrink-0">
+                <span className="material-symbols-outlined text-purple-600 text-base">
+                  support_agent
+                </span>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">サポート</p>
+                <p className="text-sm font-semibold text-gray-900">利用可能</p>
               </div>
             </div>
           </div>

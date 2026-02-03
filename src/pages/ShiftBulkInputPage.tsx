@@ -320,30 +320,30 @@ const ShiftBulkInputPage: React.FC = () => {
   }, [parsedData, existingShifts, defaultServiceType]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-background-dark dark:to-surface-dark">
+    <div className="min-h-screen bg-gray-50">
       {/* ヘッダー */}
-      <div className="bg-gradient-to-r from-bulk-500 to-bulk-600 text-white">
+      <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <div className="bg-white/20 backdrop-blur-sm rounded-xl p-3">
-                <span className="material-symbols-outlined text-2xl">
+              <div className="bg-pink-100 rounded-lg p-2.5">
+                <span className="material-symbols-outlined text-pink-600 text-2xl">
                   playlist_add
                 </span>
               </div>
               <div>
-                <h1 className="text-2xl font-display font-bold">シフト一括追加</h1>
-                <p className="text-sm text-white/80 font-body mt-1">複数のシフトを一度に登録</p>
+                <h1 className="text-2xl font-bold text-gray-900">シフト一括追加</h1>
+                <p className="text-sm text-gray-600 mt-1">複数のシフトを一度に登録</p>
               </div>
             </div>
             <button
               onClick={() => window.location.href = '/'}
-              className="flex items-center gap-2 px-4 py-2 bg-white/20 backdrop-blur-sm rounded-lg hover:bg-white/30 transition-all duration-200 font-body"
+              className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
             >
               <span className="material-symbols-outlined text-lg">
-                home
+                arrow_back
               </span>
-              <span>ホームに戻る</span>
+              <span>戻る</span>
             </button>
           </div>
         </div>
@@ -351,22 +351,22 @@ const ShiftBulkInputPage: React.FC = () => {
 
       {/* 本体 */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white dark:bg-surface-dark rounded-2xl shadow-soft dark:shadow-none border border-gray-100 dark:border-gray-700 p-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           {/* 年月とヘルパー選択 */}
           <div className="mb-8">
-            <h2 className="text-lg font-display font-bold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-              <span className="material-symbols-outlined text-xl text-bulk-600 dark:text-bulk-400">
+            <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <span className="material-symbols-outlined text-gray-600">
                 settings
               </span>
               基本設定
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 font-body">年</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">年</label>
                 <select
                   value={selectedYear}
                   onChange={(e) => setSelectedYear(Number(e.target.value))}
-                  className="w-full px-3 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-bulk-500 focus:border-bulk-500 dark:text-gray-100 font-body transition-colors"
+                  className="w-full px-3 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                 >
                   {[2024, 2025, 2026].map(year => (
                     <option key={year} value={year}>{year}年</option>
@@ -374,11 +374,11 @@ const ShiftBulkInputPage: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 font-body">月</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">月</label>
                 <select
                   value={selectedMonth}
                   onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                  className="w-full px-3 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-bulk-500 focus:border-bulk-500 dark:text-gray-100 font-body transition-colors"
+                  className="w-full px-3 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                 >
                   {[...Array(12)].map((_, i) => (
                     <option key={i + 1} value={i + 1}>{i + 1}月</option>
@@ -386,11 +386,11 @@ const ShiftBulkInputPage: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 font-body">ヘルパー</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">ヘルパー</label>
                 <select
                   value={selectedHelperId}
                   onChange={(e) => setSelectedHelperId(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-bulk-500 focus:border-bulk-500 dark:text-gray-100 font-body transition-colors"
+                  className="w-full px-3 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                 >
                   <option value="">選択してください</option>
                   {helpers.map(helper => (
@@ -399,11 +399,11 @@ const ShiftBulkInputPage: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 font-body">デフォルトサービス</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">デフォルトサービス</label>
                 <select
                   value={defaultServiceType}
                   onChange={(e) => setDefaultServiceType(e.target.value as ServiceType | '')}
-                  className="w-full px-3 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-bulk-500 focus:border-bulk-500 dark:text-gray-100 font-body transition-colors"
+                  className="w-full px-3 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                 >
                   <option value="">自動判定</option>
                   {Object.entries(serviceTypeMap).map(([label, type]) => (
@@ -415,19 +415,19 @@ const ShiftBulkInputPage: React.FC = () => {
           </div>
 
           {/* 入力説明 */}
-          <div className="mb-8 p-5 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200/50 dark:border-blue-700/50">
-            <h3 className="font-display font-bold text-blue-900 dark:text-blue-100 mb-3 flex items-center gap-2">
-              <span className="material-symbols-outlined text-xl">
+          <div className="mb-8 p-5 bg-blue-50 rounded-xl border border-blue-100">
+            <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <span className="material-symbols-outlined text-blue-600">
                 info
               </span>
               入力形式
             </h3>
-            <div className="text-sm text-gray-700 dark:text-gray-300 space-y-2 font-body">
+            <div className="text-sm text-gray-700 space-y-2">
               <p>日付 時間 利用者名(サービス名)地区の形式で入力</p>
-              <p className="text-xs text-gray-600 dark:text-gray-400">※サービス名・地区は省略可能です。省略時はサービスは時間帯により自動判定されます。</p>
+              <p className="text-xs text-gray-600">※サービス名・地区は省略可能です。省略時はサービスは時間帯により自動判定されます。</p>
             </div>
-            <div className="mt-4 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600">
-              <pre className="text-xs font-mono text-gray-600 dark:text-gray-400">
+            <div className="mt-4 p-4 bg-white rounded-lg border border-gray-200">
+              <pre className="text-xs font-mono text-gray-600">
 {`3/1 10:00~17:00 山本翔愛(身体)住之江区
 3/4 17:30~19:30 山本翔愛(身体)住之江区
 3/5 17:00~19:30 佐々木(重度)住之江区
@@ -437,12 +437,12 @@ const ShiftBulkInputPage: React.FC = () => {
             </div>
 
             <div className="mt-4">
-              <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-3 font-body">利用可能なサービス名：</p>
+              <p className="text-xs font-semibold text-gray-700 mb-3">利用可能なサービス名：</p>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(serviceTypeMap).map(([label, type]) => (
                   <span
                     key={type}
-                    className="px-3 py-1.5 text-xs font-medium rounded-lg transition-all"
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg"
                     style={{
                       backgroundColor: SERVICE_CONFIG[type].bgColor,
                       color: SERVICE_CONFIG[type].color
@@ -457,8 +457,8 @@ const ShiftBulkInputPage: React.FC = () => {
 
           {/* メッセージ表示 */}
           {error && (
-            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg animate-slide-down">
-              <p className="text-red-700 dark:text-red-400 flex items-center gap-2 font-body">
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-700 flex items-center gap-2">
                 <span className="material-symbols-outlined text-xl">
                   error
                 </span>
@@ -467,8 +467,8 @@ const ShiftBulkInputPage: React.FC = () => {
             </div>
           )}
           {successMessage && (
-            <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg animate-slide-down">
-              <p className="text-green-700 dark:text-green-400 flex items-center gap-2 font-body">
+            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-green-700 flex items-center gap-2">
                 <span className="material-symbols-outlined text-xl">
                   check_circle
                 </span>
@@ -479,13 +479,13 @@ const ShiftBulkInputPage: React.FC = () => {
 
           {/* テキスト入力エリア */}
           <div className="mb-8">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 font-body">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               シフトデータを貼り付け
             </label>
             <textarea
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              className="w-full h-48 p-4 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg font-mono text-sm focus:ring-2 focus:ring-bulk-500 focus:border-bulk-500 dark:text-gray-100 transition-all"
+              className="w-full h-48 p-4 bg-white border border-gray-300 rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
               placeholder={`3/1 10:00~17:00 山本翔愛(身体)住之江区
 3/4 17:30~19:30 山本翔愛(身体)住之江区
 3/5 17:00~19:30 佐々木(重度)住之江区
@@ -495,48 +495,48 @@ const ShiftBulkInputPage: React.FC = () => {
 
           {/* 解析結果のプレビュー */}
           {parsedData && (
-            <div className="mb-8 p-5 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-600 animate-fade-in">
-              <h3 className="font-display font-bold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2">
-                <span className="material-symbols-outlined text-xl text-gray-600 dark:text-gray-400">
+            <div className="mb-8 p-5 bg-gray-50 rounded-xl border border-gray-200">
+              <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <span className="material-symbols-outlined text-gray-600">
                   analytics
                 </span>
                 解析結果
               </h3>
-              <div className="mb-4 flex items-center gap-6 text-sm font-body">
+              <div className="mb-4 flex items-center gap-6 text-sm">
                 <div>
-                  <span className="font-semibold text-gray-600 dark:text-gray-400">ヘルパー：</span>
-                  <span className="ml-2 text-gray-900 dark:text-gray-100">{parsedData.helperName}</span>
+                  <span className="font-semibold text-gray-600">ヘルパー：</span>
+                  <span className="ml-2 text-gray-900">{parsedData.helperName}</span>
                 </div>
                 <div>
-                  <span className="font-semibold text-gray-600 dark:text-gray-400">期間：</span>
-                  <span className="ml-2 text-gray-900 dark:text-gray-100">{parsedData.year}年{parsedData.month}月</span>
+                  <span className="font-semibold text-gray-600">期間：</span>
+                  <span className="ml-2 text-gray-900">{parsedData.year}年{parsedData.month}月</span>
                 </div>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm font-body">
-                  <thead className="bg-gray-200 dark:bg-gray-700">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100">
                     <tr>
-                      <th className="px-3 py-2.5 text-left text-gray-700 dark:text-gray-300">日付</th>
-                      <th className="px-3 py-2.5 text-left text-gray-700 dark:text-gray-300">時間</th>
-                      <th className="px-3 py-2.5 text-left text-gray-700 dark:text-gray-300">利用者</th>
-                      <th className="px-3 py-2.5 text-left text-gray-700 dark:text-gray-300">地区</th>
-                      <th className="px-3 py-2.5 text-left text-gray-700 dark:text-gray-300">サービス</th>
-                      <th className="px-3 py-2.5 text-left text-gray-700 dark:text-gray-300">状態</th>
+                      <th className="px-3 py-2.5 text-left text-gray-700">日付</th>
+                      <th className="px-3 py-2.5 text-left text-gray-700">時間</th>
+                      <th className="px-3 py-2.5 text-left text-gray-700">利用者</th>
+                      <th className="px-3 py-2.5 text-left text-gray-700">地区</th>
+                      <th className="px-3 py-2.5 text-left text-gray-700">サービス</th>
+                      <th className="px-3 py-2.5 text-left text-gray-700">状態</th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                  <tbody className="bg-white divide-y divide-gray-200">
                     {parsedData.shifts.map((shift, index) => (
-                      <tr key={index} className={shift.isValid ? '' : 'bg-red-50 dark:bg-red-900/20'}>
-                        <td className="px-3 py-2.5 text-gray-900 dark:text-gray-100">
+                      <tr key={index} className={shift.isValid ? '' : 'bg-red-50'}>
+                        <td className="px-3 py-2.5 text-gray-900">
                           {shift.isValid ? shift.date : '-'}
                         </td>
-                        <td className="px-3 py-2.5 text-gray-900 dark:text-gray-100">
+                        <td className="px-3 py-2.5 text-gray-900">
                           {shift.isValid ? `${shift.startTime}-${shift.endTime}` : '-'}
                         </td>
-                        <td className="px-3 py-2.5 text-gray-900 dark:text-gray-100">
+                        <td className="px-3 py-2.5 text-gray-900">
                           {shift.isValid ? shift.clientName : '-'}
                         </td>
-                        <td className="px-3 py-2.5 text-gray-900 dark:text-gray-100">
+                        <td className="px-3 py-2.5 text-gray-900">
                           {shift.isValid && shift.area ? shift.area : '-'}
                         </td>
                         <td className="px-3 py-2.5">
@@ -549,18 +549,18 @@ const ShiftBulkInputPage: React.FC = () => {
                               {SERVICE_CONFIG[shift.serviceType].label}
                             </span>
                           ) : shift.isValid ? (
-                            <span className="text-gray-400 dark:text-gray-500 text-xs">自動判定</span>
+                            <span className="text-gray-400 text-xs">自動判定</span>
                           ) : '-'}
                         </td>
                         <td className="px-3 py-2.5">
                           {shift.isValid ? (
-                            <span className="text-green-600 dark:text-green-400">
+                            <span className="text-green-600">
                               <span className="material-symbols-outlined text-lg">
                                 check
                               </span>
                             </span>
                           ) : (
-                            <span className="text-red-600 dark:text-red-400 text-xs">{shift.errorMessage}</span>
+                            <span className="text-red-600 text-xs">{shift.errorMessage}</span>
                           )}
                         </td>
                       </tr>
@@ -568,7 +568,7 @@ const ShiftBulkInputPage: React.FC = () => {
                   </tbody>
                 </table>
               </div>
-              <div className="mt-4 text-sm text-gray-600 dark:text-gray-400 font-body">
+              <div className="mt-4 text-sm text-gray-600">
                 有効：{parsedData.shifts.filter(s => s.isValid).length}件 /
                 エラー：{parsedData.shifts.filter(s => !s.isValid).length}件
               </div>
@@ -581,10 +581,10 @@ const ShiftBulkInputPage: React.FC = () => {
               <button
                 onClick={parseText}
                 disabled={!inputText.trim() || !selectedHelperId}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium font-body transition-all ${
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium transition-colors ${
                   inputText.trim() && selectedHelperId
-                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 shadow-sm hover:shadow-md'
-                    : 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                    : 'bg-gray-200 text-gray-500 cursor-not-allowed'
                 }`}
               >
                 <span className="material-symbols-outlined text-lg">
@@ -600,7 +600,7 @@ const ShiftBulkInputPage: React.FC = () => {
                     setParsedData(null);
                     setSuccessMessage(null);
                   }}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 font-medium font-body transition-all"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition-colors"
                 >
                   <span className="material-symbols-outlined text-lg">
                     refresh
@@ -610,10 +610,10 @@ const ShiftBulkInputPage: React.FC = () => {
                 <button
                   onClick={applyShifts}
                   disabled={isProcessing || parsedData.shifts.filter(s => s.isValid).length === 0}
-                  className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium font-body transition-all ${
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium transition-colors ${
                     !isProcessing && parsedData.shifts.filter(s => s.isValid).length > 0
-                      ? 'bg-gradient-to-r from-green-500 to-green-600 text-white hover:from-green-600 hover:to-green-700 shadow-sm hover:shadow-md'
-                      : 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                      ? 'bg-green-600 text-white hover:bg-green-700'
+                      : 'bg-gray-200 text-gray-500 cursor-not-allowed'
                   }`}
                 >
                   <span className="material-symbols-outlined text-lg">
