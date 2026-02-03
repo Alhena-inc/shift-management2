@@ -65,17 +65,6 @@ const HomePage: React.FC = () => {
     requiredRole: 'admin' | null;
   }> = [
     {
-      icon: '🔐',
-      title: '権限管理',
-      description: 'ヘルパーの権限を設定',
-      path: null,
-      onClick: () => setShowPermissionManager(true),
-      gradient: 'from-red-500 to-red-600',
-      iconBg: 'bg-red-100',
-      iconColor: 'text-red-600',
-      requiredRole: 'admin' as const  // 管理者のみ
-    },
-    {
       icon: '👥',
       title: 'ヘルパー管理',
       description: 'スタッフ情報の登録・編集',
@@ -123,6 +112,17 @@ const HomePage: React.FC = () => {
       gradient: 'from-pink-500 to-pink-600',
       iconBg: 'bg-pink-100',
       iconColor: 'text-pink-600',
+      requiredRole: 'admin' as const  // 管理者のみ
+    },
+    {
+      icon: '🔐',
+      title: '権限管理',
+      description: 'ヘルパーの権限を設定',
+      path: null,
+      onClick: () => setShowPermissionManager(true),
+      gradient: 'from-red-500 to-red-600',
+      iconBg: 'bg-red-100',
+      iconColor: 'text-red-600',
       requiredRole: 'admin' as const  // 管理者のみ
     },
   ];
