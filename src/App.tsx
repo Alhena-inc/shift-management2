@@ -11,6 +11,7 @@ import { PersonalShift } from './components/PersonalShift';
 import { ExpenseModal } from './components/ExpenseModal';
 import { DayOffManager } from './components/DayOffManager';
 import { CareContentDeleter } from './components/CareContentDeleter';
+import { ShiftBulkInput } from './components/ShiftBulkInput';
 import { PayslipListPage } from './components/payslip/PayslipListPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import HomePage from './pages/HomePage';
@@ -102,6 +103,7 @@ function App() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [isCareContentDeleterOpen, setIsCareContentDeleterOpen] = useState(false);
+  const [isShiftBulkInputOpen, setIsShiftBulkInputOpen] = useState(false);
 
   // デバウンス用のRef
   const shiftsUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -298,6 +300,7 @@ function App() {
   const handleOpenExpenseModal = useCallback(() => setIsExpenseModalOpen(true), []);
   const handleOpenDayOffManager = useCallback(() => setCurrentView('dayOff'), []);
   const handleOpenCareContentDeleter = useCallback(() => setIsCareContentDeleterOpen(true), []);
+  const handleOpenShiftBulkInput = useCallback(() => setIsShiftBulkInputOpen(true), []);
 
   const serviceConfigDisplay = useMemo(() => {
     return Object.entries(SERVICE_CONFIG)
@@ -613,6 +616,13 @@ function App() {
 
             {/* スタッフも利用可能なメニュー */}
             <button
+              onClick={handleOpenShiftBulkInput}
+              className="px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-colors"
+            >
+              📋 シフト一括追加
+            </button>
+
+            <button
               onClick={handleOpenHelperManager}
               className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
             >
@@ -680,6 +690,19 @@ function App() {
           onClose={() => setIsExpenseModalOpen(false)}
           initialYear={currentYear}
           initialMonth={currentMonth}
+        />
+
+        <ShiftBulkInput
+          isOpen={isShiftBulkInputOpen}
+          onClose={() => setIsShiftBulkInputOpen(false)}
+          helpers={helpers}
+          currentYear={currentYear}
+          currentMonth={currentMonth}
+          onAddShifts={(newShifts: Shift[]) => {
+            // 既存のシフトに新しいシフトを追加
+            const updatedShifts = [...shifts, ...newShifts];
+            handleUpdateShifts(updatedShifts);
+          }}
         />
 
         {isCareContentDeleterOpen && (
