@@ -498,9 +498,23 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
       console.error('一括PDF生成エラー:', error);
       alert('PDFの一括生成に失敗しました');
     } finally {
-      // 一時コンテナを掃除
-      if (tempContainer && tempContainer.parentNode) {
-        tempContainer.parentNode.removeChild(tempContainer);
+      // 一時コンテナを安全に削除
+      if (tempContainer) {
+        try {
+          // 親ノードがdocument.bodyであることを確認してから削除
+          if (tempContainer.parentNode === document.body) {
+            document.body.removeChild(tempContainer);
+          } else if (tempContainer.parentNode) {
+            // 親ノードが異なる場合も念のため削除
+            tempContainer.parentNode.removeChild(tempContainer);
+          } else {
+            // 親ノードがない場合はremove()を試す
+            tempContainer.remove?.();
+          }
+        } catch (e) {
+          // エラーが発生してもログに記録して処理を継続
+          console.warn('一時コンテナの削除中にエラーが発生しましたが、処理を継続します:', e);
+        }
       }
       setGeneratingPdf(false);
       setBulkPdfMode(false);

@@ -1655,9 +1655,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     // コンテキストメニューを閉じる（スキップされない場合のみ）
     if (!skipMenuClose) {
       const menu = document.getElementById('context-menu');
-      if (menu) {
-        menu.remove();
-      }
+      safeRemoveElement(menu);
     }
 
     return { shiftId, undoData }; // 削除したシフトIDとUndoデータを返す
@@ -3871,7 +3869,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     copyItem.onmouseout = () => copyItem.style.backgroundColor = 'white';
     copyItem.onclick = () => {
       copyDateShifts(date);
-      menu.remove();
+      safeRemoveElement(menu);
     };
 
     // ペーストメニュー項目
@@ -3891,10 +3889,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       pasteItem.onmouseout = () => pasteItem.style.backgroundColor = 'white';
       pasteItem.onclick = () => {
         pasteDateShifts(date);
-        // 要素が存在する場合のみ削除
-        if (document.body.contains(menu)) {
-          menu.remove();
-        }
+        safeRemoveElement(menu);
       };
     }
 
@@ -3902,13 +3897,17 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     menu.appendChild(pasteItem);
     document.body.appendChild(menu);
 
+    // メニュー削除フラグ（重複削除を防ぐ）
+    let isMenuRemoved = false;
+
     // メニュー外をクリックしたら閉じる
     const closeMenu = () => {
-      // 要素が存在する場合のみ削除
-      if (document.body.contains(menu)) {
-        menu.remove();
+      // 重複削除を防ぐ
+      if (!isMenuRemoved) {
+        isMenuRemoved = true;
+        safeRemoveElement(menu);
+        document.removeEventListener('click', closeMenu);
       }
-      document.removeEventListener('click', closeMenu);
     };
     setTimeout(() => document.addEventListener('click', closeMenu), 0);
   }, [copyDateShifts, pasteDateShifts, dateCopyBufferRef]);
@@ -4163,6 +4162,15 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     menu.style.border = '1px solid #ccc';
     menu.style.borderRadius = '4px';
     menu.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+
+    // メニュー削除フラグ（重複削除を防ぐ）
+    let isMenuRemoved = false;
+    const safelyRemoveMenu = () => {
+      if (!isMenuRemoved) {
+        isMenuRemoved = true;
+        safeRemoveElement(menu);
+      }
+    };
     menu.style.zIndex = '1000';
     menu.style.minWidth = '180px';
 
@@ -4238,7 +4246,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         setIsEditingMode(false);
       }
 
-      if (document.body.contains(menu)) menu.remove();
+      safelyRemoveMenu();
       console.log('✅ ケア削除処理完了');
     };
 
@@ -4395,7 +4403,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         });
         lastSelectedRowTdsRef.current = [];
         document.querySelectorAll('.line-selected').forEach(el => el.classList.remove('line-selected'));
-        if (document.body.contains(menu)) menu.remove();
+        safelyRemoveMenu();
       };
       if (undoCancelBtn) menu.appendChild(undoCancelBtn);
     }
@@ -4864,7 +4872,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       }
 
       if (document.body.contains(menu)) {
-        menu.remove();
+        safelyRemoveMenu();
       }
 
       // ボタン状態を戻す
@@ -4906,7 +4914,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       setDayOffBtn.onmouseout = () => setDayOffBtn.style.backgroundColor = 'transparent';
       setDayOffBtn.onclick = () => {
         toggleDayOff(helperId, date, rowIndex);
-        menu.remove();
+        safelyRemoveMenu();
       };
       menu.appendChild(setDayOffBtn);
     }
@@ -4956,7 +4964,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           saveDayOffToFirestore(next);
           return next;
         });
-        menu.remove();
+        safelyRemoveMenu();
       };
       menu.appendChild(deleteDayOffBtn);
     }
@@ -4972,7 +4980,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     scheduledBtn.onmouseout = () => scheduledBtn.style.backgroundColor = 'transparent';
     scheduledBtn.onclick = () => {
       toggleScheduledDayOff(helperId, date);
-      menu.remove();
+      safelyRemoveMenu();
     };
     menu.appendChild(scheduledBtn);
     document.body.appendChild(menu);
@@ -4980,7 +4988,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     // 外部クリックでメニューを閉じる
     const closeMenu = (event: MouseEvent) => {
       if (!menu.contains(event.target as Node)) {
-        menu.remove();
+        safelyRemoveMenu();
         document.removeEventListener('mousedown', closeMenu, { capture: true });
       }
     };

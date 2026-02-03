@@ -502,8 +502,18 @@ export async function downloadPayslipPdf(
   link.download = filename;
   document.body.appendChild(link);
   link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+
+  // 次のマイクロタスクで安全に削除（Reactの再レンダリングとの競合を避ける）
+  setTimeout(() => {
+    try {
+      if (document.body.contains(link)) {
+        document.body.removeChild(link);
+      }
+    } catch (e) {
+      console.warn('ダウンロードリンクの削除中にエラーが発生しましたが、処理を継続します:', e);
+    }
+    URL.revokeObjectURL(url);
+  }, 0);
 }
 
 /**
@@ -557,8 +567,18 @@ export async function downloadBulkPayslipPdf(
   link.download = filename;
   document.body.appendChild(link);
   link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+
+  // 次のマイクロタスクで安全に削除（Reactの再レンダリングとの競合を避ける）
+  setTimeout(() => {
+    try {
+      if (document.body.contains(link)) {
+        document.body.removeChild(link);
+      }
+    } catch (e) {
+      console.warn('ダウンロードリンクの削除中にエラーが発生しましたが、処理を継続します:', e);
+    }
+    URL.revokeObjectURL(url);
+  }, 0);
 }
 
 /**
