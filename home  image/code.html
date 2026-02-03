@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html class="light" lang="ja"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>シフトマスター - ダッシュボード</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&amp;family=Noto+Sans+JP:wght@400;500;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#3B82F6",
+              "background-light": "#f8fafc",
+              "background-dark": "#101f22",
+              "surface-light": "#ffffff",
+              "surface-dark": "#1a2c30",
+            },
+            fontFamily: {
+              "display": ["Manrope", "sans-serif"],
+              "body": ["Noto Sans JP", "sans-serif"],
+            },
+            boxShadow: {
+                'soft': '0 8px 30px -4px rgba(0, 0, 0, 0.05)',
+                'hover': '0 20px 40px -5px rgba(0, 0, 0, 0.1)',
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+        }
+        .font-english {
+            font-family: 'Manrope', sans-serif;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .group:hover .material-symbols-outlined.icon-filled {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-white dark:bg-background-dark text-[#111718] dark:text-white antialiased min-h-screen flex flex-col group/design-root">
+<header class="w-full bg-white dark:bg-background-dark border-b border-slate-100 dark:border-slate-800 sticky top-0 z-50">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="flex justify-between items-center h-20">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-200 dark:shadow-none">
+<span class="material-symbols-outlined">grid_view</span>
+</div>
+<h2 class="font-body font-black text-2xl tracking-tight text-slate-800 dark:text-white">シフトマスター</h2>
+</div>
+<div class="flex items-center gap-6">
+<button class="hidden md:flex items-center bg-slate-50 dark:bg-surface-dark px-5 py-2.5 rounded-full border border-slate-100 dark:border-slate-700 hover:bg-slate-100 transition-colors">
+<span class="material-symbols-outlined text-slate-400 dark:text-gray-300 text-[20px] mr-2">calendar_today</span>
+<span class="font-english font-bold text-sm text-slate-700 dark:text-gray-200 tracking-wide">2023年10月27日 (金)</span>
+</button>
+<button class="relative p-2.5 rounded-full bg-slate-50 dark:bg-surface-dark hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-600 dark:text-gray-200">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-2.5 right-3 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-surface-dark"></span>
+</button>
+<div class="flex items-center gap-3 pl-2">
+<div class="w-11 h-11 rounded-full bg-cover bg-center ring-2 ring-slate-100 dark:ring-surface-dark shadow-sm" data-alt="Admin user profile picture" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBdJFyqsJbpY2qdlTvXVDsu6SFuHhMN4DOc-IsWlshP6q2xvzKVwWPPTmFqfWgQJdqv70IQc2mdhF8NaeFvjOoe9FXPsm98GaEILGIYJWIPVw7FVxc0dBzt2R1lSByb-uLUwmQWS8stYiuYG9cBfAVKfTphZQdf_wlKn1bAwaZFUxmuRX82rpfQxxg3DhTc4oUAJ9mLe1uFO3UFSPxUCRaSEbN61eQEkXV8sdAXMjea06aeFchLnXxZexhZ0-kjqAsjwZmaZFFY2lfX');"></div>
+</div>
+</div>
+</div>
+</div>
+</header>
+<main class="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+<div class="mb-10 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+<div>
+<h1 class="text-[32px] md:text-4xl font-extrabold text-slate-800 dark:text-white mb-2 tracking-tight">こんにちは、管理者様</h1>
+<p class="text-slate-500 dark:text-slate-400 text-lg font-medium">今日の業務を確認・管理しましょう</p>
+</div>
+<div class="hidden md:block">
+<button class="flex items-center gap-2 text-slate-500 font-bold text-sm hover:text-blue-600 transition-colors bg-slate-50 hover:bg-blue-50 px-4 py-2 rounded-lg">
+<span class="material-symbols-outlined text-lg">help</span>
+                    ヘルプセンター
+                </button>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
+<a class="group relative bg-white dark:bg-surface-dark rounded-2xl p-8 border border-cyan-100 dark:border-slate-700 shadow-soft hover:shadow-xl hover:shadow-cyan-500/10 hover:border-cyan-400 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden" href="#">
+<div class="absolute top-0 right-0 w-36 h-36 bg-cyan-500/10 rounded-bl-[100px] -mr-8 -mt-8 transition-transform duration-500 group-hover:scale-110"></div>
+<div class="relative z-10">
+<div class="flex justify-between items-start mb-8">
+<div class="w-16 h-16 rounded-2xl bg-cyan-50 text-cyan-500 flex items-center justify-center group-hover:bg-cyan-500 group-hover:text-white transition-colors duration-300 shadow-sm shadow-cyan-100 dark:shadow-none">
+<span class="material-symbols-outlined icon-filled text-[36px]">calendar_month</span>
+</div>
+<span class="material-symbols-outlined text-slate-300 group-hover:text-cyan-500 transition-colors">arrow_outward</span>
+</div>
+<h3 class="text-2xl font-bold text-slate-800 dark:text-white mb-2 group-hover:text-cyan-600 transition-colors">シフト管理</h3>
+<p class="text-slate-500 dark:text-slate-400 leading-relaxed font-medium">スケジュールの編集・閲覧を<br/>行います</p>
+</div>
+</a>
+<a class="group relative bg-white dark:bg-surface-dark rounded-2xl p-8 border border-orange-100 dark:border-slate-700 shadow-soft hover:shadow-xl hover:shadow-orange-500/10 hover:border-orange-400 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden" href="#">
+<div class="absolute top-0 right-0 w-36 h-36 bg-orange-500/10 rounded-bl-[100px] -mr-8 -mt-8 transition-transform duration-500 group-hover:scale-110"></div>
+<div class="relative z-10">
+<div class="flex justify-between items-start mb-8">
+<div class="w-16 h-16 rounded-2xl bg-orange-50 text-orange-500 flex items-center justify-center group-hover:bg-orange-500 group-hover:text-white transition-colors duration-300 shadow-sm shadow-orange-100 dark:shadow-none">
+<span class="material-symbols-outlined icon-filled text-[36px]">badge</span>
+</div>
+<span class="material-symbols-outlined text-slate-300 group-hover:text-orange-500 transition-colors">arrow_outward</span>
+</div>
+<h3 class="text-2xl font-bold text-slate-800 dark:text-white mb-2 group-hover:text-orange-600 transition-colors">ヘルパー管理</h3>
+<p class="text-slate-500 dark:text-slate-400 leading-relaxed font-medium">スタッフプロフィールと<br/>稼働状況の管理</p>
+</div>
+</a>
+<a class="group relative bg-white dark:bg-surface-dark rounded-2xl p-8 border border-emerald-100 dark:border-slate-700 shadow-soft hover:shadow-xl hover:shadow-emerald-500/10 hover:border-emerald-400 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden" href="#">
+<div class="absolute top-0 right-0 w-36 h-36 bg-emerald-500/10 rounded-bl-[100px] -mr-8 -mt-8 transition-transform duration-500 group-hover:scale-110"></div>
+<div class="relative z-10">
+<div class="flex justify-between items-start mb-8">
+<div class="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-500 flex items-center justify-center group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm shadow-emerald-100 dark:shadow-none">
+<span class="material-symbols-outlined icon-filled text-[36px]">elderly</span>
+</div>
+<span class="material-symbols-outlined text-slate-300 group-hover:text-emerald-500 transition-colors">arrow_outward</span>
+</div>
+<h3 class="text-2xl font-bold text-slate-800 dark:text-white mb-2 group-hover:text-emerald-600 transition-colors">利用者管理</h3>
+<p class="text-slate-500 dark:text-slate-400 leading-relaxed font-medium">利用者データベースと<br/>ケアプランの確認</p>
+</div>
+</a>
+<a class="group relative bg-white dark:bg-surface-dark rounded-2xl p-8 border border-violet-100 dark:border-slate-700 shadow-soft hover:shadow-xl hover:shadow-violet-500/10 hover:border-violet-400 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden" href="#">
+<div class="absolute top-0 right-0 w-36 h-36 bg-violet-500/10 rounded-bl-[100px] -mr-8 -mt-8 transition-transform duration-500 group-hover:scale-110"></div>
+<div class="relative z-10">
+<div class="flex justify-between items-start mb-8">
+<div class="w-16 h-16 rounded-2xl bg-violet-50 text-violet-500 flex items-center justify-center group-hover:bg-violet-500 group-hover:text-white transition-colors duration-300 shadow-sm shadow-violet-100 dark:shadow-none">
+<span class="material-symbols-outlined icon-filled text-[36px]">payments</span>
+</div>
+<span class="material-symbols-outlined text-slate-300 group-hover:text-violet-500 transition-colors">arrow_outward</span>
+</div>
+<h3 class="text-2xl font-bold text-slate-800 dark:text-white mb-2 group-hover:text-violet-600 transition-colors">給与明細</h3>
+<p class="text-slate-500 dark:text-slate-400 leading-relaxed font-medium">月次給与記録の確認と<br/>明細書の発行</p>
+</div>
+</a>
+<a class="group relative bg-white dark:bg-surface-dark rounded-2xl p-8 border border-rose-100 dark:border-slate-700 shadow-soft hover:shadow-xl hover:shadow-rose-500/10 hover:border-rose-400 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden" href="#">
+<div class="absolute top-0 right-0 w-36 h-36 bg-rose-500/10 rounded-bl-[100px] -mr-8 -mt-8 transition-transform duration-500 group-hover:scale-110"></div>
+<div class="relative z-10">
+<div class="flex justify-between items-start mb-8">
+<div class="w-16 h-16 rounded-2xl bg-rose-50 text-rose-500 flex items-center justify-center group-hover:bg-rose-500 group-hover:text-white transition-colors duration-300 shadow-sm shadow-rose-100 dark:shadow-none">
+<span class="material-symbols-outlined icon-filled text-[36px]">playlist_add</span>
+</div>
+<span class="material-symbols-outlined text-slate-300 group-hover:text-rose-500 transition-colors">arrow_outward</span>
+</div>
+<h3 class="text-2xl font-bold text-slate-800 dark:text-white mb-2 group-hover:text-rose-600 transition-colors">シフト一括追加</h3>
+<p class="text-slate-500 dark:text-slate-400 leading-relaxed font-medium">複数のシフトをパターンから<br/>迅速に追加</p>
+</div>
+</a>
+<a class="group relative bg-white dark:bg-surface-dark rounded-2xl p-8 border border-amber-100 dark:border-slate-700 shadow-soft hover:shadow-xl hover:shadow-amber-500/10 hover:border-amber-400 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden" href="#">
+<div class="absolute top-0 right-0 w-36 h-36 bg-amber-500/10 rounded-bl-[100px] -mr-8 -mt-8 transition-transform duration-500 group-hover:scale-110"></div>
+<div class="relative z-10">
+<div class="flex justify-between items-start mb-8">
+<div class="w-16 h-16 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center group-hover:bg-amber-500 group-hover:text-white transition-colors duration-300 shadow-sm shadow-amber-100 dark:shadow-none">
+<span class="material-symbols-outlined icon-filled text-[36px]">admin_panel_settings</span>
+</div>
+<span class="material-symbols-outlined text-slate-300 group-hover:text-amber-500 transition-colors">arrow_outward</span>
+</div>
+<h3 class="text-2xl font-bold text-slate-800 dark:text-white mb-2 group-hover:text-amber-600 transition-colors">権限管理</h3>
+<p class="text-slate-500 dark:text-slate-400 leading-relaxed font-medium">管理者設定とシステム<br/>アクセス権限の変更</p>
+</div>
+</a>
+</div>
+</main>
+<footer class="bg-white dark:bg-surface-dark border-t border-slate-100 dark:border-slate-800 mt-auto">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<div class="flex flex-col md:flex-row justify-center md:justify-between items-center gap-6">
+<div class="flex gap-8 order-2 md:order-1">
+<a class="text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-blue-600 transition-colors" href="#">プライバシーポリシー</a>
+<a class="text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-blue-600 transition-colors" href="#">利用規約</a>
+<a class="text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-blue-600 transition-colors" href="#">ヘルプセンター</a>
+</div>
+<p class="font-body text-sm font-medium text-slate-400 dark:text-slate-500 order-1 md:order-2">© 2023 株式会社シフトマスター</p>
+</div>
+</div>
+</footer>
+</body></html>

@@ -1,20 +1,67 @@
+/* フォントのインポート */
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Material Symbolsアイコンのデフォルト設定 */
+.material-symbols-outlined {
+  font-variation-settings:
+    'FILL' 0,
+    'wght' 400,
+    'GRAD' 0,
+    'opsz' 24;
+}
+
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  /* フォント設定 */
+  --font-display: 'Manrope', sans-serif;
+  --font-body: 'Noto Sans JP', sans-serif;
+
+  /* カラーパレット - ライトモード */
+  --color-primary: #3B82F6;
+  --color-background: #f8fafc;
+  --color-surface: #ffffff;
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-border: #e2e8f0;
+
+  /* シャドウ */
+  --shadow-sm: 0 2px 8px -1px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 8px 30px -4px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 20px 40px -5px rgba(0, 0, 0, 0.1);
+
+  /* その他の設定 */
+  font-family: var(--font-body);
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
-  color: rgba(0, 0, 0, 0.87);
-  background-color: #ffffff;
+  color-scheme: light;
+  color: var(--color-text-primary);
+  background-color: var(--color-background);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* ダークモードのカラーパレット */
+.dark {
+  --color-primary: #60a5fa;
+  --color-background: #101f22;
+  --color-surface: #1a2c30;
+  --color-text-primary: #f1f5f9;
+  --color-text-secondary: #94a3b8;
+  --color-border: #334155;
+
+  --shadow-sm: 0 2px 8px -1px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 30px -4px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 20px 40px -5px rgba(0, 0, 0, 0.4);
+
+  color-scheme: dark;
 }
 
 body {
