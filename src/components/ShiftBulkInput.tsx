@@ -143,24 +143,18 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
       const endTime = endTimeRaw.includes(':') ? endTimeRaw : `${endTimeRaw}:00`;
 
       // 利用者名、サービスタイプ、地区を分離
-      let remainingText = clientNameWithService.trim();
+      let clientName = clientNameWithService.trim();
       let serviceType: ServiceType | undefined;
       let area: string | undefined;
 
-      // まず地区を抽出（末尾の「〜区」「〜市」などを探す）
-      const areaMatch = remainingText.match(/^(.+?)\s*([^(（\s]+(?:区|市|町|村))$/);
-      if (areaMatch) {
-        remainingText = areaMatch[1].trim();
-        area = areaMatch[2].trim();
-      }
-
-      // 括弧があるかチェック (全角括弧も考慮)
-      const serviceMatch = remainingText.match(/^(.+?)[\(（](.+?)[\)）]$/);
-      let clientName = remainingText;
+      // 括弧があるかチェック (全角括弧も考慮) - サービスタイプと地区を同時に処理
+      const serviceMatch = clientNameWithService.match(/^(.+?)[\(（](.+?)[\)）](.*)$/);
 
       if (serviceMatch) {
         clientName = serviceMatch[1].trim();
         const serviceLabel = serviceMatch[2].trim();
+        const remainingAfterService = serviceMatch[3].trim();
+
         serviceType = serviceTypeMap[serviceLabel];
 
         if (!serviceType) {
@@ -177,12 +171,9 @@ export const ShiftBulkInput: React.FC<ShiftBulkInputProps> = ({
           continue;
         }
 
-        // サービスタイプの後に地区が来る場合の処理
-        if (!area) {
-          const afterServiceMatch = clientNameWithService.match(/[\)）]\s*([^(（\s]+(?:区|市|町|村))$/);
-          if (afterServiceMatch) {
-            area = afterServiceMatch[1].trim();
-          }
+        // (サービス名)の右隣にあるテキストをそのまま地区として扱う
+        if (remainingAfterService) {
+          area = remainingAfterService;
         }
       }
 
