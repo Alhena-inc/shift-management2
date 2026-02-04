@@ -135,11 +135,14 @@ function App() {
 
   // シフト情報を読み込み（リアルタイム監視）
   useEffect(() => {
+    console.log(`🔄 ${currentYear}年${currentMonth}月のシフトを購読開始`);
     const unsubscribe = subscribeToShiftsForMonth(currentYear, currentMonth, (allShifts) => {
+      console.log(`📊 ${currentYear}年${currentMonth}月のシフトを受信: ${allShifts.length}件`);
       setShifts(allShifts);
     }, shiftCollection);
 
     return () => {
+      console.log(`🔚 ${currentYear}年${currentMonth}月のシフト購読を解除`);
       unsubscribe();
     };
   }, [currentYear, currentMonth, shiftCollection]);
@@ -214,12 +217,19 @@ function App() {
   const handlePreviousMonth = useCallback(() => {
     setCurrentMonth(prev => {
       if (prev === 1) {
-        setCurrentYear(year => year - 1);
+        setCurrentYear(year => {
+          const newYear = year - 1;
+          console.log(`📅 年を変更: ${year} → ${newYear}`);
+          return newYear;
+        });
+        console.log(`📅 月を変更: 1 → 12`);
         return 12;
       }
-      return prev - 1;
+      const newMonth = prev - 1;
+      console.log(`📅 月を変更: ${prev} → ${newMonth} (${currentYear}年)`);
+      return newMonth;
     });
-  }, []);
+  }, [currentYear]);
 
   const handleReflectNextMonth = useCallback(async () => {
     const targetYear = currentMonth === 12 ? currentYear + 1 : currentYear;
@@ -236,6 +246,7 @@ function App() {
         if (confirm(`${targetYear}年${targetMonth}月のシフト表へ移動しますか？`)) {
           setCurrentYear(targetYear);
           setCurrentMonth(targetMonth);
+          console.log(`📅 シフト反映後の移動: ${targetYear}年${targetMonth}月`);
         }
       } else {
         alert(`反映に失敗しました: ${result.error}`);
@@ -249,12 +260,19 @@ function App() {
   const handleNextMonth = useCallback(() => {
     setCurrentMonth(prev => {
       if (prev === 12) {
-        setCurrentYear(year => year + 1);
+        setCurrentYear(year => {
+          const newYear = year + 1;
+          console.log(`📅 年を変更: ${year} → ${newYear}`);
+          return newYear;
+        });
+        console.log(`📅 月を変更: 12 → 1`);
         return 1;
       }
-      return prev + 1;
+      const newMonth = prev + 1;
+      console.log(`📅 月を変更: ${prev} → ${newMonth} (${currentYear}年)`);
+      return newMonth;
     });
-  }, []);
+  }, [currentYear]);
 
   const handleOpenSalaryCalculation = useCallback(async () => {
     const editingCells = document.querySelectorAll('.editable-cell[contenteditable="true"]');

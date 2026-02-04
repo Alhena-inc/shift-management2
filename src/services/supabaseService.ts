@@ -113,8 +113,23 @@ export const saveShiftsForMonth = async (year: number, month: number, shifts: Sh
       location: shift.area,
       cancel_status: shift.cancelStatus,
       canceled_at: shift.canceledAt,
-      deleted: false
+      deleted: shift.deleted || false,
+      deleted_at: shift.deletedAt || null,
+      deleted_by: shift.deletedBy || null
     }));
+
+    console.log(`📝 ${year}年${month}月のシフトを保存中...`);
+    console.log(`  保存するシフト数: ${dataToSave.length}件`);
+
+    // 月別にデータを確認（デバッグ用）
+    const monthGroups = dataToSave.reduce((groups, shift) => {
+      const month = shift.date.substring(0, 7); // YYYY-MM形式
+      if (!groups[month]) groups[month] = 0;
+      groups[month]++;
+      return groups;
+    }, {} as Record<string, number>);
+
+    console.log('  月別シフト数:', monthGroups);
 
     const { error } = await supabase
       .from('shifts')
@@ -122,13 +137,14 @@ export const saveShiftsForMonth = async (year: number, month: number, shifts: Sh
 
     if (error) {
       console.error('シフト保存エラー:', error);
+      console.error('保存しようとしたデータ例:', dataToSave[0]);
       throw error;
     }
 
     // バックアップ作成
     await backupToSupabase('shifts', shifts, `${year}年${month}月のシフトバックアップ`);
 
-    console.log(`✅ ${shifts.length}件のシフトを保存しました`);
+    console.log(`✅ ${shifts.length}件のシフトを正常に保存しました`);
   } catch (error) {
     console.error('シフト保存エラー:', error);
     throw error;
@@ -138,9 +154,12 @@ export const saveShiftsForMonth = async (year: number, month: number, shifts: Sh
 // 月のシフトを読み込み
 export const loadShiftsForMonth = async (year: number, month: number): Promise<Shift[]> => {
   try {
+    console.log(`📅 ${year}年${month}月のシフトを読み込み中...`);
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    // month は 1-indexed で、new Date(year, month, 0) は month の最終日を返す
     const lastDay = new Date(year, month, 0).getDate();
     const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    console.log(`  期間: ${startDate} 〜 ${endDate}`);
 
     const { data, error } = await supabase
       .from('shifts')
@@ -153,6 +172,8 @@ export const loadShiftsForMonth = async (year: number, month: number): Promise<S
       console.error('シフト読み込みエラー:', error);
       return [];
     }
+
+    console.log(`  取得したシフト数: ${data?.length || 0}件`);
 
     // データ形式を変換
     const shifts: Shift[] = (data || []).map(row => ({
