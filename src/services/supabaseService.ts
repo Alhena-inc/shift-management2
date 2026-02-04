@@ -32,7 +32,6 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
         email: helper.email || null,
         hourly_wage: hourlyWage,
         gender: helper.gender || 'male',  // 性別を正しく保存
-        display_name: helper.firstName ? `${helper.name} ${helper.firstName}` : helper.name,
         personal_token: helper.personalToken || null,
         order_index: helper.order || 0,
         role: helper.role || 'staff',
