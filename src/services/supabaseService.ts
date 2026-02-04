@@ -8,32 +8,65 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
   try {
     console.log('📝 ヘルパー保存開始:', helpers.length, '件');
 
+    // 空の配列の場合は何もしない
+    if (!helpers || helpers.length === 0) {
+      console.warn('⚠️ 保存するヘルパーがありません');
+      return;
+    }
+
     // Supabaseでは upsert を使用して一括更新
     const dataToSave = helpers.map(helper => {
-      console.log(`保存データ: ${helper.name}, gender: ${helper.gender}, id: ${helper.id}`);
+      // IDがない場合は新規生成
+      const helperId = helper.id || crypto.randomUUID();
+
+      console.log(`保存データ: ${helper.name}, gender: ${helper.gender}, id: ${helperId}`);
+
+      // 数値フィールドが文字列の場合を考慮
+      const hourlyWage = typeof helper.hourlyRate === 'string'
+        ? parseFloat(helper.hourlyRate) || 0
+        : helper.hourlyRate || 0;
+
       return {
-        id: helper.id,
-        name: helper.name,
+        id: helperId,
+        name: helper.name || '名前未設定',
         email: helper.email || null,
-        hourly_wage: helper.hourlyRate || helper.baseHourlyRate || 0,
+        hourly_wage: hourlyWage,
         gender: helper.gender || 'male',  // 性別を正しく保存
         display_name: helper.firstName ? `${helper.name} ${helper.firstName}` : helper.name,
         personal_token: helper.personalToken || null,
         order_index: helper.order || 0,
         role: helper.role || 'staff',
         insurances: helper.insurances || [],
-        standard_remuneration: helper.standardRemuneration || 0
-        // deleted: false  // カラムが存在しない可能性があるため削除
+        standard_remuneration: helper.standardRemuneration || 0,
+        updated_at: new Date().toISOString()
       };
     });
 
-    const { error } = await supabase
+    console.log('📤 Supabaseに送信するデータ:', JSON.stringify(dataToSave, null, 2));
+
+    const { data, error } = await supabase
       .from('helpers')
-      .upsert(dataToSave, { onConflict: 'id' });
+      .upsert(dataToSave, {
+        onConflict: 'id',
+        returning: 'minimal' // レスポンスを最小化してパフォーマンス向上
+      });
 
     if (error) {
-      console.error('ヘルパー保存エラー:', error);
-      throw error;
+      console.error('❌ Supabase保存エラー詳細:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+
+      // より詳細なエラーメッセージを表示
+      if (error.code === '42703') {
+        throw new Error('テーブルのカラムが存在しません。Supabaseのテーブル構造を確認してください。');
+      } else if (error.code === '23505') {
+        throw new Error('重複するIDが存在します。');
+      } else {
+        throw new Error(`保存に失敗しました: ${error.message}`);
+      }
     }
 
     // バックアップも作成
