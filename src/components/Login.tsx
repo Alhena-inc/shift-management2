@@ -33,7 +33,33 @@ export const Login: React.FC = () => {
 
       console.log('✅ Google認証成功:', user.email);
 
-      // ========== Step 2: ホワイトリスト照合 ==========
+      // ========== Step 2: 管理者アカウントの特別処理 ==========
+      if (user.email === 'info@alhena.co.jp') {
+        console.log('🔴 管理者アカウントを検出: info@alhena.co.jp');
+        console.log('📝 管理者として自動ログインを実行します...');
+
+        // usersコレクションに管理者データを作成/更新
+        const userDocRef = doc(db, 'users', user.uid);
+        await setDoc(userDocRef, {
+          uid: user.uid,
+          email: user.email,
+          name: '管理者',
+          role: 'admin', // 管理者権限を付与
+          photoURL: user.photoURL || null,
+          createdAt: serverTimestamp(),
+          lastLoginAt: serverTimestamp()
+        }, { merge: true });
+
+        console.log('✅ 管理者としてログイン完了');
+        console.log('👤 ユーザー名: 管理者');
+        console.log('👤 ユーザー権限: admin');
+        console.log('🔴 管理者アカウントとしてログイン');
+
+        // 管理者の場合はここで処理を終了
+        return;
+      }
+
+      // ========== Step 3: 通常のホワイトリスト照合 ==========
       console.log('🔍 ホワイトリスト照合中...');
 
       // helpersコレクションでメールアドレスを検索
@@ -41,7 +67,7 @@ export const Login: React.FC = () => {
       const q = query(helpersRef, where('email', '==', user.email));
       const querySnapshot = await getDocs(q);
 
-      // ========== Step 3: 分岐処理 ==========
+      // ========== Step 4: 分岐処理 ==========
       if (!querySnapshot.empty) {
         // ======== ケースA: 登録済みユーザー（許可） ========
         const helperDoc = querySnapshot.docs[0];

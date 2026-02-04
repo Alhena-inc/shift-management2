@@ -27,6 +27,15 @@ export const useAuth = (): AuthUser => {
         setUser(currentUser);
 
         try {
+          // info@alhena.co.jpは管理者として特別扱い
+          if (currentUser.email === 'info@alhena.co.jp') {
+            setRole('admin');
+            setHelperId(null);
+            setHelperName('管理者');
+            setLoading(false);
+            return;
+          }
+
           // まずusersコレクションから権限を取得
           const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
 
