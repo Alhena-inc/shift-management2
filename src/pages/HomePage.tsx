@@ -93,10 +93,12 @@ const HomePage: React.FC = () => {
     path: string | null;
     onClick?: () => void;
     requiredRole: 'admin' | null;
+    hoverColor: string;
   }> = [
     {
       icon: 'calendar_month',
       iconBgColor: '#E3F2FD',  // 薄い青
+      hoverColor: '#2196F3',    // 青
       title: 'シフト管理',
       description: 'スケジュールの編集・閲覧を行います',
       path: '/shift',
@@ -105,6 +107,7 @@ const HomePage: React.FC = () => {
     {
       icon: 'group',
       iconBgColor: '#FFF3E0',  // 薄いオレンジ
+      hoverColor: '#FF9800',    // オレンジ
       title: 'ヘルパー管理',
       description: 'スタッフプロフィールと稼働状況の管理',
       path: '/helpers',
@@ -113,6 +116,7 @@ const HomePage: React.FC = () => {
     {
       icon: 'person',
       iconBgColor: '#E8F5E9',  // 薄い緑
+      hoverColor: '#4CAF50',    // 緑
       title: '利用者管理',
       description: '利用者データベースとケアプランの確認',
       path: '/users',
@@ -121,6 +125,7 @@ const HomePage: React.FC = () => {
     {
       icon: 'receipt_long',
       iconBgColor: '#F3E5F5',  // 薄い紫
+      hoverColor: '#9C27B0',    // 紫
       title: '給与明細',
       description: '月次給与計算の確認と明細書の発行',
       path: '/payslip',
@@ -129,6 +134,7 @@ const HomePage: React.FC = () => {
     {
       icon: 'playlist_add',
       iconBgColor: '#FFE8E8',  // 薄いピンク
+      hoverColor: '#E91E63',    // ピンク
       title: 'シフト一括追加',
       description: '複数のシフトをパターンから迅速に追加',
       path: '/shift-bulk-input',
@@ -137,6 +143,7 @@ const HomePage: React.FC = () => {
     {
       icon: 'security',
       iconBgColor: '#FFF8E1',  // 薄い黄色
+      hoverColor: '#FFC107',    // 黄色
       title: '権限管理',
       description: '管理者設定とシステムアクセス権限の変更',
       path: null,
@@ -227,41 +234,85 @@ const HomePage: React.FC = () => {
           <RoleBadge role={role} />
         </div>
 
-        {/* メニューグリッド - 明るくシンプルなカードデザイン */}
+        {/* メニューグリッド - ホバー時のエフェクトを強化 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {menuItems.map((item) => (
             <div
               key={(item.path || '') + item.title}
               onClick={() => handleNavigate(item.path, item.onClick)}
-              className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow duration-200 cursor-pointer border border-gray-100"
+              className="group bg-white rounded-xl p-6 shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer border-2 border-transparent hover:border-gray-200 transform hover:-translate-y-1"
+              style={{
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = item.hoverColor + '33'; // 33は20%の透明度
+                e.currentTarget.style.background = `linear-gradient(135deg, ${item.iconBgColor}00 0%, ${item.iconBgColor}33 100%)`;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'transparent';
+                e.currentTarget.style.background = 'white';
+              }}
             >
               <div className="flex flex-col">
-                {/* アイコン */}
+                {/* アイコン - ホバー時に回転とスケールアニメーション */}
                 <div
-                  className="w-12 h-12 rounded-lg flex items-center justify-center mb-4"
-                  style={{ backgroundColor: item.iconBgColor }}
+                  className="w-12 h-12 rounded-lg flex items-center justify-center mb-4 transition-all duration-300 group-hover:scale-110 group-hover:rotate-3"
+                  style={{
+                    backgroundColor: item.iconBgColor,
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                  }}
                 >
-                  <span className="material-symbols-outlined text-gray-700 text-2xl">
+                  <span
+                    className="material-symbols-outlined text-gray-700 text-2xl transition-colors duration-300 group-hover:text-gray-900"
+                    style={{ transition: 'color 0.3s ease' }}
+                  >
                     {item.icon}
                   </span>
                 </div>
 
                 {/* タイトルと説明 */}
-                <h3 className="text-base font-bold text-gray-900 mb-2">
+                <h3
+                  className="text-base font-bold text-gray-900 mb-2 transition-colors duration-300"
+                  style={{
+                    transition: 'color 0.3s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = item.hoverColor;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = '';
+                  }}
+                >
                   {item.title}
                 </h3>
-                <p className="text-sm text-gray-600 leading-relaxed">
+                <p className="text-sm text-gray-600 leading-relaxed group-hover:text-gray-700 transition-colors duration-300">
                   {item.description}
                 </p>
 
-                {/* アクセスリンク */}
-                <div className="mt-4 flex items-center text-blue-600 text-sm">
+                {/* アクセスリンク - ホバー時に右へスライド */}
+                <div
+                  className="mt-4 flex items-center text-blue-600 text-sm transition-all duration-300 group-hover:translate-x-2"
+                  style={{
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    color: item.hoverColor
+                  }}
+                >
                   <span>アクセス</span>
-                  <span className="material-symbols-outlined text-lg ml-1">
+                  <span className="material-symbols-outlined text-lg ml-1 transition-transform duration-300 group-hover:translate-x-1">
                     arrow_outward
                   </span>
                 </div>
               </div>
+
+              {/* 下部のカラーバー - ホバー時に拡大 */}
+              <div
+                className="absolute bottom-0 left-0 right-0 h-1 transition-all duration-300 transform scale-x-0 group-hover:scale-x-100"
+                style={{
+                  background: `linear-gradient(90deg, ${item.hoverColor} 0%, ${item.hoverColor}88 100%)`,
+                  borderBottomLeftRadius: '0.75rem',
+                  borderBottomRightRadius: '0.75rem'
+                }}
+              />
             </div>
           ))}
         </div>
