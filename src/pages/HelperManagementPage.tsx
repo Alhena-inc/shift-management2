@@ -50,26 +50,42 @@ const HelperManagementPage: React.FC = () => {
     }
   };
 
-  const handleCreateNew = () => {
-    const newId = `helper-${Date.now()}`;
-    const newHelper: Helper = {
-      id: newId,
-      name: '新規ヘルパー',
-      gender: 'male',  // デフォルトで男性に設定
-      order: helpers.length + 1,  // 順番を設定
-      employmentType: 'parttime',
-      hourlyRate: 0,
-      treatmentImprovementPerHour: 0,
-      baseSalary: 0,
-      treatmentAllowance: 0,
-      otherAllowances: [],
-      dependents: 0,
-    };
+  const handleCreateNew = async () => {
+    try {
+      // UUID形式のIDを生成（Supabaseと互換性のある形式）
+      const newId = crypto.randomUUID ? crypto.randomUUID() :
+                   `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    const updatedHelpers = [...helpers, newHelper];
-    saveHelpers(updatedHelpers).then(() => {
+      const newHelper: Helper = {
+        id: newId,
+        name: '新規ヘルパー',
+        gender: 'male',  // デフォルトで男性に設定
+        order: helpers.length + 1,  // 順番を設定
+        email: '',  // メールアドレスは空
+        hourlyRate: 0,
+        employmentType: 'parttime',
+        treatmentImprovementPerHour: 0,
+        baseSalary: 0,
+        treatmentAllowance: 0,
+        otherAllowances: [],
+        dependents: 0,
+        // 保険関連の初期値
+        insurances: [],
+        standardRemuneration: 0,
+        role: 'staff',  // デフォルトはスタッフ
+      };
+
+      console.log('新規ヘルパー作成:', newHelper);
+
+      const updatedHelpers = [...helpers, newHelper];
+      await saveHelpers(updatedHelpers);
+
+      console.log('保存完了、リダイレクト中...');
       window.location.href = `/helpers/${newId}`;
-    });
+    } catch (error) {
+      console.error('新規ヘルパー作成エラー:', error);
+      alert('新規ヘルパーの作成に失敗しました');
+    }
   };
 
   return (
