@@ -31,7 +31,7 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
         name: helper.name || '名前未設定',
         email: helper.email || null,
         hourly_wage: hourlyWage,
-        gender: helper.gender || 'male',  // 性別を正しく保存
+        // gender: helper.gender || 'male',  // 一時的にgenderカラムを除外
         personal_token: helper.personalToken || null,
         order_index: helper.order || 0,
         role: helper.role || 'staff',
@@ -81,28 +81,55 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
 // ヘルパーを読み込み
 export const loadHelpers = async (): Promise<Helper[]> => {
   try {
-    // deletedカラムが存在しない場合に備えて一時的に無効化
-    // TODO: Supabaseでadd-deleted-column-to-helpers.sqlを実行後に有効化
+    console.log('📥 ヘルパー読み込み開始...');
+
+    // スキーマキャッシュエラー対策: 特定のカラムのみ選択
     const { data, error } = await supabase
       .from('helpers')
-      .select('*')
-      // .eq('deleted', false)  // 一時的にコメントアウト
+      .select('id, name, email, hourly_wage, order_index, personal_token, role, insurances, standard_remuneration')
       .order('order_index', { ascending: true });
 
     if (error) {
-      console.error('ヘルパー読み込みエラー:', error);
-      return [];
+      console.error('❌ ヘルパー読み込みエラー:', error);
+      console.error('エラー詳細:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+
+      // フォールバック: 最小限のカラムで再試行
+      console.log('⚠️ フォールバック: 最小限のカラムで再試行');
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('helpers')
+        .select('id, name, email, hourly_wage, order_index')
+        .order('order_index', { ascending: true });
+
+      if (fallbackError) {
+        console.error('フォールバックも失敗:', fallbackError);
+        return [];
+      }
+
+      // フォールバックデータを使用（genderはデフォルト値）
+      return (fallbackData || []).map(row => ({
+        id: row.id,
+        name: row.name,
+        email: row.email || undefined,
+        hourlyRate: row.hourly_wage || undefined,
+        gender: 'male' as 'male' | 'female', // デフォルト値
+        order: row.order_index || 0
+      }));
     }
 
-    // データ形式を変換
+    // データ形式を変換（genderカラムなし前提）
     const helpers: Helper[] = (data || []).map(row => {
-      console.log(`読み込みデータ: ${row.name}, gender: ${row.gender}, id: ${row.id}`);
+      console.log(`読み込みデータ: ${row.name}, id: ${row.id}`);
       return {
         id: row.id,
         name: row.name,
         email: row.email || undefined,
         hourlyRate: row.hourly_wage || undefined,
-        gender: (row.gender || 'male') as 'male' | 'female',  // nullの場合はmaleをデフォルト
+        gender: 'male' as 'male' | 'female',  // 一時的にデフォルト値を使用
         personalToken: row.personal_token || undefined,
         order: row.order_index || 0,
         role: row.role || undefined,
