@@ -17,6 +17,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import HomePage from './pages/HomePage';
 import HelperManagementPage from './pages/HelperManagementPage';
 import HelperDetailPage from './pages/HelperDetailPage';
+import DeletedHelpersPage from './pages/DeletedHelpersPage';
 import PayslipDemo from './pages/PayslipDemo';
 import RangeSelectionDemo from './pages/RangeSelectionDemo';
 import ShiftGridPage from './pages/ShiftGridPage';
@@ -495,6 +496,11 @@ function App() {
         <PayslipListPage onClose={() => window.location.href = '/'} />
       </Layout>
     );
+  }
+
+  // /deleted-helpers の形式の場合（削除済みヘルパー管理）- 管理者のみ
+  if (path === '/deleted-helpers' || path === '/deleted-helpers/') {
+    return <DeletedHelpersPage />;
   }
 
   // /helpers/:id の形式の場合（ヘルパー詳細・編集）

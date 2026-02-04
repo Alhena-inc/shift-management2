@@ -78,28 +78,159 @@ export const loadHelpers = async (): Promise<Helper[]> => {
   }
 };
 
-// ヘルパーを論理削除
-export const softDeleteHelper = async (helperId: string): Promise<void> => {
+// ヘルパーを削除（deleted_helpersテーブルに移動）
+export const softDeleteHelper = async (helperId: string, deletedBy?: string): Promise<void> => {
   try {
-    // 一時的に物理削除を実行（deletedカラムが存在しないため）
-    // TODO: Supabaseでadd-deleted-column-to-helpers.sqlを実行後に論理削除に変更
-    console.warn('⚠️ 注意: deleted カラムが存在しないため、物理削除を実行します');
+    console.log(`🗑️ ヘルパーを削除テーブルに移動中: ${helperId}`);
 
-    const { error } = await supabase
+    // 1. まず現在のヘルパー情報を取得
+    const { data: helper, error: fetchError } = await supabase
+      .from('helpers')
+      .select('*')
+      .eq('id', helperId)
+      .single();
+
+    if (fetchError || !helper) {
+      console.error('ヘルパー取得エラー:', fetchError);
+      throw new Error('ヘルパーが見つかりません');
+    }
+
+    // 2. deleted_helpersテーブルにデータをコピー
+    const { error: insertError } = await supabase
+      .from('deleted_helpers')
+      .insert({
+        original_id: helper.id,
+        name: helper.name,
+        email: helper.email,
+        hourly_wage: helper.hourly_wage,
+        order_index: helper.order_index,
+        gender: helper.gender,
+        personal_token: helper.personal_token,
+        role: helper.role,
+        insurances: helper.insurances,
+        standard_remuneration: helper.standard_remuneration,
+        deleted_by: deletedBy || 'unknown',
+        deletion_reason: '手動削除',
+        original_created_at: helper.created_at,
+        original_updated_at: helper.updated_at
+      });
+
+    if (insertError) {
+      // deleted_helpersテーブルが存在しない場合のエラーハンドリング
+      if (insertError.code === '42P01') { // テーブルが存在しないエラー
+        console.error('⚠️ deleted_helpersテーブルが存在しません。create-deleted-tables.sqlを実行してください');
+        console.warn('削除をキャンセルします（データ保護のため）');
+        return;
+      }
+      console.error('削除済みテーブルへの挿入エラー:', insertError);
+      throw insertError;
+    }
+
+    // 3. 元のhelpersテーブルから削除
+    const { error: deleteError } = await supabase
       .from('helpers')
       .delete()
       .eq('id', helperId);
 
-    if (error) {
-      console.error('ヘルパー削除エラー:', error);
-      // エラーを無視して続行（一時的な対処）
-      console.warn('削除エラーが発生しましたが、処理を続行します');
+    if (deleteError) {
+      console.error('元テーブルからの削除エラー:', deleteError);
+      // ロールバック的な処理（deleted_helpersから削除）
+      await supabase
+        .from('deleted_helpers')
+        .delete()
+        .eq('original_id', helperId);
+      throw deleteError;
     }
-    console.log(`ヘルパー ${helperId} を削除しました`);
+
+    console.log(`✅ ヘルパー ${helper.name} を削除済みテーブルに移動しました`);
   } catch (error) {
     console.error('ヘルパー削除エラー:', error);
-    // エラーを再スローしない（一時的な対処）
-    console.warn('エラーが発生しましたが、処理を続行します');
+    throw error;
+  }
+};
+
+// 削除済みヘルパーを取得
+export const loadDeletedHelpers = async (): Promise<any[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('deleted_helpers')
+      .select('*')
+      .order('deleted_at', { ascending: false });
+
+    if (error) {
+      console.error('削除済みヘルパー取得エラー:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('削除済みヘルパー取得エラー:', error);
+    return [];
+  }
+};
+
+// ヘルパーを復元（deleted_helpersからhelpersに戻す）
+export const restoreHelper = async (deletedHelperId: string): Promise<void> => {
+  try {
+    console.log(`♻️ ヘルパーを復元中: ${deletedHelperId}`);
+
+    // 1. deleted_helpersから該当データを取得
+    const { data: deletedHelper, error: fetchError } = await supabase
+      .from('deleted_helpers')
+      .select('*')
+      .eq('id', deletedHelperId)
+      .single();
+
+    if (fetchError || !deletedHelper) {
+      console.error('削除済みヘルパー取得エラー:', fetchError);
+      throw new Error('削除済みヘルパーが見つかりません');
+    }
+
+    // 2. helpersテーブルに復元（元のIDを使用）
+    const { error: insertError } = await supabase
+      .from('helpers')
+      .insert({
+        id: deletedHelper.original_id || undefined, // 元のIDがあれば使用
+        name: deletedHelper.name,
+        email: deletedHelper.email,
+        hourly_wage: deletedHelper.hourly_wage,
+        order_index: deletedHelper.order_index,
+        gender: deletedHelper.gender,
+        personal_token: deletedHelper.personal_token,
+        role: deletedHelper.role,
+        insurances: deletedHelper.insurances,
+        standard_remuneration: deletedHelper.standard_remuneration,
+        created_at: deletedHelper.original_created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+
+    if (insertError) {
+      console.error('ヘルパー復元エラー:', insertError);
+      throw insertError;
+    }
+
+    // 3. deleted_helpersから削除
+    const { error: deleteError } = await supabase
+      .from('deleted_helpers')
+      .delete()
+      .eq('id', deletedHelperId);
+
+    if (deleteError) {
+      console.error('削除済みテーブルからの削除エラー:', deleteError);
+      // ロールバック（helpersから削除）
+      if (deletedHelper.original_id) {
+        await supabase
+          .from('helpers')
+          .delete()
+          .eq('id', deletedHelper.original_id);
+      }
+      throw deleteError;
+    }
+
+    console.log(`✅ ヘルパー ${deletedHelper.name} を復元しました`);
+  } catch (error) {
+    console.error('ヘルパー復元エラー:', error);
+    throw error;
   }
 };
 
