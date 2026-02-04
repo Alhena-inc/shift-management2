@@ -18,9 +18,8 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
       order_index: helper.order || 0,
       role: helper.role,
       insurances: helper.insurances || [],
-      standard_remuneration: helper.standardRemuneration || 0
-      // deletedカラムが存在しない場合があるため削除
-      // deleted: false
+      standard_remuneration: helper.standardRemuneration || 0,
+      deleted: false  // アクティブヘルパーとして保存
     }));
 
     const { error } = await supabase
@@ -48,8 +47,7 @@ export const loadHelpers = async (): Promise<Helper[]> => {
     const { data, error } = await supabase
       .from('helpers')
       .select('*')
-      // deletedカラムが存在しない場合があるため一時的にコメントアウト
-      // .eq('deleted', false)
+      .eq('deleted', false)  // 削除済みは除外
       .order('order_index', { ascending: true });
 
     if (error) {
@@ -78,23 +76,24 @@ export const loadHelpers = async (): Promise<Helper[]> => {
   }
 };
 
-// ヘルパーを論理削除（deletedカラムが存在しない場合は物理削除）
+// ヘルパーを論理削除
 export const softDeleteHelper = async (helperId: string): Promise<void> => {
   try {
-    // deletedカラムが存在しないため、物理削除を行う
-    // TODO: 将来的にdeletedカラムを追加した場合は論理削除に変更
     const { error } = await supabase
       .from('helpers')
-      .delete()
+      .update({
+        deleted: true,
+        deleted_at: new Date().toISOString()
+      })
       .eq('id', helperId);
 
     if (error) {
-      console.error('ヘルパー削除エラー:', error);
+      console.error('ヘルパー論理削除エラー:', error);
       throw error;
     }
-    console.log(`ヘルパー ${helperId} を削除しました`);
+    console.log(`ヘルパー ${helperId} を論理削除しました`);
   } catch (error) {
-    console.error('ヘルパー削除エラー:', error);
+    console.error('ヘルパー論理削除エラー:', error);
     throw error;
   }
 };
