@@ -6,21 +6,26 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 // ヘルパーを保存
 export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
   try {
+    console.log('📝 ヘルパー保存開始:', helpers.length, '件');
+
     // Supabaseでは upsert を使用して一括更新
-    const dataToSave = helpers.map(helper => ({
-      id: helper.id,
-      name: helper.name,
-      email: helper.email,
-      hourly_wage: helper.hourlyRate || helper.baseHourlyRate || 2000,
-      gender: helper.gender || 'male',
-      display_name: helper.firstName ? `${helper.name} ${helper.firstName}` : helper.name,
-      personal_token: helper.personalToken,
-      order_index: helper.order || 0,
-      role: helper.role,
-      insurances: helper.insurances || [],
-      standard_remuneration: helper.standardRemuneration || 0,
-      deleted: false  // アクティブヘルパーとして保存
-    }));
+    const dataToSave = helpers.map(helper => {
+      console.log(`保存データ: ${helper.name}, gender: ${helper.gender}, id: ${helper.id}`);
+      return {
+        id: helper.id,
+        name: helper.name,
+        email: helper.email || null,
+        hourly_wage: helper.hourlyRate || helper.baseHourlyRate || 0,
+        gender: helper.gender || 'male',  // 性別を正しく保存
+        display_name: helper.firstName ? `${helper.name} ${helper.firstName}` : helper.name,
+        personal_token: helper.personalToken || null,
+        order_index: helper.order || 0,
+        role: helper.role || 'staff',
+        insurances: helper.insurances || [],
+        standard_remuneration: helper.standardRemuneration || 0
+        // deleted: false  // カラムが存在しない可能性があるため削除
+      };
+    });
 
     const { error } = await supabase
       .from('helpers')
@@ -58,18 +63,21 @@ export const loadHelpers = async (): Promise<Helper[]> => {
     }
 
     // データ形式を変換
-    const helpers: Helper[] = (data || []).map(row => ({
-      id: row.id,
-      name: row.name,
-      email: row.email || undefined,
-      hourlyRate: row.hourly_wage || undefined,
-      gender: row.gender as 'male' | 'female',
-      personalToken: row.personal_token || undefined,
-      order: row.order_index,
-      role: row.role || undefined,
-      insurances: row.insurances as any[] || [],
-      standardRemuneration: row.standard_remuneration || 0
-    }));
+    const helpers: Helper[] = (data || []).map(row => {
+      console.log(`読み込みデータ: ${row.name}, gender: ${row.gender}, id: ${row.id}`);
+      return {
+        id: row.id,
+        name: row.name,
+        email: row.email || undefined,
+        hourlyRate: row.hourly_wage || undefined,
+        gender: (row.gender || 'male') as 'male' | 'female',  // nullの場合はmaleをデフォルト
+        personalToken: row.personal_token || undefined,
+        order: row.order_index || 0,
+        role: row.role || undefined,
+        insurances: row.insurances as any[] || [],
+        standardRemuneration: row.standard_remuneration || 0
+      };
+    });
 
     return helpers;
   } catch (error) {
