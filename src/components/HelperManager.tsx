@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import type { Helper } from '../types';
 import { getGoogleAccessToken } from '../services/googleAuthService';
 import { addHelperColumn } from '../services/googleSheetsApi';
-import { softDeleteHelper } from '../services/firestoreService';
+import { softDeleteHelper } from '../services/dataService';
 import {
   DndContext,
   closestCenter,

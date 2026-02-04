@@ -626,3 +626,93 @@ export const loadHelperByToken = async (token: string): Promise<Helper | null> =
     return null;
   }
 };
+// 個別シフトを保存
+export const saveShift = async (shift: Shift): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('shifts')
+      .upsert({
+        id: shift.id,
+        date: shift.date,
+        start_time: shift.startTime,
+        end_time: shift.endTime,
+        helper_id: shift.helperId,
+        client_name: shift.clientName,
+        service_type: shift.serviceType,
+        hours: shift.duration,
+        hourly_wage: null,
+        location: shift.area,
+        cancel_status: shift.cancelStatus,
+        canceled_at: shift.canceledAt,
+        deleted: shift.deleted || false
+      });
+
+    if (error) {
+      console.error('シフト保存エラー:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('シフト保存エラー:', error);
+    throw error;
+  }
+};
+
+// シフトを復元（論理削除を取り消し）
+export const restoreShift = async (shiftId: string): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('shifts')
+      .update({
+        deleted: false,
+        deleted_at: null,
+        deleted_by: null
+      })
+      .eq('id', shiftId);
+
+    if (error) {
+      console.error('シフト復元エラー:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('シフト復元エラー:', error);
+    throw error;
+  }
+};
+
+// シフトを移動（Firestore互換の引数形式）
+export const moveShift = async (
+  sourceShiftId: string,
+  newShift: Shift | string,
+  collectionName?: string
+): Promise<void> => {
+  try {
+    // newShiftがShiftオブジェクトの場合
+    if (typeof newShift === 'object') {
+      // 既存のシフトを削除
+      await softDeleteShift(sourceShiftId);
+      // 新しいシフトを作成
+      await saveShift(newShift);
+    }
+    // newShiftが日付文字列の場合（簡易版）
+    else if (typeof newShift === 'string') {
+      const { error } = await supabase
+        .from('shifts')
+        .update({
+          date: newShift,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sourceShiftId);
+
+      if (error) {
+        console.error('シフト移動エラー:', error);
+        throw error;
+      }
+    }
+  } catch (error) {
+    console.error('シフト移動エラー:', error);
+    throw error;
+  }
+};
+
+// Firebase互換のバックアップ関数（Supabaseの場合は同じ）
+export const backupToFirebase = backupToSupabase;

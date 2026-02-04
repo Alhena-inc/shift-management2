@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import type { Helper, Shift } from '../types';
-import { loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts, saveDisplayTexts } from '../services/firestoreService';
+import { loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts, saveDisplayTexts } from '../services/dataService';
 import { TIME_SLOTS } from '../utils/timeSlots';
 
 interface DayOffManagerProps {

@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import type { Helper } from '../types';
-import { loadHelpers, saveHelpers, subscribeToHelpers } from '../services/firestoreService';
+import { loadHelpers, saveHelpers, subscribeToHelpers } from '../services/dataService';
 
 const HelperManagementPage: React.FC = () => {
   const [helpers, setHelpers] = useState<Helper[]>([]);

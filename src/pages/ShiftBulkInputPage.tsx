@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type { Helper, Shift, ServiceType } from '../types';
-import { subscribeToShiftsForMonth, saveShift } from '../services/firestoreService';
+import { subscribeToShiftsForMonth, saveShift } from '../services/dataService';
 import { SERVICE_CONFIG } from '../types';
 
 interface ParsedShiftLine {

@@ -4,7 +4,7 @@ import FloatingEditor from './FloatingEditor';
 import type { Helper, Shift, ServiceType } from '../types';
 import { useScrollDetection } from '../hooks/useScrollDetection';
 import { SERVICE_CONFIG } from '../types';
-import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts, subscribeToDayOffRequestsMap, subscribeToDisplayTextsMap, subscribeToShiftsForMonth, subscribeToScheduledDayOffs, clearCancelStatus, restoreShift, moveShift } from '../services/firestoreService';
+import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts, subscribeToDayOffRequestsMap, subscribeToDisplayTextsMap, subscribeToShiftsForMonth, subscribeToScheduledDayOffs, clearCancelStatus, restoreShift, moveShift } from '../services/dataService';
 import { Timestamp, deleteField } from 'firebase/firestore';
 import { auth } from '../lib/firebase';
 import { calculateNightHours, calculateRegularHours, calculateTimeDuration } from '../utils/timeCalculations';
@@ -5135,9 +5135,10 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       // handleShiftsUpdate自体にdebounceオプション等があるのを活用
       handleShiftsUpdate(updatedShifts, true);
 
-      // Firestore同期 (バックグラウンド)
-      moveShift(`shift-${sourceHelperId}-${sourceDate}-${sourceRowIndex}`, newShift).catch(err => {
-        console.error('Firestore Move failed:', err);
+      // データサービス同期 (バックグラウンド)
+      const sourceShiftId = `shift-${sourceHelperId}-${sourceDate}-${sourceRowIndex}`;
+      moveShift(sourceShiftId, newShift).catch(err => {
+        console.error('Data service Move failed:', err);
       });
     } catch (error) {
       console.error('Drag and Drop Error:', error);

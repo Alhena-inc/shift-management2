@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supabaseモードテスト</title>
+</head>
+<body>
+    <h1>Supabaseモード確認</h1>
+    <p>コンソールログを確認してください。</p>
+    <div id="status">読み込み中...</div>
+
+    <script type="module">
+        // アプリケーションを開いて、コンソールログを確認
+        const iframe = document.createElement('iframe');
+        iframe.src = 'http://localhost:5173';
+        iframe.style.width = '100%';
+        iframe.style.height = '600px';
+        iframe.style.border = '1px solid #ccc';
+        document.body.appendChild(iframe);
+
+        // iframeが読み込まれたら、そのコンソールログをキャプチャ
+        iframe.onload = () => {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = 'アプリケーションが読み込まれました。開発者ツールのコンソールを確認してください。';
+            statusDiv.style.color = 'green';
+        };
+    </script>
+</body>
+</html>

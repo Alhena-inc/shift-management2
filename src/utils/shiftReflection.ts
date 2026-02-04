@@ -1,5 +1,5 @@
 import { groupByWeek } from './dateUtils';
-import { loadShiftsForMonth, saveShiftsForMonth } from '../services/firestoreService';
+import { loadShiftsForMonth, saveShiftsForMonth } from '../services/dataService';
 import type { Shift } from '../types';
 import { calculateShiftPay } from './salaryCalculations';
 

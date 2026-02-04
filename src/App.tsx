@@ -22,6 +22,7 @@ import RangeSelectionDemo from './pages/RangeSelectionDemo';
 import ShiftGridPage from './pages/ShiftGridPage';
 import EmployeeShiftGridPage from './pages/EmployeeShiftGridPage';
 import ShiftBulkInputPage from './pages/ShiftBulkInputPage';
+import TestSupabase from './pages/TestSupabase';
 
 import { helpers as initialHelpers } from './data/mockData';
 import { SERVICE_CONFIG } from './types';
@@ -33,7 +34,7 @@ import {
   subscribeToShiftsForMonth,
   subscribeToHelpers,
   backupToFirebase // 追加
-} from './services/firestoreService';
+} from './services/dataService';
 import { cleanupDuplicateShifts } from './utils/cleanupDuplicateShifts';
 import { testFirebaseConnection } from './lib/firebase';
 import { reflectShiftsToNextMonth } from './utils/shiftReflection';
@@ -406,6 +407,11 @@ function App() {
         <HomePage />
       </Layout>
     );
+  }
+
+  // /test-supabase の形式の場合（Supabaseテスト）
+  if (path === '/test-supabase' || path === '/test-supabase/') {
+    return <TestSupabase />;
   }
 
   // /payslip-demo の形式の場合（給与明細デモ）

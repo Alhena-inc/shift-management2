@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Helper, Shift } from '../types';
 import { SERVICE_CONFIG } from '../types';
-import { loadHelperByToken, subscribeToDayOffRequestsMap, subscribeToDisplayTextsMap } from '../services/firestoreService';
+import { loadHelperByToken, subscribeToDayOffRequestsMap, subscribeToDisplayTextsMap } from '../services/dataService';
 import { getRowIndicesFromDayOffValue } from '../utils/timeSlots';
 import { db } from '../lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';

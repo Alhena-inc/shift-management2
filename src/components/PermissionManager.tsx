@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { subscribeToHelpers } from '../services/firestoreService';
+import { subscribeToHelpers } from '../services/dataService';
 import type { Helper as HelperType } from '../types';
 
 interface PermissionManagerProps {

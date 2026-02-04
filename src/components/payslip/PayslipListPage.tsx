@@ -8,7 +8,7 @@ import {
   savePayslip,
   deletePayslip
 } from '../../services/payslipService';
-import { loadHelpers, loadShiftsForMonth } from '../../services/firestoreService';
+import { loadHelpers, loadShiftsForMonth } from '../../services/dataService';
 import { generatePayslipFromShifts } from '../../utils/payslipCalculation';
 import { downloadPayslipPdf, downloadBulkPayslipPdf } from '../../services/pdfService';
 import PayslipSheet from './PayslipSheet';

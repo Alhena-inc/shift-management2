@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Helper } from '../types';
-import { loadHelpers, saveHelpers } from '../services/firestoreService';
+import { loadHelpers, saveHelpers } from '../services/dataService';
 
 type TabType = 'basic' | 'qualifications' | 'salary';
 
@@ -57,7 +57,7 @@ const HelperDetailPage: React.FC = () => {
 
     setIsSaving(true);
     try {
-      const { softDeleteHelper } = await import('../services/firestoreService');
+      const { softDeleteHelper } = await import('../services/dataService');
       await softDeleteHelper(helper.id);
       alert('削除しました');
       window.location.href = '/helpers';

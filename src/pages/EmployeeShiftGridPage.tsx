@@ -10,7 +10,7 @@ import {
     subscribeToShiftsForMonth,
     subscribeToHelpers,
     backupToFirebase
-} from '../services/firestoreService';
+} from '../services/dataService';
 import { testFirebaseConnection } from '../lib/firebase';
 import { helpers as initialHelpers } from '../data/mockData';
 
