@@ -52,6 +52,8 @@ const HelperManagementPage: React.FC = () => {
 
   const handleCreateNew = async () => {
     try {
+      console.log('🔨 新規ヘルパー作成開始...');
+
       // UUID形式のIDを生成（Supabaseと互換性のある形式）
       const newId = crypto.randomUUID ? crypto.randomUUID() :
                    `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -75,16 +77,38 @@ const HelperManagementPage: React.FC = () => {
         role: 'staff',  // デフォルトはスタッフ
       };
 
-      console.log('新規ヘルパー作成:', newHelper);
+      console.log('📝 新規ヘルパーデータ:', newHelper);
+      console.log('📋 既存ヘルパー数:', helpers.length);
 
       const updatedHelpers = [...helpers, newHelper];
+      console.log('💾 保存するヘルパー数:', updatedHelpers.length);
+
       await saveHelpers(updatedHelpers);
 
-      console.log('保存完了、リダイレクト中...');
-      window.location.href = `/helpers/${newId}`;
-    } catch (error) {
-      console.error('新規ヘルパー作成エラー:', error);
-      alert('新規ヘルパーの作成に失敗しました');
+      console.log('✅ 保存完了、リダイレクト中...');
+
+      // リダイレクト前に少し待機（保存の確実性のため）
+      setTimeout(() => {
+        window.location.href = `/helpers/${newId}`;
+      }, 500);
+
+    } catch (error: any) {
+      console.error('❌ 新規ヘルパー作成エラー:', error);
+      console.error('エラー詳細:', {
+        message: error?.message,
+        stack: error?.stack,
+        response: error?.response,
+        data: error?.data
+      });
+
+      // より詳細なエラーメッセージ
+      let errorMessage = '新規ヘルパーの作成に失敗しました。\n\n';
+      if (error?.message) {
+        errorMessage += `エラー: ${error.message}\n`;
+      }
+      errorMessage += '\nブラウザのコンソールを確認し、Supabaseの接続を確認してください。';
+
+      alert(errorMessage);
     }
   };
 

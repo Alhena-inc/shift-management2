@@ -19,14 +19,14 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
       // IDがない場合は新規生成
       const helperId = helper.id || crypto.randomUUID();
 
-      console.log(`保存データ: ${helper.name}, gender: ${helper.gender}, id: ${helperId}`);
+      console.log(`🔧 保存データ準備: ${helper.name}, id: ${helperId}`);
 
       // 数値フィールドが文字列の場合を考慮
       const hourlyWage = typeof helper.hourlyRate === 'string'
         ? parseFloat(helper.hourlyRate) || 0
         : helper.hourlyRate || 0;
 
-      return {
+      const saveData = {
         id: helperId,
         name: helper.name || '名前未設定',
         email: helper.email || null,
@@ -39,32 +39,56 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
         standard_remuneration: helper.standardRemuneration || 0,
         updated_at: new Date().toISOString()
       };
+
+      // デバッグ用: 各フィールドを確認
+      console.log('保存データ詳細:', {
+        id: saveData.id,
+        name: saveData.name,
+        order: saveData.order_index
+      });
+
+      return saveData;
     });
 
     console.log('📤 Supabaseに送信するデータ:', JSON.stringify(dataToSave, null, 2));
 
-    const { data, error } = await supabase
-      .from('helpers')
-      .upsert(dataToSave, {
-        onConflict: 'id',
-        returning: 'minimal' // レスポンスを最小化してパフォーマンス向上
-      });
+    // 各ヘルパーを個別に保存（エラーの特定を容易にするため）
+    const results = [];
+    for (const helperData of dataToSave) {
+      console.log(`💾 保存中: ${helperData.name}`);
 
-    if (error) {
-      console.error('❌ Supabase保存エラー詳細:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code
-      });
+      const { data, error } = await supabase
+        .from('helpers')
+        .upsert(helperData, {
+          onConflict: 'id',
+          returning: 'minimal'
+        });
 
-      // より詳細なエラーメッセージを表示
-      if (error.code === '42703') {
-        throw new Error('テーブルのカラムが存在しません。Supabaseのテーブル構造を確認してください。');
-      } else if (error.code === '23505') {
-        throw new Error('重複するIDが存在します。');
+      if (error) {
+        console.error(`❌ ${helperData.name} の保存エラー:`, {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          helperData: helperData
+        });
+
+        // エラーでも続行（他のヘルパーは保存を試みる）
+        results.push({ helper: helperData.name, status: 'error', error });
       } else {
-        throw new Error(`保存に失敗しました: ${error.message}`);
+        console.log(`✅ ${helperData.name} を保存しました`);
+        results.push({ helper: helperData.name, status: 'success' });
+      }
+    }
+
+    // エラーがあった場合は警告
+    const errors = results.filter(r => r.status === 'error');
+    if (errors.length > 0) {
+      console.error('⚠️ 一部のヘルパー保存に失敗:', errors);
+
+      // 全て失敗した場合はエラーをスロー
+      if (errors.length === dataToSave.length) {
+        throw new Error('全てのヘルパーの保存に失敗しました。Supabaseの接続を確認してください。');
       }
     }
 
