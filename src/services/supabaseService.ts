@@ -471,9 +471,21 @@ export const subscribeToShiftsForMonth = (
   month: number,
   onUpdate: (shifts: Shift[]) => void
 ): RealtimeChannel => {
+  console.log(`🔄 Supabaseサブスクリプション開始: ${year}年${month}月`);
+
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+  console.log(`  購読期間: ${startDate} 〜 ${endDate}`);
+
+  // 初回データを即座に読み込む
+  loadShiftsForMonth(year, month).then(shifts => {
+    console.log(`  初回読み込み: ${shifts.length}件のシフト`);
+    onUpdate(shifts);
+  }).catch(error => {
+    console.error('初回読み込みエラー:', error);
+  });
 
   const channel = supabase
     .channel(`shifts-${year}-${month}`)
@@ -486,11 +498,15 @@ export const subscribeToShiftsForMonth = (
         filter: `date=gte.${startDate},date=lte.${endDate}`
       },
       async () => {
+        console.log(`  📡 リアルタイム更新を検知`);
         const shifts = await loadShiftsForMonth(year, month);
+        console.log(`  更新後: ${shifts.length}件のシフト`);
         onUpdate(shifts);
       }
     )
-    .subscribe();
+    .subscribe((status) => {
+      console.log(`  購読ステータス: ${status}`);
+    });
 
   return channel;
 };
