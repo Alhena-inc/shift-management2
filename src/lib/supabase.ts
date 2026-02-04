@@ -2,8 +2,9 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../types/supabase';
 
 // Supabase設定（環境変数から取得）
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+// デフォルトURLを設定（エラー防止のため）
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-key';
 
 // 開発環境で環境変数が設定されていない場合の警告
 if (import.meta.env.DEV) {

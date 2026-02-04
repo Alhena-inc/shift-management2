@@ -4,7 +4,15 @@
  */
 
 // 環境変数でどちらを使うか決定
-const USE_SUPABASE = import.meta.env.VITE_USE_SUPABASE === 'true';
+// Supabaseの設定が揃っている場合のみSupabaseモードを有効化
+const HAS_SUPABASE_CONFIG = !!(
+  import.meta.env.VITE_SUPABASE_URL &&
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
+
+const USE_SUPABASE =
+  import.meta.env.VITE_USE_SUPABASE === 'true' &&
+  HAS_SUPABASE_CONFIG;
 
 // Firebaseサービス
 import * as firestoreService from './firestoreService';
@@ -91,5 +99,10 @@ if (typeof window !== 'undefined') {
     console.log('✅ Supabaseモードで動作中');
   } else {
     console.log('🔥 Firebaseモードで動作中');
+
+    // Supabaseが要求されたが設定がない場合の警告
+    if (import.meta.env.VITE_USE_SUPABASE === 'true' && !HAS_SUPABASE_CONFIG) {
+      console.warn('⚠️ Supabase環境変数が不足しています。Firebaseモードで動作します。');
+    }
   }
 }
