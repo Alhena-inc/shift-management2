@@ -976,19 +976,168 @@ export const moveShift = async (
   newShift: Shift,
   collectionName: string = SHIFTS_COLLECTION
 ): Promise<void> => {
+  // sourceShiftIdから元の日付を取得
+  const sourceMatch = sourceShiftId.match(/shift-[^-]+-(\d{4}-\d{2}-\d{2})/);
+  const sourceDate = sourceMatch ? sourceMatch[1] : null;
+
+  // 新しいシフトの日付から年月を取得
+  const [targetYear, targetMonth] = newShift.date.split('-').map(Number);
+  const targetCollectionName = `shifts_${targetYear}_${String(targetMonth).padStart(2, '0')}`;
+
+  // 元のシフトの年月を取得（削除用）
+  let sourceCollectionName = collectionName;
+  if (sourceDate) {
+    const [sourceYear, sourceMonth] = sourceDate.split('-').map(Number);
+    sourceCollectionName = `shifts_${sourceYear}_${String(sourceMonth).padStart(2, '0')}`;
+  }
+
   const batch = writeBatch(db);
 
-  // 1. 移動元の論理削除
-  const sourceRef = doc(db, collectionName, sourceShiftId);
+  // 1. 移動元の論理削除（正しいコレクションから）
+  const sourceRef = doc(db, sourceCollectionName, sourceShiftId);
   batch.update(sourceRef, {
     deleted: true,
     deletedAt: Timestamp.now()
   });
 
-  // 2. 移動先の新規作成（IDを指定）
+  // 2. 移動先の新規作成（正しいコレクションへ）
   const cleanShift = sanitizeForFirestore(newShift);
-  const targetRef = doc(db, collectionName, newShift.id);
+  const targetRef = doc(db, targetCollectionName, newShift.id);
   batch.set(targetRef, cleanShift);
 
   await batch.commit();
+};
+
+// 日付ごとのシフト数を取得
+export const getShiftsCountByDate = async (year: number, month: number, day: number): Promise<number> => {
+  try {
+    const dateString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    console.log(`📊 ${dateString}のシフト数を確認中...`);
+
+    const q = query(
+      collection(db, 'shifts'),
+      where('date', '==', dateString),
+      where('deleted', '==', false)
+    );
+
+    const snapshot = await getDocs(q);
+    const count = snapshot.size;
+    console.log(`✅ ${dateString}のシフト数: ${count}件`);
+    return count;
+  } catch (error) {
+    console.error('シフト数取得エラー:', error);
+    return 0;
+  }
+};
+
+// 日付ごとのシフトを削除（論理削除）
+export const deleteShiftsByDate = async (year: number, month: number, day: number): Promise<number> => {
+  try {
+    const dateString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    console.log(`🗑️ ${dateString}のシフトを削除中...`);
+
+    const q = query(
+      collection(db, 'shifts'),
+      where('date', '==', dateString),
+      where('deleted', '==', false)
+    );
+
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) {
+      console.log('削除対象のシフトがありません');
+      return 0;
+    }
+
+    // バッチ処理で効率的に削除
+    const batch = writeBatch(db);
+    let deletedCount = 0;
+
+    snapshot.forEach((doc) => {
+      batch.update(doc.ref, {
+        deleted: true,
+        deletedAt: Timestamp.now()
+      });
+      deletedCount++;
+    });
+
+    await batch.commit();
+
+    console.log(`✅ ${dateString}のシフトを削除しました（${deletedCount}件）`);
+    return deletedCount;
+  } catch (error) {
+    console.error('シフト削除エラー:', error);
+    throw error;
+  }
+};
+
+// 月全体のシフト数を取得
+export const getShiftsCountByMonth = async (year: number, month: number): Promise<number> => {
+  try {
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    console.log(`📊 ${year}年${month}月全体のシフト数を確認中...`);
+
+    const q = query(
+      collection(db, 'shifts'),
+      where('date', '>=', startDate),
+      where('date', '<=', endDate),
+      where('deleted', '==', false)
+    );
+
+    const snapshot = await getDocs(q);
+    const count = snapshot.size;
+    console.log(`✅ ${year}年${month}月のシフト数: ${count}件`);
+    return count;
+  } catch (error) {
+    console.error('月全体のシフト数取得エラー:', error);
+    return 0;
+  }
+};
+
+// 月全体のシフトを削除（論理削除）
+export const deleteShiftsByMonth = async (year: number, month: number): Promise<number> => {
+  try {
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    console.log(`🗑️ ${year}年${month}月全体のシフトを削除中...`);
+
+    const q = query(
+      collection(db, 'shifts'),
+      where('date', '>=', startDate),
+      where('date', '<=', endDate),
+      where('deleted', '==', false)
+    );
+
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) {
+      console.log('削除対象のシフトがありません');
+      return 0;
+    }
+
+    // バッチ処理で効率的に削除
+    const batch = writeBatch(db);
+    let deletedCount = 0;
+
+    snapshot.forEach((doc) => {
+      batch.update(doc.ref, {
+        deleted: true,
+        deletedAt: Timestamp.now()
+      });
+      deletedCount++;
+    });
+
+    await batch.commit();
+
+    console.log(`✅ ${year}年${month}月のシフトを削除しました（${deletedCount}件）`);
+    return deletedCount;
+  } catch (error) {
+    console.error('月全体のシフト削除エラー:', error);
+    throw error;
+  }
 };

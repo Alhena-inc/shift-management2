@@ -115,44 +115,44 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
       return saveData;
     });
 
-    console.log('📤 Supabaseに送信するデータ:', JSON.stringify(dataToSave, null, 2));
+    // デバッグログは最小限に抑える（個人情報を含まない）
+    // console.log('📤 Supabaseに送信するデータ:', JSON.stringify(dataToSave, null, 2));
 
     // 各ヘルパーを個別に保存（エラーの特定を容易にするため）
     const results = [];
     for (const helperData of dataToSave) {
-      console.log(`💾 保存中: ${helperData.name}`);
+      // 個人名をログに出力しない
+      // console.log(`💾 保存中: ${helperData.name}`);
 
       const { data, error } = await supabase
         .from('helpers')
         .upsert(helperData);
 
       if (error) {
-        console.error(`❌ ${helperData.name} の保存エラー:`, {
+        // エラー時も個人情報を含めない
+        console.error('ヘルパー保存エラー:', {
           message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-          helperData: helperData
+          code: error.code
         });
 
         // 400エラーの詳細を解析
         if (error.message && error.message.includes('column')) {
           console.error('⚠️ カラムエラー: テーブル構造の不一致の可能性');
-          console.error('送信したデータのキー:', Object.keys(helperData));
         }
 
         // エラーでも続行（他のヘルパーは保存を試みる）
-        results.push({ helper: helperData.name, status: 'error', error });
+        results.push({ helperId: helperData.id, status: 'error', error });
       } else {
-        console.log(`✅ ${helperData.name} を保存しました`);
-        results.push({ helper: helperData.name, status: 'success' });
+        // 成功時も個人名を出力しない
+        // console.log(`✅ ${helperData.name} を保存しました`);
+        results.push({ helperId: helperData.id, status: 'success' });
       }
     }
 
-    // エラーがあった場合は警告
+    // エラーがあった場合は警告（個人情報を含まない）
     const errors = results.filter(r => r.status === 'error');
     if (errors.length > 0) {
-      console.error('⚠️ 一部のヘルパー保存に失敗:', errors);
+      console.error(`⚠️ ${errors.length}/${dataToSave.length}件の保存に失敗`);
 
       // 全て失敗した場合はエラーをスロー
       if (errors.length === dataToSave.length) {
@@ -160,10 +160,14 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
       }
     }
 
-    // バックアップも作成
+    // バックアップも作成（サイレントに実行）
     await backupToSupabase('helpers', helpers, 'ヘルパー情報保存時のバックアップ');
 
-    console.log('✅ ヘルパー保存成功');
+    // 成功時のログも簡潔に
+    const successCount = results.filter(r => r.status === 'success').length;
+    if (successCount > 0) {
+      console.log(`✅ ${successCount}件保存完了`);
+    }
   } catch (error) {
     console.error('ヘルパー保存エラー:', error);
     throw error;
@@ -456,6 +460,7 @@ export const restoreHelper = async (deletedHelperId: string): Promise<void> => {
 // シフトを保存（月ごと）
 export const saveShiftsForMonth = async (year: number, month: number, shifts: Shift[]): Promise<void> => {
   try {
+    console.log(`📝 [Supabase] シフト保存開始: ${year}年${month}月, ${shifts.length}件`);
     const dataToSave = shifts.map(shift => ({
       id: shift.id,
       date: shift.date,
@@ -470,9 +475,19 @@ export const saveShiftsForMonth = async (year: number, month: number, shifts: Sh
       content: shift.content || null, // ケア内容（自由入力）
       row_index: shift.rowIndex ?? null, // 表示行インデックス
       cancel_status: shift.cancelStatus,
-      canceled_at: shift.canceledAt,
+      // FirestoreのTimestampをISO文字列に変換
+      canceled_at: shift.canceledAt ?
+        (typeof shift.canceledAt === 'object' && 'toDate' in shift.canceledAt
+          ? shift.canceledAt.toDate().toISOString()
+          : shift.canceledAt)
+        : null,
       deleted: shift.deleted || false,
-      deleted_at: shift.deletedAt || null,
+      // FirestoreのTimestampをISO文字列に変換
+      deleted_at: shift.deletedAt ?
+        (typeof shift.deletedAt === 'object' && 'toDate' in shift.deletedAt
+          ? shift.deletedAt.toDate().toISOString()
+          : shift.deletedAt)
+        : null,
       deleted_by: shift.deletedBy || null
     }));
 
@@ -489,12 +504,14 @@ export const saveShiftsForMonth = async (year: number, month: number, shifts: Sh
 
     console.log('  月別シフト数:', monthGroups);
 
-    const { error } = await supabase
+    const { data: savedData, error } = await supabase
       .from('shifts')
-      .upsert(dataToSave, { onConflict: 'id' });
+      .upsert(dataToSave, { onConflict: 'id' })
+      .select();
 
     if (error) {
       console.error('シフト保存エラー:', error);
+      console.error('エラー詳細:', JSON.stringify(error, null, 2));
       console.error('保存しようとしたデータ例:', dataToSave[0]);
       throw error;
     }
@@ -502,7 +519,8 @@ export const saveShiftsForMonth = async (year: number, month: number, shifts: Sh
     // バックアップ作成
     await backupToSupabase('shifts', shifts, `${year}年${month}月のシフトバックアップ`);
 
-    console.log(`✅ ${shifts.length}件のシフトを正常に保存しました`);
+    console.log(`✅ [Supabase] ${shifts.length}件のシフト保存完了`);
+    console.log(`  実際に保存された件数: ${savedData?.length || 0}件`);
   } catch (error) {
     console.error('シフト保存エラー:', error);
     throw error;
@@ -525,11 +543,12 @@ export const loadShiftsForMonth = async (year: number, month: number): Promise<S
       .from('shifts')
       .select('*')
       .gte('date', startDate)
-      .lte('date', endDate)
-      .eq('deleted', false); // 論理削除済みを除外
+      .lte('date', endDate);
+      // .eq('deleted', false); // 一時的にコメントアウト（deletedカラムがない場合のエラー回避）
 
     if (error) {
       console.error('シフト読み込みエラー:', error);
+      console.error('エラー詳細:', JSON.stringify(error, null, 2));
       return [];
     }
 
@@ -550,10 +569,14 @@ export const loadShiftsForMonth = async (year: number, month: number): Promise<S
       rowIndex: row.row_index ?? undefined, // 表示行インデックス
       cancelStatus: row.cancel_status || undefined,
       canceledAt: row.canceled_at || undefined,
-      deleted: row.deleted
+      deleted: row.deleted || false // deletedカラムがない場合はfalseとする
     }));
 
-    return shifts;
+    // deletedがtrueのものをフィルタリング（アプリ側で処理）
+    const activeShifts = shifts.filter(s => !s.deleted);
+    console.log(`  論理削除を除いたシフト数: ${activeShifts.length}件`);
+
+    return activeShifts;
   } catch (error) {
     console.error('シフト読み込みエラー:', error);
     return [];
@@ -639,7 +662,7 @@ export const saveDayOffRequests = async (year: number, month: number, requests: 
       throw error;
     }
 
-    console.log(`🏖️ 休み希望を保存しました: ${docId} (${requests.size}件)`);
+    // console.log(`🏖️ 休み希望を保存: ${requests.size}件`);
   } catch (error) {
     console.error('休み希望保存エラー:', error);
     throw error;
@@ -695,7 +718,7 @@ export const saveScheduledDayOffs = async (year: number, month: number, schedule
       throw error;
     }
 
-    console.log(`🟢 指定休を保存しました: ${docId} (${scheduledDayOffs.size}件)`);
+    // console.log(`🟢 指定休を保存: ${scheduledDayOffs.size}件`);
   } catch (error) {
     console.error('指定休保存エラー:', error);
     throw error;
@@ -751,7 +774,7 @@ export const saveDisplayTexts = async (year: number, month: number, displayTexts
       throw error;
     }
 
-    console.log(`📝 表示テキストを保存しました: ${docId} (${displayTexts.size}件)`);
+    // console.log(`📝 表示テキストを保存: ${displayTexts.size}件`);
   } catch (error) {
     console.error('表示テキスト保存エラー:', error);
     throw error;
@@ -812,11 +835,11 @@ export const backupToSupabase = async (type: string, data: any, description?: st
 
 // リアルタイムサブスクリプション：ヘルパー
 export const subscribeToHelpers = (onUpdate: (helpers: Helper[]) => void): RealtimeChannel => {
-  console.log('🔄 Supabase ヘルパー購読開始');
+  // console.log('🔄 Supabase ヘルパー購読開始');
 
   // 初回データを即座に読み込む
   loadHelpers().then(helpers => {
-    console.log(`  初回読み込み: ${helpers.length}件のヘルパー`);
+    // console.log(`  初回読み込み: ${helpers.length}件`);
     onUpdate(helpers);
   }).catch(error => {
     console.error('ヘルパー初回読み込みエラー:', error);
@@ -830,14 +853,13 @@ export const subscribeToHelpers = (onUpdate: (helpers: Helper[]) => void): Realt
       'postgres_changes',
       { event: '*', schema: 'public', table: 'helpers' },
       async () => {
-        console.log('  📡 ヘルパー更新を検知');
+        // console.log('  📡 更新を検知');
         const helpers = await loadHelpers();
-        console.log(`  更新後: ${helpers.length}件のヘルパー`);
         onUpdate(helpers);
       }
     )
     .subscribe((status) => {
-      console.log(`  ヘルパー購読ステータス: ${status}`);
+      // console.log(`  購読ステータス: ${status}`);
     });
 
   return channel;
@@ -849,17 +871,17 @@ export const subscribeToShiftsForMonth = (
   month: number,
   onUpdate: (shifts: Shift[]) => void
 ): RealtimeChannel => {
-  console.log(`🔄 Supabaseサブスクリプション開始: ${year}年${month}月`);
+  // console.log(`🔄 Supabaseサブスクリプション開始: ${year}年${month}月`);
 
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-  console.log(`  購読期間: ${startDate} 〜 ${endDate}`);
+  // console.log(`  購読期間: ${startDate} 〜 ${endDate}`);
 
   // 初回データを即座に読み込む
   loadShiftsForMonth(year, month).then(shifts => {
-    console.log(`  初回読み込み: ${shifts.length}件のシフト`);
+    // console.log(`  初回読み込み: ${shifts.length}件`);
     onUpdate(shifts);
   }).catch(error => {
     console.error('初回読み込みエラー:', error);
@@ -876,14 +898,13 @@ export const subscribeToShiftsForMonth = (
         filter: `date=gte.${startDate},date=lte.${endDate}`
       },
       async () => {
-        console.log(`  📡 リアルタイム更新を検知`);
+        // console.log(`  📡 更新を検知`);
         const shifts = await loadShiftsForMonth(year, month);
-        console.log(`  更新後: ${shifts.length}件のシフト`);
         onUpdate(shifts);
       }
     )
     .subscribe((status) => {
-      console.log(`  購読ステータス: ${status}`);
+      // console.log(`  購読ステータス: ${status}`);
     });
 
   return channel;
@@ -1058,7 +1079,12 @@ export const saveShift = async (shift: Shift): Promise<void> => {
         hourly_wage: null,
         location: shift.area,
         cancel_status: shift.cancelStatus,
-        canceled_at: shift.canceledAt,
+        // FirestoreのTimestampをISO文字列に変換
+        canceled_at: shift.canceledAt ?
+          (typeof shift.canceledAt === 'object' && 'toDate' in shift.canceledAt
+            ? shift.canceledAt.toDate().toISOString()
+            : shift.canceledAt)
+          : null,
         deleted: shift.deleted || false
       });
 
@@ -1103,9 +1129,22 @@ export const moveShift = async (
   try {
     // newShiftがShiftオブジェクトの場合
     if (typeof newShift === 'object') {
-      // 既存のシフトを削除
-      await softDeleteShift(sourceShiftId);
-      // 新しいシフトを作成
+      // 既存のシフトを論理削除（deleted: trueにマーク）
+      const { error: deleteError } = await supabase
+        .from('shifts')
+        .update({
+          deleted: true,
+          deleted_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sourceShiftId);
+
+      if (deleteError) {
+        console.error('Failed to mark source shift as deleted:', deleteError);
+        throw deleteError;
+      }
+
+      // 新しいシフトを作成（正しい年月のデータとして保存）
       await saveShift(newShift);
     }
     // newShiftが日付文字列の場合（簡易版）
@@ -1125,6 +1164,184 @@ export const moveShift = async (
     }
   } catch (error) {
     console.error('シフト移動エラー:', error);
+    throw error;
+  }
+};
+
+// 日付ごとのシフト数を取得
+export const getShiftsCountByDate = async (year: number, month: number, day: number): Promise<number> => {
+  try {
+    const dateString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    console.log(`📊 Supabaseから${dateString}のシフト数を確認中...`);
+
+    const { data, error } = await supabase
+      .from('shifts')
+      .select('*')  // 全データを取得してデバッグ
+      .eq('date', dateString);
+
+    if (error) {
+      console.error('シフト数取得エラー:', error);
+      console.error('エラー詳細:', JSON.stringify(error, null, 2));
+      return 0;
+    }
+
+    console.log(`  取得した生データ:`, data);
+    console.log(`  取得した件数（全体）: ${data?.length || 0}件`);
+
+    // アプリ側でdeletedをチェック
+    const activeShifts = (data || []).filter((shift: any) => !shift.deleted);
+    const count = activeShifts.length;
+    console.log(`  論理削除を除いた件数: ${count}件`);
+    console.log(`✅ ${dateString}のシフト数: ${count}件`);
+    return count;
+  } catch (error) {
+    console.error('シフト数取得エラー:', error);
+    return 0;
+  }
+};
+
+// 日付ごとのシフトを削除（論理削除）
+export const deleteShiftsByDate = async (year: number, month: number, day: number): Promise<number> => {
+  try {
+    const dateString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    console.log(`🗑️ ${dateString}のシフトを削除中...`);
+
+    // まず対象シフトを取得
+    const { data: shifts, error: fetchError } = await supabase
+      .from('shifts')
+      .select('*')
+      .eq('date', dateString);
+
+    if (fetchError) {
+      console.error('シフト取得エラー:', fetchError);
+      throw fetchError;
+    }
+
+    if (!shifts || shifts.length === 0) {
+      console.log('削除対象のシフトがありません');
+      return 0;
+    }
+
+    // アプリ側でdeletedをチェックして、削除されていないもののみを対象にする
+    const shiftsToDelete = shifts.filter((s: any) => !s.deleted);
+
+    if (shiftsToDelete.length === 0) {
+      console.log('削除対象のシフトがありません（全て削除済み）');
+      return 0;
+    }
+
+    // 各シフトを論理削除
+    const deletePromises = shiftsToDelete.map((shift: any) =>
+      supabase
+        .from('shifts')
+        .update({
+          deleted: true,
+          deleted_at: new Date().toISOString()
+        })
+        .eq('id', shift.id)
+    );
+
+    await Promise.all(deletePromises);
+
+    const deletedCount = shiftsToDelete.length;
+    console.log(`✅ ${dateString}のシフトを削除しました（${deletedCount}件）`);
+    return deletedCount;
+  } catch (error) {
+    console.error('シフト削除エラー:', error);
+    throw error;
+  }
+};
+
+// 月全体のシフト数を取得
+export const getShiftsCountByMonth = async (year: number, month: number): Promise<number> => {
+  try {
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    console.log(`📊 Supabaseから${year}年${month}月全体のシフト数を確認中...`);
+    console.log(`  期間: ${startDate} 〜 ${endDate}`);
+
+    const { data, error } = await supabase
+      .from('shifts')
+      .select('*')
+      .gte('date', startDate)
+      .lte('date', endDate);
+
+    if (error) {
+      console.error('月全体のシフト数取得エラー:', error);
+      console.error('エラー詳細:', JSON.stringify(error, null, 2));
+      return 0;
+    }
+
+    console.log(`  取得した生データ:`, data);
+    console.log(`  取得した件数（全体）: ${data?.length || 0}件`);
+
+    // アプリ側でdeletedをチェック
+    const activeShifts = (data || []).filter((shift: any) => !shift.deleted);
+    const count = activeShifts.length;
+    console.log(`  論理削除を除いた件数: ${count}件`);
+    console.log(`✅ ${year}年${month}月のシフト数: ${count}件`);
+    return count;
+  } catch (error) {
+    console.error('月全体のシフト数取得エラー:', error);
+    return 0;
+  }
+};
+
+// 月全体のシフトを削除（論理削除）
+export const deleteShiftsByMonth = async (year: number, month: number): Promise<number> => {
+  try {
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    console.log(`🗑️ ${year}年${month}月全体のシフトを削除中...`);
+    console.log(`  期間: ${startDate} 〜 ${endDate}`);
+
+    // まず対象シフトを取得
+    const { data: shifts, error: fetchError } = await supabase
+      .from('shifts')
+      .select('*')
+      .gte('date', startDate)
+      .lte('date', endDate);
+
+    if (fetchError) {
+      console.error('月全体のシフト取得エラー:', fetchError);
+      throw fetchError;
+    }
+
+    if (!shifts || shifts.length === 0) {
+      console.log('削除対象のシフトがありません');
+      return 0;
+    }
+
+    // アプリ側でdeletedをチェックして、削除されていないもののみを対象にする
+    const shiftsToDelete = shifts.filter((s: any) => !s.deleted);
+
+    if (shiftsToDelete.length === 0) {
+      console.log('削除対象のシフトがありません（全て削除済み）');
+      return 0;
+    }
+
+    // 各シフトを論理削除
+    const deletePromises = shiftsToDelete.map((shift: any) =>
+      supabase
+        .from('shifts')
+        .update({
+          deleted: true,
+          deleted_at: new Date().toISOString()
+        })
+        .eq('id', shift.id)
+    );
+
+    await Promise.all(deletePromises);
+
+    const deletedCount = shiftsToDelete.length;
+    console.log(`✅ ${year}年${month}月のシフトを削除しました（${deletedCount}件）`);
+    return deletedCount;
+  } catch (error) {
+    console.error('月全体のシフト削除エラー:', error);
     throw error;
   }
 };

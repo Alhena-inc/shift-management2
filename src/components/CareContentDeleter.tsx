@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import { deleteCareContentByDate, deleteShiftsByMonth, getCareContentCountByDate, getShiftCountByMonth, saveDeletionLog } from '../services/careContentService';
+import { saveDeletionLog } from '../services/careContentService';
+import { getShiftsCountByDate, deleteShiftsByDate, getShiftsCountByMonth, deleteShiftsByMonth } from '../services/dataService';
 
 interface CareContentDeleterProps {
   onClose: () => void;
@@ -21,13 +22,18 @@ export const CareContentDeleter: React.FC<CareContentDeleterProps> = ({ onClose,
   const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
-  // データ件数チェック
+  // データ件数チェック（dataServiceを使用）
   const handleCheckCount = useCallback(async () => {
     setIsChecking(true);
     setError('');
     setMessage('');
     try {
-      const dataCount = await getCareContentCountByDate(currentYear, currentMonth, selectedDay);
+      console.log('=== シフトデータ削除：データ件数確認 ===');
+      console.log(`確認対象: ${currentYear}年${currentMonth}月${selectedDay}日`);
+
+      // dataServiceを使ってSupabase/Firebaseから取得
+      const dataCount = await getShiftsCountByDate(currentYear, currentMonth, selectedDay);
+      console.log(`取得結果: ${dataCount}件`);
       setCount(dataCount);
       setCheckedScope('day');
       if (dataCount === 0) {
@@ -50,7 +56,10 @@ export const CareContentDeleter: React.FC<CareContentDeleterProps> = ({ onClose,
     setError('');
     setMessage('');
     try {
-      const dataCount = await getShiftCountByMonth(currentYear, currentMonth);
+      console.log('=== シフトデータ削除：月全体の件数確認 ===');
+      console.log(`確認対象: ${currentYear}年${currentMonth}月全体`);
+
+      const dataCount = await getShiftsCountByMonth(currentYear, currentMonth);
       setCount(dataCount);
       setCheckedScope('month');
       if (dataCount === 0) {
@@ -94,7 +103,7 @@ export const CareContentDeleter: React.FC<CareContentDeleterProps> = ({ onClose,
       const deletedCount =
         checkedScope === 'month'
           ? await deleteShiftsByMonth(currentYear, currentMonth)
-          : await deleteCareContentByDate(currentYear, currentMonth, selectedDay);
+          : await deleteShiftsByDate(currentYear, currentMonth, selectedDay); // dataServiceを使用
 
       // 削除履歴を保存
       await saveDeletionLog({

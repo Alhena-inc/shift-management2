@@ -84,6 +84,65 @@ export const {
   backupToFirebase,
 } = dataService;
 
+// 日付ごとのシフト削除機能を追加
+export const deleteShiftsByDate = async (year: number, month: number, day: number): Promise<number> => {
+  const dateString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+  if (USE_SUPABASE) {
+    // Supabaseの場合
+    return supabaseService.deleteShiftsByDate(year, month, day);
+  } else {
+    // Firebaseの場合
+    return firestoreService.deleteShiftsByDate(year, month, day);
+  }
+};
+
+// 日付ごとのシフト数を取得
+export const getShiftsCountByDate = async (year: number, month: number, day: number): Promise<number> => {
+  const dateString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  console.log(`[dataService] データベースタイプ: ${getDataServiceType()}`);
+  console.log(`[dataService] 日付: ${dateString}のシフト数を取得`);
+
+  if (USE_SUPABASE) {
+    // Supabaseの場合
+    console.log('[dataService] → Supabaseサービスを使用');
+    return supabaseService.getShiftsCountByDate(year, month, day);
+  } else {
+    // Firebaseの場合
+    console.log('[dataService] → Firebaseサービスを使用');
+    return firestoreService.getShiftsCountByDate(year, month, day);
+  }
+};
+
+// 月全体のシフト数を取得
+export const getShiftsCountByMonth = async (year: number, month: number): Promise<number> => {
+  console.log(`[dataService] データベースタイプ: ${getDataServiceType()}`);
+  console.log(`[dataService] ${year}年${month}月全体のシフト数を取得`);
+
+  if (USE_SUPABASE) {
+    // Supabaseの場合
+    console.log('[dataService] → Supabaseサービスを使用');
+    return supabaseService.getShiftsCountByMonth(year, month);
+  } else {
+    // Firebaseの場合
+    console.log('[dataService] → Firebaseサービスを使用');
+    return firestoreService.getShiftsCountByMonth(year, month);
+  }
+};
+
+// 月全体のシフトを削除
+export const deleteShiftsByMonth = async (year: number, month: number): Promise<number> => {
+  console.log(`[dataService] ${year}年${month}月全体のシフトを削除`);
+
+  if (USE_SUPABASE) {
+    // Supabaseの場合
+    return supabaseService.deleteShiftsByMonth(year, month);
+  } else {
+    // Firebaseの場合
+    return firestoreService.deleteShiftsByMonth(year, month);
+  }
+};
+
 // Supabase特有のバックアップ関数
 export const backupToSupabase = USE_SUPABASE
   ? supabaseService.backupToSupabase

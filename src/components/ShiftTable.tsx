@@ -4387,8 +4387,12 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
             }
           }
 
-          // 3行目（index=2）の稼働時間の更新は React の handleShiftsUpdate まで保留します
-          // 手動での textContent 更新は NotFoundError を引き起こす可能性があるため行いません
+          // 3行目（index=2）の稼働時間を即座に更新
+          const durationCellSelector = `.editable-cell-wrapper[data-row="${rowIdx}"][data-line="2"][data-helper="${hId}"][data-date="${dt}"] .cell-display`;
+          const durationCell = document.querySelector(durationCellSelector);
+          if (durationCell) {
+            durationCell.textContent = restoredShift.duration ? restoredShift.duration.toString() : '';
+          }
         });
 
         if (restoredShifts.length === 0) return;
@@ -5085,6 +5089,11 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         return;
       }
 
+      // ターゲットセルの既存シフトを確認
+      const targetKey = `${targetHelperId}-${targetDate}-${targetRowIndex}`;
+      const targetShift = shiftMap.get(targetKey);
+
+      // 新しいシフトを作成（ソースからターゲットへ）
       const newShift: Shift = {
         ...sourceShift,
         id: `shift-${targetHelperId}-${targetDate}-${targetRowIndex}`,
@@ -5094,8 +5103,18 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         deleted: false
       };
 
-      // ターゲットセルの既存シフトを消去（上書きする場合）
-      const targetKey = `${targetHelperId}-${targetDate}-${targetRowIndex}`;
+      // スワップ用シフト（ターゲットからソースへ、存在する場合）
+      let swappedShift: Shift | null = null;
+      if (targetShift) {
+        swappedShift = {
+          ...targetShift,
+          id: `shift-${sourceHelperId}-${sourceDate}-${sourceRowIndex}`,
+          helperId: sourceHelperId,
+          date: sourceDate,
+          rowIndex: sourceRowIndex,
+          deleted: false
+        };
+      }
 
       // DOM即時更新（高速化のためReact State更新前に実施）
       for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
@@ -5132,12 +5151,19 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         return !isSource && !isTarget;
       });
       updatedShifts.push(newShift);
+      if (swappedShift) {
+        updatedShifts.push(swappedShift);
+      }
 
       shiftsRef.current = updatedShifts;
 
       // 各種Mapも更新
       shiftMap.set(targetKey, newShift);
-      shiftMap.delete(sourceKey);
+      if (swappedShift) {
+        shiftMap.set(sourceKey, swappedShift);
+      } else {
+        shiftMap.delete(sourceKey);
+      }
 
       // 集計更新 (最新のupdatedShiftsを渡す)
       updateTotalsForHelperAndDate(sourceHelperId, sourceDate, updatedShifts);
@@ -5149,11 +5175,35 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       // handleShiftsUpdate自体にdebounceオプション等があるのを活用
       handleShiftsUpdate(updatedShifts, true);
 
-      // データサービス同期 (バックグラウンド)
-      const sourceShiftId = `shift-${sourceHelperId}-${sourceDate}-${sourceRowIndex}`;
-      moveShift(sourceShiftId, newShift).catch(err => {
-        console.error('Data service Move failed:', err);
-      });
+      // データサービス同期 - 非同期処理として実行
+      (async () => {
+        try {
+          const sourceShiftId = `shift-${sourceHelperId}-${sourceDate}-${sourceRowIndex}`;
+
+          // 1. ターゲット位置に既存のシフトがある場合は論理削除
+          if (targetShift) {
+            const targetShiftId = `shift-${targetHelperId}-${targetDate}-${targetRowIndex}`;
+            await softDeleteShift(targetShiftId);
+          }
+
+          // 2. 元のシフトを論理削除
+          await softDeleteShift(sourceShiftId);
+
+          // 3. 新しい位置にシフトを保存
+          const [newYear, newMonth] = newShift.date.split('-').map(Number);
+          await saveShiftsForMonth(newYear, newMonth, [newShift]);
+
+          // 4. スワップの場合、元の位置に移動したシフトも保存
+          if (swappedShift) {
+            const [swapYear, swapMonth] = swappedShift.date.split('-').map(Number);
+            await saveShiftsForMonth(swapYear, swapMonth, [swappedShift]);
+          }
+
+          // console.log('✅ シフト移動完了');
+        } catch (error) {
+          console.error('❌ シフト移動の保存に失敗しました:', error);
+        }
+      })();
     } catch (error) {
       console.error('Drag and Drop Error:', error);
     } finally {
@@ -5222,19 +5272,23 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
   const serviceTypeSummary = useMemo(() => {
     const summary = new Map<string, Map<ServiceType | 'shinya' | 'shinya_doko', { hours: number; amount: number }>>();
 
-    // 高速化のため、shiftsをhelperIdでインデックス化
+    // 高速化のため、shiftsをhelperIdでインデックス化（IDを文字列に統一）
     const shiftsByHelper = new Map<string, Shift[]>();
     (shifts || []).forEach(s => {
       if (!s || !s.helperId) return;
-      if (!shiftsByHelper.has(s.helperId)) shiftsByHelper.set(s.helperId, []);
-      shiftsByHelper.get(s.helperId)!.push(s);
+      const helperIdStr = String(s.helperId);
+      if (!shiftsByHelper.has(helperIdStr)) shiftsByHelper.set(helperIdStr, []);
+      shiftsByHelper.get(helperIdStr)!.push(s);
     });
 
     (sortedHelpers || []).forEach(helper => {
       if (!helper || !helper.id) return;
+
+      // 毎回新しいMapインスタンスを作成
       const helperData = new Map<ServiceType | 'shinya' | 'shinya_doko', { hours: number; amount: number }>();
 
-      // 各サービス種別を初期化
+      // 各サービス種別を初期化（初期値は0のままでOK、実際に使用されるもののみ後で値が入る）
+      // 各エントリーは独立したオブジェクトとして作成
       Object.keys(SERVICE_CONFIG).forEach(serviceType => {
         helperData.set(serviceType as ServiceType, { hours: 0, amount: 0 });
       });
@@ -5242,36 +5296,114 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       helperData.set('shinya', { hours: 0, amount: 0 });
       helperData.set('shinya_doko', { hours: 0, amount: 0 });
 
+      // 田中航揮の初期化後のデバッグ
+      if (helper.name === '田中航揮') {
+        console.log('=== helperData初期化 ===');
+        console.log('Mapインスタンス:', helperData);
+        console.log('初期化直後のhelperData:', Array.from(helperData.entries()).map(([key, val]) => `${key}: ${val.hours}h`));
+
+        // 既にsummaryに入っている値があるかチェック
+        const existingData = summary.get(String(helper.id));
+        if (existingData) {
+          console.warn('⚠️ 既存のデータが見つかりました！');
+          console.log('既存データ:', Array.from(existingData.entries()).map(([key, val]) => `${key}: ${val.hours}h`));
+        }
+      }
+
+      // デバッグ：田中航揮のシフトを確認
+      const helperIdStr = String(helper.id);
+      if (helper.name === '田中航揮') {
+        const tanakShifts = shiftsByHelper.get(helperIdStr) || [];
+        console.log('=== 田中航揮の集計デバッグ ===');
+        console.log('ヘルパーID:', helper.id, '型:', typeof helper.id);
+        console.log('文字列化ID:', helperIdStr);
+        console.log('シフト総数:', tanakShifts.length);
+
+        // 重複チェック
+        const uniqueDates = new Set(tanakShifts.map(s => `${s.date}-${s.rowIndex}`));
+        console.log('ユニークなシフト数:', uniqueDates.size);
+
+        // 実際のシフト詳細
+        const validShifts = tanakShifts.filter(s => s.duration && s.duration > 0);
+        console.log('有効なシフト数（duration > 0）:', validShifts.length);
+        console.log('シフト詳細:', validShifts.map(s => ({
+          date: s.date,
+          rowIndex: s.rowIndex,
+          time: `${s.startTime}-${s.endTime}`,
+          duration: s.duration,
+          serviceType: s.serviceType,
+          clientName: s.clientName,
+          helperId: s.helperId,
+          helperIdType: typeof s.helperId
+        })));
+
+        // 合計時間
+        const totalHours = validShifts.reduce((sum, s) => sum + (s.duration || 0), 0);
+        console.log('合計時間（計算値）:', totalHours);
+        console.log('=========================');
+      }
+
       // シフトから集計
-      (shiftsByHelper.get(helper.id) || []).filter(s => {
+      const shiftsToProcess = (shiftsByHelper.get(helperIdStr) || []).filter(s => {
         if (!s) return false;
         const isExcluded = s.cancelStatus === 'remove_time' || s.cancelStatus === 'canceled_without_time';
         return !isExcluded && (s.duration || 0) > 0;
-      }).forEach(shift => {
+      });
+
+      // 田中航揮の場合、処理前後の時間を追跡
+      let processedHours = 0;
+      if (helper.name === '田中航揮') {
+        console.log('処理するシフト数:', shiftsToProcess.length);
+      }
+
+      shiftsToProcess.forEach((shift, index) => {
 
         const { serviceType, startTime, endTime, duration } = shift;
-        const hourlyRate = SERVICE_CONFIG[serviceType]?.hourlyRate || 0;
+
+        if (helper.name === '田中航揮') {
+          console.log(`シフト${index + 1}の処理:`, {
+            serviceType,
+            startTime,
+            endTime,
+            duration,
+            date: shift.date,
+            shiftId: shift.id
+          });
+
+          // serviceTypeが正しく取得できているか確認
+          console.log(`  serviceTypeの型: ${typeof serviceType}, 値: "${serviceType}"`);
+        }
+
+        // ヘルパー個別の時給を使用（田中航揮のように時給が設定されている場合）
+        const hourlyRate = helper.hourlyRate || SERVICE_CONFIG[serviceType]?.hourlyRate || 0;
+
+        let nightHours = 0;
+        let regularHours = 0;
 
         if (startTime && endTime) {
           const timeRange = `${startTime}-${endTime}`;
-          const nightHours = calculateNightHours(timeRange);
-          const regularHours = calculateRegularHours(timeRange);
+          nightHours = calculateNightHours(timeRange);
+          regularHours = calculateRegularHours(timeRange);
 
           // 深夜時間の計算（深夜専用行に集計）
           if (nightHours > 0) {
+            // 月給制（固定給）の場合は深夜割増なし
+            const isFixedSalary = helper.salaryType === 'fixed';
+            const nightMultiplier = isFixedSalary ? 1.0 : 1.25;
+
             if (serviceType === 'doko') {
               // 深夜同行 → shinya_doko行に加算
               const current = helperData.get('shinya_doko') || { hours: 0, amount: 0 };
               helperData.set('shinya_doko', {
                 hours: current.hours + nightHours,
-                amount: current.amount + (nightHours * 1200 * 1.25)
+                amount: current.amount + (nightHours * 1200 * nightMultiplier)
               });
             } else {
               // 通常サービスの深夜 → shinya行に加算
               const current = helperData.get('shinya') || { hours: 0, amount: 0 };
               helperData.set('shinya', {
                 hours: current.hours + nightHours,
-                amount: current.amount + (nightHours * hourlyRate * 1.25)
+                amount: current.amount + (nightHours * hourlyRate * nightMultiplier)
               });
             }
           }
@@ -5279,23 +5411,88 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           // 通常時間の計算（元のサービスタイプ行に集計）
           if (regularHours > 0) {
             const current = helperData.get(serviceType) || { hours: 0, amount: 0 };
+            const newHours = current.hours + regularHours;
+
+            if (helper.name === '田中航揮') {
+              console.log(`シフト${index + 1}処理（時間帯指定）:`);
+              console.log(`  - serviceType: ${serviceType}`);
+              console.log(`  - 時間帯: ${startTime}-${endTime}`);
+              console.log(`  - 通常時間: ${regularHours}h, 深夜時間: ${nightHours}h`);
+              console.log(`  - 現在の${serviceType}の時間: ${current.hours}h`);
+              console.log(`  - 新しい合計: ${newHours}h`);
+              processedHours += regularHours;
+            }
+
             helperData.set(serviceType, {
-              hours: current.hours + regularHours,
+              hours: newHours,
               amount: current.amount + (regularHours * hourlyRate)
             });
           }
         } else if (duration && duration > 0) {
           // 時間数のみの場合（通常時間として扱う）
           const current = helperData.get(serviceType) || { hours: 0, amount: 0 };
+          const newHours = current.hours + duration;
+
+          if (helper.name === '田中航揮') {
+            console.log(`シフト${index + 1}処理（duration使用）:`);
+            console.log(`  - serviceType: ${serviceType}`);
+            console.log(`  - 現在の${serviceType}の時間: ${current.hours}h`);
+            console.log(`  - 追加する時間: ${duration}h`);
+            console.log(`  - 新しい合計: ${newHours}h`);
+            processedHours += duration;
+          }
+
           helperData.set(serviceType, {
-            hours: current.hours + duration,
+            hours: newHours,
             amount: current.amount + (duration * hourlyRate)
           });
         }
+
+        // 田中航揮の場合、深夜時間も追跡
+        if (helper.name === '田中航揮' && nightHours > 0) {
+          processedHours += nightHours;
+        }
+
+        // 各シフト処理後のhelperData状態を確認
+        if (helper.name === '田中航揮') {
+          console.log(`シフト${index + 1}処理完了後のhelperData:`,
+            Array.from(helperData.entries())
+              .filter(([_, val]) => val.hours > 0)
+              .map(([key, val]) => `${key}: ${val.hours}h`)
+          );
+        }
       });
 
-      summary.set(helper.id, helperData);
+      if (helper.name === '田中航揮') {
+        console.log('処理後の合計時間:', processedHours);
+        console.log('helperDataの内容 (時間がある項目のみ):',
+          Array.from(helperData.entries())
+            .filter(([_, val]) => val.hours > 0)
+            .map(([key, val]) => ({ serviceType: key, hours: val.hours, amount: val.amount }))
+        );
+        console.log('helperDataの全エントリー数:', helperData.size);
+
+        // Map自体のデバッグ
+        const mapCopy = new Map(helperData);
+        console.log('Mapのコピー確認:', mapCopy.size, '個のエントリー');
+      }
+
+      summary.set(helperIdStr, helperData);
     });
+
+    // 最終的なsummaryのデバッグ
+    const tanakaData = summary.get(String(sortedHelpers.find(h => h.name === '田中航揮')?.id));
+    if (tanakaData) {
+      console.log('=== 最終的な田中航揮のサマリーデータ ===');
+      let debugTotal = 0;
+      tanakaData.forEach((value, key) => {
+        if (value.hours > 0) {
+          console.log(`  ${key}: ${value.hours}時間`);
+          debugTotal += value.hours;
+        }
+      });
+      console.log(`  合計: ${debugTotal}時間`);
+    }
 
     return summary;
   }, [sortedHelpers, shifts]);
@@ -5617,7 +5814,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
               <tr>
                 <td className="border-2 border-gray-400 sticky left-0 bg-white font-bold" style={{ padding: '6px 4px', fontSize: '14px' }}>身体</td>
                 {sortedHelpers.map(helper => {
-                  const data = serviceTypeSummary.get(helper.id)?.get('shintai') || { hours: 0, amount: 0 };
+                  const data = serviceTypeSummary.get(String(helper.id))?.get('shintai') || { hours: 0, amount: 0 };
                   return (
                     <td key={helper.id} className="border-2 border-gray-400 text-center" style={{ padding: '6px 4px', fontSize: '13px' }}>
                       {data.hours > 0 ? data.hours.toFixed(1) : '0'}
@@ -5629,7 +5826,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
               <tr>
                 <td className="border-2 border-gray-400 sticky left-0 bg-white font-bold" style={{ padding: '6px 4px', fontSize: '14px' }}>重度</td>
                 {sortedHelpers.map(helper => {
-                  const data = serviceTypeSummary.get(helper.id)?.get('judo') || { hours: 0, amount: 0 };
+                  const data = serviceTypeSummary.get(String(helper.id))?.get('judo') || { hours: 0, amount: 0 };
                   return (
                     <td key={helper.id} className="border-2 border-gray-400 text-center" style={{ padding: '6px 4px', fontSize: '13px' }}>
                       {data.hours > 0 ? data.hours.toFixed(1) : '0'}
@@ -5641,7 +5838,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
               <tr>
                 <td className="border-2 border-gray-400 sticky left-0 bg-white font-bold" style={{ padding: '6px 4px', fontSize: '14px' }}>家事</td>
                 {sortedHelpers.map(helper => {
-                  const data = serviceTypeSummary.get(helper.id)?.get('kaji') || { hours: 0, amount: 0 };
+                  const data = serviceTypeSummary.get(String(helper.id))?.get('kaji') || { hours: 0, amount: 0 };
                   return (
                     <td key={helper.id} className="border-2 border-gray-400 text-center" style={{ padding: '6px 4px', fontSize: '13px' }}>
                       {data.hours > 0 ? data.hours.toFixed(1) : '0'}
@@ -5653,7 +5850,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
               <tr>
                 <td className="border-2 border-gray-400 sticky left-0 bg-white font-bold" style={{ padding: '6px 4px', fontSize: '14px' }}>通院</td>
                 {sortedHelpers.map(helper => {
-                  const data = serviceTypeSummary.get(helper.id)?.get('tsuin') || { hours: 0, amount: 0 };
+                  const data = serviceTypeSummary.get(String(helper.id))?.get('tsuin') || { hours: 0, amount: 0 };
                   return (
                     <td key={helper.id} className="border-2 border-gray-400 text-center" style={{ padding: '6px 4px', fontSize: '13px' }}>
                       {data.hours > 0 ? data.hours.toFixed(1) : '0'}
@@ -5665,7 +5862,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
               <tr>
                 <td className="border-2 border-gray-400 sticky left-0 bg-white font-bold" style={{ padding: '6px 4px', fontSize: '14px' }}>移動</td>
                 {sortedHelpers.map(helper => {
-                  const data = serviceTypeSummary.get(helper.id)?.get('ido') || { hours: 0, amount: 0 };
+                  const data = serviceTypeSummary.get(String(helper.id))?.get('ido') || { hours: 0, amount: 0 };
                   return (
                     <td key={helper.id} className="border-2 border-gray-400 text-center" style={{ padding: '6px 4px', fontSize: '13px' }}>
                       {data.hours > 0 ? data.hours.toFixed(1) : '0'}
@@ -5677,7 +5874,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
               <tr>
                 <td className="border-2 border-gray-400 sticky left-0 bg-white font-bold" style={{ padding: '6px 4px', fontSize: '14px' }}>事務(1200)</td>
                 {sortedHelpers.map(helper => {
-                  const data = serviceTypeSummary.get(helper.id)?.get('jimu') || { hours: 0, amount: 0 };
+                  const data = serviceTypeSummary.get(String(helper.id))?.get('jimu') || { hours: 0, amount: 0 };
                   return (
                     <td key={helper.id} className="border-2 border-gray-400 text-center" style={{ padding: '6px 4px', fontSize: '13px' }}>
                       {data.hours > 0 ? data.hours.toFixed(1) : '0'}
@@ -5689,7 +5886,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
               <tr>
                 <td className="border-2 border-gray-400 sticky left-0 bg-white font-bold" style={{ padding: '6px 4px', fontSize: '14px' }}>営業(1200)</td>
                 {sortedHelpers.map(helper => {
-                  const data = serviceTypeSummary.get(helper.id)?.get('eigyo') || { hours: 0, amount: 0 };
+                  const data = serviceTypeSummary.get(String(helper.id))?.get('eigyo') || { hours: 0, amount: 0 };
                   return (
                     <td key={helper.id} className="border-2 border-gray-400 text-center" style={{ padding: '6px 4px', fontSize: '13px' }}>
                       {data.hours > 0 ? data.hours.toFixed(1) : '0'}
@@ -5701,7 +5898,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
               <tr>
                 <td className="border-2 border-gray-400 sticky left-0 bg-white font-bold" style={{ padding: '6px 4px', fontSize: '14px' }}>同行(1200)</td>
                 {sortedHelpers.map(helper => {
-                  const data = serviceTypeSummary.get(helper.id)?.get('doko') || { hours: 0, amount: 0 };
+                  const data = serviceTypeSummary.get(String(helper.id))?.get('doko') || { hours: 0, amount: 0 };
                   return (
                     <td key={helper.id} className="border-2 border-gray-400 text-center" style={{ padding: '6px 4px', fontSize: '13px' }}>
                       {data.hours > 0 ? data.hours.toFixed(1) : '0'}
@@ -5713,7 +5910,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
               <tr>
                 <td className="border-2 border-gray-400 sticky left-0 bg-white font-bold" style={{ padding: '6px 4px', fontSize: '14px' }}>深夜</td>
                 {sortedHelpers.map(helper => {
-                  const data = serviceTypeSummary.get(helper.id)?.get('shinya') || { hours: 0, amount: 0 };
+                  const data = serviceTypeSummary.get(String(helper.id))?.get('shinya') || { hours: 0, amount: 0 };
                   return (
                     <td key={helper.id} className="border-2 border-gray-400 text-center" style={{ padding: '6px 4px', fontSize: '13px' }}>
                       {data.hours > 0 ? data.hours.toFixed(1) : '0'}
@@ -5725,7 +5922,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
               <tr>
                 <td className="border-2 border-gray-400 sticky left-0 bg-white font-bold" style={{ padding: '6px 4px', fontSize: '14px' }}>深夜(同行)</td>
                 {sortedHelpers.map(helper => {
-                  const data = serviceTypeSummary.get(helper.id)?.get('shinya_doko') || { hours: 0, amount: 0 };
+                  const data = serviceTypeSummary.get(String(helper.id))?.get('shinya_doko') || { hours: 0, amount: 0 };
                   return (
                     <td key={helper.id} className="border-2 border-gray-400 text-center" style={{ padding: '6px 4px', fontSize: '13px' }}>
                       {data.hours > 0 ? data.hours.toFixed(1) : '0'}
@@ -5737,7 +5934,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
               <tr className="bg-blue-50">
                 <td className="border-2 border-gray-400 sticky left-0 bg-blue-100 font-bold" style={{ padding: '6px 4px', fontSize: '14px' }}>サービス時間（合計）</td>
                 {sortedHelpers.map(helper => {
-                  const helperData = serviceTypeSummary.get(helper.id);
+                  const helperData = serviceTypeSummary.get(String(helper.id));
                   let totalHours = 0;
                   if (helperData) {
                     // 身体・重度・家事・通院・移動のみを合計
@@ -5760,7 +5957,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
               <tr className="bg-green-50">
                 <td className="border-2 border-gray-400 sticky left-0 bg-green-100 font-bold" style={{ padding: '6px 4px', fontSize: '14px' }}>給与算定</td>
                 {sortedHelpers.map(helper => {
-                  const helperData = serviceTypeSummary.get(helper.id);
+                  const helperData = serviceTypeSummary.get(String(helper.id));
                   let totalHours = 0;
                   if (helperData) {
                     // 身体から深夜(同行)まで全てのサービスタイプの時間を合計
@@ -5768,6 +5965,18 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                       'shintai', 'judo', 'kaji', 'tsuin', 'ido',
                       'jimu', 'eigyo', 'doko', 'shinya', 'shinya_doko'
                     ];
+
+                    // 田中航揮のデバッグ
+                    if (helper.name === '田中航揮') {
+                      console.log('=== 給与算定行での田中航揮の時間集計 ===');
+                      allTypes.forEach(type => {
+                        const data = helperData.get(type);
+                        if (data && data.hours > 0) {
+                          console.log(`  ${type}: ${data.hours}時間`);
+                        }
+                      });
+                    }
+
                     allTypes.forEach(type => {
                       const data = helperData.get(type);
                       if (data) {
