@@ -26,15 +26,15 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
         ? parseFloat(helper.hourlyRate) || 0
         : helper.hourlyRate || 0;
 
-      // Supabaseに送信するデータ（不要なフィールドは除外）
+      // Supabaseに送信するデータ（実際のテーブル構造に合わせる）
       const saveData: any = {
         id: helperId,
         name: helper.name || '名前未設定',
         hourly_wage: hourlyWage,
         order_index: helper.order ?? 0,
-        role: helper.role || 'staff',
         insurances: helper.insurances || [],
         standard_remuneration: helper.standardRemuneration || 0,
+        deleted: false, // 削除フラグは常にfalse
         updated_at: new Date().toISOString()
       };
 
@@ -45,12 +45,7 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
         saveData.email = null;
       }
 
-      // personal_tokenは値がある場合のみ設定
-      if (helper.personalToken && helper.personalToken.trim() !== '') {
-        saveData.personal_token = helper.personalToken;
-      } else {
-        saveData.personal_token = null;
-      }
+      // roleとpersonal_tokenはテーブルに存在しないので送信しない
 
       // デバッグ用: 各フィールドを確認
       console.log('保存データ詳細:', {
@@ -122,10 +117,10 @@ export const loadHelpers = async (): Promise<Helper[]> => {
   try {
     console.log('📥 ヘルパー読み込み開始...');
 
-    // スキーマキャッシュエラー対策: 特定のカラムのみ選択
+    // テーブルに実際に存在するカラムのみを選択
     const { data, error } = await supabase
       .from('helpers')
-      .select('id, name, email, hourly_wage, order_index, personal_token, role, insurances, standard_remuneration')
+      .select('id, name, email, hourly_wage, order_index, insurances, standard_remuneration, deleted')
       .order('order_index', { ascending: true });
 
     if (error) {
@@ -160,22 +155,24 @@ export const loadHelpers = async (): Promise<Helper[]> => {
       }));
     }
 
-    // データ形式を変換（genderカラムなし前提）
-    const helpers: Helper[] = (data || []).map(row => {
-      console.log(`読み込みデータ: ${row.name}, id: ${row.id}`);
-      return {
-        id: row.id,
-        name: row.name,
-        email: row.email || undefined,
-        hourlyRate: row.hourly_wage || undefined,
-        gender: 'male' as 'male' | 'female',  // 一時的にデフォルト値を使用
-        personalToken: row.personal_token || undefined,
-        order: row.order_index || 0,
-        role: row.role || undefined,
-        insurances: row.insurances as any[] || [],
-        standardRemuneration: row.standard_remuneration || 0
-      };
-    });
+    // データ形式を変換（実際のテーブル構造に合わせる）
+    const helpers: Helper[] = (data || [])
+      .filter(row => !row.deleted) // 削除済みを除外
+      .map(row => {
+        console.log(`読み込みデータ: ${row.name}, id: ${row.id}`);
+        return {
+          id: row.id,
+          name: row.name,
+          email: row.email || undefined,
+          hourlyRate: row.hourly_wage || undefined,
+          gender: 'male' as 'male' | 'female',  // デフォルト値（テーブルにカラムなし）
+          personalToken: undefined, // テーブルにカラムなし
+          order: row.order_index || 0,
+          role: 'staff', // デフォルト値（テーブルにカラムなし）
+          insurances: row.insurances as any[] || [],
+          standardRemuneration: row.standard_remuneration || 0
+        };
+      });
 
     return helpers;
   } catch (error) {
