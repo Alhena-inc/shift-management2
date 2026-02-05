@@ -77,6 +77,7 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
         standard_remuneration: helper.standardRemuneration || 0,
         has_withholding_tax: helper.hasWithholdingTax !== false,
         tax_column_type: helper.taxColumnType || 'main',
+        contract_period: helper.contractPeriod || null,
 
         // 資格・スキル
         qualifications: helper.qualifications || [],
@@ -267,6 +268,7 @@ export const loadHelpers = async (): Promise<Helper[]> => {
           standardRemuneration: row.standard_remuneration || 0,
           hasWithholdingTax: row.has_withholding_tax !== false,
           taxColumnType: row.tax_column_type || 'main',
+          contractPeriod: row.contract_period || undefined,
 
           // 資格・スキル
           qualifications: row.qualifications || [],

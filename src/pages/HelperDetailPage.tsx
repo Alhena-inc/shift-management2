@@ -1157,16 +1157,16 @@ const HelperDetailPage: React.FC = () => {
                       </div>
                     </label>
 
-                    {/* 税区分（甲欄・乙欄） */}
+                    {/* 税区分（甲欄・乙欄・丙欄） */}
                     <div className="flex flex-col gap-2">
                       <span className="text-sm font-medium text-gray-700">税区分</span>
-                      <div className="flex gap-4">
+                      <div className="flex gap-4 flex-wrap">
                         <label className="flex items-center gap-2 cursor-pointer">
                           <input
                             type="radio"
                             name="taxColumnType"
                             value="main"
-                            checked={helper.taxColumnType !== 'sub'}
+                            checked={helper.taxColumnType !== 'sub' && helper.taxColumnType !== 'daily'}
                             onChange={() => handleChange('taxColumnType', 'main')}
                             disabled={helper.hasWithholdingTax === false}
                             className="w-4 h-4 text-blue-600 focus:ring-blue-500"
@@ -1185,7 +1185,42 @@ const HelperDetailPage: React.FC = () => {
                           />
                           <span className={`${helper.hasWithholdingTax === false ? 'text-gray-400' : 'text-gray-700'} text-sm`}>乙欄 (従たる給与)</span>
                         </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="taxColumnType"
+                            value="daily"
+                            checked={helper.taxColumnType === 'daily'}
+                            onChange={() => handleChange('taxColumnType', 'daily')}
+                            disabled={helper.hasWithholdingTax === false}
+                            className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className={`${helper.hasWithholdingTax === false ? 'text-gray-400' : 'text-gray-700'} text-sm`}>丙欄 (日額表)</span>
+                        </label>
                       </div>
+                      {helper.taxColumnType === 'daily' && (
+                        <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                          <p className="text-xs text-yellow-800">
+                            <strong>日額表（丙欄）適用</strong><br/>
+                            日雇い労働者または2ヶ月以内の短期雇用契約者用<br/>
+                            日額9,300円未満は非課税
+                          </p>
+                          <div className="mt-2">
+                            <label className="text-xs text-yellow-800">
+                              契約期間（月数）:
+                              <input
+                                type="number"
+                                value={helper.contractPeriod || 1}
+                                onChange={(e) => handleChange('contractPeriod', parseInt(e.target.value) || 1)}
+                                min="1"
+                                max="12"
+                                className="ml-2 w-16 px-2 py-1 bg-white border border-yellow-300 rounded text-xs"
+                              />
+                              ヶ月
+                            </label>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* 扶養人数（源泉徴収税計算に使用） */}

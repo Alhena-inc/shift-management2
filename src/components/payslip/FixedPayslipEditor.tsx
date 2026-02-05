@@ -123,11 +123,28 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
         newPayslip.deductions.incomeTax = 0;
       } else {
         const taxYear = newPayslip.month === 12 ? (newPayslip.year ? newPayslip.year + 1 : new Date().getFullYear() + 1) : (newPayslip.year || new Date().getFullYear());
+
+        // 税区分を判定（甲欄/乙欄/丙欄）
+        let taxType: '甲' | '乙' | '丙' = '甲';
+        if (helper?.taxColumnType === 'sub') {
+          taxType = '乙';
+        } else if (helper?.taxColumnType === 'daily') {
+          taxType = '丙';
+        }
+
+        // 丙欄の場合は実働日数が必要（固定給の場合は月間の所定労働日数を使用）
+        let workingDays = 0;
+        if (taxType === '丙') {
+          // 固定給の場合は月間の所定労働日数を使用（例：22日）
+          workingDays = 22;
+        }
+
         newPayslip.deductions.incomeTax = calculateWithholdingTaxByYear(
           taxYear,
           newPayslip.deductions.taxableAmount,
           newPayslip.dependents || 0,
-          '甲'
+          taxType,
+          workingDays
         );
       }
     }

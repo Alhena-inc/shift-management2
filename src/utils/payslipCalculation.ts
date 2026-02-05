@@ -496,7 +496,22 @@ export function generateFixedPayslipFromShifts(
     const payslipMonth = payslip.month || new Date().getMonth() + 1;
     // 支給月が1月、または12月分（翌年1月支給）の場合は翌年の税額表を使用
     const taxYear = payslipMonth === 12 ? (payslipYear + 1) : payslipYear;
-    const withholdingTax = calculateWithholdingTaxByYear(taxYear, taxableAmount, dependents, '甲');
+    // 税区分を判定（甲欄/乙欄/丙欄）
+    let taxType: '甲' | '乙' | '丙' = '甲';
+    if (helper.taxColumnType === 'sub') {
+      taxType = '乙';
+    } else if (helper.taxColumnType === 'daily') {
+      taxType = '丙';
+    }
+
+    // 丙欄の場合は実働日数が必要
+    let workingDays = 0;
+    if (taxType === '丙') {
+      // 実働日数を計算（0時間でない日をカウント）
+      workingDays = payslip.attendance.totalWorkDays || 0;
+    }
+
+    const withholdingTax = calculateWithholdingTaxByYear(taxYear, taxableAmount, dependents, taxType, workingDays);
     payslip.deductions.incomeTax = withholdingTax || 0;
   }
 
@@ -979,7 +994,22 @@ export function generateHourlyPayslipFromShifts(
     const payslipMonth = payslip.month || new Date().getMonth() + 1;
     // 支給月が1月、または12月分（翌年1月支給）の場合は翌年の税額表を使用
     const taxYear = payslipMonth === 12 ? (payslipYear + 1) : payslipYear;
-    const withholdingTax = calculateWithholdingTaxByYear(taxYear, taxableAmount, dependents, '甲');
+    // 税区分を判定（甲欄/乙欄/丙欄）
+    let taxType: '甲' | '乙' | '丙' = '甲';
+    if (helper.taxColumnType === 'sub') {
+      taxType = '乙';
+    } else if (helper.taxColumnType === 'daily') {
+      taxType = '丙';
+    }
+
+    // 丙欄の場合は実働日数が必要
+    let workingDays = 0;
+    if (taxType === '丙') {
+      // 実働日数を計算（0時間でない日をカウント）
+      workingDays = payslip.attendance.totalWorkDays || 0;
+    }
+
+    const withholdingTax = calculateWithholdingTaxByYear(taxYear, taxableAmount, dependents, taxType, workingDays);
     payslip.deductions.incomeTax = withholdingTax || 0;
   }
 

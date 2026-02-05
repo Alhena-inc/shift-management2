@@ -212,8 +212,23 @@ export const recalculatePayslip = (updated: any, helper?: Helper) => {
         const pMonth = updated.month || new Date().getMonth() + 1;
         // 12月分（翌年1月支給）の場合は翌年の税額表を使用
         const taxYear = pMonth === 12 ? pYear + 1 : pYear;
-        const taxType = helper?.taxColumnType === 'sub' ? '乙' : '甲';
-        updated.deductions.incomeTax = calculateWithholdingTaxByYear(taxYear, updated.deductions.taxableAmount || 0, updated.dependents || 0, taxType);
+
+        // 税区分を判定（甲欄/乙欄/丙欄）
+        let taxType: '甲' | '乙' | '丙' = '甲';
+        if (helper?.taxColumnType === 'sub') {
+            taxType = '乙';
+        } else if (helper?.taxColumnType === 'daily') {
+            taxType = '丙';
+        }
+
+        // 丙欄の場合は実働日数が必要
+        let workingDays = 0;
+        if (taxType === '丙' && 'attendance' in updated) {
+            // HourlyPayslipの場合のみattendanceが存在
+            workingDays = (updated as any).attendance?.totalWorkDays || 0;
+        }
+
+        updated.deductions.incomeTax = calculateWithholdingTaxByYear(taxYear, updated.deductions.taxableAmount || 0, updated.dependents || 0, taxType, workingDays);
     }
     const totalExpenses = (updated.payments.transportAllowance || 0) + (updated.payments.expenseReimbursement || 0);
     if (updated.deductions.manualReimbursement === undefined) {

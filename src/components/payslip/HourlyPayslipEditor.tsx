@@ -143,11 +143,27 @@ export const HourlyPayslipEditor: React.FC<HourlyPayslipEditorProps> = ({
         newPayslip.deductions.incomeTax = 0;
       } else {
         const taxYear = newPayslip.month === 12 ? (newPayslip.year ? newPayslip.year + 1 : new Date().getFullYear() + 1) : (newPayslip.year || new Date().getFullYear());
+
+        // 税区分を判定（甲欄/乙欄/丙欄）
+        let taxType: '甲' | '乙' | '丙' = '甲';
+        if (helper?.taxColumnType === 'sub') {
+          taxType = '乙';
+        } else if (helper?.taxColumnType === 'daily') {
+          taxType = '丙';
+        }
+
+        // 丙欄の場合は実働日数が必要
+        let workingDays = 0;
+        if (taxType === '丙') {
+          workingDays = newPayslip.attendance?.totalWorkDays || 0;
+        }
+
         newPayslip.deductions.incomeTax = calculateWithholdingTaxByYear(
           taxYear,
           newPayslip.deductions.taxableAmount || 0,
           helper?.dependents || 0,
-          '甲'
+          taxType,
+          workingDays
         );
       }
     }

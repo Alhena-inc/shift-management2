@@ -147,7 +147,8 @@ export interface Helper {
   standardRemuneration?: number;          // 標準報酬月額（社会保険料計算用）
   standardMonthlyRemuneration?: number;   // 標準報酬月額（別名、互換性のため）
   hasWithholdingTax?: boolean;            // 源泉徴収する（true=する、false=しない）
-  taxColumnType?: 'main' | 'sub';         // 税区分（main=甲欄, sub=乙欄）
+  taxColumnType?: 'main' | 'sub' | 'daily'; // 税区分（main=甲欄, sub=乙欄, daily=丙欄）
+  contractPeriod?: number;                // 契約期間（月数）日額表丙欄判定用
 
   // 保険加入
   insurances?: string[];                  // ['health', 'care', 'pension', 'employment']

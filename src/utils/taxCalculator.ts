@@ -1,18 +1,21 @@
 /**
  * 源泉徴収税計算ユーティリティ
- * 
+ *
  * 令和7年（2025年）および令和8年（2026年）分の計算ロジックに対応
  * 支給月や年に応じて適切な税額表を適用します。
- * 
+ *
  * 令和8年分の計算ロジック：
  * 改正後の基礎控除（58万円/年）・給与所得控除（最低65万円/年）に対応
- * 
+ *
  * 計算方法：月額表の甲欄を適用する給与等に対する税額の電算機計算の特例（財務省告示）を使用
+ * 日額表（丙欄）による計算にも対応
  */
+
+import { calculateDailyTableTax } from '../services/taxCalculation/dailyTaxTable';
 
 // ==================== 型定義 ====================
 
-type TaxType = '甲' | '乙';
+type TaxType = '甲' | '乙' | '丙';
 
 export interface SalaryCalculationResult {
   // 既存のインターフェース互換性維持のため、必要な型定義があればここに記述
@@ -62,7 +65,7 @@ import { TAX_TABLE_2026 } from './taxTableData/tax_table_2026';
 
 /**
  * 令和8年（2026年）電算機計算の特例に基づく源泉徴収税額の算出
- * 
+ *
  * 優先順位:
  * 1. 早見表データ（OCR抽出値）に一致する範囲があればその値を返す（1円単位の整合性のため）
  * 2. なければ計算式（電算機特例）で算出する
@@ -70,6 +73,11 @@ import { TAX_TABLE_2026 } from './taxTableData/tax_table_2026';
 function calculateReiwa8ComputerTax(salary: number, dependents: number, type: TaxType): number {
   if (type === '乙') {
     return Math.floor(salary * 0.03063);
+  }
+
+  // 丙欄は日額表計算を使うため、ここではエラーとする
+  if (type === '丙') {
+    throw new Error('丙欄の計算はcalculateWithholdingTaxByYearを使用してください');
   }
 
   // 早見表データからの参照を試みる (甲欄のみ)
@@ -113,6 +121,11 @@ function calculateReiwa7ComputerTax(salary: number, dependents: number, type: Ta
     return Math.floor(salary * 0.03063);
   }
 
+  // 丙欄は日額表計算を使うため、ここではエラーとする
+  if (type === '丙') {
+    throw new Error('丙欄の計算はcalculateWithholdingTaxByYearを使用してください');
+  }
+
   const salaryDeduction = calculateSalaryIncomeDeduction2025(salary);
   const basicDeduction = 40000; // 48万円 / 12
   const dependentDeduction = dependents * 31667;
@@ -139,13 +152,31 @@ function calculateReiwa7ComputerTax(salary: number, dependents: number, type: Ta
 
 /**
  * 源泉徴収税額を取得（年指定あり）
+ *
+ * @param year - 対象年
+ * @param salary - 給与額
+ * @param dependents - 扶養人数
+ * @param type - 税区分（甲/乙/丙）
+ * @param workingDays - 実働日数（丙欄計算時のみ使用）
  */
 export function calculateWithholdingTaxByYear(
   year: number,
   salary: number,
   dependents: number = 0,
-  type: TaxType = '甲'
+  type: TaxType = '甲',
+  workingDays: number = 0
 ): number {
+  // 丙欄の場合は日額表計算を使用
+  if (type === '丙') {
+    if (workingDays <= 0) {
+      console.warn('丙欄計算には実働日数が必要です。実働日数を1日として計算します。');
+      workingDays = 1;
+    }
+    const result = calculateDailyTableTax(salary, workingDays);
+    return result.taxAmount;
+  }
+
+  // 甲欄・乙欄の場合は従来の計算を使用
   if (year >= 2026) {
     return calculateReiwa8ComputerTax(salary, dependents, type);
   } else {
