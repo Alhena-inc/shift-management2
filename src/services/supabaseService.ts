@@ -525,8 +525,8 @@ export const loadShiftsForMonth = async (year: number, month: number): Promise<S
       .from('shifts')
       .select('*')
       .gte('date', startDate)
-      .lte('date', endDate);
-    // .eq('deleted', false); // 一時的にコメントアウト
+      .lte('date', endDate)
+      .eq('deleted', false); // 論理削除済みを除外
 
     if (error) {
       console.error('シフト読み込みエラー:', error);
