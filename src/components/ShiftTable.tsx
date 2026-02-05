@@ -894,9 +894,12 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     pendingInputRef.current = ""; // Reset pending input
     setIsEditingMode(false);
     isEditingModeRef.current = false; // Sync ref
-    if (lastSelectedWrapperRef.current) {
-      lastSelectedWrapperRef.current.classList.remove('is-editing-mode');
-    }
+
+    // 直接のDOM操作はReactのレンダリングと競合して removeChild エラーの原因になるため削除
+    // if (lastSelectedWrapperRef.current) {
+    //   lastSelectedWrapperRef.current.classList.remove('is-editing-mode');
+    // }
+
     setActiveCellKey(null);
     setEditorRect(null);
     const cellKey = `${helperId}-${date}-${rowIndex}`;
