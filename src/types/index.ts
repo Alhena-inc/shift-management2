@@ -107,6 +107,8 @@ export interface Helper {
   address?: string;        // 住所
   phone?: string;          // 電話番号
   email?: string;          // メールアドレス
+  emergencyContact?: string;       // 緊急連絡先（名前）
+  emergencyContactPhone?: string;  // 緊急連絡先（電話番号）
 
   // 資格・スキル
   qualifications?: string[];   // 資格

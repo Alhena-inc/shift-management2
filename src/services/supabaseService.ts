@@ -26,16 +26,75 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
         ? parseFloat(helper.hourlyRate) || 0
         : helper.hourlyRate || 0;
 
-      // Supabaseに送信するデータ（実際のテーブル構造に合わせる）
+      // Supabaseに送信するデータ（全フィールド対応）
       const saveData: any = {
         id: helperId,
         name: helper.name || '名前未設定',
-        hourly_wage: hourlyWage,
         order_index: helper.order ?? 0,
-        insurances: helper.insurances || [],
+        deleted: false,
+        updated_at: new Date().toISOString(),
+
+        // 基本情報
+        last_name: helper.lastName || null,
+        first_name: helper.firstName || null,
+        name_kana: helper.nameKana || null,
+        gender: helper.gender || 'male',
+        birth_date: helper.birthDate || null,
+        postal_code: helper.postalCode || null,
+        address: helper.address || null,
+        phone: helper.phone || null,
+        emergency_contact: helper.emergencyContact || null,
+        emergency_contact_phone: helper.emergencyContactPhone || null,
+
+        // 権限・アカウント
+        role: helper.role || 'staff',
+        personal_token: helper.personalToken || null,
+        spreadsheet_gid: helper.spreadsheetGid || null,
+
+        // 雇用・給与タイプ
+        salary_type: helper.salaryType || 'hourly',
+        employment_type: helper.employmentType || 'parttime',
+        hire_date: helper.hireDate || null,
+        department: helper.department || null,
+        status: helper.status || 'active',
+        cash_payment: helper.cashPayment || false,
+
+        // 時給制
+        hourly_rate: hourlyWage,
+        treatment_improvement_per_hour: helper.treatmentImprovementPerHour || 0,
+        office_hourly_rate: helper.officeHourlyRate || 1000,
+
+        // 固定給制
+        base_salary: helper.baseSalary || 0,
+        treatment_allowance: helper.treatmentAllowance || 0,
+        other_allowances: helper.otherAllowances || [],
+
+        // 税務情報
+        dependents: helper.dependents || 0,
+        resident_tax_type: helper.residentTaxType || 'special',
+        residential_tax: helper.residentialTax || 0,
+        age: helper.age || null,
         standard_remuneration: helper.standardRemuneration || 0,
-        deleted: false, // 削除フラグは常にfalse
-        updated_at: new Date().toISOString()
+        has_withholding_tax: helper.hasWithholdingTax !== false,
+        tax_column_type: helper.taxColumnType || 'main',
+
+        // 資格・スキル
+        qualifications: helper.qualifications || [],
+        qualification_dates: helper.qualificationDates || {},
+        service_types: helper.serviceTypes || [],
+        commute_methods: helper.commuteMethods || [],
+
+        // 保険
+        insurances: helper.insurances || [],
+
+        // 勤怠テンプレート
+        attendance_template: helper.attendanceTemplate || {
+          enabled: false,
+          weekday: { startTime: '09:00', endTime: '18:00', breakMinutes: 60 },
+          excludeWeekends: true,
+          excludeHolidays: false,
+          excludedDateRanges: []
+        }
       };
 
       // emailは空文字の場合はnullにする
@@ -44,8 +103,6 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
       } else {
         saveData.email = null;
       }
-
-      // roleとpersonal_tokenはテーブルに存在しないので送信しない
 
       // デバッグ用: 各フィールドを確認
       console.log('保存データ詳細:', {
@@ -117,10 +174,10 @@ export const loadHelpers = async (): Promise<Helper[]> => {
   try {
     console.log('📥 ヘルパー読み込み開始...');
 
-    // テーブルに実際に存在するカラムのみを選択
+    // 全カラムを選択（新しく追加したカラムも含む）
     const { data, error } = await supabase
       .from('helpers')
-      .select('id, name, email, hourly_wage, order_index, insurances, standard_remuneration, deleted')
+      .select('*')
       .order('order_index', { ascending: true });
 
     if (error) {
@@ -155,22 +212,79 @@ export const loadHelpers = async (): Promise<Helper[]> => {
       }));
     }
 
-    // データ形式を変換（実際のテーブル構造に合わせる）
+    // データ形式を変換（全フィールド対応）
     const helpers: Helper[] = (data || [])
       .filter(row => !row.deleted) // 削除済みを除外
       .map(row => {
         console.log(`読み込みデータ: ${row.name}, id: ${row.id}`);
         return {
+          // 基本フィールド
           id: row.id,
           name: row.name,
-          email: row.email || undefined,
-          hourlyRate: row.hourly_wage || undefined,
-          gender: 'male' as 'male' | 'female',  // デフォルト値（テーブルにカラムなし）
-          personalToken: undefined, // テーブルにカラムなし
           order: row.order_index || 0,
-          role: 'staff', // デフォルト値（テーブルにカラムなし）
+
+          // 基本情報
+          lastName: row.last_name || undefined,
+          firstName: row.first_name || undefined,
+          nameKana: row.name_kana || undefined,
+          gender: (row.gender || 'male') as 'male' | 'female',
+          birthDate: row.birth_date || undefined,
+          postalCode: row.postal_code || undefined,
+          address: row.address || undefined,
+          phone: row.phone || undefined,
+          email: row.email || undefined,
+          emergencyContact: row.emergency_contact || undefined,
+          emergencyContactPhone: row.emergency_contact_phone || undefined,
+
+          // 権限・アカウント
+          role: row.role || 'staff',
+          personalToken: row.personal_token || undefined,
+          spreadsheetGid: row.spreadsheet_gid || undefined,
+
+          // 雇用・給与タイプ
+          salaryType: row.salary_type || 'hourly',
+          employmentType: row.employment_type || 'parttime',
+          hireDate: row.hire_date || undefined,
+          department: row.department || undefined,
+          status: row.status || 'active',
+          cashPayment: row.cash_payment || false,
+
+          // 時給制
+          hourlyRate: row.hourly_rate || row.hourly_wage || 2000,
+          treatmentImprovementPerHour: row.treatment_improvement_per_hour || 0,
+          officeHourlyRate: row.office_hourly_rate || 1000,
+
+          // 固定給制
+          baseSalary: row.base_salary || 0,
+          treatmentAllowance: row.treatment_allowance || 0,
+          otherAllowances: row.other_allowances || [],
+
+          // 税務情報
+          dependents: row.dependents || 0,
+          residentTaxType: row.resident_tax_type || 'special',
+          residentialTax: row.residential_tax || 0,
+          age: row.age || undefined,
+          standardRemuneration: row.standard_remuneration || 0,
+          hasWithholdingTax: row.has_withholding_tax !== false,
+          taxColumnType: row.tax_column_type || 'main',
+
+          // 資格・スキル
+          qualifications: row.qualifications || [],
+          qualificationDates: row.qualification_dates || {},
+          serviceTypes: row.service_types || [],
+          commuteMethods: row.commute_methods || [],
+
+          // 保険
           insurances: row.insurances as any[] || [],
-          standardRemuneration: row.standard_remuneration || 0
+
+          // 勤怠テンプレート
+          attendanceTemplate: row.attendance_template || {
+            enabled: false,
+            weekday: { startTime: '09:00', endTime: '18:00', breakMinutes: 60 },
+            excludeWeekends: true,
+            excludeHolidays: false,
+            excludedDateRanges: []
+          }
         };
       });
 
