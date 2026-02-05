@@ -42,7 +42,9 @@ export default function EmployeeShiftGridPage() {
             if (loadedHelpers.length > 0) {
                 setHelpers(loadedHelpers);
             } else {
-                await saveHelpers(initialHelpers);
+                // 一般的な仕様に変更: データがない場合は空のままにする（勝手に初期データを入れない）
+                // await saveHelpers(initialHelpers);
+                console.log('ℹ️ ヘルパーデータは0件です');
             }
             setIsInitialized(true);
         });
