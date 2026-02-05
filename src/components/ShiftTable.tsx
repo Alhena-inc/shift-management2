@@ -681,7 +681,11 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
               const { startTime, endTime, clientName, serviceType, duration, area, cancelStatus } = shift;
 
               // 各ラインのデータ
-              const timeString = startTime && endTime ? `${startTime}-${endTime}` : (startTime || endTime ? `${startTime || ''}-${endTime || ''}` : '');
+              // 時間文字列からHH:MMを抽出する関数
+              const formatTime = (t: string | null | undefined) => t ? t.substring(0, 5) : '';
+
+              // 各ラインのデータ
+              const timeString = startTime && endTime ? `${formatTime(startTime)}-${formatTime(endTime)}` : (startTime || endTime ? `${formatTime(startTime) || ''}-${formatTime(endTime) || ''}` : '');
               const lines = [
                 timeString,
                 (serviceType === 'other' || serviceType === 'yotei')
@@ -905,7 +909,8 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         lines[i] = newValue;
       } else {
         if (existingShift) {
-          if (i === 0) lines[i] = (existingShift.startTime && existingShift.endTime) ? `${existingShift.startTime}-${existingShift.endTime}` : (existingShift.startTime || '');
+          const formatTime = (t: string | null | undefined) => t ? t.substring(0, 5) : '';
+          if (i === 0) lines[i] = (existingShift.startTime && existingShift.endTime) ? `${formatTime(existingShift.startTime)}-${formatTime(existingShift.endTime)}` : (formatTime(existingShift.startTime) || '');
           else if (i === 1) lines[i] = existingShift.serviceType !== 'other' ? `${existingShift.clientName}(${SERVICE_CONFIG[existingShift.serviceType]?.label || ''})` : existingShift.clientName;
           else if (i === 2) lines[i] = existingShift.duration ? existingShift.duration.toString() : '';
           else if (i === 3) lines[i] = existingShift.area || '';
