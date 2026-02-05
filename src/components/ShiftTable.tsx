@@ -3129,6 +3129,8 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           duration: parseFloat(durationStr) || (copyBufferRef.sourceShift?.duration ?? 0),
           area: area || copyBufferRef.sourceShift?.area || '',
           rowIndex,
+          // ケア内容（自由入力テキスト）を保存
+          content: copyBufferRef.sourceShift?.content || copyBufferRef.data.join('\n').trim() || undefined,
           // ★ ペースト時はキャンセル状態を引き継がない（新規ケアとして貼り付け）
           // コピー元がキャンセル済みでも、ペースト先は通常のケアとして扱う
           // cancelStatus: undefined,
@@ -3427,6 +3429,8 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                       duration: parseFloat(durationStr) || 0,
                       area,
                       rowIndex: currentRowIndex,
+                      // ケア内容（自由入力テキスト）を保存
+                      content: shiftData.join('\n').trim() || undefined,
                       ...(newCancelStatus ? { cancelStatus: newCancelStatus, canceledAt: newCanceledAt } : {}),
                       regularHours: payCalculation.regularHours,
                       nightHours: payCalculation.nightHours,

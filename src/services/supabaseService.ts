@@ -467,6 +467,8 @@ export const saveShiftsForMonth = async (year: number, month: number, shifts: Sh
       hours: shift.duration,
       hourly_wage: null, // 時給は別途ヘルパー情報から取得
       location: shift.area,
+      content: shift.content || null, // ケア内容（自由入力）
+      row_index: shift.rowIndex ?? null, // 表示行インデックス
       cancel_status: shift.cancelStatus,
       canceled_at: shift.canceledAt,
       deleted: shift.deleted || false,
@@ -524,7 +526,7 @@ export const loadShiftsForMonth = async (year: number, month: number): Promise<S
       .select('*')
       .gte('date', startDate)
       .lte('date', endDate);
-      // .eq('deleted', false); // 一時的にコメントアウト
+    // .eq('deleted', false); // 一時的にコメントアウト
 
     if (error) {
       console.error('シフト読み込みエラー:', error);
@@ -544,6 +546,8 @@ export const loadShiftsForMonth = async (year: number, month: number): Promise<S
       serviceType: row.service_type || undefined,
       duration: row.hours || 0,
       area: row.location || '',
+      content: row.content || undefined, // ケア内容（自由入力）
+      rowIndex: row.row_index ?? undefined, // 表示行インデックス
       cancelStatus: row.cancel_status || undefined,
       canceledAt: row.canceled_at || undefined,
       deleted: row.deleted

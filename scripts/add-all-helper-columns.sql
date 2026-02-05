@@ -101,7 +101,7 @@ ADD CONSTRAINT IF NOT EXISTS check_employment_type CHECK (employment_type IN ('f
 ADD CONSTRAINT IF NOT EXISTS check_role CHECK (role IN ('admin', 'staff') OR role IS NULL),
 ADD CONSTRAINT IF NOT EXISTS check_status CHECK (status IN ('active', 'inactive', 'retired') OR status IS NULL),
 ADD CONSTRAINT IF NOT EXISTS check_resident_tax_type CHECK (resident_tax_type IN ('special', 'normal') OR resident_tax_type IS NULL),
-ADD CONSTRAINT IF NOT EXISTS check_tax_column_type CHECK (tax_column_type IN ('main', 'sub') OR tax_column_type IS NULL),
+ADD CONSTRAINT IF NOT EXISTS check_tax_column_type CHECK (tax_column_type IN ('main', 'sub', 'daily') OR tax_column_type IS NULL),
 ADD CONSTRAINT IF NOT EXISTS check_dependents CHECK (dependents >= 0 AND dependents <= 7);
 
 -- インデックスを追加（パフォーマンス向上）
