@@ -971,6 +971,8 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       duration: finalDuration,
       area: (lineIndex === 3) ? area : (existingShift?.area || area),
       rowIndex,
+      // ケア内容（自由入力テキスト）を保存
+      content: lines.join('\n').trim() || existingShift?.content || undefined,
     };
 
     const updatedShifts = [...shiftsRef.current.filter(s =>
