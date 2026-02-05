@@ -26,19 +26,31 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
         ? parseFloat(helper.hourlyRate) || 0
         : helper.hourlyRate || 0;
 
-      const saveData = {
+      // Supabaseに送信するデータ（不要なフィールドは除外）
+      const saveData: any = {
         id: helperId,
         name: helper.name || '名前未設定',
-        email: helper.email || null,
         hourly_wage: hourlyWage,
-        // gender: helper.gender || 'male',  // 一時的にgenderカラムを除外
-        personal_token: helper.personalToken || null,
-        order_index: helper.order || 0,
+        order_index: helper.order ?? 0,
         role: helper.role || 'staff',
         insurances: helper.insurances || [],
         standard_remuneration: helper.standardRemuneration || 0,
         updated_at: new Date().toISOString()
       };
+
+      // emailは空文字の場合はnullにする
+      if (helper.email && helper.email.trim() !== '') {
+        saveData.email = helper.email;
+      } else {
+        saveData.email = null;
+      }
+
+      // personal_tokenは値がある場合のみ設定
+      if (helper.personalToken && helper.personalToken.trim() !== '') {
+        saveData.personal_token = helper.personalToken;
+      } else {
+        saveData.personal_token = null;
+      }
 
       // デバッグ用: 各フィールドを確認
       console.log('保存データ詳細:', {
@@ -59,10 +71,7 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
 
       const { data, error } = await supabase
         .from('helpers')
-        .upsert(helperData, {
-          onConflict: 'id',
-          returning: 'minimal'
-        });
+        .upsert(helperData);
 
       if (error) {
         console.error(`❌ ${helperData.name} の保存エラー:`, {
@@ -72,6 +81,12 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
           code: error.code,
           helperData: helperData
         });
+
+        // 400エラーの詳細を解析
+        if (error.message && error.message.includes('column')) {
+          console.error('⚠️ カラムエラー: テーブル構造の不一致の可能性');
+          console.error('送信したデータのキー:', Object.keys(helperData));
+        }
 
         // エラーでも続行（他のヘルパーは保存を試みる）
         results.push({ helper: helperData.name, status: 'error', error });
