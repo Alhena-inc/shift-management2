@@ -135,8 +135,26 @@ function shouldShowWarning(
 
 // シフトを正しい年月に保存するヘルパー関数
 async function saveShiftWithCorrectYearMonth(shift: Shift): Promise<void> {
-  const [shiftYear, shiftMonth] = shift.date.split('-').map(Number);
-  await saveShiftsForMonth(shiftYear, shiftMonth, [shift]);
+  try {
+    // データの検証
+    if (!shift || !shift.date || !shift.helperId) {
+      console.error('❌ 無効なシフトデータ:', shift);
+      return;
+    }
+
+    const [shiftYear, shiftMonth] = shift.date.split('-').map(Number);
+
+    // 年月の検証
+    if (isNaN(shiftYear) || isNaN(shiftMonth) || shiftMonth < 1 || shiftMonth > 12) {
+      console.error('❌ 無効な日付データ:', shift.date);
+      return;
+    }
+
+    await saveShiftsForMonth(shiftYear, shiftMonth, [shift]);
+  } catch (error) {
+    console.error('❌ シフト保存エラー:', error);
+    // エラーを再スローしないことで、UIがブロックされるのを防ぐ
+  }
 }
 
 // 複数のシフトを年月ごとにグループ化して保存
@@ -3832,20 +3850,45 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       return;
     }
 
-    // コピー元の日付からコピー先の日付にシフトをコピー
-    const newShifts = dateCopyBufferRef.shifts.map(shift => ({
-      ...shift,
-      id: `${shift.helperId}-${targetDate}-${shift.rowIndex}`,
-      date: targetDate
-    }));
+    try {
+      // コピー元の日付からコピー先の日付にシフトをコピー
+      const newShifts = dateCopyBufferRef.shifts.map(shift => {
+        // シフトデータの検証とクリーンアップ
+        const cleanShift: Shift = {
+          id: `${shift.helperId}-${targetDate}-${shift.rowIndex}`,
+          helperId: shift.helperId || '',
+          date: targetDate,
+          rowIndex: shift.rowIndex || 0,
+          startTime: shift.startTime || '',
+          endTime: shift.endTime || '',
+          category: shift.category || '',
+          memo: shift.memo || '',
+          backgroundColor: shift.backgroundColor || '#ffffff',
+          isPartiallyDoctorAffected: shift.isPartiallyDoctorAffected || false,
+          canceled: shift.canceled || false
+        };
 
-    // 既存のシフトを更新（ターゲット日付の既存データを新しいデータで上書き）
-    const filteredShifts = shiftsRef.current.filter(s => s.date !== targetDate);
-    const updatedShifts = [...filteredShifts, ...newShifts];
+        // 不要なフィールドを削除
+        Object.keys(cleanShift).forEach(key => {
+          if (cleanShift[key] === undefined || cleanShift[key] === null) {
+            delete cleanShift[key];
+          }
+        });
 
-    handleShiftsUpdate(updatedShifts);
+        return cleanShift;
+      });
 
-    console.log(`✅ ${dateCopyBufferRef.date}のケア内容を${targetDate}にペーストしました`);
+      // 既存のシフトを更新（ターゲット日付の既存データを新しいデータで上書き）
+      const filteredShifts = shiftsRef.current.filter(s => s.date !== targetDate);
+      const updatedShifts = [...filteredShifts, ...newShifts];
+
+      handleShiftsUpdate(updatedShifts);
+
+      console.log(`✅ ${dateCopyBufferRef.date}のケア内容を${targetDate}にペーストしました`);
+    } catch (error) {
+      console.error('❌ ケア内容のペーストに失敗しました:', error);
+      alert('ケア内容のペーストに失敗しました。もう一度お試しください。');
+    }
   }, [dateCopyBufferRef, shifts, handleShiftsUpdate]);
 
   // 日付ヘッダー用のコンテキストメニューを表示する関数

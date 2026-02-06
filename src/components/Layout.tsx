@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { User, signOut } from 'firebase/auth';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import type { User } from '@supabase/supabase-js';
+import { signOut, getUserPermissions } from '../services/supabaseAuthService';
+import { supabase } from '../lib/supabase';
 
 interface LayoutProps {
   user: User;
@@ -24,62 +24,51 @@ export const Layout: React.FC<LayoutProps> = ({ user, children }) => {
       try {
         console.log('📝 ユーザー情報取得開始:', user.email);
 
-        // まずusersコレクションから権限情報を取得（ログイン時に作成/更新される）
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        let userName = '';
-        let userRole: 'admin' | 'staff' = 'staff';
+        // ユーザー権限を取得
+        const permissions = await getUserPermissions(user);
 
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          console.log('📋 usersから取得:', {
-            name: userData.name,
-            role: userData.role,
-            email: userData.email
-          });
+        console.log('📋 権限情報:', {
+          role: permissions.role,
+          helperId: permissions.helperId,
+          helperName: permissions.helperName
+        });
 
-          // 「Alhena合同会社」のような会社名を除外
-          if (userData.name && !userData.name.includes('合同会社') && !userData.name.includes('株式会社')) {
-            userName = userData.name;
-          }
+        // 名前を設定
+        let userName = permissions.helperName || '';
 
-          // info@alhena.co.jpは必ず管理者として扱う
-          userRole = user.email === 'info@alhena.co.jp' ? 'admin' : (userData.role || 'staff');
+        // 「Alhena合同会社」のような会社名を除外
+        if (userName && !userName.includes('合同会社') && !userName.includes('株式会社')) {
+          setUserName(userName);
         }
 
-        // usersに名前がない、または不適切な場合はhelpersコレクションを確認
-        if (!userName) {
-          const helpersRef = collection(db, 'helpers');
-          const q = query(helpersRef, where('email', '==', user.email));
-          const querySnapshot = await getDocs(q);
+        // ロールを設定
+        setUserRole(permissions.role || 'staff');
 
-          if (!querySnapshot.empty) {
-            const helperData = querySnapshot.docs[0].data();
+        // 名前がない、または不適切な場合はhelpersテーブルを確認
+        if (!userName) {
+          const { data: helperData, error } = await supabase
+            .from('helpers')
+            .select('name, email')
+            .eq('email', user.email!)
+            .single();
+
+          if (!error && helperData) {
             console.log('✅ helpersから名前を取得:', {
               name: helperData.name,
-              displayName: helperData.displayName,
               email: helperData.email
             });
 
-            // nameフィールドを優先、なければdisplayNameを使用（会社名を除外）
             userName = helperData.name;
-
-            if (!userName && helperData.displayName) {
-              // displayNameが会社名でないか確認
-              if (!helperData.displayName.includes('合同会社') && !helperData.displayName.includes('株式会社')) {
-                userName = helperData.displayName;
-              }
-            }
           }
         }
 
-        // 適切な名前が取得できなければGoogleアカウント情報を使用
+        // 適切な名前が取得できなければメールアドレスから生成
         if (!userName) {
-          console.warn('⚠️ Firestoreに適切な名前なし。Google情報を使用');
-          userName = user.displayName || user.email?.split('@')[0] || 'ゲスト';
+          console.warn('⚠️ Supabaseに適切な名前なし。メールアドレスを使用');
+          userName = user.email?.split('@')[0] || 'ゲスト';
         }
 
         setUserName(userName);
-        setUserRole(userRole);
 
         // info@alhena.co.jpの場合は管理者権限を明示的にログ
         if (user.email === 'info@alhena.co.jp') {
@@ -87,7 +76,7 @@ export const Layout: React.FC<LayoutProps> = ({ user, children }) => {
         }
       } catch (error) {
         console.error('ユーザー情報の取得に失敗:', error);
-        setUserName(user.displayName || 'ゲスト');
+        setUserName(user.email?.split('@')[0] || 'ゲスト');
         setUserRole('staff');
       } finally {
         setIsLoading(false);
@@ -100,7 +89,7 @@ export const Layout: React.FC<LayoutProps> = ({ user, children }) => {
   // ログアウト処理
   const handleLogout = async () => {
     try {
-      await signOut(auth);
+      await signOut();
       window.location.href = '/';
     } catch (error) {
       console.error('ログアウトエラー:', error);

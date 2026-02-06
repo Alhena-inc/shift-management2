@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from './lib/firebase';
+import type { User } from '@supabase/supabase-js';
+import { onAuthStateChanged, signOut, getUserPermissions } from './services/supabaseAuthService';
 import { Login } from './components/Login';
 import { Layout } from './components/Layout';
 import { ShiftTable } from './components/ShiftTable';
@@ -37,7 +36,7 @@ import {
   backupToFirebase // 追加
 } from './services/dataService';
 import { cleanupDuplicateShifts } from './utils/cleanupDuplicateShifts';
-import { testFirebaseConnection } from './lib/firebase';
+import { testSupabaseConnection } from './lib/supabase';
 import { reflectShiftsToNextMonth } from './utils/shiftReflection';
 
 
@@ -49,25 +48,18 @@ function App() {
 
   // 認証状態の監視
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthStateChanged(async (user) => {
       console.log('🔐 認証状態変更:', user ? user.email : '未ログイン');
       setUser(user);
 
       // ユーザーの権限を取得
       if (user) {
         try {
-          // info@alhena.co.jpは必ず管理者として扱う
-          if (user.email === 'info@alhena.co.jp') {
-            setUserRole('admin');
+          const permissions = await getUserPermissions(user);
+          setUserRole(permissions.role);
+          console.log('👤 ユーザー権限:', permissions.role);
+          if (permissions.role === 'admin') {
             console.log('🔴 管理者アカウントとして認識');
-          } else {
-            const userDoc = await getDoc(doc(db, 'users', user.uid));
-            if (userDoc.exists()) {
-              const userData = userDoc.data();
-              setUserRole(userData.role || 'staff');
-            } else {
-              setUserRole('staff');
-            }
           }
         } catch (error) {
           console.error('権限取得エラー:', error);

@@ -1,17 +1,6 @@
 import React, { useState } from 'react';
-import { signInWithPopup, signOut } from 'firebase/auth';
-import {
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  serverTimestamp,
-  collection,
-  query,
-  where,
-  getDocs
-} from 'firebase/firestore';
-import { auth, googleProvider, db } from '../lib/firebase';
+import { signInWithGoogle, signOut } from '../services/supabaseAuthService';
+import { supabase } from '../lib/supabase';
 
 export const Login: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -19,7 +8,7 @@ export const Login: React.FC = () => {
 
   /**
    * ホワイトリスト方式のGoogleログイン処理
-   * helpersコレクションに事前登録されたメールアドレスのみログイン可能
+   * helpersテーブルに事前登録されたメールアドレスのみログイン可能
    */
   const handleGoogleLogin = async () => {
     setIsLoading(true);
@@ -28,129 +17,13 @@ export const Login: React.FC = () => {
     try {
       // ========== Step 1: Google認証実行 ==========
       console.log('📝 Google認証を開始します...');
-      const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
+      const result = await signInWithGoogle();
 
-      console.log('✅ Google認証成功:', user.email);
-
-      // ========== Step 2: 管理者アカウントの特別処理 ==========
-      if (user.email === 'info@alhena.co.jp') {
-        console.log('🔴 管理者アカウントを検出: info@alhena.co.jp');
-        console.log('📝 管理者として自動ログインを実行します...');
-
-        // usersコレクションに管理者データを作成/更新
-        const userDocRef = doc(db, 'users', user.uid);
-        await setDoc(userDocRef, {
-          uid: user.uid,
-          email: user.email,
-          name: '管理者',
-          role: 'admin', // 管理者権限を付与
-          photoURL: user.photoURL || null,
-          createdAt: serverTimestamp(),
-          lastLoginAt: serverTimestamp()
-        }, { merge: true });
-
-        console.log('✅ 管理者としてログイン完了');
-        console.log('👤 ユーザー名: 管理者');
-        console.log('👤 ユーザー権限: admin');
-        console.log('🔴 管理者アカウントとしてログイン');
-
-        // 管理者の場合はここで処理を終了
-        return;
+      if (result) {
+        console.log('✅ Google認証成功');
+        // Supabaseの認証では、認証後に自動的にリダイレクトされるため、
+        // ここで追加の処理は不要
       }
-
-      // ========== Step 3: 通常のホワイトリスト照合 ==========
-      console.log('🔍 ホワイトリスト照合中...');
-
-      // helpersコレクションでメールアドレスを検索
-      const helpersRef = collection(db, 'helpers');
-      const q = query(helpersRef, where('email', '==', user.email));
-      const querySnapshot = await getDocs(q);
-
-      // ========== Step 4: 分岐処理 ==========
-      if (!querySnapshot.empty) {
-        // ======== ケースA: 登録済みユーザー（許可） ========
-        const helperDoc = querySnapshot.docs[0];
-        const helperData = helperDoc.data();
-        const helperId = helperDoc.id;
-
-        // メールアドレスが正確に一致するか確認（セキュリティ強化）
-        if (helperData.email !== user.email) {
-          console.warn('⚠️ メールアドレスの不一致を検出');
-          await signOut(auth);
-          setError('セキュリティエラー: アクセスが拒否されました');
-          return;
-        }
-
-        console.log('✅ 登録済みユーザーです:', helperData.name);
-
-        // helpersドキュメントにuidを追記（メールが一致した場合のみ）
-        console.log('📝 helpersドキュメントにuidを紐付け中...');
-
-        // displayNameは会社名でなければ更新、会社名なら更新しない
-        const updateData: any = {
-          uid: user.uid,
-          lastLoginAt: serverTimestamp(),
-          photoURL: user.photoURL || null
-        };
-
-        // displayNameが会社名でない場合のみ更新
-        if (user.displayName && !user.displayName.includes('合同会社') && !user.displayName.includes('株式会社')) {
-          updateData.displayName = user.displayName;
-        }
-
-        await updateDoc(doc(db, 'helpers', helperId), updateData);
-
-        // usersコレクションにもデータを作成/更新（アプリ内の統一管理用）
-        console.log('📝 usersコレクションを更新中...');
-        const userDocRef = doc(db, 'users', user.uid);
-
-        // info@alhena.co.jpは自動的に管理者権限を付与
-        const userRole = user.email === 'info@alhena.co.jp' ? 'admin' : (helperData.role || 'staff');
-
-        await setDoc(userDocRef, {
-          uid: user.uid,
-          email: user.email,
-          name: helperData.name || user.displayName || '名無しユーザー',  // helpersの名前を優先
-          role: userRole, // info@alhena.co.jpは管理者、その他はhelpersから取得
-          helperId: helperId, // helpersとの紐付け
-          photoURL: user.photoURL || null,
-          createdAt: serverTimestamp(),
-          lastLoginAt: serverTimestamp()
-        }, { merge: true }); // 既存データがある場合はマージ
-
-        console.log('✅ ログイン処理完了');
-        console.log('👤 ユーザー名:', helperData.name);
-        console.log('👤 ユーザー権限:', userRole);
-        if (user.email === 'info@alhena.co.jp') {
-          console.log('🔴 管理者アカウントとしてログイン');
-        }
-
-        // roleに基づく処理（必要に応じて）
-        // if (helperData.role === 'admin') {
-        //   window.location.href = '/admin';
-        // } else {
-        //   window.location.href = '/staff';
-        // }
-
-      } else {
-        // ======== ケースB: 未登録ユーザー（拒否） ========
-        console.warn('⚠️ 未登録のメールアドレスです:', user.email);
-
-        // 即座にサインアウト
-        await signOut(auth);
-        console.log('🚪 強制サインアウトを実行しました');
-
-        // エラーメッセージを設定
-        setError(
-          `このメールアドレス（${user.email}）は登録されていません。\n` +
-          '管理者に連絡して、アクセス権限の付与を依頼してください。'
-        );
-
-        return; // ここで処理を終了
-      }
-
-      // ログイン成功後の処理はApp.tsxのonAuthStateChangedで処理される
 
     } catch (error: any) {
       console.error('❌ ログインエラー:', error);
@@ -162,17 +35,13 @@ export const Login: React.FC = () => {
         setError('ポップアップがブロックされました。ブラウザの設定を確認してください。');
       } else if (error.code === 'auth/network-request-failed') {
         setError('ネットワークエラーが発生しました。接続を確認してください。');
-      } else if (error.code === 'auth/invalid-api-key') {
-        setError('APIキーが無効です。管理者に連絡してください。');
-      } else if (error.code === 'permission-denied') {
-        setError('データベースへのアクセス権限がありません。管理者に連絡してください。');
       } else {
         setError(error.message || 'ログインに失敗しました');
       }
 
       // エラー時もサインアウトしておく（安全のため）
       try {
-        await signOut(auth);
+        await signOut();
       } catch (signOutError) {
         console.error('サインアウトエラー:', signOutError);
       }
@@ -275,8 +144,8 @@ export const Login: React.FC = () => {
           <div className="mt-6 p-4 bg-gray-50 rounded-lg">
             <p className="text-xs text-gray-600 font-mono">
               環境: {import.meta.env.MODE}<br />
-              Firebase Project: {import.meta.env.VITE_FIREBASE_PROJECT_ID || 'shift-management-2'}<br />
-              認証モード: ホワイトリスト方式（招待制）
+              Supabase URL: {import.meta.env.VITE_SUPABASE_URL?.substring(0, 30)}...<br />
+              認証モード: Supabase Auth（ホワイトリスト方式）
             </p>
           </div>
         )}

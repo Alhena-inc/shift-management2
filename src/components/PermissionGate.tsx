@@ -1,7 +1,5 @@
 import React, { ReactNode, useState, useEffect } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { onAuthStateChanged, getUserPermissions } from '../services/supabaseAuthService';
 
 interface PermissionGateProps {
   children: ReactNode;
@@ -29,18 +27,12 @@ export const PermissionGate: React.FC<PermissionGateProps> = ({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthStateChanged(async (user) => {
       if (user) {
         try {
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            setRole(userData.role || 'staff');
-            setHelperId(userData.helperId || null);
-          } else {
-            setRole('staff');
-            setHelperId(null);
-          }
+          const permissions = await getUserPermissions(user);
+          setRole(permissions.role);
+          setHelperId(permissions.helperId);
         } catch (error) {
           console.error('権限情報の取得に失敗:', error);
           setRole('staff');
@@ -114,18 +106,12 @@ export const OwnDataOnly: React.FC<{
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthStateChanged(async (user) => {
       if (user) {
         try {
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            setRole(userData.role || 'staff');
-            setHelperId(userData.helperId || null);
-          } else {
-            setRole('staff');
-            setHelperId(null);
-          }
+          const permissions = await getUserPermissions(user);
+          setRole(permissions.role);
+          setHelperId(permissions.helperId);
         } catch (error) {
           console.error('権限情報の取得に失敗:', error);
           setRole('staff');

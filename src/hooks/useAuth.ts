@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { User, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import type { User } from '@supabase/supabase-js';
+import { onAuthStateChanged, getUserPermissions } from '../services/supabaseAuthService';
 
 interface AuthUser {
   user: User | null;
@@ -13,6 +12,7 @@ interface AuthUser {
 
 /**
  * 認証情報と権限を管理するカスタムフック
+ * Supabase認証を使用
  */
 export const useAuth = (): AuthUser => {
   const [user, setUser] = useState<User | null>(null);
@@ -22,47 +22,15 @@ export const useAuth = (): AuthUser => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubscribe = onAuthStateChanged(async (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
 
         try {
-          // info@alhena.co.jpは管理者として特別扱い
-          if (currentUser.email === 'info@alhena.co.jp') {
-            setRole('admin');
-            setHelperId(null);
-            setHelperName('管理者');
-            setLoading(false);
-            return;
-          }
-
-          // まずusersコレクションから権限を取得
-          const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            setRole(userData.role || 'staff');
-            setHelperId(userData.helperId || null);
-            setHelperName(userData.name || null);
-          } else {
-            // usersになければhelpersから取得
-            const helpersRef = collection(db, 'helpers');
-            const q = query(helpersRef, where('email', '==', currentUser.email));
-            const querySnapshot = await getDocs(q);
-
-            if (!querySnapshot.empty) {
-              const helperData = querySnapshot.docs[0].data();
-              const docId = querySnapshot.docs[0].id;
-              setRole(helperData.role || 'staff');
-              setHelperId(docId);
-              setHelperName(helperData.name || null);
-            } else {
-              // デフォルト値
-              setRole('staff');
-              setHelperId(null);
-              setHelperName(null);
-            }
-          }
+          const permissions = await getUserPermissions(currentUser);
+          setRole(permissions.role);
+          setHelperId(permissions.helperId);
+          setHelperName(permissions.helperName);
         } catch (error) {
           console.error('権限情報の取得に失敗:', error);
           setRole('staff');
@@ -82,6 +50,11 @@ export const useAuth = (): AuthUser => {
     return () => unsubscribe();
   }, []);
 
-  return { user, role, helperId, helperName, loading };
+  return {
+    user,
+    role,
+    helperId,
+    helperName,
+    loading,
+  };
 };
-
