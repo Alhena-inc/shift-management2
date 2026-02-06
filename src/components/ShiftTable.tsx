@@ -3897,6 +3897,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           (!shift.serviceType && !isCareService);
 
         // シフトデータの検証とクリーンアップ
+        // 予定の場合、終了時間がなければ開始時間と同じにする
         const cleanShift: Shift = {
           id: `${shift.helperId}-${targetDate}-${shift.rowIndex}`,
           helperId: shift.helperId || '',
@@ -3905,7 +3906,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           clientName: shift.clientName || '',
           serviceType: isYotei ? 'yotei' : (shift.serviceType || 'shintai'),
           startTime: shift.startTime || '',
-          endTime: shift.endTime || '',
+          endTime: shift.endTime || (isYotei ? shift.startTime : '') || '', // 予定で終了時間がない場合は開始時間を使用
           duration: isYotei ? 0 : (shift.duration || 0), // 予定の場合は時間数を0に
           area: shift.area || '',
           sequence: shift.sequence,

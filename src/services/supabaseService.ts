@@ -506,11 +506,15 @@ export const saveShiftsForMonth = async (year: number, month: number, shifts: Sh
         // サービスタイプがない場合、ケア系サービスでなければ予定として扱う
         (!shift.serviceType && !isCareService);
 
+      // 予定の場合、終了時間がなければ開始時間と同じにする
+      const formattedStartTime = formatTime(shift.startTime);
+      const formattedEndTime = formatTime(shift.endTime);
+
       return {
         id: shift.id,
         date: shift.date,
-        start_time: formatTime(shift.startTime),
-        end_time: formatTime(shift.endTime),
+        start_time: formattedStartTime,
+        end_time: formattedEndTime || formattedStartTime || '00:00:00', // nullの場合は開始時間を使用、それもなければデフォルト値
         helper_id: shift.helperId,
         client_name: shift.clientName || '',
         service_type: isYotei ? 'yotei' : (shift.serviceType || 'shintai'),
