@@ -162,8 +162,13 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
 
     setCreating(true);
     try {
+      console.log('🔄 給与明細作成前に最新のシフトデータを取得中...');
+      // 最新のシフトデータを取得
+      const latestShifts = await loadShiftsForMonth(selectedYear, selectedMonth);
+      console.log(`📊 取得完了: ${latestShifts.length}件`);
+
       // シフトデータから給与明細を生成（当月末まで）
-      const helperShifts = shifts.filter(s => {
+      const helperShifts = latestShifts.filter(s => {
         if (s.helperId !== helper.id) return false;
 
         const shiftDate = new Date(s.date);
@@ -212,10 +217,14 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
     const errors: string[] = [];
 
     try {
+      console.log('🔄 一括作成前に最新のシフトデータを取得中...');
+      const latestShifts = await loadShiftsForMonth(selectedYear, selectedMonth);
+      console.log(`📊 取得完了: ${latestShifts.length}件`);
+
       for (const helper of helpersWithoutPayslip) {
         try {
           // シフトデータから給与明細を生成
-          const helperShifts = shifts.filter(s => {
+          const helperShifts = latestShifts.filter(s => {
             if (s.helperId !== helper.id) return false;
 
             const shiftDate = new Date(s.date);
@@ -282,10 +291,14 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
     const errors: string[] = [];
 
     try {
+      console.log('🔄 選択一括作成前に最新のシフトデータを取得中...');
+      const latestShifts = await loadShiftsForMonth(selectedYear, selectedMonth);
+      console.log(`📊 取得完了: ${latestShifts.length}件`);
+
       for (const helper of selectedHelpers) {
         try {
           // 対象期間のシフトを抽出（当月末まで）
-          const helperShifts = shifts.filter(s => {
+          const helperShifts = latestShifts.filter(s => {
             if (s.helperId !== helper.id) return false;
             const shiftDate = new Date(s.date);
             const periodStart = new Date(selectedYear, selectedMonth - 1, 1);
@@ -333,8 +346,12 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
 
     setCreating(true);
     try {
+      console.log('🔄 再計算前に最新のシフトデータを取得中...');
+      const latestShifts = await loadShiftsForMonth(selectedYear, selectedMonth);
+      console.log(`📊 取得完了: ${latestShifts.length}件`);
+
       // 最新のシフトデータを取得（当月末まで）
-      const helperShifts = shifts.filter(s => {
+      const helperShifts = latestShifts.filter(s => {
         if (s.helperId !== helper.id) return false;
 
         const shiftDate = new Date(s.date);
