@@ -95,7 +95,10 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
           excludeWeekends: true,
           excludeHolidays: false,
           excludedDateRanges: []
-        }
+        },
+
+        // 月別支払いデータ（交通費・経費・手当・返済）
+        monthly_payments: helper.monthlyPayments || {}
       };
 
       // emailは空文字の場合はnullにする
@@ -290,7 +293,10 @@ export const loadHelpers = async (): Promise<Helper[]> => {
             excludeWeekends: true,
             excludeHolidays: false,
             excludedDateRanges: []
-          }
+          },
+
+          // 月別支払いデータ（交通費・経費・手当・返済）
+          monthlyPayments: row.monthly_payments || {}
         };
       });
 
