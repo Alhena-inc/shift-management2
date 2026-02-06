@@ -544,7 +544,7 @@ export const loadShiftsForMonth = async (year: number, month: number): Promise<S
       .select('*')
       .gte('date', startDate)
       .lte('date', endDate);
-      // .eq('deleted', false); // 一時的にコメントアウト（deletedカラムがない場合のエラー回避）
+    // .eq('deleted', false); // 一時的にコメントアウト（deletedカラムがない場合のエラー回避）
 
     if (error) {
       console.error('シフト読み込みエラー:', error);
@@ -554,12 +554,19 @@ export const loadShiftsForMonth = async (year: number, month: number): Promise<S
 
     console.log(`  取得したシフト数: ${data?.length || 0}件`);
 
+    // 時間形式からHH:MMのみを抽出（Supabaseのtime型はHH:MM:SS形式で返される）
+    const formatTimeToHHMM = (time: string | null): string | undefined => {
+      if (!time) return undefined;
+      // HH:MM:SS → HH:MM に変換
+      return time.substring(0, 5);
+    };
+
     // データ形式を変換
     const shifts: Shift[] = (data || []).map(row => ({
       id: row.id,
       date: row.date,
-      startTime: row.start_time,
-      endTime: row.end_time,
+      startTime: formatTimeToHHMM(row.start_time),
+      endTime: formatTimeToHHMM(row.end_time),
       helperId: row.helper_id || '',
       clientName: row.client_name,
       serviceType: row.service_type || undefined,
