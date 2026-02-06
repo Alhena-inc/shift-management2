@@ -3853,6 +3853,25 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     try {
       // コピー元の日付からコピー先の日付にシフトをコピー
       const newShifts = dateCopyBufferRef.shifts.map(shift => {
+        // 予定かどうかを判断（clientNameやcontentから）
+        const isYotei =
+          shift.serviceType === 'yotei' ||
+          shift.serviceType === 'kaigi' ||
+          (shift.clientName && (
+            shift.clientName.includes('(会議)') ||
+            shift.clientName.includes('(予定)') ||
+            shift.clientName.includes('(研修)') ||
+            shift.clientName.includes('(面談)') ||
+            shift.clientName.includes('(ミーティング)')
+          )) ||
+          (shift.content && (
+            shift.content.includes('会議') ||
+            shift.content.includes('予定') ||
+            shift.content.includes('研修') ||
+            shift.content.includes('面談') ||
+            shift.content.includes('ミーティング')
+          ));
+
         // シフトデータの検証とクリーンアップ
         const cleanShift: Shift = {
           id: `${shift.helperId}-${targetDate}-${shift.rowIndex}`,
@@ -3860,10 +3879,10 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           date: targetDate,
           rowIndex: shift.rowIndex || 0,
           clientName: shift.clientName || '',
-          serviceType: shift.serviceType || '身体介護',
+          serviceType: isYotei ? 'yotei' : (shift.serviceType || 'shintai'),
           startTime: shift.startTime || '',
           endTime: shift.endTime || '',
-          duration: shift.duration || 0,
+          duration: isYotei ? 0 : (shift.duration || 0), // 予定の場合は時間数を0に
           area: shift.area || '',
           sequence: shift.sequence,
           deleted: shift.deleted || false,
@@ -3871,7 +3890,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           deletedBy: shift.deletedBy,
           cancelStatus: shift.cancelStatus || 'none',
           canceledAt: shift.canceledAt,
-          content: shift.content
+          content: shift.content || shift.clientName // clientNameの内容もcontentに保存
         };
 
         // 不要なフィールドを削除

@@ -483,6 +483,25 @@ export const saveShiftsForMonth = async (year: number, month: number, shifts: Sh
         return null;
       };
 
+      // 予定タイプを判定（clientNameとcontentから）
+      const isYotei =
+        shift.serviceType === 'yotei' ||
+        shift.serviceType === 'kaigi' ||
+        (shift.clientName && (
+          shift.clientName.includes('(会議)') ||
+          shift.clientName.includes('(予定)') ||
+          shift.clientName.includes('(研修)') ||
+          shift.clientName.includes('(面談)') ||
+          shift.clientName.includes('(ミーティング)')
+        )) ||
+        (shift.content && (
+          shift.content.includes('会議') ||
+          shift.content.includes('予定') ||
+          shift.content.includes('研修') ||
+          shift.content.includes('面談') ||
+          shift.content.includes('ミーティング')
+        ));
+
       return {
         id: shift.id,
         date: shift.date,
@@ -490,8 +509,8 @@ export const saveShiftsForMonth = async (year: number, month: number, shifts: Sh
         end_time: formatTime(shift.endTime),
         helper_id: shift.helperId,
         client_name: shift.clientName || '',
-        service_type: shift.serviceType || '身体介護',
-        hours: shift.duration || 0,
+        service_type: isYotei ? 'yotei' : (shift.serviceType || 'shintai'),
+        hours: isYotei ? 0 : (shift.duration || 0), // 予定の場合は時間数0
         hourly_wage: null, // 時給は別途ヘルパー情報から取得
         location: shift.area || '',
         content: shift.content || null, // ケア内容（自由入力）
