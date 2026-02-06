@@ -716,22 +716,39 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
               cache.set(key, { lines, bgColor, hasWarning: false });
             } else {
-              const { startTime, endTime, clientName, serviceType, duration, area, cancelStatus } = shift;
+              const { startTime, endTime, clientName, serviceType, duration, area, cancelStatus, content } = shift;
 
               // 各ラインのデータ
               // 時間文字列からHH:MMを抽出する関数
               const formatTime = (t: string | null | undefined) => t ? t.substring(0, 5) : '';
 
-              // 各ラインのデータ
-              const timeString = startTime && endTime ? `${formatTime(startTime)}-${formatTime(endTime)}` : (startTime || endTime ? `${formatTime(startTime) || ''}-${formatTime(endTime) || ''}` : '');
-              const lines = [
-                timeString,
-                (serviceType === 'other' || serviceType === 'yotei')
-                  ? clientName
-                  : (clientName ? `${clientName}(${SERVICE_CONFIG[serviceType]?.label || ''})` : `(${SERVICE_CONFIG[serviceType]?.label || ''})`),
-                duration ? duration.toString() : '',
-                area || ''
-              ];
+              // 構造化データがあるかチェック
+              const hasStructuredData = startTime || endTime || (clientName && clientName.trim() !== '');
+
+              let lines: string[];
+              if (hasStructuredData) {
+                // 従来のロジック: 構造化データから表示
+                const timeString = startTime && endTime ? `${formatTime(startTime)}-${formatTime(endTime)}` : (startTime || endTime ? `${formatTime(startTime) || ''}-${formatTime(endTime) || ''}` : '');
+                lines = [
+                  timeString,
+                  (serviceType === 'other' || serviceType === 'yotei')
+                    ? clientName
+                    : (clientName ? `${clientName}(${SERVICE_CONFIG[serviceType]?.label || ''})` : `(${SERVICE_CONFIG[serviceType]?.label || ''})`),
+                  duration ? duration.toString() : '',
+                  area || ''
+                ];
+              } else if (content) {
+                // 自由形式テキスト: contentフィールドから4行に分割して表示
+                const contentLines = content.split('\n');
+                lines = [
+                  contentLines[0] || '',
+                  contentLines[1] || '',
+                  contentLines[2] || '',
+                  contentLines[3] || ''
+                ];
+              } else {
+                lines = ['', '', '', ''];
+              }
 
               // 警告が必要かチェック
               const hasWarning = shouldShowWarning(startTime, endTime, serviceType);
@@ -951,11 +968,21 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         lines[i] = newValue;
       } else {
         if (existingShift) {
-          const formatTime = (t: string | null | undefined) => t ? t.substring(0, 5) : '';
-          if (i === 0) lines[i] = (existingShift.startTime && existingShift.endTime) ? `${formatTime(existingShift.startTime)}-${formatTime(existingShift.endTime)}` : (formatTime(existingShift.startTime) || '');
-          else if (i === 1) lines[i] = existingShift.serviceType !== 'other' ? `${existingShift.clientName}(${SERVICE_CONFIG[existingShift.serviceType]?.label || ''})` : existingShift.clientName;
-          else if (i === 2) lines[i] = existingShift.duration ? existingShift.duration.toString() : '';
-          else if (i === 3) lines[i] = existingShift.area || '';
+          // 構造化データがあるかチェック
+          const hasStructuredData = existingShift.startTime || existingShift.endTime || (existingShift.clientName && existingShift.clientName.trim() !== '');
+
+          if (hasStructuredData) {
+            // 従来のロジック: 構造化データから復元
+            const formatTime = (t: string | null | undefined) => t ? t.substring(0, 5) : '';
+            if (i === 0) lines[i] = (existingShift.startTime && existingShift.endTime) ? `${formatTime(existingShift.startTime)}-${formatTime(existingShift.endTime)}` : (formatTime(existingShift.startTime) || '');
+            else if (i === 1) lines[i] = existingShift.serviceType !== 'other' ? `${existingShift.clientName}(${SERVICE_CONFIG[existingShift.serviceType]?.label || ''})` : existingShift.clientName;
+            else if (i === 2) lines[i] = existingShift.duration ? existingShift.duration.toString() : '';
+            else if (i === 3) lines[i] = existingShift.area || '';
+          } else if (existingShift.content) {
+            // 自由形式テキスト: contentから復元
+            const contentLines = existingShift.content.split('\n');
+            lines[i] = contentLines[i] || '';
+          }
         }
       }
     }
