@@ -3031,7 +3031,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
   }, [copyBufferRef, shiftMap]);
 
   // セルにペーストする関数
-  const pasteCellData = useCallback((helperId: string, date: string, rowIndex: number) => {
+  const pasteCellData = useCallback(async (helperId: string, date: string, rowIndex: number) => {
     // データがない場合はスキップ
     if (!copyBufferRef.hasCopiedData || !copyBufferRef.data.some(line => line.trim() !== '')) {
       console.log('⚠️ コピーされたデータがありません');
