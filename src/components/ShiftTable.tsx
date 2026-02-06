@@ -3844,7 +3844,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
   }, [shifts, dateCopyBufferRef]);
 
   // 日付全体にペーストする関数
-  const pasteDateShifts = useCallback((targetDate: string) => {
+  const pasteDateShifts = useCallback(async (targetDate: string) => {
     if (dateCopyBufferRef.shifts.length === 0) {
       console.log('⚠️ コピーされた日付データがありません');
       return;
