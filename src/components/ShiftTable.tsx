@@ -3853,24 +3853,48 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     try {
       // コピー元の日付からコピー先の日付にシフトをコピー
       const newShifts = dateCopyBufferRef.shifts.map(shift => {
-        // 予定かどうかを判断（clientNameやcontentから）
+        // サービスタイプが明確に介護系かチェック
+        const isCareService = shift.serviceType && [
+          'kaji', 'judo', 'shintai', 'doko', 'kodo_engo',
+          'shinya', 'shinya_doko', 'tsuin', 'ido'
+        ].includes(shift.serviceType);
+
+        // 予定かどうかを判断
         const isYotei =
+          // 明示的に予定・会議系のサービスタイプ
           shift.serviceType === 'yotei' ||
           shift.serviceType === 'kaigi' ||
+          shift.serviceType === 'jimu' ||
+          shift.serviceType === 'eigyo' ||
+          // clientNameに予定系キーワード
           (shift.clientName && (
             shift.clientName.includes('(会議)') ||
             shift.clientName.includes('(予定)') ||
             shift.clientName.includes('(研修)') ||
             shift.clientName.includes('(面談)') ||
-            shift.clientName.includes('(ミーティング)')
+            shift.clientName.includes('(ミーティング)') ||
+            shift.clientName.includes('WEB') ||
+            shift.clientName.includes('Web') ||
+            shift.clientName.includes('web') ||
+            shift.clientName.includes('オンライン') ||
+            shift.clientName.includes('打合せ') ||
+            shift.clientName.includes('打ち合わせ')
           )) ||
+          // contentに予定系キーワード
           (shift.content && (
             shift.content.includes('会議') ||
             shift.content.includes('予定') ||
             shift.content.includes('研修') ||
             shift.content.includes('面談') ||
-            shift.content.includes('ミーティング')
-          ));
+            shift.content.includes('ミーティング') ||
+            shift.content.includes('WEB') ||
+            shift.content.includes('Web') ||
+            shift.content.includes('オンライン') ||
+            shift.content.includes('打合せ') ||
+            shift.content.includes('打ち合わせ')
+          )) ||
+          // サービスタイプがなく、介護系でもない場合は予定とみなす
+          (!shift.serviceType && !isCareService);
 
         // シフトデータの検証とクリーンアップ
         const cleanShift: Shift = {

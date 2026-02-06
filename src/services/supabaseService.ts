@@ -484,6 +484,13 @@ export const saveShiftsForMonth = async (year: number, month: number, shifts: Sh
       };
 
       // 予定タイプを判定（clientNameとcontentから）
+      // ケア系サービスタイプの定義
+      const careServiceTypes = ['shintai', 'kaji', 'seikatsu', 'doukou', 'idou'];
+      const isCareService = shift.serviceType && careServiceTypes.includes(shift.serviceType);
+
+      // 予定・会議系のキーワード（大文字小文字のバリエーション含む）
+      const yoteiKeywords = ['会議', '予定', '研修', '面談', 'ミーティング', 'WEB', 'Web', 'web', 'オンライン', '打合せ', '打ち合わせ'];
+
       const isYotei =
         shift.serviceType === 'yotei' ||
         shift.serviceType === 'kaigi' ||
@@ -492,15 +499,12 @@ export const saveShiftsForMonth = async (year: number, month: number, shifts: Sh
           shift.clientName.includes('(予定)') ||
           shift.clientName.includes('(研修)') ||
           shift.clientName.includes('(面談)') ||
-          shift.clientName.includes('(ミーティング)')
+          shift.clientName.includes('(ミーティング)') ||
+          yoteiKeywords.some(keyword => shift.clientName.includes(keyword))
         )) ||
-        (shift.content && (
-          shift.content.includes('会議') ||
-          shift.content.includes('予定') ||
-          shift.content.includes('研修') ||
-          shift.content.includes('面談') ||
-          shift.content.includes('ミーティング')
-        ));
+        (shift.content && yoteiKeywords.some(keyword => shift.content.includes(keyword))) ||
+        // サービスタイプがない場合、ケア系サービスでなければ予定として扱う
+        (!shift.serviceType && !isCareService);
 
       return {
         id: shift.id,
