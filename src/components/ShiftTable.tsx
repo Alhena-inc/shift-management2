@@ -3859,23 +3859,31 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           helperId: shift.helperId || '',
           date: targetDate,
           rowIndex: shift.rowIndex || 0,
+          clientName: shift.clientName || '',
+          serviceType: shift.serviceType || '身体介護',
           startTime: shift.startTime || '',
           endTime: shift.endTime || '',
-          category: shift.category || '',
-          memo: shift.memo || '',
-          backgroundColor: shift.backgroundColor || '#ffffff',
-          isPartiallyDoctorAffected: shift.isPartiallyDoctorAffected || false,
-          canceled: shift.canceled || false
+          duration: shift.duration || 0,
+          area: shift.area || '',
+          sequence: shift.sequence,
+          deleted: shift.deleted || false,
+          deletedAt: shift.deletedAt,
+          deletedBy: shift.deletedBy,
+          cancelStatus: shift.cancelStatus || 'none',
+          canceledAt: shift.canceledAt,
+          content: shift.content
         };
 
         // 不要なフィールドを削除
+        const result: any = {};
         Object.keys(cleanShift).forEach(key => {
-          if (cleanShift[key] === undefined || cleanShift[key] === null) {
-            delete cleanShift[key];
+          const value = (cleanShift as any)[key];
+          if (value !== undefined && value !== null && value !== '') {
+            result[key] = value;
           }
         });
 
-        return cleanShift;
+        return result as Shift;
       });
 
       // 既存のシフトを更新（ターゲット日付の既存データを新しいデータで上書き）

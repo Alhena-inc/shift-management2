@@ -40,9 +40,9 @@ export const getUserPermissions = async (user: User): Promise<{ role: UserRole |
 
     if (!userError && userData) {
       return {
-        role: (userData.role as UserRole) || 'staff',
-        helperId: userData.helper_id || null,
-        helperName: userData.name || null
+        role: ((userData as any).role as UserRole) || 'staff',
+        helperId: (userData as any).helper_id || null,
+        helperName: (userData as any).name || null
       };
     }
 
@@ -58,17 +58,17 @@ export const getUserPermissions = async (user: User): Promise<{ role: UserRole |
       await supabase.from('users').upsert({
         id: user.id,
         email: user.email!,
-        role: helperData.role || 'staff',
-        helper_id: helperData.id,
-        name: helperData.name,
+        role: (helperData as any).role || 'staff',
+        helper_id: (helperData as any).id,
+        name: (helperData as any).name,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
-      });
+      } as any);
 
       return {
-        role: (helperData.role as UserRole) || 'staff',
-        helperId: helperData.id,
-        helperName: helperData.name
+        role: ((helperData as any).role as UserRole) || 'staff',
+        helperId: (helperData as any).id,
+        helperName: (helperData as any).name
       };
     }
 
@@ -83,7 +83,7 @@ export const getUserPermissions = async (user: User): Promise<{ role: UserRole |
       updated_at: new Date().toISOString()
     };
 
-    await supabase.from('users').upsert(newUserData);
+    await supabase.from('users').upsert(newUserData as any);
 
     return {
       role: 'staff',

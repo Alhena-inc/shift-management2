@@ -104,9 +104,9 @@ function App() {
   const shiftsUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
   const latestShiftsRef = useRef<Shift[]>(shifts);
 
-  // Firebase接続テスト（初回のみ）
+  // Supabase接続テスト（初回のみ）
   useEffect(() => {
-    testFirebaseConnection();
+    testSupabaseConnection();
   }, []);
 
   // ヘルパー情報を読み込み（リアルタイム監視）

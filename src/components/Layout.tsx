@@ -54,11 +54,11 @@ export const Layout: React.FC<LayoutProps> = ({ user, children }) => {
 
           if (!error && helperData) {
             console.log('✅ helpersから名前を取得:', {
-              name: helperData.name,
-              email: helperData.email
+              name: (helperData as any).name,
+              email: (helperData as any).email
             });
 
-            userName = helperData.name;
+            userName = (helperData as any).name;
           }
         }
 
