@@ -723,7 +723,10 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
               const formatTime = (t: string | null | undefined) => t ? t.substring(0, 5) : '';
 
               // 構造化データがあるかチェック
-              const hasStructuredData = startTime || endTime || (clientName && clientName.trim() !== '');
+              // デフォルト時刻（00:00）の場合はcontentを優先
+              const isDefaultTime = (startTime === '00:00:00' || startTime === '00:00') && (endTime === '00:00:00' || endTime === '00:00');
+              const hasRealTimeData = (startTime && !isDefaultTime) || (endTime && !isDefaultTime);
+              const hasStructuredData = hasRealTimeData || (clientName && clientName.trim() !== '');
 
               let lines: string[];
               if (hasStructuredData) {
@@ -1013,15 +1016,20 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
     // 時刻抽出の正規表現を強化（日本独自の区切り文字 〜 ～ ー に対応）
     const timeMatch = timeRange.match(/(\d{1,2}:\d{2})\s*[~－\-〜～ー]\s*(\d{1,2}:\d{2})/);
+    // 単独の時刻パターン（例: 9:00）
+    const singleTimeMatch = timeRange.match(/^(\d{1,2}:\d{2})$/);
     let startTimeResult = '';
     let endTimeResult = '';
 
     if (timeMatch) {
       startTimeResult = timeMatch[1];
       endTimeResult = timeMatch[2] || '';
-    } else if (timeRange.trim() !== '') {
-      startTimeResult = timeRange;
+    } else if (singleTimeMatch) {
+      // 単独の時刻のみマッチ（「キャンセル」などの自由テキストはマッチしない）
+      startTimeResult = singleTimeMatch[1];
     }
+    // 時刻パターンにマッチしない場合は startTimeResult を空のままにする
+    // 元のテキストは content フィールドに保存される
 
     let finalDuration = parseFloat(duration) || 0;
     if (lineIndex === 0 && startTimeResult && endTimeResult) {
