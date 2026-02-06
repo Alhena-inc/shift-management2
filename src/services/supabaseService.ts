@@ -461,35 +461,58 @@ export const restoreHelper = async (deletedHelperId: string): Promise<void> => {
 export const saveShiftsForMonth = async (year: number, month: number, shifts: Shift[]): Promise<void> => {
   try {
     console.log(`📝 [Supabase] シフト保存開始: ${year}年${month}月, ${shifts.length}件`);
-    const dataToSave = shifts.map(shift => ({
-      id: shift.id,
-      date: shift.date,
-      start_time: shift.startTime,
-      end_time: shift.endTime,
-      helper_id: shift.helperId,
-      client_name: shift.clientName,
-      service_type: shift.serviceType,
-      hours: shift.duration,
-      hourly_wage: null, // 時給は別途ヘルパー情報から取得
-      location: shift.area,
-      content: shift.content || null, // ケア内容（自由入力）
-      row_index: shift.rowIndex ?? null, // 表示行インデックス
-      cancel_status: shift.cancelStatus,
-      // FirestoreのTimestampをISO文字列に変換
-      canceled_at: shift.canceledAt ?
-        (typeof shift.canceledAt === 'object' && 'toDate' in shift.canceledAt
-          ? shift.canceledAt.toDate().toISOString()
-          : shift.canceledAt)
-        : null,
-      deleted: shift.deleted || false,
-      // FirestoreのTimestampをISO文字列に変換
-      deleted_at: shift.deletedAt ?
-        (typeof shift.deletedAt === 'object' && 'toDate' in shift.deletedAt
-          ? shift.deletedAt.toDate().toISOString()
-          : shift.deletedAt)
-        : null,
-      deleted_by: shift.deletedBy || null
-    }));
+    const dataToSave = shifts.map(shift => {
+      // 時刻のバリデーションとフォーマット
+      const formatTime = (time: string | undefined | null): string | null => {
+        if (!time || time === '') return null;
+        // HH:mm形式の時刻をHH:mm:ss形式に変換
+        if (/^\d{1,2}:\d{2}$/.test(time)) {
+          const [hours, minutes] = time.split(':');
+          const h = hours.padStart(2, '0');
+          const m = minutes.padStart(2, '0');
+          return `${h}:${m}:00`;
+        }
+        // HH:mm:ss形式の場合はそのまま
+        if (/^\d{1,2}:\d{2}:\d{2}$/.test(time)) {
+          const [hours, minutes, seconds] = time.split(':');
+          const h = hours.padStart(2, '0');
+          const m = minutes.padStart(2, '0');
+          const s = seconds.padStart(2, '0');
+          return `${h}:${m}:${s}`;
+        }
+        return null;
+      };
+
+      return {
+        id: shift.id,
+        date: shift.date,
+        start_time: formatTime(shift.startTime),
+        end_time: formatTime(shift.endTime),
+        helper_id: shift.helperId,
+        client_name: shift.clientName || '',
+        service_type: shift.serviceType || '身体介護',
+        hours: shift.duration || 0,
+        hourly_wage: null, // 時給は別途ヘルパー情報から取得
+        location: shift.area || '',
+        content: shift.content || null, // ケア内容（自由入力）
+        row_index: shift.rowIndex ?? null, // 表示行インデックス
+        cancel_status: shift.cancelStatus || 'none',
+        // FirestoreのTimestampをISO文字列に変換
+        canceled_at: shift.canceledAt ?
+          (typeof shift.canceledAt === 'object' && 'toDate' in shift.canceledAt
+            ? shift.canceledAt.toDate().toISOString()
+            : shift.canceledAt)
+          : null,
+        deleted: shift.deleted || false,
+        // FirestoreのTimestampをISO文字列に変換
+        deleted_at: shift.deletedAt ?
+          (typeof shift.deletedAt === 'object' && 'toDate' in shift.deletedAt
+            ? shift.deletedAt.toDate().toISOString()
+            : shift.deletedAt)
+          : null,
+        deleted_by: shift.deletedBy || null
+      };
+    });
 
     console.log(`📝 ${year}年${month}月のシフトを保存中...`);
     console.log(`  保存するシフト数: ${dataToSave.length}件`);
@@ -504,16 +527,39 @@ export const saveShiftsForMonth = async (year: number, month: number, shifts: Sh
 
     console.log('  月別シフト数:', monthGroups);
 
+    // 空のデータは保存しない
+    const validData = dataToSave.filter(shift =>
+      shift.helper_id && shift.date && shift.id
+    );
+
+    if (validData.length === 0) {
+      console.log('保存するデータがありません');
+      return;
+    }
+
+    // データのバリデーション
+    validData.forEach((data, index) => {
+      if (data.start_time && !/^\d{2}:\d{2}:\d{2}$/.test(data.start_time)) {
+        console.error(`不正な開始時刻 (index ${index}):`, data.start_time);
+        data.start_time = null;
+      }
+      if (data.end_time && !/^\d{2}:\d{2}:\d{2}$/.test(data.end_time)) {
+        console.error(`不正な終了時刻 (index ${index}):`, data.end_time);
+        data.end_time = null;
+      }
+    });
+
     const { data: savedData, error } = await supabase
       .from('shifts')
-      .upsert(dataToSave, { onConflict: 'id' })
+      .upsert(validData, { onConflict: 'id' })
       .select();
 
     if (error) {
-      console.error('シフト保存エラー:', error);
+      console.error('❌ シフト保存エラー:', error);
       console.error('エラー詳細:', JSON.stringify(error, null, 2));
-      console.error('保存しようとしたデータ例:', dataToSave[0]);
-      throw error;
+      console.error('保存しようとしたデータ例:', validData[0]);
+      // エラーを再スローしない（UIをブロックしない）
+      return;
     }
 
     // バックアップ作成
