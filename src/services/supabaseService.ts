@@ -513,7 +513,7 @@ export const saveShiftsForMonth = async (year: number, month: number, shifts: Sh
       return {
         id: shift.id,
         date: shift.date,
-        start_time: formattedStartTime,
+        start_time: formattedStartTime || '00:00:00', // nullの場合はデフォルト値
         end_time: formattedEndTime || formattedStartTime || '00:00:00', // nullの場合は開始時間を使用、それもなければデフォルト値
         helper_id: shift.helperId,
         client_name: shift.clientName || '',
