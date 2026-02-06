@@ -3890,14 +3890,40 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       const filteredShifts = shiftsRef.current.filter(s => s.date !== targetDate);
       const updatedShifts = [...filteredShifts, ...newShifts];
 
+      // UIを即座に更新
       handleShiftsUpdate(updatedShifts);
+
+      // Supabaseに保存（年月ごとにグループ化して保存）
+      const shiftsToSave = newShifts.filter(shift =>
+        shift.helperId && shift.date && shift.id
+      );
+
+      console.log('📝 保存するシフトデータ:', shiftsToSave);
+      console.log('📊 データ詳細:', {
+        count: shiftsToSave.length,
+        targetDate,
+        firstShift: shiftsToSave[0]
+      });
+
+      if (shiftsToSave.length > 0) {
+        // 年月を取得
+        const [targetYear, targetMonth] = targetDate.split('-').map(Number);
+
+        console.log(`📅 保存先: ${targetYear}年${targetMonth}月`);
+
+        // Supabaseに保存
+        await saveShiftsForMonth(targetYear, targetMonth, shiftsToSave);
+        console.log(`✅ Supabaseに${shiftsToSave.length}件のシフトを保存しました`);
+      } else {
+        console.warn('⚠️ 保存するシフトデータがありません');
+      }
 
       console.log(`✅ ${dateCopyBufferRef.date}のケア内容を${targetDate}にペーストしました`);
     } catch (error) {
       console.error('❌ ケア内容のペーストに失敗しました:', error);
       alert('ケア内容のペーストに失敗しました。もう一度お試しください。');
     }
-  }, [dateCopyBufferRef, shifts, handleShiftsUpdate]);
+  }, [dateCopyBufferRef, shifts, handleShiftsUpdate, saveShiftsForMonth]);
 
   // 日付ヘッダー用のコンテキストメニューを表示する関数
   const showDateContextMenu = useCallback((e: React.MouseEvent, date: string) => {
