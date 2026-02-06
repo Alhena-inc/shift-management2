@@ -600,67 +600,96 @@ export const saveShiftsForMonth = async (year: number, month: number, shifts: Sh
   }
 };
 
-// 月のシフトを読み込み
-export const loadShiftsForMonth = async (year: number, month: number): Promise<Shift[]> => {
-  try {
-    console.log(`📅 ${year}年${month}月のシフトを読み込み中...`);
-    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-    // month は 1-indexed で、new Date(year, month, 0) は month の最終日を返す
-    const lastDay = new Date(year, month, 0).getDate();
-    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-    console.log(`  期間: ${startDate} 〜 ${endDate}`);
+// 月のシフトを読み込み（リトライ機能付き）
+export const loadShiftsForMonth = async (year: number, month: number, retryCount: number = 3): Promise<Shift[]> => {
+  let lastError: any = null;
 
-    // deletedカラムが存在しない場合に備えて一時的に無効化
-    // TODO: Supabaseでadd-deleted-column-to-shifts.sqlを実行後に有効化
-    const { data, error } = await supabase
-      .from('shifts')
-      .select('*')
-      .gte('date', startDate)
-      .lte('date', endDate);
-    // .eq('deleted', false); // 一時的にコメントアウト（deletedカラムがない場合のエラー回避）
+  for (let attempt = 1; attempt <= retryCount; attempt++) {
+    try {
+      console.log(`📅 ${year}年${month}月のシフトを読み込み中... (試行 ${attempt}/${retryCount})`);
+      const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+      // month は 1-indexed で、new Date(year, month, 0) は month の最終日を返す
+      const lastDay = new Date(year, month, 0).getDate();
+      const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      console.log(`  期間: ${startDate} 〜 ${endDate}`);
 
-    if (error) {
-      console.error('シフト読み込みエラー:', error);
-      console.error('エラー詳細:', JSON.stringify(error, null, 2));
-      return [];
+      // deletedカラムが存在しない場合に備えて一時的に無効化
+      // TODO: Supabaseでadd-deleted-column-to-shifts.sqlを実行後に有効化
+      const { data, error } = await supabase
+        .from('shifts')
+        .select('*')
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date', { ascending: true })
+        .order('row_index', { ascending: true });
+      // .eq('deleted', false); // 一時的にコメントアウト（deletedカラムがない場合のエラー回避）
+
+      if (error) {
+        console.error(`シフト読み込みエラー (試行 ${attempt}):`, error);
+        console.error('エラー詳細:', JSON.stringify(error, null, 2));
+        lastError = error;
+
+        // リトライ前に少し待機（指数バックオフ）
+        if (attempt < retryCount) {
+          const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          console.log(`  ${waitTime}ms後に再試行します...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue;
+        }
+
+        return [];
+      }
+
+      // データ取得成功
+      console.log(`  ✅ 取得したシフト数: ${data?.length || 0}件`);
+
+      // 時間形式からHH:MMのみを抽出（Supabaseのtime型はHH:MM:SS形式で返される）
+      const formatTimeToHHMM = (time: string | null): string | undefined => {
+        if (!time) return undefined;
+        // HH:MM:SS → HH:MM に変換
+        return time.substring(0, 5);
+      };
+
+      // データ形式を変換
+      const shifts: Shift[] = (data || []).map(row => ({
+        id: row.id,
+        date: row.date,
+        startTime: formatTimeToHHMM(row.start_time),
+        endTime: formatTimeToHHMM(row.end_time),
+        helperId: row.helper_id || '',
+        clientName: row.client_name,
+        serviceType: row.service_type || undefined,
+        duration: row.hours || 0,
+        area: row.location || '',
+        content: row.content || undefined, // ケア内容（自由入力）
+        rowIndex: row.row_index ?? undefined, // 表示行インデックス
+        cancelStatus: row.cancel_status || undefined,
+        canceledAt: row.canceled_at || undefined,
+        deleted: row.deleted || false // deletedカラムがない場合はfalseとする
+      }));
+
+      // deletedがtrueのものをフィルタリング（アプリ側で処理）
+      const activeShifts = shifts.filter(s => !s.deleted);
+      console.log(`  論理削除を除いたシフト数: ${activeShifts.length}件`);
+
+      return activeShifts;
+
+    } catch (error) {
+      console.error(`シフト読み込みエラー (試行 ${attempt}):`, error);
+      lastError = error;
+
+      // リトライ前に少し待機
+      if (attempt < retryCount) {
+        const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+        console.log(`  ${waitTime}ms後に再試行します...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
     }
-
-    console.log(`  取得したシフト数: ${data?.length || 0}件`);
-
-    // 時間形式からHH:MMのみを抽出（Supabaseのtime型はHH:MM:SS形式で返される）
-    const formatTimeToHHMM = (time: string | null): string | undefined => {
-      if (!time) return undefined;
-      // HH:MM:SS → HH:MM に変換
-      return time.substring(0, 5);
-    };
-
-    // データ形式を変換
-    const shifts: Shift[] = (data || []).map(row => ({
-      id: row.id,
-      date: row.date,
-      startTime: formatTimeToHHMM(row.start_time),
-      endTime: formatTimeToHHMM(row.end_time),
-      helperId: row.helper_id || '',
-      clientName: row.client_name,
-      serviceType: row.service_type || undefined,
-      duration: row.hours || 0,
-      area: row.location || '',
-      content: row.content || undefined, // ケア内容（自由入力）
-      rowIndex: row.row_index ?? undefined, // 表示行インデックス
-      cancelStatus: row.cancel_status || undefined,
-      canceledAt: row.canceled_at || undefined,
-      deleted: row.deleted || false // deletedカラムがない場合はfalseとする
-    }));
-
-    // deletedがtrueのものをフィルタリング（アプリ側で処理）
-    const activeShifts = shifts.filter(s => !s.deleted);
-    console.log(`  論理削除を除いたシフト数: ${activeShifts.length}件`);
-
-    return activeShifts;
-  } catch (error) {
-    console.error('シフト読み込みエラー:', error);
-    return [];
   }
+
+  // すべての試行が失敗した場合
+  console.error('❌ すべての試行が失敗しました:', lastError);
+  return [];
 };
 
 // シフトを削除（完全削除）

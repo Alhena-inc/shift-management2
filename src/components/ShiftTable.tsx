@@ -551,7 +551,27 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
   useEffect(() => {
     if (isEditingMode) return;
     const timeSinceLastUpdate = Date.now() - lastLocalUpdateTimeRef.current;
-    if (lastLocalUpdateTimeRef.current > 0 && timeSinceLastUpdate < 2000) return;
+
+    // 初回ロード時は必ず同期（ケア内容が表示されない問題の修正）
+    if (lastLocalUpdateTimeRef.current === 0) {
+      setShifts(shiftsProp);
+      shiftsRef.current = shiftsProp;
+      return;
+    }
+    // ローカルが空でサーバーにデータがあれば強制同期
+    if (shiftsRef.current.length === 0 && shiftsProp.length > 0) {
+      setShifts(shiftsProp);
+      shiftsRef.current = shiftsProp;
+      return;
+    }
+    // サーバーからのデータが増えた場合も強制同期（新規データ追加）
+    if (shiftsProp.length > shiftsRef.current.length) {
+      setShifts(shiftsProp);
+      shiftsRef.current = shiftsProp;
+      return;
+    }
+    // 通常の2秒制限
+    if (timeSinceLastUpdate < 2000) return;
     setShifts(shiftsProp);
     shiftsRef.current = shiftsProp;
   }, [shiftsProp, isEditingMode]);
@@ -746,12 +766,13 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
   }, [sortedHelpers, weeks, shiftMap, dayOffRequests, scheduledDayOffs, displayTexts]);
 
   useEffect(() => {
-    if (cellDisplayCache.size > 0) {
+    // シフトデータがあるか、または親からのデータも空（本当にデータがない）でヘルパーがいる場合のみ準備完了
+    if (cellDisplayCache.size > 0 || (shiftsProp.length === 0 && sortedHelpers.length > 0)) {
       setIsCacheReady(true);
     } else {
       setIsCacheReady(false);
     }
-  }, [cellDisplayCache]);
+  }, [cellDisplayCache, shiftsProp.length, sortedHelpers.length]);
 
   const getCellDisplayData = useCallback((helperId: string, date: string, rowIndex: number) => {
     const key = `${helperId}-${date}-${rowIndex}`;
