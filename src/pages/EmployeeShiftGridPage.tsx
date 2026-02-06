@@ -58,7 +58,7 @@ export default function EmployeeShiftGridPage() {
     useEffect(() => {
         const unsubscribe = subscribeToShiftsForMonth(currentYear, currentMonth, (allShifts) => {
             setShifts(allShifts);
-        }, shiftCollection);
+        });
 
         return () => {
             unsubscribe();

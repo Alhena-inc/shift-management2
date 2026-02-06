@@ -132,7 +132,7 @@ function App() {
     const unsubscribe = subscribeToShiftsForMonth(currentYear, currentMonth, (allShifts) => {
       console.log(`📊 ${currentYear}年${currentMonth}月のシフトを受信: ${allShifts.length}件`);
       setShifts(allShifts);
-    }, shiftCollection);
+    });
 
     return () => {
       console.log(`🔚 ${currentYear}年${currentMonth}月のシフト購読を解除`);
@@ -184,7 +184,7 @@ function App() {
       if (result.success) {
         alert(`${result.message}\n\n削除された重複: ${result.duplicatesRemoved}件`);
 
-        const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth, shiftCollection);
+        const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth);
         let januaryShifts: Shift[] = [];
 
         if (currentMonth === 12) {
@@ -275,12 +275,12 @@ function App() {
 
     await new Promise(resolve => setTimeout(resolve, 200));
 
-    const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth, shiftCollection);
+    const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth);
 
     let allShifts = loadedShifts;
     if (currentMonth === 12) {
       const nextYear = currentYear + 1;
-      const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1, shiftCollection);
+      const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1);
 
       const januaryShifts = allJanuaryShifts.filter(shift => {
         const day = parseInt(shift.date.split('-')[2]);
@@ -607,165 +607,165 @@ function App() {
       <Layout user={user}>
         <div className="p-4">
 
-        <div className="flex justify-between items-start mb-4">
-          <div>
-            <div className="flex items-center gap-4 mb-2">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div className="flex items-center gap-4 mb-2">
+                <button
+                  onClick={() => window.location.href = '/'}
+                  className="px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm"
+                  title="ホームに戻る"
+                >
+                  🏠 ホーム
+                </button>
+                <button
+                  onClick={handlePreviousMonth}
+                  className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-lg font-bold transition-colors"
+                >
+                  ◀
+                </button>
+                <h1 className="text-2xl font-bold">📅 {currentYear}年{currentMonth}月 シフト表</h1>
+                <button
+                  onClick={handleNextMonth}
+                  className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-lg font-bold transition-colors"
+                >
+                  ▶
+                </button>
+              </div>
+              <div className="flex gap-3 text-sm flex-wrap">
+                {serviceConfigDisplay}
+              </div>
+            </div>
+            <div className="flex gap-3 flex-wrap">
+              {/* 給与計算は管理者のみ */}
+              {userRole === 'admin' && (
+                <button
+                  onClick={handleOpenSalaryCalculation}
+                  className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                >
+                  💰 給与計算
+                </button>
+              )}
+
+              {/* スタッフも利用可能なメニュー */}
               <button
-                onClick={() => window.location.href = '/'}
-                className="px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm"
-                title="ホームに戻る"
+                onClick={handleOpenShiftBulkInput}
+                className="px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-colors"
               >
-                🏠 ホーム
+                📋 シフト一括追加
               </button>
+
               <button
-                onClick={handlePreviousMonth}
-                className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-lg font-bold transition-colors"
+                onClick={handleOpenHelperManager}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
               >
-                ◀
+                👥 ヘルパー管理
               </button>
-              <h1 className="text-2xl font-bold">📅 {currentYear}年{currentMonth}月 シフト表</h1>
+
               <button
-                onClick={handleNextMonth}
-                className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-lg font-bold transition-colors"
+                onClick={handleOpenExpenseModal}
+                className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
               >
-                ▶
+                📊 交通費・経費
+              </button>
+
+              <button
+                onClick={handleOpenDayOffManager}
+                className="px-4 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors"
+              >
+                🏖️ 休み希望
+              </button>
+
+              <button
+                onClick={handleReflectNextMonth}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                title="当月のケア内容を翌月の同じ曜日にコピーします"
+              >
+                📋 翌月へ反映
+              </button>
+
+              {/* 内部バックアップは管理者のみ */}
+              {userRole === 'admin' && (
+                <button
+                  onClick={handleManualBackup}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+                  title="現在のデータを内部バックアップします"
+                >
+                  ☁️ 内部バックアップ
+                </button>
+              )}
+
+              <button
+                onClick={handleOpenCareContentDeleter}
+                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+              >
+                🗑️ シフトデータ削除
               </button>
             </div>
-            <div className="flex gap-3 text-sm flex-wrap">
-              {serviceConfigDisplay}
+          </div>
+
+          {currentView === 'shift' && (
+            <div style={{
+              zoom: '0.85'
+            }}>
+              <ShiftTable
+                helpers={helpers}
+                shifts={shifts}
+                year={currentYear}
+                month={currentMonth}
+                onUpdateShifts={handleUpdateShifts}
+              />
             </div>
-          </div>
-          <div className="flex gap-3 flex-wrap">
-            {/* 給与計算は管理者のみ */}
-            {userRole === 'admin' && (
-              <button
-                onClick={handleOpenSalaryCalculation}
-                className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
-              >
-                💰 給与計算
-              </button>
-            )}
+          )}
 
-            {/* スタッフも利用可能なメニュー */}
-            <button
-              onClick={handleOpenShiftBulkInput}
-              className="px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-colors"
-            >
-              📋 シフト一括追加
-            </button>
+          <ExpenseModal
+            isOpen={isExpenseModalOpen}
+            onClose={() => setIsExpenseModalOpen(false)}
+            initialYear={currentYear}
+            initialMonth={currentMonth}
+          />
 
-            <button
-              onClick={handleOpenHelperManager}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-            >
-              👥 ヘルパー管理
-            </button>
-
-            <button
-              onClick={handleOpenExpenseModal}
-              className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
-            >
-              📊 交通費・経費
-            </button>
-
-            <button
-              onClick={handleOpenDayOffManager}
-              className="px-4 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors"
-            >
-              🏖️ 休み希望
-            </button>
-
-            <button
-              onClick={handleReflectNextMonth}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-              title="当月のケア内容を翌月の同じ曜日にコピーします"
-            >
-              📋 翌月へ反映
-            </button>
-
-            {/* 内部バックアップは管理者のみ */}
-            {userRole === 'admin' && (
-              <button
-                onClick={handleManualBackup}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
-                title="現在のデータを内部バックアップします"
-              >
-                ☁️ 内部バックアップ
-              </button>
-            )}
-
-            <button
-              onClick={handleOpenCareContentDeleter}
-              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-            >
-              🗑️ シフトデータ削除
-            </button>
-          </div>
-        </div>
-
-        {currentView === 'shift' && (
-          <div style={{
-            zoom: '0.85'
-          }}>
-            <ShiftTable
-              helpers={helpers}
-              shifts={shifts}
-              year={currentYear}
-              month={currentMonth}
-              onUpdateShifts={handleUpdateShifts}
-            />
-          </div>
-        )}
-
-        <ExpenseModal
-          isOpen={isExpenseModalOpen}
-          onClose={() => setIsExpenseModalOpen(false)}
-          initialYear={currentYear}
-          initialMonth={currentMonth}
-        />
-
-        <ShiftBulkInput
-          isOpen={isShiftBulkInputOpen}
-          onClose={() => setIsShiftBulkInputOpen(false)}
-          helpers={helpers}
-          currentYear={currentYear}
-          currentMonth={currentMonth}
-          onAddShifts={(newShifts: Shift[]) => {
-            // 既存のシフトに新しいシフトを追加
-            const updatedShifts = [...shifts, ...newShifts];
-            handleUpdateShifts(updatedShifts);
-          }}
-        />
-
-        {isCareContentDeleterOpen && (
-          <CareContentDeleter
-            onClose={() => setIsCareContentDeleterOpen(false)}
+          <ShiftBulkInput
+            isOpen={isShiftBulkInputOpen}
+            onClose={() => setIsShiftBulkInputOpen(false)}
+            helpers={helpers}
             currentYear={currentYear}
             currentMonth={currentMonth}
-            onDeleteComplete={async () => {
-              // 削除完了後、シフトデータを再読み込み
-              const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth, shiftCollection);
-
-              // 12月の場合は翌年1月のシフトも読み込む
-              let januaryShifts: Shift[] = [];
-              if (currentMonth === 12) {
-                const nextYear = currentYear + 1;
-                const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1, shiftCollection);
-
-                // 1月1日〜4日のみをフィルター
-                januaryShifts = allJanuaryShifts.filter(shift => {
-                  const day = parseInt(shift.date.split('-')[2]);
-                  return day >= 1 && day <= 4;
-                });
-              }
-
-              const allShifts = [...loadedShifts, ...januaryShifts];
-              setShifts(allShifts);
+            onAddShifts={(newShifts: Shift[]) => {
+              // 既存のシフトに新しいシフトを追加
+              const updatedShifts = [...shifts, ...newShifts];
+              handleUpdateShifts(updatedShifts);
             }}
           />
-        )}
-      </div>
-    </Layout>
+
+          {isCareContentDeleterOpen && (
+            <CareContentDeleter
+              onClose={() => setIsCareContentDeleterOpen(false)}
+              currentYear={currentYear}
+              currentMonth={currentMonth}
+              onDeleteComplete={async () => {
+                // 削除完了後、シフトデータを再読み込み
+                const loadedShifts = await loadShiftsForMonth(currentYear, currentMonth);
+
+                // 12月の場合は翌年1月のシフトも読み込む
+                let januaryShifts: Shift[] = [];
+                if (currentMonth === 12) {
+                  const nextYear = currentYear + 1;
+                  const allJanuaryShifts = await loadShiftsForMonth(nextYear, 1);
+
+                  // 1月1日〜4日のみをフィルター
+                  januaryShifts = allJanuaryShifts.filter(shift => {
+                    const day = parseInt(shift.date.split('-')[2]);
+                    return day >= 1 && day <= 4;
+                  });
+                }
+
+                const allShifts = [...loadedShifts, ...januaryShifts];
+                setShifts(allShifts);
+              }}
+            />
+          )}
+        </div>
+      </Layout>
     </ErrorBoundary>
   );
 }
