@@ -212,15 +212,20 @@ export const ShiftCell = memo(({
 
               const target = e.currentTarget as HTMLElement;
               setTimeout(() => {
-                target.focus();
-                // キャレットを末尾に移動
-                const range = document.createRange();
-                const sel = window.getSelection();
-                if (sel) {
-                  range.selectNodeContents(target);
-                  range.collapse(false);
-                  sel.removeAllRanges();
-                  sel.addRange(range);
+                try {
+                  if (!document.body.contains(target)) return;
+                  target.focus();
+                  // キャレットを末尾に移動
+                  const range = document.createRange();
+                  const sel = window.getSelection();
+                  if (sel && target.childNodes.length > 0) {
+                    range.selectNodeContents(target);
+                    range.collapse(false);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                  }
+                } catch {
+                  // DOM変更によるエラーを無視
                 }
               }, 0);
             }}

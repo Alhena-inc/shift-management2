@@ -4737,7 +4737,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       });
       lastSelectedRowTdsRef.current = [];
       document.querySelectorAll('.line-selected').forEach(el => el.classList.remove('line-selected'));
-      if (document.body.contains(menu)) menu.remove();
+      safeRemoveElement(menu);
     };
 
     // キャンセルボタン（時間を残さず）= 3行目の稼働時間のみ削除、背景色キャンセル色
@@ -4868,7 +4868,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       });
       lastSelectedRowTdsRef.current = [];
       document.querySelectorAll('.line-selected').forEach(el => el.classList.remove('line-selected'));
-      if (document.body.contains(menu)) menu.remove();
+      safeRemoveElement(menu);
     };
 
     // 未キャンセルのケアが含まれる場合は「キャンセル（時間残す/削除）」を表示
