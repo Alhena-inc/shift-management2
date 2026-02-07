@@ -1083,6 +1083,9 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
   const updateSelectionFromTd = useCallback((td: HTMLElement, lineIndex: number) => {
     if (readOnly) return;
 
+    // 複数選択の青枠をクリア
+    clearManualSelection();
+
     const targetWrapper = td.querySelector(`.editable-cell-wrapper[data-line="${lineIndex}"]`) as HTMLElement;
     if (!targetWrapper) return;
 
@@ -1123,7 +1126,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       if (rect.bottom > cRect.bottom) container.scrollBy({ top: rect.bottom - cRect.bottom + 24, behavior: 'auto' });
       else if (rect.top < cRect.top) container.scrollBy({ top: rect.top - cRect.top - 24, behavior: 'auto' });
     }
-  }, [syncSelection, readOnly]);
+  }, [syncSelection, readOnly, clearManualSelection]);
 
   const handleNativeMouseDown = useCallback((e: MouseEvent) => {
     // ★ 右クリックは無視（コンテキストメニュー用）
@@ -1151,6 +1154,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       selectedRowsRef.current.add(cellKey);
       lastProcessedCellRef.current = cellKey;
 
+      td.classList.add('shift-cell-multi-selected');
       if (!lastSelectedRowTdsRef.current.includes(td)) {
         lastSelectedRowTdsRef.current.push(td);
       }
@@ -2964,11 +2968,9 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     if (!selectedRowsRef.current.has(cellKey)) {
       selectedRowsRef.current.add(cellKey);
 
-      // クラス付与で青枠表示（削除）
       const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
       if (td) {
-        // td.classList.add('shift-cell-multi-selected');
-        // td.style.setProperty('z-index', '2000', 'important');
+        td.classList.add('shift-cell-multi-selected');
         lastSelectedRowTdsRef.current.push(td);
       }
     }
@@ -3023,12 +3025,9 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     selectedRowsRef.current.add(cellKey);
     lastProcessedCellRef.current = cellKey; // このセルは処理済みとして記録
 
-    // クラス付与で青枠表示（削除）
     const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
     if (td) {
-      // td.classList.add('td-selected');
-      // td.style.setProperty('z-index', '2000', 'important');
-      // 重複しないようにチェックしてから追加
+      td.classList.add('shift-cell-multi-selected');
       if (!lastSelectedRowTdsRef.current.includes(td)) {
         lastSelectedRowTdsRef.current.push(td);
       }
