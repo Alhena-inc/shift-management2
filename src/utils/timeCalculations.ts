@@ -20,7 +20,8 @@ export function calculateNightHours(timeRange: string): number {
   const overlapEnd = Math.min(end, nightEnd);
 
   if (overlapStart < overlapEnd) {
-    return (overlapEnd - overlapStart) / 60;
+    const minutes = overlapEnd - overlapStart;
+    return Math.ceil(minutes / 30) * 0.5;
   }
 
   return 0;
@@ -55,7 +56,7 @@ export function calculateRegularHours(timeRange: string): number {
     regularMinutes += end - nightEnd;
   }
 
-  return regularMinutes / 60;
+  return Math.ceil(regularMinutes / 30) * 0.5;
 }
 
 // 時間差を計算する関数
