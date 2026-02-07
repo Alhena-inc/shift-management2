@@ -31,6 +31,7 @@ import {
   saveHelpers,
   loadHelpers,
   loadShiftsForMonth,
+  saveShiftsForMonth, // 追加
   subscribeToShiftsForMonth,
   subscribeToHelpers,
   backupToFirebase // 追加
@@ -730,10 +731,19 @@ function App() {
             helpers={helpers}
             currentYear={currentYear}
             currentMonth={currentMonth}
-            onAddShifts={(newShifts: Shift[]) => {
+            onAddShifts={async (newShifts: Shift[]) => {
               // 既存のシフトに新しいシフトを追加
               const updatedShifts = [...shifts, ...newShifts];
               handleUpdateShifts(updatedShifts);
+
+              try {
+                // データベースに保存（新規追加分と既存分を含めて保存）
+                await saveShiftsForMonth(currentYear, currentMonth, updatedShifts);
+                alert(`${newShifts.length}件のシフトを追加・保存しました`);
+              } catch (error) {
+                console.error('保存エラー:', error);
+                alert('保存に失敗しました。リロードするとデータが消える可能性があります。');
+              }
             }}
           />
 
