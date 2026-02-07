@@ -261,6 +261,11 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
 
   const { taxableOther, nonTaxableOther } = calculateOtherAllowancesValues(payslip);
 
+  // 事務・営業手当の右のスロットには課税手当のみ表示（非課税手当は「通勤非課税」欄に集約）
+  const displayAllowances = (payslip.payments.otherAllowances || [])
+    .map((a: any, i: number) => ({ ...a, _origIndex: i }))
+    .filter((a: any) => !a.taxExempt);
+
   return (
     <div
       className="bg-white mx-auto p-4 box-border select-none"
@@ -369,10 +374,10 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
           <tr>
             <td rowSpan={6} className="vertical-text">支給</td>
             <LabelCell>基本給</LabelCell><LabelCell>役員報酬</LabelCell><LabelCell>処遇改善手当</LabelCell><LabelCell>同行研修手当</LabelCell><LabelCell>事務・営業手当</LabelCell>
-            <LabelCell>{payslip.payments.otherAllowances?.[0]?.name || "　"}</LabelCell>
-            <LabelCell>{payslip.payments.otherAllowances?.[1]?.name || "　"}</LabelCell>
-            <LabelCell>{payslip.payments.otherAllowances?.[2]?.name || "　"}</LabelCell>
-            <LabelCell>{payslip.payments.otherAllowances?.[3]?.name || "　"}</LabelCell>
+            <LabelCell>{displayAllowances[0]?.name || "　"}</LabelCell>
+            <LabelCell>{displayAllowances[1]?.name || "　"}</LabelCell>
+            <LabelCell>{displayAllowances[2]?.name || "　"}</LabelCell>
+            <LabelCell>{displayAllowances[3]?.name || "　"}</LabelCell>
           </tr>
           {/* Row 1 Value */}
           <tr>
@@ -384,40 +389,40 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
             />
             <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'accompanyPay']} value={payslip.payments.accompanyPay || 0} />
             <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'officePay']} value={payslip.payments.officePay || 0} />
-            {payslip.payments.otherAllowances?.[0] ? (
-              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', 0, 'amount']} value={payslip.payments.otherAllowances[0].amount} />
+            {displayAllowances[0] ? (
+              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', displayAllowances[0]._origIndex, 'amount']} value={displayAllowances[0].amount} />
             ) : <EmptyCell />}
-            {payslip.payments.otherAllowances?.[1] ? (
-              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', 1, 'amount']} value={payslip.payments.otherAllowances[1].amount} />
+            {displayAllowances[1] ? (
+              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', displayAllowances[1]._origIndex, 'amount']} value={displayAllowances[1].amount} />
             ) : <EmptyCell />}
-            {payslip.payments.otherAllowances?.[2] ? (
-              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', 2, 'amount']} value={payslip.payments.otherAllowances[2].amount} />
+            {displayAllowances[2] ? (
+              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', displayAllowances[2]._origIndex, 'amount']} value={displayAllowances[2].amount} />
             ) : <EmptyCell />}
-            {payslip.payments.otherAllowances?.[3] ? (
-              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', 3, 'amount']} value={payslip.payments.otherAllowances[3].amount} />
+            {displayAllowances[3] ? (
+              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', displayAllowances[3]._origIndex, 'amount']} value={displayAllowances[3].amount} />
             ) : <EmptyCell />}
           </tr>
           {/* Row 2 Header */}
           <tr>
-            <LabelCell>{payslip.payments.otherAllowances?.[4]?.name || "　"}</LabelCell>
-            <LabelCell>{payslip.payments.otherAllowances?.[5]?.name || "　"}</LabelCell>
-            <LabelCell>{payslip.payments.otherAllowances?.[6]?.name || "　"}</LabelCell>
-            <LabelCell>{payslip.payments.otherAllowances?.[7]?.name || "　"}</LabelCell>
+            <LabelCell>{displayAllowances[4]?.name || "　"}</LabelCell>
+            <LabelCell>{displayAllowances[5]?.name || "　"}</LabelCell>
+            <LabelCell>{displayAllowances[6]?.name || "　"}</LabelCell>
+            <LabelCell>{displayAllowances[7]?.name || "　"}</LabelCell>
             <LabelCell>特別手当</LabelCell><LabelCell>年末年始手当</LabelCell><LabelCell>残業手当</LabelCell><LabelCell>休日出勤</LabelCell><LabelCell>深夜残業</LabelCell>
           </tr>
           {/* Row 2 Value */}
           <tr>
-            {payslip.payments.otherAllowances?.[4] ? (
-              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', 4, 'amount']} value={payslip.payments.otherAllowances[4].amount} />
+            {displayAllowances[4] ? (
+              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', displayAllowances[4]._origIndex, 'amount']} value={displayAllowances[4].amount} />
             ) : <EmptyCell />}
-            {payslip.payments.otherAllowances?.[5] ? (
-              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', 5, 'amount']} value={payslip.payments.otherAllowances[5].amount} />
+            {displayAllowances[5] ? (
+              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', displayAllowances[5]._origIndex, 'amount']} value={displayAllowances[5].amount} />
             ) : <EmptyCell />}
-            {payslip.payments.otherAllowances?.[6] ? (
-              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', 6, 'amount']} value={payslip.payments.otherAllowances[6].amount} />
+            {displayAllowances[6] ? (
+              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', displayAllowances[6]._origIndex, 'amount']} value={displayAllowances[6].amount} />
             ) : <EmptyCell />}
-            {payslip.payments.otherAllowances?.[7] ? (
-              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', 7, 'amount']} value={payslip.payments.otherAllowances[7].amount} />
+            {displayAllowances[7] ? (
+              <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'otherAllowances', displayAllowances[7]._origIndex, 'amount']} value={displayAllowances[7].amount} />
             ) : <EmptyCell />}
             <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'specialAllowance']} value={payslip.payments.specialAllowance} />
             <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['payments', 'yearEndNewYearAllowance']} value={(payslip.payments as any).yearEndNewYearAllowance} />

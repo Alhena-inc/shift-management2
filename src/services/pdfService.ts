@@ -354,7 +354,7 @@ function prepareCloneForCanvas(doc: Document, clonedRoot: HTMLElement, originalR
   // 2. レイアウトをFlexboxで再構築（最強の強制力）
   rebuildLayoutWithFlex(doc, clonedRoot);
 
-  // 3. 全体設定とフォントスムージング
+  // 3. 全体設定とフォントスムージング（画面表示と同じ明朝体フォントを強制）
   const style = doc.createElement('style');
   style.textContent = `
     * {
@@ -363,6 +363,7 @@ function prepareCloneForCanvas(doc: Document, clonedRoot: HTMLElement, originalR
       transform: none !important;
       box-shadow: none !important;
       text-shadow: none !important;
+      font-family: "Hiragino Mincho ProN", "Yu Mincho", serif !important;
     }
     body, html {
       background-color: #ffffff !important;
