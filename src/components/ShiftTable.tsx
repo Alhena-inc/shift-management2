@@ -471,6 +471,8 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
   const lastSelectedRowTdsRef = useRef<HTMLElement[]>([]);
   const isComposingRef = useRef(false);
   const isDraggingForSelectionRef = useRef(false);
+  const handlePointerMoveRef = useRef<(e: PointerEvent) => void>(() => {});
+  const handlePointerUpRef = useRef<(e: PointerEvent) => void>(() => {});
   const selectedRowsRef = useRef<Set<string>>(new Set());
   const syncSelectionTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -1134,6 +1136,42 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     const td = target.closest('td[data-cell-key]') as HTMLElement;
     if (!td) return;
 
+    // ★ Shift+クリックで複数選択
+    if (e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const helperId = td.dataset.helperId!;
+      const date = td.dataset.date!;
+      const rowIndex = parseInt(td.dataset.rowIndex!);
+      const cellKey = `${helperId}-${date}-${rowIndex}`;
+
+      isDraggingForSelectionRef.current = true;
+      justStartedDraggingRef.current = false;
+      selectedRowsRef.current.add(cellKey);
+      lastProcessedCellRef.current = cellKey;
+
+      if (!lastSelectedRowTdsRef.current.includes(td)) {
+        lastSelectedRowTdsRef.current.push(td);
+      }
+
+      selectedCellRef.current = {
+        helperId, date, rowIndex,
+        lineIndex: selectedCellRef.current?.lineIndex ?? 0
+      };
+
+      const onMove = (ev: PointerEvent) => handlePointerMoveRef.current(ev);
+      const onUp = (ev: PointerEvent) => {
+        handlePointerUpRef.current(ev);
+        document.removeEventListener('pointermove', onMove);
+      };
+      document.addEventListener('pointermove', onMove, { passive: true });
+      document.addEventListener('pointerup', onUp, { once: true });
+
+      syncSelection(true);
+      return;
+    }
+
     const tdRect = td.getBoundingClientRect();
     const relativeY = e.clientY - tdRect.top;
     const clickedLineIndex = Math.max(0, Math.min(3, Math.floor(relativeY / (tdRect.height / 4))));
@@ -1151,7 +1189,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     });
 
     updateSelectionFromTd(td, clickedLineIndex);
-  }, [updateSelectionFromTd]);
+  }, [updateSelectionFromTd, syncSelection]);
 
   const handleNativeKeyDown = useCallback((e: KeyboardEvent) => {
     if (readOnly) return;
@@ -2959,6 +2997,10 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       justStartedDraggingRef.current = false;
     }, 50);
   }, [handlePointerMove, syncSelection]);
+
+  // handleNativeMouseDown から参照できるように ref に格納
+  handlePointerMoveRef.current = handlePointerMove;
+  handlePointerUpRef.current = handlePointerUp;
 
   // Shift+ドラッグ用イベントハンドラ
   const handleCellPointerDown = useCallback((e: React.PointerEvent, helperId: string, date: string, rowIndex: number) => {
