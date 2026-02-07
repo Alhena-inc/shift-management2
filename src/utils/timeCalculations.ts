@@ -1,3 +1,12 @@
+// 時間の丸め処理: 15分単位（0.25刻み）ならそのまま、それ以外は小数第1位に四捨五入
+function roundHours(hours: number): number {
+  const quartered = hours * 4;
+  if (Math.abs(quartered - Math.round(quartered)) < 0.0001) {
+    return Math.round(quartered) / 4;
+  }
+  return Math.round(hours * 10) / 10;
+}
+
 // 深夜時間帯（22時～翌朝8時）の時間数を計算する関数
 export function calculateNightHours(timeRange: string): number {
   const match = timeRange.match(/(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})/);
@@ -20,7 +29,7 @@ export function calculateNightHours(timeRange: string): number {
   const overlapEnd = Math.min(end, nightEnd);
 
   if (overlapStart < overlapEnd) {
-    return (overlapEnd - overlapStart) / 60;
+    return roundHours((overlapEnd - overlapStart) / 60);
   }
 
   return 0;
@@ -55,7 +64,7 @@ export function calculateRegularHours(timeRange: string): number {
     regularMinutes += end - nightEnd;
   }
 
-  return regularMinutes / 60;
+  return roundHours(regularMinutes / 60);
 }
 
 // 時間差を計算する関数
@@ -75,7 +84,7 @@ export function calculateTimeDuration(timeRange: string): string {
   const diffMinutes = end - start;
   if (diffMinutes <= 0) return '';
 
-  // 時間数を計算（分単位で正確に）
-  const hours = diffMinutes / 60;
+  // 時間数を計算（15分単位はそのまま、それ以外は小数第1位に四捨五入）
+  const hours = roundHours(diffMinutes / 60);
   return hours.toString();
 }
