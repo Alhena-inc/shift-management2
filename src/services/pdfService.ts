@@ -323,6 +323,10 @@ function rebuildLayoutWithFlex(doc: Document, clonedRoot: HTMLElement) {
       safeFontWeight = '500';
     }
 
+    // フォントサイズに応じたpadding-bottom補正（小さいセルでは控えめに）
+    const fontSizePx = parseFloat(fontSize) || 14;
+    const paddingBottom = fontSizePx <= 10 ? '1px' : '8px';
+
     wrapper.style.cssText = `
         display: flex !important;
         align-items: center !important;
@@ -338,8 +342,8 @@ function rebuildLayoutWithFlex(doc: Document, clonedRoot: HTMLElement) {
         overflow: visible !important;
         padding-left: ${paddingLeft} !important;
         padding-right: ${paddingRight} !important;
-        padding-bottom: 8px !important; /* 文字が下寄りに見える現象の補正（重心をさらに上げる） */
-        line-height: 1 !important; /* 行間によるズレを排除 */
+        padding-bottom: ${paddingBottom} !important;
+        line-height: 1 !important;
         margin: 0 !important;
     `;
 

@@ -721,7 +721,7 @@ export function generateHourlyPayslipFromShifts(
           dailySlots.push({
             slotNumber: shift.rowIndex + 1,
             clientName: shift.clientName || '',
-            timeRange: `${shift.startTime}-${shift.endTime}`,
+            timeRange: `${(shift.startTime || '').replace(/^0/, '')}-${(shift.endTime || '').replace(/^0/, '')}`,
           });
         }
       } else if (['doko', 'shinya_doko'].includes(shift.serviceType)) {
@@ -735,7 +735,7 @@ export function generateHourlyPayslipFromShifts(
           dailySlots.push({
             slotNumber: shift.rowIndex + 1,
             clientName: shift.clientName || '',
-            timeRange: `${shift.startTime}-${shift.endTime}`,
+            timeRange: `${(shift.startTime || '').replace(/^0/, '')}-${(shift.endTime || '').replace(/^0/, '')}`,
           });
         }
       } else if (shift.serviceType === 'jimu') {
