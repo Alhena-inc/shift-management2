@@ -286,8 +286,24 @@ function rebuildLayoutWithFlex(doc: Document, clonedRoot: HTMLElement) {
 
     // 内部コンテンツの取得（Inputがあれば値を取得）
     let contentText = '';
+    let effectiveTextAlign = textAlign;
+    let effectiveFontSize = fontSize;
+    let effectiveFontWeight = fontWeight;
     const input = el.querySelector('input, textarea, select') as HTMLInputElement | null;
     if (input) {
+      // input要素のスタイルも取得（text-align, font-size, font-weight）
+      const inputComputed = doc.defaultView?.getComputedStyle(input);
+      if (inputComputed) {
+        if (inputComputed.textAlign === 'center' || inputComputed.textAlign === 'right') {
+          effectiveTextAlign = inputComputed.textAlign;
+        }
+        // inputのフォントサイズが明示されていればそちらを優先
+        const inputFs = parseFloat(inputComputed.fontSize);
+        if (inputFs > 0) effectiveFontSize = inputComputed.fontSize;
+        if (inputComputed.fontWeight && inputComputed.fontWeight !== 'normal' && inputComputed.fontWeight !== '400') {
+          effectiveFontWeight = inputComputed.fontWeight;
+        }
+      }
       if (input.type === 'checkbox' || input.type === 'radio') {
         contentText = input.checked ? '☑' : '☐';
       } else if (input.tagName === 'SELECT') {
@@ -297,34 +313,33 @@ function rebuildLayoutWithFlex(doc: Document, clonedRoot: HTMLElement) {
         contentText = input.value;
       }
     } else {
-      // テキストのみの場合 (trimして空なら何もしない？いや、空でも枠は必要)
       contentText = el.textContent?.trim() || '';
     }
 
     // ラッパー作成 (Flexbox)
-    el.innerHTML = ''; // 中身をクリア
+    el.innerHTML = '';
     const wrapper = doc.createElement('div');
     wrapper.textContent = contentText;
 
     // Flexboxによる完全な中央揃え
     // justify-contentはtext-alignに従う
     let justifyContent = 'flex-start';
-    if (textAlign === 'center') justifyContent = 'center';
-    if (textAlign === 'right') justifyContent = 'flex-end';
+    if (effectiveTextAlign === 'center') justifyContent = 'center';
+    if (effectiveTextAlign === 'right') justifyContent = 'flex-end';
 
     // 左右の微調整用パディング: 右寄せなら右に、左寄せなら左に少し隙間
-    const paddingLeft = textAlign === 'left' ? '4px' : '0';
-    const paddingRight = textAlign === 'right' ? '4px' : '0';
+    const paddingLeft = effectiveTextAlign === 'left' || effectiveTextAlign === 'start' ? '4px' : '0';
+    const paddingRight = effectiveTextAlign === 'right' ? '4px' : '0';
 
     // 補正: 太字の滲み対策（太さを一段階落とす）
     // html2canvasを通すとboldが潰れがちなので、500程度に留める
-    let safeFontWeight = fontWeight;
-    if (fontWeight === 'bold' || fontWeight === '700' || fontWeight === '600' || fontWeight === '800') {
+    let safeFontWeight = effectiveFontWeight;
+    if (effectiveFontWeight === 'bold' || effectiveFontWeight === '700' || effectiveFontWeight === '600' || effectiveFontWeight === '800') {
       safeFontWeight = '500';
     }
 
     // フォントサイズに応じたpadding-bottom補正（小さいセルでは控えめに）
-    const fontSizePx = parseFloat(fontSize) || 14;
+    const fontSizePx = parseFloat(effectiveFontSize) || 14;
     const paddingBottom = fontSizePx <= 12 ? '2px' : '8px';
 
     wrapper.style.cssText = `
@@ -334,7 +349,7 @@ function rebuildLayoutWithFlex(doc: Document, clonedRoot: HTMLElement) {
         width: 100% !important;
         height: 100% !important;
         font-family: ${fontFamily} !important;
-        font-size: ${fontSize} !important;
+        font-size: ${effectiveFontSize} !important;
         font-weight: ${safeFontWeight} !important;
         color: ${color} !important;
         background: transparent !important;
