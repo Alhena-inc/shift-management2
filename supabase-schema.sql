@@ -155,80 +155,134 @@ ALTER TABLE display_texts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE backups ENABLE ROW LEVEL SECURITY;
 
 -- ====================================
--- 6. RLSポリシーの作成
+-- 6. 管理者判定用ヘルパー関数
+-- ====================================
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.users
+    WHERE id = auth.uid() AND role = 'admin'
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE
+SET search_path = public;
+
+-- ====================================
+-- 7. RLSポリシーの作成
 -- ====================================
 
--- ユーザーテーブルのポリシー
-CREATE POLICY "Users can view their own data" ON users
+-- --- users テーブル ---
+CREATE POLICY "users_select_own" ON users
   FOR SELECT USING (auth.uid() = id);
 
-CREATE POLICY "Admins can view all users" ON users
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-    )
-  );
+CREATE POLICY "users_select_admin" ON users
+  FOR SELECT USING (public.is_admin());
 
-CREATE POLICY "Users can update their own data" ON users
+CREATE POLICY "users_update_own" ON users
   FOR UPDATE USING (auth.uid() = id);
 
--- ヘルパーテーブルのポリシー（認証済みユーザーは全員閲覧可能）
-CREATE POLICY "Authenticated users can view helpers" ON helpers
+CREATE POLICY "users_insert_own" ON users
+  FOR INSERT WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "users_all_admin" ON users
+  FOR ALL USING (public.is_admin());
+
+-- --- helpers テーブル ---
+CREATE POLICY "helpers_select_authenticated" ON helpers
   FOR SELECT USING (auth.role() = 'authenticated');
 
-CREATE POLICY "Admins can manage helpers" ON helpers
-  FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-    )
-  );
+CREATE POLICY "helpers_select_by_token" ON helpers
+  FOR SELECT USING (auth.role() = 'anon' AND personal_token IS NOT NULL);
 
--- シフトテーブルのポリシー
-CREATE POLICY "Authenticated users can view shifts" ON shifts
+CREATE POLICY "helpers_insert_admin" ON helpers
+  FOR INSERT WITH CHECK (public.is_admin());
+
+CREATE POLICY "helpers_update_admin" ON helpers
+  FOR UPDATE USING (public.is_admin());
+
+CREATE POLICY "helpers_delete_admin" ON helpers
+  FOR DELETE USING (public.is_admin());
+
+-- --- shifts テーブル ---
+CREATE POLICY "shifts_select_authenticated" ON shifts
   FOR SELECT USING (auth.role() = 'authenticated');
 
-CREATE POLICY "Admins can manage shifts" ON shifts
-  FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-    )
-  );
+CREATE POLICY "shifts_select_anon" ON shifts
+  FOR SELECT USING (auth.role() = 'anon');
 
-CREATE POLICY "Staff can manage their own shifts" ON shifts
-  FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM helpers WHERE email = (
-        SELECT email FROM users WHERE id = auth.uid()
-      )
-    )
-  );
+CREATE POLICY "shifts_insert_admin" ON shifts
+  FOR INSERT WITH CHECK (public.is_admin());
 
--- その他のテーブル（認証済みユーザーは全員アクセス可能）
-CREATE POLICY "Authenticated users can access day_off_requests" ON day_off_requests
+CREATE POLICY "shifts_update_admin" ON shifts
+  FOR UPDATE USING (public.is_admin());
+
+CREATE POLICY "shifts_delete_admin" ON shifts
+  FOR DELETE USING (public.is_admin());
+
+-- --- day_off_requests テーブル ---
+CREATE POLICY "day_off_requests_all_authenticated" ON day_off_requests
   FOR ALL USING (auth.role() = 'authenticated');
 
-CREATE POLICY "Authenticated users can access scheduled_day_offs" ON scheduled_day_offs
-  FOR ALL USING (auth.role() = 'authenticated');
+-- --- scheduled_day_offs テーブル ---
+CREATE POLICY "scheduled_day_offs_select_authenticated" ON scheduled_day_offs
+  FOR SELECT USING (auth.role() = 'authenticated');
 
-CREATE POLICY "Authenticated users can access display_texts" ON display_texts
-  FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "scheduled_day_offs_insert_admin" ON scheduled_day_offs
+  FOR INSERT WITH CHECK (public.is_admin());
 
-CREATE POLICY "Authenticated users can access backups" ON backups
-  FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "scheduled_day_offs_update_admin" ON scheduled_day_offs
+  FOR UPDATE USING (public.is_admin());
 
--- ====================================
--- 7. 開発環境用：一時的にRLSを無効化
--- ====================================
--- 注意: 開発中のみ使用し、本番環境では必ず削除してください
+CREATE POLICY "scheduled_day_offs_delete_admin" ON scheduled_day_offs
+  FOR DELETE USING (public.is_admin());
 
--- 一時的に全テーブルへのフルアクセスを許可
-CREATE POLICY "Temporary: Allow all operations" ON helpers FOR ALL USING (true);
-CREATE POLICY "Temporary: Allow all operations" ON shifts FOR ALL USING (true);
-CREATE POLICY "Temporary: Allow all operations" ON day_off_requests FOR ALL USING (true);
-CREATE POLICY "Temporary: Allow all operations" ON scheduled_day_offs FOR ALL USING (true);
-CREATE POLICY "Temporary: Allow all operations" ON display_texts FOR ALL USING (true);
-CREATE POLICY "Temporary: Allow all operations" ON backups FOR ALL USING (true);
-CREATE POLICY "Temporary: Allow all operations" ON users FOR ALL USING (true);
+-- --- display_texts テーブル ---
+CREATE POLICY "display_texts_select_authenticated" ON display_texts
+  FOR SELECT USING (auth.role() = 'authenticated');
+
+CREATE POLICY "display_texts_insert_admin" ON display_texts
+  FOR INSERT WITH CHECK (public.is_admin());
+
+CREATE POLICY "display_texts_update_admin" ON display_texts
+  FOR UPDATE USING (public.is_admin());
+
+CREATE POLICY "display_texts_delete_admin" ON display_texts
+  FOR DELETE USING (public.is_admin());
+
+-- --- backups テーブル ---
+CREATE POLICY "backups_all_admin" ON backups
+  FOR ALL USING (public.is_admin());
+
+-- --- deleted_helpers テーブル ---
+CREATE POLICY "deleted_helpers_all_admin" ON deleted_helpers
+  FOR ALL USING (public.is_admin());
+
+-- --- payslips テーブル ---
+CREATE POLICY "payslips_select_authenticated" ON payslips
+  FOR SELECT USING (auth.role() = 'authenticated');
+
+CREATE POLICY "payslips_insert_admin" ON payslips
+  FOR INSERT WITH CHECK (public.is_admin());
+
+CREATE POLICY "payslips_update_admin" ON payslips
+  FOR UPDATE USING (public.is_admin());
+
+CREATE POLICY "payslips_delete_admin" ON payslips
+  FOR DELETE USING (public.is_admin());
+
+-- --- users_care テーブル ---
+CREATE POLICY "users_care_select_authenticated" ON users_care
+  FOR SELECT USING (auth.role() = 'authenticated');
+
+CREATE POLICY "users_care_insert_admin" ON users_care
+  FOR INSERT WITH CHECK (public.is_admin());
+
+CREATE POLICY "users_care_update_admin" ON users_care
+  FOR UPDATE USING (public.is_admin());
+
+CREATE POLICY "users_care_delete_admin" ON users_care
+  FOR DELETE USING (public.is_admin());
 
 -- ====================================
 -- 完了メッセージ
