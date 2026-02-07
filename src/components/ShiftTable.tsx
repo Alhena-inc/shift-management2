@@ -719,8 +719,8 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
               const { startTime, endTime, clientName, serviceType, duration, area, cancelStatus, content } = shift;
 
               // 各ラインのデータ
-              // 時間文字列からHH:MMを抽出する関数
-              const formatTime = (t: string | null | undefined) => t ? t.substring(0, 5) : '';
+              // 時間文字列からH:MMを抽出する関数（先頭ゼロ除去）
+              const formatTime = (t: string | null | undefined) => t ? t.substring(0, 5).replace(/^0/, '') : '';
 
               // 構造化データがあるかチェック
               // デフォルト時刻（00:00）の場合はcontentを優先
@@ -976,7 +976,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
           if (hasStructuredData) {
             // 従来のロジック: 構造化データから復元
-            const formatTime = (t: string | null | undefined) => t ? t.substring(0, 5) : '';
+            const formatTime = (t: string | null | undefined) => t ? t.substring(0, 5).replace(/^0/, '') : '';
             if (i === 0) lines[i] = (existingShift.startTime && existingShift.endTime) ? `${formatTime(existingShift.startTime)}-${formatTime(existingShift.endTime)}` : (formatTime(existingShift.startTime) || '');
             else if (i === 1) lines[i] = existingShift.serviceType !== 'other' ? `${existingShift.clientName}(${SERVICE_CONFIG[existingShift.serviceType]?.label || ''})` : existingShift.clientName;
             else if (i === 2) lines[i] = existingShift.duration ? existingShift.duration.toString() : '';

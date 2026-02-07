@@ -75,7 +75,7 @@ export function calculateTimeDuration(timeRange: string): string {
   const diffMinutes = end - start;
   if (diffMinutes <= 0) return '';
 
-  // 時間数を計算（0.5時間単位）
-  const hours = diffMinutes / 60;
+  // 時間数を計算（30分単位で繰り上げ）
+  const hours = Math.ceil(diffMinutes / 30) * 0.5;
   return hours.toString();
 }
