@@ -325,7 +325,7 @@ function rebuildLayoutWithFlex(doc: Document, clonedRoot: HTMLElement) {
 
     // フォントサイズに応じたpadding-bottom補正（小さいセルでは控えめに）
     const fontSizePx = parseFloat(fontSize) || 14;
-    const paddingBottom = fontSizePx <= 10 ? '1px' : '8px';
+    const paddingBottom = fontSizePx <= 12 ? '2px' : '8px';
 
     wrapper.style.cssText = `
         display: flex !important;

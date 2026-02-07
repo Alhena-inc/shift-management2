@@ -18,6 +18,25 @@ const CareListSheet: React.FC<CareListSheetProps> = ({ month, careList, onChange
   // （12/31の後に12/1〜12/4が表示されてしまうのを防ぐ）
   const displayCareList = month === 12 && careList.length > 31 ? careList.slice(0, 31) : careList;
 
+  const cellStyle: React.CSSProperties = {
+    padding: '1px 4px',
+    height: '22px',
+    maxHeight: '22px',
+    verticalAlign: 'middle',
+    overflow: 'hidden',
+    textAlign: 'center',
+  };
+
+  const inputStyle: React.CSSProperties = {
+    fontSize: '11px',
+    fontWeight: 600,
+    padding: '0px 2px',
+    lineHeight: '1.3',
+    height: '18px',
+    textAlign: 'center',
+    backgroundColor: 'transparent',
+  };
+
   return (
     <div className="bg-white border border-gray-400 font-bold" style={{ flex: 1, width: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* 青ヘッダー */}
@@ -28,13 +47,13 @@ const CareListSheet: React.FC<CareListSheetProps> = ({ month, careList, onChange
         <table className="w-full border-collapse sheet-table" style={{ tableLayout: 'fixed' }}>
           <colgroup><col style={{ width: '10%' }} /><col style={{ width: '18%' }} /><col style={{ width: '18%' }} /><col style={{ width: '18%' }} /><col style={{ width: '18%' }} /><col style={{ width: '18%' }} /></colgroup>
           <thead className="sticky top-0 bg-white" style={{ zIndex: 10 }}>
-            <tr className="red-header" style={{ height: '16px' }}>
-              <th rowSpan={2} style={{ padding: '1px 2px', fontSize: '9px' }}>日付</th>
-              <th style={{ padding: '1px 2px', fontSize: '9px' }}>ケア1</th>
-              <th style={{ padding: '1px 2px', fontSize: '9px' }}>ケア2</th>
-              <th style={{ padding: '1px 2px', fontSize: '9px' }}>ケア3</th>
-              <th style={{ padding: '1px 2px', fontSize: '9px' }}>ケア4</th>
-              <th style={{ padding: '1px 2px', fontSize: '9px' }}>ケア5</th>
+            <tr className="red-header" style={{ height: '18px' }}>
+              <th rowSpan={2} style={{ padding: '1px 2px', fontSize: '11px' }}>日付</th>
+              <th style={{ padding: '1px 2px', fontSize: '11px' }}>ケア1</th>
+              <th style={{ padding: '1px 2px', fontSize: '11px' }}>ケア2</th>
+              <th style={{ padding: '1px 2px', fontSize: '11px' }}>ケア3</th>
+              <th style={{ padding: '1px 2px', fontSize: '11px' }}>ケア4</th>
+              <th style={{ padding: '1px 2px', fontSize: '11px' }}>ケア5</th>
             </tr>
           </thead>
           <tbody>
@@ -53,17 +72,17 @@ const CareListSheet: React.FC<CareListSheetProps> = ({ month, careList, onChange
               return (
                 <React.Fragment key={dayIndex}>
                   {/* 1行目：利用者名 */}
-                  <tr className="hover:bg-gray-50" style={{ height: '20px', maxHeight: '20px' }}>
+                  <tr className="hover:bg-gray-50" style={{ height: '22px', maxHeight: '22px' }}>
                     <td
                       className="text-center bg-gray-50 editable-cell"
                       rowSpan={2}
-                      style={{ padding: '2px 2px', fontSize: '9px', lineHeight: '1.2', verticalAlign: 'middle', height: '40px', maxHeight: '40px' }}
+                      style={{ padding: '1px 2px', fontSize: '11px', fontWeight: 600, lineHeight: '1.3', verticalAlign: 'middle', height: '44px', maxHeight: '44px', textAlign: 'center' }}
                     >
                       <input
                         type="text"
                         defaultValue={`${month}/${dayData.day}`}
-                        className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 font-bold"
-                        style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px', backgroundColor: 'transparent' }}
+                        className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500"
+                        style={{ ...inputStyle }}
                       />
                     </td>
                     {[1, 2, 3, 4, 5].map((slotNumber) => {
@@ -71,7 +90,7 @@ const CareListSheet: React.FC<CareListSheetProps> = ({ month, careList, onChange
                       const slotIndex = slots.findIndex(s => s.slotNumber === slotNumber);
 
                       return (
-                        <td key={slotNumber} className="editable-cell" style={{ padding: '2px 2px', height: '20px', maxHeight: '20px', verticalAlign: 'middle', overflow: 'hidden' }}>
+                        <td key={slotNumber} className="editable-cell" style={cellStyle}>
                           <input
                             type="text"
                             value={slot.clientName || ''}
@@ -87,7 +106,7 @@ const CareListSheet: React.FC<CareListSheetProps> = ({ month, careList, onChange
                               onChange(newCareList);
                             }}
                             className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
-                            style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px' }}
+                            style={inputStyle}
                             placeholder=""
                           />
                         </td>
@@ -95,13 +114,13 @@ const CareListSheet: React.FC<CareListSheetProps> = ({ month, careList, onChange
                     })}
                   </tr>
                   {/* 2行目：時間範囲 */}
-                  <tr className="hover:bg-gray-50" style={{ height: '20px', maxHeight: '20px' }}>
+                  <tr className="hover:bg-gray-50" style={{ height: '22px', maxHeight: '22px' }}>
                     {[1, 2, 3, 4, 5].map((slotNumber) => {
                       const slot = slotMap[slotNumber] || { slotNumber, clientName: '', timeRange: '' };
                       const slotIndex = slots.findIndex(s => s.slotNumber === slotNumber);
 
                       return (
-                        <td key={slotNumber} className="editable-cell" style={{ padding: '2px 2px', height: '20px', maxHeight: '20px', verticalAlign: 'middle', overflow: 'hidden' }}>
+                        <td key={slotNumber} className="editable-cell" style={cellStyle}>
                           <input
                             type="text"
                             value={slot.timeRange || ''}
@@ -117,7 +136,7 @@ const CareListSheet: React.FC<CareListSheetProps> = ({ month, careList, onChange
                               onChange(newCareList);
                             }}
                             className="w-full text-center border-0 bg-transparent focus:ring-1 focus:ring-blue-500 rounded"
-                            style={{ fontSize: '9px', padding: '0px', lineHeight: '1.2', height: '16px' }}
+                            style={inputStyle}
                             placeholder=""
                           />
                         </td>
