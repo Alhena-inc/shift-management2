@@ -107,7 +107,13 @@ function calculateWorkHours(startTime: string, endTime: string): number {
   }
 
   const totalMinutes = endMinutes - startMinutes;
-  return totalMinutes / 60;
+  const hours = totalMinutes / 60;
+  // 15分単位（0.25刻み）ならそのまま、それ以外は小数第1位に四捨五入
+  const quartered = hours * 4;
+  if (Math.abs(quartered - Math.round(quartered)) < 0.0001) {
+    return Math.round(quartered) / 4;
+  }
+  return Math.round(hours * 10) / 10;
 }
 
 /**
