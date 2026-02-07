@@ -3301,74 +3301,104 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     const handleKeyDown = async (e: KeyboardEvent) => {
       // Cmd+C または Ctrl+C
       if ((e.metaKey || e.ctrlKey) && e.key === 'c' && !e.shiftKey) {
-        // 複数選択がある場合
-        if (selectedRowsRef.current.size > 0) {
+        // 複数選択がある場合（2件以上）
+        if (selectedRowsRef.current.size > 1) {
           e.preventDefault();
           const caresToCopy: Array<{ helperId: string; date: string; rowIndex: number; data: Shift }> = [];
 
           selectedRowsRef.current.forEach(rowKey => {
-            const [helperId, date, rowIndexStr] = rowKey.split('-');
-            const rowIndex = parseInt(rowIndexStr);
+            const parts = rowKey.split('-');
+            const rowIndex = parseInt(parts[parts.length - 1]);
+            const date = parts.slice(-4, -1).join('-');
+            const helperId = parts.slice(0, -4).join('-');
             const shift = shiftMap.get(`${helperId}-${date}-${rowIndex}`);
 
             if (shift) {
-              caresToCopy.push({ helperId, date, rowIndex, data: shift });
+              caresToCopy.push({ helperId, date, rowIndex, data: { ...shift } });
             }
           });
 
           copiedCaresRef.current = caresToCopy;
+          // 単一コピーバッファもクリア（ペースト時の分岐を明確にする）
+          copyBufferRef.hasCopiedData = false;
           setCopiedCount(caresToCopy.length);
-          console.log(`${caresToCopy.length}件のケアをコピーしました`);
+          console.log(`📋 ${caresToCopy.length}件のケアをコピーしました`);
           return;
         }
 
         // 単一選択の場合
         if (selectedCellRef.current?.helperId && selectedCellRef.current.rowIndex >= 0) {
           e.preventDefault();
-          copyCellData(selectedCellRef.current.helperId, selectedCellRef.current.date, selectedCellRef.current.rowIndex);
+          const { helperId, date, rowIndex } = selectedCellRef.current;
+          // 内部コピーバッファに保存（単一ペースト用）
+          copyCellData(helperId, date, rowIndex);
+          // copiedCaresRefにも保存（統一的なペースト処理用）
+          const shift = shiftMap.get(`${helperId}-${date}-${rowIndex}`);
+          if (shift) {
+            copiedCaresRef.current = [{ helperId, date, rowIndex, data: { ...shift } }];
+          } else {
+            copiedCaresRef.current = [];
+          }
+          setCopiedCount(shift ? 1 : 0);
+          console.log('📋 1件のケアをコピーしました');
         }
         return;
       }
 
       // Cmd+V または Ctrl+V
       if ((e.metaKey || e.ctrlKey) && e.key === 'v' && !e.shiftKey) {
-        // 複数コピーされたケアをペースト
-        if (copiedCaresRef.current.length > 0 && currentTargetCellRef.current) {
+        if (!selectedCellRef.current?.helperId || selectedCellRef.current.rowIndex < 0) return;
+
+        // copiedCaresRef にデータがある場合（単一・複数コピー共通）
+        if (copiedCaresRef.current.length > 0) {
           e.preventDefault();
-          const targetCell = currentTargetCellRef.current;
+          const targetHelperId = selectedCellRef.current.helperId;
+          const targetDate = selectedCellRef.current.date;
+          const targetRowIndex = selectedCellRef.current.rowIndex;
           const shiftsToSave: Shift[] = [];
 
           copiedCaresRef.current.forEach((copiedCare, index) => {
-            // ★ ペースト時はキャンセル状態を引き継がない（新規ケアとして貼り付け）
             const { cancelStatus, canceledAt, ...restData } = copiedCare.data;
+            const newRowIndex = targetRowIndex + index;
             const newShift: Shift = {
               ...restData,
-              id: `shift-${targetCell.helperId}-${targetCell.date}-${targetCell.rowIndex + index}`,
-              helperId: String(targetCell.helperId), // helperIdを文字列に統一
-              date: targetCell.date,
-              rowIndex: targetCell.rowIndex + index
+              id: `shift-${targetHelperId}-${targetDate}-${newRowIndex}`,
+              helperId: String(targetHelperId),
+              date: targetDate,
+              rowIndex: newRowIndex
             };
-
+            // 給与再計算
+            if (newShift.startTime && newShift.endTime) {
+              const timeRange = `${newShift.startTime}-${newShift.endTime}`;
+              const payResult = calculateShiftPay(newShift.serviceType, timeRange, targetDate);
+              Object.assign(newShift, payResult);
+            }
             shiftsToSave.push(newShift);
           });
 
-          // 保存
           try {
-            // Reactステートを先に更新してUIを即座に反映（最新の値を確実に使用する）
             const updatedShifts = [...shiftsRef.current.filter(s => !shiftsToSave.some(newS => newS.id === s.id)), ...shiftsToSave];
-            shiftsRef.current = updatedShifts; // ★ Refを同期的に更新して連続ペーストに対応
+            shiftsRef.current = updatedShifts;
             handleShiftsUpdate(updatedShifts);
-
-            // Firestoreに保存
             await saveShiftsByYearMonth(shiftsToSave);
-            console.log(`${shiftsToSave.length}件のケアをペーストしました`);
+            // 各セルの背景色を即座にDOM更新
+            shiftsToSave.forEach(s => {
+              const config = SERVICE_CONFIG[s.serviceType];
+              if (config) {
+                const td = document.querySelector(`td[data-cell-key="${s.helperId}-${s.date}-${s.rowIndex}"]`) as HTMLElement;
+                if (td) td.style.backgroundColor = config.bgColor;
+              }
+              updateTotalsForHelperAndDate(s.helperId, s.date);
+            });
+            console.log(`📋 ${shiftsToSave.length}件のケアをペーストしました`);
           } catch (error: unknown) {
             console.error('ペーストエラー:', error);
           }
           return;
         }
 
-        if (selectedCellRef.current?.helperId && selectedCellRef.current.rowIndex >= 0) {
+        // copiedCaresRef が空の場合: 内部コピーバッファまたはクリップボードからペースト
+        {
           e.preventDefault();
 
           // ★ 内部コピーバッファにデータがある場合は優先使用
@@ -4373,9 +4403,10 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     const hasShift = shiftMap.has(rowKey);
     const clickedIsDayOff = checkIsDayOffRow(helperId, date, rowIndex);
 
-    // 複数選択されているかチェック
-    const isMultipleSelection = selectedRows.size > 0 && selectedRows.has(rowKey);
-    const targetRows = isMultipleSelection ? Array.from(selectedRows) : [rowKey];
+    // 複数選択されているかチェック（refから直接読み取ることでstate同期遅延を回避）
+    const currentSelectedRows = selectedRowsRef.current;
+    const isMultipleSelection = currentSelectedRows.size > 1 && currentSelectedRows.has(rowKey);
+    const targetRows = isMultipleSelection ? Array.from(currentSelectedRows) : [rowKey];
 
     console.log(`🖱️ 右クリックイベント発生: ${rowKey}`, {
       isMultipleSelection,
@@ -4409,7 +4440,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     // 複数選択の場合はヘッダーを追加
     if (isMultipleSelection) {
       const header = document.createElement('div');
-      header.textContent = `${selectedRows.size}件選択中`;
+      header.textContent = `${currentSelectedRows.size}件選択中`;
       header.style.padding = '8px 16px';
       header.style.backgroundColor = '#f3f4f6';
       header.style.fontWeight = 'bold';
@@ -4460,10 +4491,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       // UIクリーンアップ
       selectedRowsRef.current.clear();
       setSelectedRows(new Set());
-      lastSelectedRowTdsRef.current.forEach(td => {
-        td.style.removeProperty('outline');
-      });
-      lastSelectedRowTdsRef.current = [];
+      clearManualSelection();
       document.querySelectorAll('.line-selected').forEach(el => el.classList.remove('line-selected'));
 
       if (targetRows.length > 0) {
@@ -4633,11 +4661,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         redoStackRef.length = 0;
         selectedRowsRef.current.clear();
         setSelectedRows(new Set());
-        lastSelectedRowTdsRef.current.forEach(td => {
-          td.style.removeProperty('outline');
-          td.style.zIndex = '';
-        });
-        lastSelectedRowTdsRef.current = [];
+        clearManualSelection();
         document.querySelectorAll('.line-selected').forEach(el => el.classList.remove('line-selected'));
         safelyRemoveMenu();
       };
@@ -4772,11 +4796,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
       selectedRowsRef.current.clear();
       setSelectedRows(new Set());
-      lastSelectedRowTdsRef.current.forEach(td => {
-        td.style.removeProperty('outline');
-        td.style.zIndex = '';
-      });
-      lastSelectedRowTdsRef.current = [];
+      clearManualSelection();
       document.querySelectorAll('.line-selected').forEach(el => el.classList.remove('line-selected'));
       safeRemoveElement(menu);
     };
@@ -4903,11 +4923,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
       selectedRowsRef.current.clear();
       setSelectedRows(new Set());
-      lastSelectedRowTdsRef.current.forEach(td => {
-        td.style.removeProperty('outline');
-        td.style.zIndex = '';
-      });
-      lastSelectedRowTdsRef.current = [];
+      clearManualSelection();
       document.querySelectorAll('.line-selected').forEach(el => el.classList.remove('line-selected'));
       safeRemoveElement(menu);
     };
