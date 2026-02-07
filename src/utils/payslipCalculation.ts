@@ -136,9 +136,18 @@ export function calculateNormalAndNightHours(startTime: string, endTime: string)
 
   const normalMinutes = totalMinutes - nightMinutes;
 
+  // 15分単位（0.25刻み）ならそのまま、それ以外は小数第1位に四捨五入
+  const roundHours = (h: number): number => {
+    const quartered = h * 4;
+    if (Math.abs(quartered - Math.round(quartered)) < 0.0001) {
+      return Math.round(quartered) / 4;
+    }
+    return Math.round(h * 10) / 10;
+  };
+
   return {
-    normalHours: normalMinutes / 60,
-    nightHours: nightMinutes / 60,
+    normalHours: roundHours(normalMinutes / 60),
+    nightHours: roundHours(nightMinutes / 60),
   };
 }
 
