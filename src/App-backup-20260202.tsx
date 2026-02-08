@@ -169,11 +169,10 @@ function App() {
   // ヘルパー情報を読み込み（リアルタイム監視）
   useEffect(() => {
     const unsubscribe = subscribeToHelpers(async (loadedHelpers) => {
-      if (loadedHelpers.length > 0) {
-        setHelpers(loadedHelpers);
+      if (loadedHelpers === null) {
+        console.error('⚠️ ヘルパー読み込み失敗 - 既存データを保持します');
       } else {
-        // Firestoreが空の場合のみ、初期データを一度だけ保存
-        await saveHelpers(initialHelpers);
+        setHelpers(loadedHelpers);
       }
       setIsInitialized(true);
     });

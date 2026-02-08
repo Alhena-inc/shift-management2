@@ -39,12 +39,10 @@ export default function EmployeeShiftGridPage() {
     // ヘルパー情報を読み込み（リアルタイム監視）
     useEffect(() => {
         const unsubscribe = subscribeToHelpers(async (loadedHelpers) => {
-            if (loadedHelpers.length > 0) {
-                setHelpers(loadedHelpers);
+            if (loadedHelpers === null) {
+                console.error('⚠️ ヘルパー読み込み失敗 - 既存データを保持します');
             } else {
-                // 一般的な仕様に変更: データがない場合は空のままにする（勝手に初期データを入れない）
-                // await saveHelpers(initialHelpers);
-                console.log('ℹ️ ヘルパーデータは0件です');
+                setHelpers(loadedHelpers);
             }
             setIsInitialized(true);
         });

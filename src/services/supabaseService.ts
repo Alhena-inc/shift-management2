@@ -206,7 +206,7 @@ export const loadHelpers = async (): Promise<Helper[]> => {
 
       if (fallbackError) {
         console.error('フォールバックも失敗:', fallbackError);
-        return [];
+        throw new Error('ヘルパー読み込み失敗: ' + fallbackError.message);
       }
 
       // フォールバックデータを使用（genderはデフォルト値）
@@ -303,7 +303,7 @@ export const loadHelpers = async (): Promise<Helper[]> => {
     return helpers;
   } catch (error) {
     console.error('ヘルパー読み込みエラー:', error);
-    return [];
+    throw error;
   }
 };
 
@@ -949,18 +949,27 @@ export const backupToSupabase = async (type: string, data: any, description?: st
 };
 
 // リアルタイムサブスクリプション：ヘルパー
-export const subscribeToHelpers = (onUpdate: (helpers: Helper[]) => void): RealtimeChannel => {
-  // console.log('🔄 Supabase ヘルパー購読開始');
+// onUpdate の引数が null の場合は読み込みエラーを意味する
+export const subscribeToHelpers = (onUpdate: (helpers: Helper[] | null) => void): RealtimeChannel => {
+  // 初回データを読み込む（リトライ付き）
+  const loadWithRetry = async (retries = 3, delay = 2000): Promise<void> => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const helpers = await loadHelpers();
+        onUpdate(helpers);
+        return;
+      } catch (error) {
+        console.error(`ヘルパー読み込み試行 ${i + 1}/${retries} 失敗:`, error);
+        if (i < retries - 1) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    console.error('ヘルパー初回読み込み: 全リトライ失敗');
+    onUpdate(null);
+  };
 
-  // 初回データを即座に読み込む
-  loadHelpers().then(helpers => {
-    // console.log(`  初回読み込み: ${helpers.length}件`);
-    onUpdate(helpers);
-  }).catch(error => {
-    console.error('ヘルパー初回読み込みエラー:', error);
-    // エラーが発生しても空配列で初期化を完了させる
-    onUpdate([]);
-  });
+  loadWithRetry();
 
   const channel = supabase
     .channel('helpers-changes')
@@ -968,9 +977,13 @@ export const subscribeToHelpers = (onUpdate: (helpers: Helper[]) => void): Realt
       'postgres_changes',
       { event: '*', schema: 'public', table: 'helpers' },
       async () => {
-        // console.log('  📡 更新を検知');
-        const helpers = await loadHelpers();
-        onUpdate(helpers);
+        try {
+          const helpers = await loadHelpers();
+          onUpdate(helpers);
+        } catch (error) {
+          console.error('ヘルパーリアルタイム更新エラー:', error);
+          // リアルタイム更新のエラーは無視（既存データを保持）
+        }
       }
     )
     .subscribe((status) => {

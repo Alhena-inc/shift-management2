@@ -169,7 +169,7 @@ export const deleteHelper = async (helperId: string): Promise<void> => {
 };
 
 // ヘルパーのリアルタイム監視
-export const subscribeToHelpers = (onUpdate: (helpers: Helper[]) => void) => {
+export const subscribeToHelpers = (onUpdate: (helpers: Helper[] | null) => void) => {
   const q = query(collection(db, HELPERS_COLLECTION), orderBy('order', 'asc'));
   const unsubscribe = onSnapshot(q, (snapshot) => {
     const helpers = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Helper));

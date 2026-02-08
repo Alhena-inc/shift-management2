@@ -12,7 +12,9 @@ const HelperManagementPage: React.FC = () => {
   useEffect(() => {
     setIsLoading(true);
     const unsubscribe = subscribeToHelpers((updatedHelpers) => {
-      setHelpers(updatedHelpers);
+      if (updatedHelpers !== null) {
+        setHelpers(updatedHelpers);
+      }
       setIsLoading(false);
     });
     return () => unsubscribe();

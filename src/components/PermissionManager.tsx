@@ -17,12 +17,14 @@ export const PermissionManager: React.FC<PermissionManagerProps> = ({ onClose })
   useEffect(() => {
     setLoading(true);
     const unsubscribe = subscribeToHelpers((updatedHelpers) => {
-      // 削除済みヘルパーを除外して、order順にソート
-      const filteredHelpers = updatedHelpers
-        .filter(helper => !helper.deleted)
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
+      if (updatedHelpers !== null) {
+        // 削除済みヘルパーを除外して、order順にソート
+        const filteredHelpers = updatedHelpers
+          .filter(helper => !helper.deleted)
+          .sort((a, b) => (a.order || 0) - (b.order || 0));
 
-      setHelpers(filteredHelpers);
+        setHelpers(filteredHelpers);
+      }
       setLoading(false);
     });
 
