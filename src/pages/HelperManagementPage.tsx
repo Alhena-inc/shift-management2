@@ -118,40 +118,43 @@ const HelperManagementPage: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* ヘッダー */}
       <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => window.location.href = '/'}
-              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-2 text-gray-700"
-            >
-              🏠 ホームに戻る
-            </button>
-            <h1 className="text-2xl font-bold text-gray-800">ヘルパー管理</h1>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => window.location.href = '/deleted-helpers'}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              削除済み
-            </button>
-            <button
-              onClick={handleCreateNew}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
-            >
-              <span className="text-xl">+</span>
-              新規登録
-            </button>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 sm:gap-4">
+              <button
+                onClick={() => window.location.href = '/'}
+                className="p-2 sm:px-4 sm:py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-2 text-gray-700"
+              >
+                <span className="hidden sm:inline">🏠 ホームに戻る</span>
+                <span className="sm:hidden text-lg">🏠</span>
+              </button>
+              <h1 className="text-lg sm:text-2xl font-bold text-gray-800">ヘルパー管理</h1>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => window.location.href = '/deleted-helpers'}
+                className="p-2 sm:px-4 sm:py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <span className="hidden sm:inline">削除済み</span>
+              </button>
+              <button
+                onClick={handleCreateNew}
+                className="p-2 sm:px-6 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
+              >
+                <span className="text-xl">+</span>
+                <span className="hidden sm:inline">新規登録</span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
       {/* メインコンテンツ */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-8">
         {/* 検索バー */}
         <div className="mb-6">
           <div className="relative">

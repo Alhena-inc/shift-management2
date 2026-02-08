@@ -85,26 +85,26 @@ const DeletedHelpersPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
+    <div className="min-h-screen bg-gray-50 p-2 sm:p-4">
       <div className="max-w-6xl mx-auto">
         {/* ヘッダー */}
-        <div className="bg-white rounded-lg shadow p-6 mb-4">
+        <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-                <svg className="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <h1 className="text-lg sm:text-2xl font-bold text-gray-800 flex items-center gap-2">
+                <svg className="w-6 h-6 sm:w-8 sm:h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                     d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                 </svg>
                 削除済みヘルパー
               </h1>
-              <p className="text-gray-600 text-sm mt-1">
+              <p className="text-gray-600 text-xs sm:text-sm mt-1">
                 削除されたヘルパーの確認と復元ができます
               </p>
             </div>
             <button
               onClick={() => window.location.href = '/'}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+              className="px-3 py-2 sm:px-4 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm"
             >
               戻る
             </button>
@@ -128,7 +128,42 @@ const DeletedHelpersPage: React.FC = () => {
               <p className="text-gray-500 text-sm mt-2">ヘルパーが削除されると、ここに表示されます</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            {/* スマホ: カード表示 */}
+            <div className="sm:hidden divide-y divide-gray-200">
+              {deletedHelpers.map((helper) => (
+                <div key={helper.id} className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="font-medium text-gray-900">{helper.name}</div>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      helper.role === 'admin' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {helper.role === 'admin' ? '管理者' : 'スタッフ'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-500 space-y-1 mb-3">
+                    <div>削除日時: {new Date(helper.deleted_at).toLocaleString('ja-JP')}</div>
+                    {helper.email && <div>メール: {helper.email}</div>}
+                    {helper.deleted_by && <div>削除者: {helper.deleted_by}</div>}
+                    {helper.deletion_reason && <div>理由: {helper.deletion_reason}</div>}
+                  </div>
+                  <button
+                    onClick={() => handleRestore(helper.id, helper.name)}
+                    disabled={restoring === helper.id}
+                    className={`w-full inline-flex items-center justify-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white ${
+                      restoring === helper.id
+                        ? 'bg-gray-400 cursor-not-allowed'
+                        : 'bg-blue-600 hover:bg-blue-700'
+                    }`}
+                  >
+                    {restoring === helper.id ? '復元中...' : '復元'}
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* PC: テーブル表示 */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50 border-b">
                   <tr>
@@ -218,6 +253,7 @@ const DeletedHelpersPage: React.FC = () => {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
 

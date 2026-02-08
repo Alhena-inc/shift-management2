@@ -250,50 +250,52 @@ const HelperDetailPage: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* ヘッダー */}
       <header className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => window.location.href = '/helpers'}
-              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-2 text-gray-700"
-            >
-              ← 戻る
-            </button>
-            <h1 className="text-2xl font-bold text-gray-800">
-              {helper.name}
-            </h1>
-          </div>
-          <div className="flex gap-3">
-            <button
-              onClick={handleDelete}
-              disabled={isSaving}
-              className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 border ${isSaving
-                ? 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed'
-                : 'text-red-600 border-red-200 hover:bg-red-50'
-                }`}
-            >
-              🗑️ 削除
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 ${isSaving
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'bg-blue-600 text-white hover:bg-blue-700'
-                }`}
-            >
-              {isSaving ? '保存中...' : '💾 保存'}
-            </button>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+              <button
+                onClick={() => window.location.href = '/helpers'}
+                className="px-3 py-2 sm:px-4 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-1 text-gray-700 text-sm sm:text-base flex-shrink-0"
+              >
+                ← <span className="hidden sm:inline">戻る</span>
+              </button>
+              <h1 className="text-lg sm:text-2xl font-bold text-gray-800 truncate">
+                {helper.name}
+              </h1>
+            </div>
+            <div className="flex gap-2 sm:gap-3 flex-shrink-0">
+              <button
+                onClick={handleDelete}
+                disabled={isSaving}
+                className={`p-2 sm:px-4 sm:py-2 rounded-lg font-medium flex items-center gap-2 border ${isSaving
+                  ? 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed'
+                  : 'text-red-600 border-red-200 hover:bg-red-50'
+                  }`}
+              >
+                🗑️ <span className="hidden sm:inline">削除</span>
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className={`px-4 sm:px-6 py-2 rounded-lg font-medium flex items-center gap-2 text-sm sm:text-base ${isSaving
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+              >
+                {isSaving ? '保存中...' : '💾 保存'}
+              </button>
+            </div>
           </div>
         </div>
 
         {/* タブナビゲーション */}
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="flex gap-2 border-b border-gray-200">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <div className="flex gap-0 sm:gap-2 border-b border-gray-200">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-6 py-3 font-medium transition-colors whitespace-nowrap ${activeTab === tab.id
+                className={`px-4 sm:px-6 py-3 font-medium transition-colors whitespace-nowrap text-sm sm:text-base ${activeTab === tab.id
                   ? 'text-blue-600 border-b-2 border-blue-600'
                   : 'text-gray-500 hover:text-gray-700'
                   }`}
@@ -306,8 +308,8 @@ const HelperDetailPage: React.FC = () => {
       </header>
 
       {/* メインコンテンツ */}
-      <main className="max-w-6xl mx-auto px-6 py-8">
-        <div className="bg-white rounded-xl shadow-sm p-8">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-8">
+        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-8">
           {/* タブ1: 基本 */}
           {activeTab === 'basic' && (
             <div className="space-y-8">
@@ -677,40 +679,42 @@ const HelperDetailPage: React.FC = () => {
                     )}
 
                     {(helper.otherAllowances || []).map((allowance, index) => (
-                      <div key={index} className="flex gap-3 mb-3 items-center">
+                      <div key={index} className="flex flex-col sm:flex-row gap-2 sm:gap-3 mb-3 sm:items-center p-3 sm:p-0 bg-gray-50 sm:bg-transparent rounded-lg sm:rounded-none">
                         <input
                           type="text"
                           value={allowance.name}
                           onChange={(e) => updateOtherAllowance(index, 'name', e.target.value)}
-                          className="flex-1 px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          placeholder="手当名（例：交通費手当）"
+                          className="w-full sm:flex-1 px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="手当名"
                         />
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            value={allowance.amount}
-                            onChange={(e) => updateOtherAllowance(index, 'amount', parseFloat(e.target.value) || 0)}
-                            className="w-32 px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="0"
-                          />
-                          <span className="text-sm text-gray-700 font-medium">円</span>
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1 flex-1 sm:flex-none">
+                            <input
+                              type="number"
+                              value={allowance.amount}
+                              onChange={(e) => updateOtherAllowance(index, 'amount', parseFloat(e.target.value) || 0)}
+                              className="w-full sm:w-32 px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              placeholder="0"
+                            />
+                            <span className="text-sm text-gray-700 font-medium">円</span>
+                          </div>
+                          <label className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-300 cursor-pointer hover:bg-gray-100 flex-shrink-0">
+                            <input
+                              type="checkbox"
+                              checked={allowance.taxExempt || false}
+                              onChange={(e) => updateOtherAllowance(index, 'taxExempt', e.target.checked)}
+                              className="w-4 h-4 text-blue-600 rounded"
+                            />
+                            <span className="text-sm text-gray-700">非課税</span>
+                          </label>
+                          <button
+                            onClick={() => removeOtherAllowance(index)}
+                            className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm font-medium flex-shrink-0"
+                            title="削除"
+                          >
+                            ✕
+                          </button>
                         </div>
-                        <label className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-300 cursor-pointer hover:bg-gray-100">
-                          <input
-                            type="checkbox"
-                            checked={allowance.taxExempt || false}
-                            onChange={(e) => updateOtherAllowance(index, 'taxExempt', e.target.checked)}
-                            className="w-4 h-4 text-blue-600 rounded"
-                          />
-                          <span className="text-sm text-gray-700">非課税</span>
-                        </label>
-                        <button
-                          onClick={() => removeOtherAllowance(index)}
-                          className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm font-medium"
-                          title="削除"
-                        >
-                          ✕
-                        </button>
                       </div>
                     ))}
                   </div>
@@ -776,7 +780,7 @@ const HelperDetailPage: React.FC = () => {
                           value={allowance.name}
                           onChange={(e) => updateOtherAllowance(index, 'name', e.target.value)}
                           className="flex-1 px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          placeholder="手当名（例：通勤費）"
+                          placeholder="手当名"
                         />
                         <div className="flex items-center gap-1">
                           <input
@@ -849,7 +853,7 @@ const HelperDetailPage: React.FC = () => {
                         </div>
                       </label>
 
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">平日 開始</label>
                           <input

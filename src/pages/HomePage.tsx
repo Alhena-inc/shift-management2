@@ -186,31 +186,31 @@ const HomePage: React.FC = () => {
     >
       {/* ヘッダーセクション - シンプルで明るいデザイン */}
       <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
             <div>
-              <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center gap-2 sm:gap-3 mb-1 sm:mb-2">
                 <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <span className="material-symbols-outlined text-blue-600">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <span className="material-symbols-outlined text-blue-600 text-lg sm:text-2xl">
                       apps
                     </span>
                   </div>
-                  <h1 className="text-2xl font-bold text-gray-900">
+                  <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
                     シフトマスター
                   </h1>
                 </div>
               </div>
-              <p className="text-sm text-gray-600">
+              <p className="text-xs sm:text-sm text-gray-600">
                 訪問介護事業所のあ - 今日の業務を確認・管理しましょう
               </p>
             </div>
             {helperName && (
-              <div className="text-right">
-                <p className="text-sm text-gray-500">
+              <div className="sm:text-right">
+                <p className="text-xs sm:text-sm text-gray-500">
                   {today}
                 </p>
-                <p className="text-base font-medium text-gray-900 mt-1">
+                <p className="text-sm sm:text-base font-medium text-gray-900 mt-0.5 sm:mt-1">
                   こんにちは、{helperName}さん
                 </p>
               </div>
@@ -220,11 +220,11 @@ const HomePage: React.FC = () => {
       </div>
 
       {/* メインコンテンツ */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         {/* ウェルカムメッセージ */}
-        <div className="mb-8 flex items-center justify-between">
+        <div className="mb-4 sm:mb-8 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-gray-900">
+            <h2 className="text-lg sm:text-xl font-bold text-gray-900">
               管理メニュー
             </h2>
             <p className="text-sm text-gray-600 mt-1">
@@ -235,12 +235,12 @@ const HomePage: React.FC = () => {
         </div>
 
         {/* メニューグリッド - ホバー時のエフェクトを強化 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
           {menuItems.map((item) => (
             <div
               key={(item.path || '') + item.title}
               onClick={() => handleNavigate(item.path, item.onClick)}
-              className="group bg-white rounded-xl p-6 shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer border-2 border-transparent hover:border-gray-200 transform hover:-translate-y-1"
+              className="group bg-white rounded-xl p-4 sm:p-6 shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer border-2 border-transparent hover:border-gray-200 transform hover:-translate-y-1"
               style={{
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
               }}
@@ -318,7 +318,7 @@ const HomePage: React.FC = () => {
         </div>
 
         {/* システム情報セクション */}
-        <div className="mt-12 bg-white rounded-xl p-6 border border-gray-100">
+        <div className="mt-6 sm:mt-12 bg-white rounded-xl p-4 sm:p-6 border border-gray-100">
           <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
             <span className="material-symbols-outlined text-gray-600">
               info

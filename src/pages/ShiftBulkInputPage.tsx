@@ -323,44 +323,44 @@ const ShiftBulkInputPage: React.FC = () => {
     <div className="min-h-screen bg-gray-50">
       {/* ヘッダー */}
       <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
           <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <div className="bg-pink-100 rounded-lg p-2.5">
-                <span className="material-symbols-outlined text-pink-600 text-2xl">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="bg-pink-100 rounded-lg p-2 sm:p-2.5">
+                <span className="material-symbols-outlined text-pink-600 text-xl sm:text-2xl">
                   playlist_add
                 </span>
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">シフト一括追加</h1>
-                <p className="text-sm text-gray-600 mt-1">複数のシフトを一度に登録</p>
+                <h1 className="text-lg sm:text-2xl font-bold text-gray-900">シフト一括追加</h1>
+                <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">複数のシフトを一度に登録</p>
               </div>
             </div>
             <button
               onClick={() => window.location.href = '/'}
-              className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              className="flex items-center gap-1 sm:gap-2 px-3 py-2 sm:px-4 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors text-sm"
             >
               <span className="material-symbols-outlined text-lg">
                 arrow_back
               </span>
-              <span>戻る</span>
+              <span className="hidden sm:inline">戻る</span>
             </button>
           </div>
         </div>
       </div>
 
       {/* 本体 */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
           {/* 年月とヘルパー選択 */}
-          <div className="mb-8">
-            <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <div className="mb-6 sm:mb-8">
+            <h2 className="text-base sm:text-lg font-bold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2">
               <span className="material-symbols-outlined text-gray-600">
                 settings
               </span>
               基本設定
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">年</label>
                 <select
@@ -415,7 +415,7 @@ const ShiftBulkInputPage: React.FC = () => {
           </div>
 
           {/* 入力説明 */}
-          <div className="mb-8 p-5 bg-blue-50 rounded-xl border border-blue-100">
+          <div className="mb-6 sm:mb-8 p-3 sm:p-5 bg-blue-50 rounded-xl border border-blue-100">
             <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
               <span className="material-symbols-outlined text-blue-600">
                 info
@@ -478,7 +478,7 @@ const ShiftBulkInputPage: React.FC = () => {
           )}
 
           {/* テキスト入力エリア */}
-          <div className="mb-8">
+          <div className="mb-6 sm:mb-8">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               シフトデータを貼り付け
             </label>
@@ -495,14 +495,14 @@ const ShiftBulkInputPage: React.FC = () => {
 
           {/* 解析結果のプレビュー */}
           {parsedData && (
-            <div className="mb-8 p-5 bg-gray-50 rounded-xl border border-gray-200">
-              <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <div className="mb-6 sm:mb-8 p-3 sm:p-5 bg-gray-50 rounded-xl border border-gray-200">
+              <h3 className="font-bold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2">
                 <span className="material-symbols-outlined text-gray-600">
                   analytics
                 </span>
                 解析結果
               </h3>
-              <div className="mb-4 flex items-center gap-6 text-sm">
+              <div className="mb-3 sm:mb-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6 text-sm">
                 <div>
                   <span className="font-semibold text-gray-600">ヘルパー：</span>
                   <span className="ml-2 text-gray-900">{parsedData.helperName}</span>
@@ -576,7 +576,7 @@ const ShiftBulkInputPage: React.FC = () => {
           )}
 
           {/* アクションボタン */}
-          <div className="flex justify-end gap-3">
+          <div className="flex flex-col sm:flex-row sm:justify-end gap-3">
             {!parsedData && (
               <button
                 onClick={parseText}
