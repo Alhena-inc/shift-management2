@@ -139,8 +139,15 @@ export const signOut = async () => {
 
 /**
  * 認証状態の変更を監視
+ * 初期化時に既存セッションを確認し、その後の変更を監視する
  */
 export const onAuthStateChanged = (callback: (user: User | null) => void) => {
+  // まず既存セッションを確認（localStorageから復元）
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    callback(session?.user || null);
+  });
+
+  // その後の認証状態変更を監視
   const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
     callback(session?.user || null);
   });
