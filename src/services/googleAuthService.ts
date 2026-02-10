@@ -16,7 +16,7 @@ export const getGoogleAccessToken = async (): Promise<string> => {
     console.log('🔐 Google OAuth認証を開始...');
 
     // ポップアップで Google 認証
-    const result = await signInWithPopup(auth, googleProvider);
+    const result = await signInWithPopup(auth!, googleProvider!);
 
     // アクセストークンを取得
     const credential = GoogleAuthProvider.credentialFromResult(result);
@@ -51,7 +51,7 @@ export const getGoogleAccessToken = async (): Promise<string> => {
  * @returns 現在のユーザー、またはnull
  */
 export const getCurrentUser = (): User | null => {
-  return auth.currentUser;
+  return auth!.currentUser;
 };
 
 /**
@@ -59,7 +59,7 @@ export const getCurrentUser = (): User | null => {
  */
 export const signOut = async (): Promise<void> => {
   try {
-    await auth.signOut();
+    await auth!.signOut();
     console.log('✅ サインアウト完了');
   } catch (error) {
     console.error('❌ サインアウトに失敗:', error);

@@ -48,7 +48,7 @@ const ShiftBulkInputPage: React.FC = () => {
   useEffect(() => {
     const loadHelpers = async () => {
       try {
-        const helpersSnapshot = await getDocs(collection(db, 'helpers'));
+        const helpersSnapshot = await getDocs(collection(db!, 'helpers'));
         const helpersData = helpersSnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()

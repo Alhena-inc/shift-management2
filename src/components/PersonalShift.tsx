@@ -242,7 +242,7 @@ export function PersonalShift({ token }: Props) {
     // helperIdを文字列に正規化（数値の場合は文字列に変換）
     const normalizedHelperId = String(helper.id);
 
-    const shiftsRef = collection(db, 'shifts');
+    const shiftsRef = collection(db!, 'shifts');
 
     // クエリを特定の月に絞る（爆発的な読み取りを防ぐ）
     const q = query(

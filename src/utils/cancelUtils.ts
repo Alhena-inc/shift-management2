@@ -13,7 +13,7 @@ export const updateCancelStatus = async (
 ): Promise<{ success: boolean; error?: string }> => {
   try {
     // 1. ドキュメント参照を取得
-    const shiftRef = doc(db, 'shifts', shiftId);
+    const shiftRef = doc(db!,'shifts', shiftId);
 
     // 2. ドキュメントの存在確認
     console.log('📝 ドキュメント存在確認中:', shiftId);
@@ -175,7 +175,7 @@ export const updateCancelStatusSafe = async (
 ): Promise<{ success: boolean; error?: string }> => {
   try {
     // 1. ドキュメント参照を取得
-    const shiftRef = doc(db, 'shifts', shiftId);
+    const shiftRef = doc(db!,'shifts', shiftId);
 
     // 2. ドキュメントの存在確認
     console.log('📝 ドキュメント存在確認中（Safe版）:', shiftId);

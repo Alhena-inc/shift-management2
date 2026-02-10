@@ -32,7 +32,7 @@ export const getCareContentCountByDate = async (year: number, month: number, day
 
     // shiftsコレクションから該当日のデータを取得
     const q = query(
-      collection(db, 'shifts'),
+      collection(db!,'shifts'),
       where('date', '==', dateString)
     );
 
@@ -64,7 +64,7 @@ export const getCareContentCount = async (year: number, month: number): Promise<
 
     // payslipsコレクションから該当年月のデータを取得
     const q = query(
-      collection(db, 'payslips'),
+      collection(db!,'payslips'),
       where('year', '==', year),
       where('month', '==', month)
     );
@@ -107,7 +107,7 @@ export const deleteCareContentByDate = async (year: number, month: number, day: 
 
     // shiftsコレクションから該当日のデータを取得
     const q = query(
-      collection(db, 'shifts'),
+      collection(db!,'shifts'),
       where('date', '==', dateString)
     );
 
@@ -119,7 +119,7 @@ export const deleteCareContentByDate = async (year: number, month: number, day: 
     }
 
     // バッチ処理で効率的に削除（論理削除）
-    const batch = writeBatch(db);
+    const batch = writeBatch(db!);
     let deletedCount = 0;
 
     querySnapshot.forEach((docSnapshot) => {
@@ -130,7 +130,7 @@ export const deleteCareContentByDate = async (year: number, month: number, day: 
         deletedCount++;
 
         // 論理削除として更新
-        const docRef = doc(db, 'shifts', docSnapshot.id);
+        const docRef = doc(db!,'shifts', docSnapshot.id);
         batch.update(docRef, {
           deleted: true,
           deletedAt: Timestamp.now(),
@@ -163,7 +163,7 @@ export const getShiftCountByMonth = async (year: number, month: number): Promise
     const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
     const q = query(
-      collection(db, 'shifts'),
+      collection(db!,'shifts'),
       where('date', '>=', startDate),
       where('date', '<=', endDate)
     );
@@ -197,7 +197,7 @@ export const deleteShiftsByMonth = async (year: number, month: number): Promise<
     const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
     const q = query(
-      collection(db, 'shifts'),
+      collection(db!,'shifts'),
       where('date', '>=', startDate),
       where('date', '<=', endDate)
     );
@@ -213,14 +213,14 @@ export const deleteShiftsByMonth = async (year: number, month: number): Promise<
 
     // FirestoreのwriteBatchは最大500操作
     const MAX_BATCH_OPS = 450;
-    let batch = writeBatch(db);
+    let batch = writeBatch(db!);
     let ops = 0;
 
     const commitIfNeeded = async (force: boolean = false) => {
       if (ops === 0) return;
       if (force || ops >= MAX_BATCH_OPS) {
         await batch.commit();
-        batch = writeBatch(db);
+        batch = writeBatch(db!);
         ops = 0;
       }
     };
@@ -230,7 +230,7 @@ export const deleteShiftsByMonth = async (year: number, month: number): Promise<
       if (data.deleted) continue;
 
       deletedCount++;
-      const docRef = doc(db, 'shifts', docSnapshot.id);
+      const docRef = doc(db!,'shifts', docSnapshot.id);
       batch.update(docRef, {
         deleted: true,
         deletedAt: now,
@@ -262,7 +262,7 @@ export const deleteCareContent = async (year: number, month: number): Promise<nu
 
     // payslipsコレクションから該当年月のデータを取得
     const q = query(
-      collection(db, 'payslips'),
+      collection(db!,'payslips'),
       where('year', '==', year),
       where('month', '==', month)
     );
@@ -275,7 +275,7 @@ export const deleteCareContent = async (year: number, month: number): Promise<nu
     }
 
     // バッチ処理で効率的に削除
-    const batch = writeBatch(db);
+    const batch = writeBatch(db!);
     let deletedCount = 0;
 
     querySnapshot.forEach((docSnapshot) => {
@@ -303,7 +303,7 @@ export const deleteCareContent = async (year: number, month: number): Promise<nu
         };
 
         // 更新をバッチに追加
-        const docRef = doc(db, 'payslips', docSnapshot.id);
+        const docRef = doc(db!,'payslips', docSnapshot.id);
         batch.update(docRef, updatedData);
       }
     });
@@ -325,7 +325,7 @@ export const deleteCareContent = async (year: number, month: number): Promise<nu
 export const saveDeletionLog = async (log: DeletionLog): Promise<void> => {
   try {
     const logId = `care_deletion_${log.targetYear}_${log.targetMonth}_${Date.now()}`;
-    const logRef = doc(db, 'deletion_logs', logId);
+    const logRef = doc(db!,'deletion_logs', logId);
 
     await setDoc(logRef, {
       ...log,
@@ -347,7 +347,7 @@ export const saveDeletionLog = async (log: DeletionLog): Promise<void> => {
 export const getDeletionLogs = async (limit: number = 10): Promise<any[]> => {
   try {
     const q = query(
-      collection(db, 'deletion_logs'),
+      collection(db!,'deletion_logs'),
       where('type', '==', 'care_content')
     );
 

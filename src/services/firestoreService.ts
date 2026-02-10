@@ -28,7 +28,7 @@ export const backupToFirebase = async (type: string, data: any, description?: st
   try {
 
     const backupId = `${type}-${Date.now()}`;
-    const backupRef = doc(db, BACKUPS_COLLECTION, backupId);
+    const backupRef = doc(db!,BACKUPS_COLLECTION, backupId);
 
     // すでにファイル内にあるサニタイズ関数を使用して、Firestoreが嫌がるundefined等を除去する
     const sanitizedData = sanitizeForFirestore(data);
@@ -107,11 +107,11 @@ function sanitizeForFirestore(obj: any): any {
 // ヘルパーを保存
 export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
   try {
-    const batch = writeBatch(db);
+    const batch = writeBatch(db!);
 
     // 新しいヘルパーリストを保存
     helpers.forEach(helper => {
-      const helperRef = doc(db, HELPERS_COLLECTION, helper.id);
+      const helperRef = doc(db!,HELPERS_COLLECTION, helper.id);
 
       // データを準備
       const dataToSave = {
@@ -159,7 +159,7 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
 // ヘルパーを削除
 export const deleteHelper = async (helperId: string): Promise<void> => {
   try {
-    const helperRef = doc(db, HELPERS_COLLECTION, helperId);
+    const helperRef = doc(db!,HELPERS_COLLECTION, helperId);
     await deleteDoc(helperRef);
     // console.log(`ヘルパーを削除しました: ${helperId}`);
   } catch (error) {
@@ -170,7 +170,7 @@ export const deleteHelper = async (helperId: string): Promise<void> => {
 
 // ヘルパーのリアルタイム監視
 export const subscribeToHelpers = (onUpdate: (helpers: Helper[] | null) => void) => {
-  const q = query(collection(db, HELPERS_COLLECTION), orderBy('order', 'asc'));
+  const q = query(collection(db!,HELPERS_COLLECTION), orderBy('order', 'asc'));
   const unsubscribe = onSnapshot(q, (snapshot) => {
     const helpers = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Helper));
     // 論理削除されたデータも含めて全て返す（呼び出し側でフィルタリング）
@@ -184,7 +184,7 @@ export const subscribeToHelpers = (onUpdate: (helpers: Helper[] | null) => void)
 // ヘルパーを論理削除（推奨：データは残る）
 export const softDeleteHelper = async (helperId: string): Promise<void> => {
   try {
-    const helperRef = doc(db, HELPERS_COLLECTION, helperId);
+    const helperRef = doc(db!,HELPERS_COLLECTION, helperId);
     await updateDoc(helperRef, {
       deleted: true,
       deletedAt: Timestamp.now(),
@@ -202,10 +202,10 @@ export const saveShiftsForMonth = async (_year: number, _month: number, shifts: 
   try {
 
 
-    const batch = writeBatch(db);
+    const batch = writeBatch(db!);
 
     shifts.forEach(shift => {
-      const shiftRef = doc(db, collectionName, shift.id);
+      const shiftRef = doc(db!,collectionName, shift.id);
 
       // キャンセル関連フィールドがある場合のみログ
       if ('cancelStatus' in shift || 'canceledAt' in shift) {
@@ -263,7 +263,7 @@ export const saveShiftsForMonth = async (_year: number, _month: number, shifts: 
 // 単一のシフトを保存
 export const saveShift = async (shift: Shift, collectionName: string = SHIFTS_COLLECTION): Promise<void> => {
   try {
-    const shiftRef = doc(db, collectionName, shift.id);
+    const shiftRef = doc(db!,collectionName, shift.id);
 
     // データを準備
     const shiftData = {
@@ -283,7 +283,7 @@ export const saveShift = async (shift: Shift, collectionName: string = SHIFTS_CO
 // ヘルパーを読み込み
 export const loadHelpers = async (): Promise<Helper[]> => {
   try {
-    const querySnapshot = await getDocs(collection(db, HELPERS_COLLECTION));
+    const querySnapshot = await getDocs(collection(db!,HELPERS_COLLECTION));
     const helpers = querySnapshot.docs
       .map(doc => {
         const data = doc.data();
@@ -318,7 +318,7 @@ export const loadShiftsForMonth = async (year: number, month: number, collection
 
     // その月のシフトをクエリ（月単位で厳密に取得）
     const shiftsQuery = query(
-      collection(db, collectionName),
+      collection(db!,collectionName),
       where('date', '>=', startDate),
       where('date', '<=', endDate)
     );
@@ -431,7 +431,7 @@ export const subscribeToShiftsForMonth = (
     }
     // その月のシフトをクエリ
     const shiftsQuery = query(
-      collection(db, SHIFTS_COLLECTION),
+      collection(db!,SHIFTS_COLLECTION),
       where('date', '>=', startDate),
       where('date', '<=', endDate)
     );
@@ -502,7 +502,7 @@ export const subscribeToShiftsForMonth = (
 // シフトを完全削除
 export const deleteShift = async (shiftId: string, collectionName: string = SHIFTS_COLLECTION): Promise<void> => {
   try {
-    const shiftRef = doc(db, collectionName, shiftId);
+    const shiftRef = doc(db!,collectionName, shiftId);
 
 
 
@@ -527,13 +527,13 @@ export const deleteShiftsForMonth = async (year: number, month: number): Promise
 
     // その月のシフトをクエリ
     const shiftsQuery = query(
-      collection(db, SHIFTS_COLLECTION),
+      collection(db!,SHIFTS_COLLECTION),
       where('date', '>=', startDate),
       where('date', '<=', endDate)
     );
 
     const querySnapshot = await getDocs(shiftsQuery);
-    const batch = writeBatch(db);
+    const batch = writeBatch(db!);
 
     // バッチで全て削除
     querySnapshot.docs.forEach(doc => {
@@ -553,12 +553,12 @@ export const deleteShiftsForDate = async (date: string): Promise<void> => {
   try {
     // 指定日付のシフトをクエリ
     const shiftsQuery = query(
-      collection(db, SHIFTS_COLLECTION),
+      collection(db!,SHIFTS_COLLECTION),
       where('date', '==', date)
     );
 
     const querySnapshot = await getDocs(shiftsQuery);
-    const batch = writeBatch(db);
+    const batch = writeBatch(db!);
 
     // バッチで全て削除
     querySnapshot.docs.forEach(doc => {
@@ -576,7 +576,7 @@ export const deleteShiftsForDate = async (date: string): Promise<void> => {
 // シフトを論理削除
 export const softDeleteShift = async (shiftId: string, collectionName: string = SHIFTS_COLLECTION, deletedBy?: string): Promise<void> => {
   try {
-    const shiftRef = doc(db, collectionName, shiftId);
+    const shiftRef = doc(db!,collectionName, shiftId);
     await updateDoc(shiftRef, {
       deleted: true,
       deletedAt: Timestamp.now(),
@@ -593,7 +593,7 @@ export const softDeleteShift = async (shiftId: string, collectionName: string = 
 // 削除済みシフトを復元
 export const restoreShift = async (shiftId: string): Promise<void> => {
   try {
-    const shiftRef = doc(db, SHIFTS_COLLECTION, shiftId);
+    const shiftRef = doc(db!,SHIFTS_COLLECTION, shiftId);
     await updateDoc(shiftRef, {
       deleted: false,
       deletedAt: null,
@@ -611,7 +611,7 @@ export const restoreShift = async (shiftId: string): Promise<void> => {
 // deleteField()を使って明示的にFirestoreからフィールドを削除する
 export const clearCancelStatus = async (shiftId: string): Promise<void> => {
   try {
-    const shiftRef = doc(db, SHIFTS_COLLECTION, shiftId);
+    const shiftRef = doc(db!,SHIFTS_COLLECTION, shiftId);
     await updateDoc(shiftRef, {
       cancelStatus: deleteField(),
       canceledAt: deleteField(),
@@ -632,7 +632,7 @@ export const loadDeletedShiftsForMonth = async (year: number, month: number): Pr
     const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
     const shiftsQuery = query(
-      collection(db, SHIFTS_COLLECTION),
+      collection(db!,SHIFTS_COLLECTION),
       where('date', '>=', startDate),
       where('date', '<=', endDate),
       where('deleted', '==', true)
@@ -656,7 +656,7 @@ export const loadDeletedShiftsForMonth = async (year: number, month: number): Pr
 export const loadHelperByToken = async (token: string): Promise<Helper | null> => {
   try {
     const helpersQuery = query(
-      collection(db, HELPERS_COLLECTION),
+      collection(db!,HELPERS_COLLECTION),
       where('personalToken', '==', token)
     );
 
@@ -684,7 +684,7 @@ export const loadHelperByToken = async (token: string): Promise<Helper | null> =
 export const saveDayOffRequests = async (year: number, month: number, requests: Map<string, string>): Promise<void> => {
   try {
     const docId = `${year}-${String(month).padStart(2, '0')}`;
-    const docRef = doc(db, 'dayOffRequests', docId);
+    const docRef = doc(db!,'dayOffRequests', docId);
 
     // MapをオブジェクトまたはArray形式に変換
     const requestsArray = Array.from(requests.entries()).map(([key, value]) => ({ key, value }));
@@ -705,7 +705,7 @@ export const saveDayOffRequests = async (year: number, month: number, requests: 
 export const loadDayOffRequests = async (year: number, month: number): Promise<Map<string, string>> => {
   try {
     const docId = `${year}-${String(month).padStart(2, '0')}`;
-    const docRef = doc(db, 'dayOffRequests', docId);
+    const docRef = doc(db!,'dayOffRequests', docId);
     const targetDoc = await getDoc(docRef);
 
     if (targetDoc.exists()) {
@@ -744,7 +744,7 @@ export const loadDayOffRequests = async (year: number, month: number): Promise<M
 export const saveScheduledDayOffs = async (year: number, month: number, scheduledDayOffs: Map<string, boolean>): Promise<void> => {
   try {
     const docId = `${year}-${String(month).padStart(2, '0')}`;
-    const docRef = doc(db, 'scheduledDayOffs', docId);
+    const docRef = doc(db!,'scheduledDayOffs', docId);
 
     // MapをArray形式に変換
     const scheduledDayOffsArray = Array.from(scheduledDayOffs.entries()).map(([key, value]) => ({ key, value }));
@@ -765,7 +765,7 @@ export const saveScheduledDayOffs = async (year: number, month: number, schedule
 export const loadScheduledDayOffs = async (year: number, month: number): Promise<Map<string, boolean>> => {
   try {
     const docId = `${year}-${String(month).padStart(2, '0')}`;
-    const docRef = doc(db, 'scheduledDayOffs', docId);
+    const docRef = doc(db!,'scheduledDayOffs', docId);
     const targetDoc = await getDoc(docRef);
 
     if (targetDoc.exists()) {
@@ -796,7 +796,7 @@ export const loadScheduledDayOffs = async (year: number, month: number): Promise
 export const saveDisplayTexts = async (year: number, month: number, displayTexts: Map<string, string>): Promise<void> => {
   try {
     const docId = `${year}-${String(month).padStart(2, '0')}`;
-    const docRef = doc(db, 'displayTexts', docId);
+    const docRef = doc(db!,'displayTexts', docId);
 
     // MapをArray形式に変換
     const displayTextsArray = Array.from(displayTexts.entries()).map(([key, value]) => ({ key, value }));
@@ -817,7 +817,7 @@ export const saveDisplayTexts = async (year: number, month: number, displayTexts
 export const loadDisplayTexts = async (year: number, month: number): Promise<Map<string, string>> => {
   try {
     const docId = `${year}-${String(month).padStart(2, '0')}`;
-    const docRef = doc(db, 'displayTexts', docId);
+    const docRef = doc(db!,'displayTexts', docId);
     const targetDoc = await getDoc(docRef);
 
     if (targetDoc.exists()) {
@@ -852,7 +852,7 @@ export const subscribeToDayOffRequestsMap = (
 ): (() => void) => {
   try {
     const docId = `${year}-${String(month).padStart(2, '0')}`;
-    const docRef = doc(db, 'dayOffRequests', docId);
+    const docRef = doc(db!,'dayOffRequests', docId);
 
     const unsubscribe = onSnapshot(
       docRef,
@@ -897,7 +897,7 @@ export const subscribeToDisplayTextsMap = (
 ): (() => void) => {
   try {
     const docId = `${year}-${String(month).padStart(2, '0')}`;
-    const docRef = doc(db, 'displayTexts', docId);
+    const docRef = doc(db!,'displayTexts', docId);
 
     const unsubscribe = onSnapshot(
       docRef,
@@ -937,7 +937,7 @@ export const subscribeToScheduledDayOffs = (
 ): (() => void) => {
   try {
     const docId = `${year}-${String(month).padStart(2, '0')}`;
-    const docRef = doc(db, 'scheduledDayOffs', docId);
+    const docRef = doc(db!,'scheduledDayOffs', docId);
 
     const unsubscribe = onSnapshot(
       docRef,
@@ -991,10 +991,10 @@ export const moveShift = async (
     sourceCollectionName = `shifts_${sourceYear}_${String(sourceMonth).padStart(2, '0')}`;
   }
 
-  const batch = writeBatch(db);
+  const batch = writeBatch(db!);
 
   // 1. 移動元の論理削除（正しいコレクションから）
-  const sourceRef = doc(db, sourceCollectionName, sourceShiftId);
+  const sourceRef = doc(db!,sourceCollectionName, sourceShiftId);
   batch.update(sourceRef, {
     deleted: true,
     deletedAt: Timestamp.now()
@@ -1002,7 +1002,7 @@ export const moveShift = async (
 
   // 2. 移動先の新規作成（正しいコレクションへ）
   const cleanShift = sanitizeForFirestore(newShift);
-  const targetRef = doc(db, targetCollectionName, newShift.id);
+  const targetRef = doc(db!,targetCollectionName, newShift.id);
   batch.set(targetRef, cleanShift);
 
   await batch.commit();
@@ -1015,7 +1015,7 @@ export const getShiftsCountByDate = async (year: number, month: number, day: num
     console.log(`📊 ${dateString}のシフト数を確認中...`);
 
     const q = query(
-      collection(db, 'shifts'),
+      collection(db!,'shifts'),
       where('date', '==', dateString),
       where('deleted', '==', false)
     );
@@ -1037,7 +1037,7 @@ export const deleteShiftsByDate = async (year: number, month: number, day: numbe
     console.log(`🗑️ ${dateString}のシフトを削除中...`);
 
     const q = query(
-      collection(db, 'shifts'),
+      collection(db!,'shifts'),
       where('date', '==', dateString),
       where('deleted', '==', false)
     );
@@ -1050,7 +1050,7 @@ export const deleteShiftsByDate = async (year: number, month: number, day: numbe
     }
 
     // バッチ処理で効率的に削除
-    const batch = writeBatch(db);
+    const batch = writeBatch(db!);
     let deletedCount = 0;
 
     snapshot.forEach((doc) => {
@@ -1081,7 +1081,7 @@ export const getShiftsCountByMonth = async (year: number, month: number): Promis
     console.log(`📊 ${year}年${month}月全体のシフト数を確認中...`);
 
     const q = query(
-      collection(db, 'shifts'),
+      collection(db!,'shifts'),
       where('date', '>=', startDate),
       where('date', '<=', endDate),
       where('deleted', '==', false)
@@ -1107,7 +1107,7 @@ export const deleteShiftsByMonth = async (year: number, month: number): Promise<
     console.log(`🗑️ ${year}年${month}月全体のシフトを削除中...`);
 
     const q = query(
-      collection(db, 'shifts'),
+      collection(db!,'shifts'),
       where('date', '>=', startDate),
       where('date', '<=', endDate),
       where('deleted', '==', false)
@@ -1121,7 +1121,7 @@ export const deleteShiftsByMonth = async (year: number, month: number): Promise<
     }
 
     // バッチ処理で効率的に削除
-    const batch = writeBatch(db);
+    const batch = writeBatch(db!);
     let deletedCount = 0;
 
     snapshot.forEach((doc) => {

@@ -22,7 +22,7 @@ export async function cleanupDuplicateShifts(year: number, month: number) {
 
     // その月のシフトを全て取得
     const shiftsQuery = query(
-      collection(db, 'shifts'),
+      collection(db!,'shifts'),
       where('date', '>=', extendedStartDate),
       where('date', '<=', endDate)
     );
@@ -89,7 +89,7 @@ export async function cleanupDuplicateShifts(year: number, month: number) {
 
       for (const shift of shiftsToDelete) {
         try {
-          await deleteDoc(doc(db, 'shifts', shift.docId));
+          await deleteDoc(doc(db!,'shifts', shift.docId));
           removedCount++;
           console.log(`🗑️ 削除: ${shift.docId}`);
         } catch (error) {

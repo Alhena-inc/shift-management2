@@ -17,7 +17,7 @@ const HomePage: React.FC = () => {
   });
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthStateChanged(auth!, async (user) => {
       if (user) {
         try {
           // info@alhena.co.jpは必ず管理者として扱う
@@ -25,7 +25,7 @@ const HomePage: React.FC = () => {
             setRole('admin');
             console.log('🔴 管理者アカウントとして認識');
           } else {
-            const userDoc = await getDoc(doc(db, 'users', user.uid));
+            const userDoc = await getDoc(doc(db!,'users', user.uid));
             if (userDoc.exists()) {
               const userData = userDoc.data();
               setRole(userData.role || 'staff');
@@ -35,7 +35,7 @@ const HomePage: React.FC = () => {
           }
 
           // 名前の取得
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          const userDoc = await getDoc(doc(db!,'users', user.uid));
           if (userDoc.exists()) {
             const userData = userDoc.data();
             setHelperName(userData.name || user.displayName || null);
@@ -67,11 +67,11 @@ const HomePage: React.FC = () => {
   const fetchStatistics = async () => {
     try {
       // ヘルパー数の取得
-      const helpersSnapshot = await getDocs(collection(db, 'helpers'));
+      const helpersSnapshot = await getDocs(collection(db!,'helpers'));
       const helpersCount = helpersSnapshot.size;
 
       // 利用者数の取得
-      const usersSnapshot = await getDocs(collection(db, 'users'));
+      const usersSnapshot = await getDocs(collection(db!,'users'));
       const usersCount = usersSnapshot.size;
 
       setStats(prev => ({

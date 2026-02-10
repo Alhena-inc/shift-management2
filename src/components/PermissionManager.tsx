@@ -37,7 +37,7 @@ export const PermissionManager: React.FC<PermissionManagerProps> = ({ onClose })
 
     try {
       // helpersコレクションを更新
-      const helperRef = doc(db, 'helpers', helperId);
+      const helperRef = doc(db!, 'helpers', helperId);
       await updateDoc(helperRef, {
         role: newRole
       });
