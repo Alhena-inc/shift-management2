@@ -162,25 +162,7 @@ export function generateFixedPayslipFromShifts(
 ): FixedPayslip {
   const payslip = createEmptyFixedPayslip(helper, year, month);
 
-  // デバッグ：渡されたシフトデータの日付範囲を確認
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log(`📊 給与明細生成: ${helper.name} (${year}年${month}月)`);
-  console.log(`受信シフト数: ${shifts.length}件`);
-  if (shifts.length > 0) {
-    const dates = shifts.map(s => s.date).sort();
-    console.log(`日付範囲: ${dates[0]} 〜 ${dates[dates.length - 1]}`);
-
-    // 対象月以外のデータをチェック
-    const targetMonthPrefix = `${year}-${String(month).padStart(2, '0')}`;
-    const outsideMonthShifts = shifts.filter(s => !s.date.startsWith(targetMonthPrefix));
-    if (outsideMonthShifts.length > 0) {
-      console.warn(`⚠️ 対象月外のシフトが含まれています (${outsideMonthShifts.length}件):`);
-      outsideMonthShifts.forEach(s => {
-        console.warn(`  - ${s.date} (${s.clientName || '不明'})`);
-      });
-    }
-  }
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  // 給与明細生成（個人情報はログに含めない）
 
   // ヘルパーの月別データから基本情報を設定
   const monthKey = `${year}-${String(month).padStart(2, '0')}`;
@@ -273,7 +255,7 @@ export function generateFixedPayslipFromShifts(
         excludedShifts.forEach(s => {
           const serviceLabel = s.serviceType ? (SERVICE_CONFIG[s.serviceType]?.label || s.serviceType) : '不明';
           const reason = s.cancelStatus ? `cancelStatus=${s.cancelStatus}` : `duration=${s.duration}`;
-          console.log(`⚠️ 除外（実績なし/キャンセル）: ${s.date} ${s.startTime}-${s.endTime} ${s.clientName} (${serviceLabel}) ${reason}`);
+          console.log(`⚠️ 除外（実績なし/キャンセル）: ${s.date} ${reason}`);
         });
       }
 
@@ -591,25 +573,7 @@ export function generateHourlyPayslipFromShifts(
 ): HourlyPayslip {
   const payslip = createEmptyHourlyPayslip(helper, year, month);
 
-  // デバッグ：渡されたシフトデータの日付範囲を確認
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log(`📊 給与明細生成(時給): ${helper.name} (${year}年${month}月)`);
-  console.log(`受信シフト数: ${shifts.length}件`);
-  if (shifts.length > 0) {
-    const dates = shifts.map(s => s.date).sort();
-    console.log(`日付範囲: ${dates[0]} 〜 ${dates[dates.length - 1]}`);
-
-    // 対象月以外のデータをチェック
-    const targetMonthPrefix = `${year}-${String(month).padStart(2, '0')}`;
-    const outsideMonthShifts = shifts.filter(s => !s.date.startsWith(targetMonthPrefix));
-    if (outsideMonthShifts.length > 0) {
-      console.warn(`⚠️ 対象月外のシフトが含まれています (${outsideMonthShifts.length}件):`);
-      outsideMonthShifts.forEach(s => {
-        console.warn(`  - ${s.date} (${s.clientName || '不明'})`);
-      });
-    }
-  }
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  // 給与明細生成（個人情報はログに含めない）
 
   // ヘルパーの月別データから基本情報を設定
   const monthKey = `${year}-${String(month).padStart(2, '0')}`;
@@ -683,7 +647,7 @@ export function generateHourlyPayslipFromShifts(
       excludedShifts.forEach(s => {
         const serviceLabel = s.serviceType ? (SERVICE_CONFIG[s.serviceType]?.label || s.serviceType) : '不明';
         const reason = s.cancelStatus ? `cancelStatus=${s.cancelStatus}` : `duration=${s.duration}`;
-        console.log(`⚠️ 除外（実績なし/キャンセル・時給）: ${s.date} ${s.startTime}-${s.endTime} ${s.clientName} (${serviceLabel}) ${reason}`);
+        console.log(`⚠️ 除外（実績なし/キャンセル・時給）: ${s.date} ${reason}`);
       });
     }
 
@@ -822,7 +786,7 @@ export function generateHourlyPayslipFromShifts(
   // 特別手当の計算（特定のヘルパー×利用者の組み合わせで時給差額を加算）
   const specialAllowance = calculateSpecialAllowance(helper.name, monthShifts);
   if (specialAllowance.amount > 0) {
-    console.log(`✨ 特別手当: ${helper.name} - ${specialAllowance.details} = ${specialAllowance.amount}円`);
+    console.log(`✨ 特別手当適用: ${specialAllowance.amount}円`);
     payslip.payments.specialAllowance = specialAllowance.amount;
   }
 

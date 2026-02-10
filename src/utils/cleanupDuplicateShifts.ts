@@ -63,7 +63,7 @@ export async function cleanupDuplicateShifts(year: number, month: number) {
         console.log(`⚠️ 重複発見: ${key}`);
         console.log(`  - 件数: ${shifts.length}件`);
         shifts.forEach(s => {
-          console.log(`    - ${s.docId}: ${s.clientName} (${s.startTime}-${s.endTime})`);
+          console.log(`    - ${s.docId}`);
         });
       }
     });

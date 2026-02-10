@@ -26,21 +26,6 @@ export const getGoogleAccessToken = async (): Promise<string> => {
     }
 
     console.log('✅ Google OAuth認証成功');
-    console.log('👤 ユーザー:', result.user.email);
-    console.log('🔑 アクセストークン:', credential.accessToken.substring(0, 30) + '...');
-
-    // トークンのスコープを確認（デバッグ用）
-    // OAuthCredentialのidTokenに含まれる情報を確認
-    const idToken = credential.idToken;
-    if (idToken) {
-      console.log('🎫 ID Token取得済み');
-    }
-
-    // スコープが正しく取得されているか確認するため、トークン情報をログ出力
-    console.log('📋 認証情報:', {
-      providerId: credential.providerId,
-      signInMethod: credential.signInMethod
-    });
 
     return credential.accessToken;
 

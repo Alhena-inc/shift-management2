@@ -192,8 +192,9 @@ CREATE POLICY "users_all_admin" ON users
 CREATE POLICY "helpers_select_authenticated" ON helpers
   FOR SELECT USING (auth.role() = 'authenticated');
 
+-- personal_tokenによるアクセスも認証ユーザーのみに制限
 CREATE POLICY "helpers_select_by_token" ON helpers
-  FOR SELECT USING (auth.role() = 'anon' AND personal_token IS NOT NULL);
+  FOR SELECT USING (auth.role() = 'authenticated' AND personal_token IS NOT NULL);
 
 CREATE POLICY "helpers_insert_admin" ON helpers
   FOR INSERT WITH CHECK (public.is_admin());
@@ -208,8 +209,10 @@ CREATE POLICY "helpers_delete_admin" ON helpers
 CREATE POLICY "shifts_select_authenticated" ON shifts
   FOR SELECT USING (auth.role() = 'authenticated');
 
-CREATE POLICY "shifts_select_anon" ON shifts
-  FOR SELECT USING (auth.role() = 'anon');
+-- 匿名アクセスを禁止: 認証済みユーザーのみシフト閲覧可能
+-- CREATE POLICY "shifts_select_anon" ON shifts
+--   FOR SELECT USING (auth.role() = 'anon');
+-- ↑ セキュリティリスクのため削除
 
 CREATE POLICY "shifts_insert_admin" ON shifts
   FOR INSERT WITH CHECK (public.is_admin());

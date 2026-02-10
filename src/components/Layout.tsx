@@ -22,16 +22,8 @@ export const Layout: React.FC<LayoutProps> = ({ user, children }) => {
       }
 
       try {
-        console.log('📝 ユーザー情報取得開始:', user.email);
-
         // ユーザー権限を取得
         const permissions = await getUserPermissions(user);
-
-        console.log('📋 権限情報:', {
-          role: permissions.role,
-          helperId: permissions.helperId,
-          helperName: permissions.helperName
-        });
 
         // 名前を設定
         let userName = permissions.helperName || '';
@@ -53,18 +45,13 @@ export const Layout: React.FC<LayoutProps> = ({ user, children }) => {
             .single();
 
           if (!error && helperData) {
-            console.log('✅ helpersから名前を取得:', {
-              name: (helperData as any).name,
-              email: (helperData as any).email
-            });
-
             userName = (helperData as any).name;
           }
         }
 
         // 適切な名前が取得できなければメールアドレスから生成
         if (!userName) {
-          console.warn('⚠️ Supabaseに適切な名前なし。メールアドレスを使用');
+          // 名前が取得できなかった場合
           userName = user.email?.split('@')[0] || 'ゲスト';
         }
 

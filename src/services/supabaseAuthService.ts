@@ -72,23 +72,12 @@ export const getUserPermissions = async (user: User): Promise<{ role: UserRole |
       };
     }
 
-    // どちらのテーブルにもない場合は、新規ユーザーとして登録
-    const newUserData = {
-      id: user.id,
-      email: user.email!,
-      role: 'staff' as UserRole,
-      helper_id: null,
-      name: user.user_metadata?.full_name || user.email!.split('@')[0],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    await supabase.from('users').upsert(newUserData as any);
-
+    // どちらのテーブルにもない場合はアクセス拒否（ホワイトリスト方式）
+    console.warn('未登録ユーザーのアクセスを拒否しました');
     return {
-      role: 'staff',
+      role: null,
       helperId: null,
-      helperName: newUserData.name
+      helperName: null
     };
   } catch (error) {
     console.error('権限情報の取得エラー:', error);

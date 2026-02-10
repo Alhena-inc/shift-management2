@@ -493,11 +493,7 @@ export const createEmptyHourlyPayslip = (
   // 社会保険加入判定
   const hasSocialInsurance = insuranceTypes.includes('health') || insuranceTypes.includes('pension');
 
-  console.log('💰 時給給与明細作成:');
-  console.log('ヘルパー:', helper.name);
-  console.log('雇用形態（Helper）:', helper.employmentType);
-  console.log('年齢:', age);
-  console.log('保険種類:', insuranceTypes);
+  // 給与明細作成（個人情報はログに含めない）
 
   const daysInMonth = new Date(year, month, 0).getDate();
 

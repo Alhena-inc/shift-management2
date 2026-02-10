@@ -36,9 +36,7 @@ const HelperDetailPage: React.FC = () => {
     if (!helper) return;
     setIsSaving(true);
     try {
-      console.log('🔍 保存するヘルパーデータ:', helper);
-      console.log('📋 性別:', helper.gender);
-      console.log('📋 保険加入状況 (insurances):', helper.insurances);
+      // ヘルパーデータ保存開始
 
       // 性別が設定されていない場合はデフォルトをmaleに
       const helperToSave = {

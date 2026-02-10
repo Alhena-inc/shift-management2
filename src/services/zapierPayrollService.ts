@@ -337,7 +337,7 @@ export async function sendPayrollToSheetsViaZapier(
   payrollData: ReturnType<typeof calculatePayrollData>
 ): Promise<{ success: boolean; sheetName?: string; error?: string }> {
   try {
-    const spreadsheetId = '1asgiOLpVlrE6hZ1en_CnqIXa_JCZxjRUSW4kpbGcwMY';
+    const spreadsheetId = import.meta.env.VITE_GOOGLE_SHEETS_PAYROLL_ID || '';
     const templateSheetName = payrollData.payType === 'hourly'
       ? '賃金明細(時給)'
       : '賃金明細(固定)';
@@ -356,12 +356,7 @@ export async function sendPayrollToSheetsViaZapier(
     // 注: 実際の実装では、Zapier MCPのAPIを呼び出す必要があります
     // 例: await zapier.updateSpreadsheet(spreadsheetId, updates);
 
-    console.log('Zapier経由で以下のデータを送信:', {
-      spreadsheetId,
-      templateSheetName,
-      newSheetName,
-      updates
-    });
+    console.log('Zapier経由でデータを送信しました');
 
     return {
       success: true,

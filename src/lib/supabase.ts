@@ -40,10 +40,6 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
 export const testSupabaseConnection = async () => {
   try {
     console.log('🔍 Supabase接続テスト開始...');
-    console.log('📝 設定:', {
-      url: supabaseUrl,
-      hasAnonKey: !!supabaseAnonKey
-    });
 
     // ヘルパーテーブルから1件取得してテスト
     const { data, error } = await supabase

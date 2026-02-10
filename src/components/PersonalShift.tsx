@@ -35,7 +35,7 @@ export function PersonalShift({ token }: Props) {
     // トークンを保存（PWAモード起動時のリダイレクト用）
     if (token) {
       localStorage.setItem('personalShiftToken', token);
-      console.log('💾 トークンをlocalStorageに保存:', token);
+      // トークンをlocalStorageに保存
     }
 
     // 動的にmanifest.jsonを生成（ホーム画面追加時に正しいURLで開くため）
@@ -69,10 +69,7 @@ export function PersonalShift({ token }: Props) {
     link.rel = 'manifest';
     link.href = manifestUrl;
     document.head.appendChild(link);
-    console.log('📱 動的manifestを生成:', {
-      start_url: manifestData.start_url,
-      token: token
-    });
+    console.log('📱 動的manifestを生成');
 
     return () => {
       URL.revokeObjectURL(manifestUrl);
@@ -86,11 +83,7 @@ export function PersonalShift({ token }: Props) {
       setHelperLoadComplete(false);
 
       // トークンからヘルパーを取得
-      console.log('🔍 トークン:', token);
       const helperData = await loadHelperByToken(token);
-      console.log('👤 取得したヘルパー:', helperData);
-      console.log('👤 ヘルパーID:', helperData?.id, '(型:', typeof helperData?.id, ')');
-      console.log('👤 ヘルパー名:', helperData?.name);
       if (!helperData) {
         console.error('❌ ヘルパーが見つかりませんでした');
         setHelperLoadComplete(true); // 取得完了（見つからなかった）
@@ -234,7 +227,7 @@ export function PersonalShift({ token }: Props) {
       return;
     }
 
-    console.log('📥 Firestoreからデータ取得開始:', helper.name, `(helperId: ${helper.id}, 型: ${typeof helper.id})`);
+    console.log('📥 データ取得開始');
 
     // 現在の月の開始日と終了日を計算（読み取り回数削減のため）
     const startDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
@@ -259,12 +252,7 @@ export function PersonalShift({ token }: Props) {
       where('date', '<=', endDate)
     );
 
-    console.log('🔍 クエリ条件:', {
-      originalHelperId: helper.id,
-      originalHelperIdType: typeof helper.id,
-      normalizedHelperId: normalizedHelperId,
-      normalizedHelperIdType: typeof normalizedHelperId
-    });
+    // クエリ条件のデバッグログは本番で出力しない
 
     const unsubscribe = onSnapshot(
       q,
@@ -273,37 +261,7 @@ export function PersonalShift({ token }: Props) {
         includeMetadataChanges: true
       },
       (snapshot) => {
-        console.log('📡 === onSnapshot発火 ===');
-        console.log('📊 取得件数:', snapshot.docs.length, '件');
-
-        if (snapshot.docs.length === 0) {
-          console.warn('⚠️ データが0件です。以下を確認してください：');
-          console.warn('  1. Firestoreにデータが存在するか');
-          console.warn('  2. helperIdが正しいか:', normalizedHelperId);
-          console.warn('  3. 現在の年月:', `${currentYear}年${currentMonth}月`);
-        } else {
-          console.log('🔍 最初の5件のID:');
-          snapshot.docs.slice(0, 5).forEach((doc, index) => {
-            const data = doc.data();
-            console.log(`  ${index + 1}. ${doc.id} - ${data.clientName} (${data.date}) - cancelStatus: ${data.cancelStatus}`);
-          });
-        }
-
-        // メタデータ変更の詳細をログ
-        const hasPendingWrites = snapshot.metadata.hasPendingWrites;
-        const isFromCache = snapshot.metadata.fromCache;
-
-        console.log('🔄 Firestore更新検知:', {
-          totalDocs: snapshot.docs.length,
-          hasPendingWrites,
-          isFromCache,
-          changesCount: snapshot.docChanges().length,
-          changes: snapshot.docChanges().map(change => ({
-            type: change.type, // 'added', 'modified', 'removed'
-            id: change.doc.id,
-            data: change.doc.data()
-          }))
-        });
+        // データ取得完了
 
         const allShifts = snapshot.docs.map((doc, index) => {
           const data = doc.data() as Shift;
@@ -323,20 +281,7 @@ export function PersonalShift({ token }: Props) {
             cancelStatusValue: data.cancelStatus
           };
 
-          // 全シフトのcancelStatus状態を確認（最初の3件のみ）
-          if (index < 3) {
-            console.log(`📋 シフト${index + 1}: ${doc.id}`, {
-              cancelStatus: data.cancelStatus,
-              hasCancel: hasCancel,
-              clientName: data.clientName
-            });
-          }
-
-          if (hasCancel) {
-            console.log('⚠️ キャンセルフィールドが残っているシフト:', cancelDebugInfo);
-          } else if (doc.metadata.hasPendingWrites) {
-            console.log('📝 保留中の書き込みがあるシフト:', cancelDebugInfo);
-          }
+          // キャンセル状態のデバッグログは本番では出力しない
           return {
             ...data,
             id: doc.id
@@ -351,7 +296,6 @@ export function PersonalShift({ token }: Props) {
         const fetchedShifts = allShifts.filter(s => {
           // 削除フラグチェック
           if (s.deleted === true) {
-            console.log('🚫 削除済みシフトを除外:', s.id, s.clientName, s.date);
             return false;
           }
 
@@ -360,19 +304,12 @@ export function PersonalShift({ token }: Props) {
             return true;
           }
 
-          // 日付が一致しない場合
-          if (s.date && !s.date.startsWith(currentYearMonth)) {
-            console.log('📅 別月のシフトを除外:', s.id, s.date, '(表示対象:', currentYearMonth, ')');
-          }
+          // 日付が一致しない場合は除外
 
           return false;
         });
 
-        console.log('✅ Firestore取得結果:', {
-          全データ数: allShifts.length,
-          フィルタ後: fetchedShifts.length,
-          削除数: allShifts.length - fetchedShifts.length
-        });
+        console.log(`✅ シフトデータ取得完了: ${fetchedShifts.length}件`);
 
         // 変更があった場合のみ詳細ログ
         if (snapshot.docChanges().length > 0) {

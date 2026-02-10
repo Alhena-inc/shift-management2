@@ -1,4 +1,5 @@
 // @ts-nocheck
+// TODO: supabase.tsのDatabase型定義を更新し、@ts-nocheckを除去する
 import { supabase } from '../lib/supabase';
 import type { Helper, Shift } from '../types';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -19,7 +20,7 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
       // IDがない場合は新規生成
       const helperId = helper.id || crypto.randomUUID();
 
-      console.log(`🔧 保存データ準備: ${helper.name}, id: ${helperId}`);
+      // 個人情報をログに含めない
 
       // 数値フィールドが文字列の場合を考慮
       const hourlyWage = typeof helper.hourlyRate === 'string'
@@ -108,12 +109,7 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
         saveData.email = null;
       }
 
-      // デバッグ用: 各フィールドを確認
-      console.log('保存データ詳細:', {
-        id: saveData.id,
-        name: saveData.name,
-        order: saveData.order_index
-      });
+      // デバッグ用: IDのみ出力（個人情報を含めない）
 
       return saveData;
     });
@@ -224,7 +220,7 @@ export const loadHelpers = async (): Promise<Helper[]> => {
     const helpers: Helper[] = (data || [])
       .filter(row => !row.deleted) // 削除済みを除外
       .map(row => {
-        console.log(`読み込みデータ: ${row.name}, id: ${row.id}`);
+        // 個人情報をログに含めない
         return {
           // 基本フィールド
           id: row.id,
@@ -371,7 +367,7 @@ export const softDeleteHelper = async (helperId: string, deletedBy?: string): Pr
       throw deleteError;
     }
 
-    console.log(`✅ ヘルパー ${helper.name} を削除済みテーブルに移動しました`);
+    console.log(`✅ ヘルパーを削除済みテーブルに移動しました (ID: ${helperId})`);
   } catch (error) {
     console.error('ヘルパー削除エラー:', error);
     throw error;
@@ -456,7 +452,7 @@ export const restoreHelper = async (deletedHelperId: string): Promise<void> => {
       throw deleteError;
     }
 
-    console.log(`✅ ヘルパー ${deletedHelper.name} を復元しました`);
+    console.log(`✅ ヘルパーを復元しました (ID: ${deletedHelperId})`);
   } catch (error) {
     console.error('ヘルパー復元エラー:', error);
     throw error;
@@ -1313,8 +1309,7 @@ export const getShiftsCountByDate = async (year: number, month: number, day: num
       return 0;
     }
 
-    console.log(`  取得した生データ:`, data);
-    console.log(`  取得した件数（全体）: ${data?.length || 0}件`);
+    console.log(`  取得件数: ${data?.length || 0}件`);
 
     // アプリ側でdeletedをチェック
     const activeShifts = (data || []).filter((shift: any) => !shift.deleted);
@@ -1402,8 +1397,7 @@ export const getShiftsCountByMonth = async (year: number, month: number): Promis
       return 0;
     }
 
-    console.log(`  取得した生データ:`, data);
-    console.log(`  取得した件数（全体）: ${data?.length || 0}件`);
+    console.log(`  取得件数: ${data?.length || 0}件`);
 
     // アプリ側でdeletedをチェック
     const activeShifts = (data || []).filter((shift: any) => !shift.deleted);

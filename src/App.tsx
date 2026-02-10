@@ -50,7 +50,6 @@ function App() {
   // 認証状態の監視
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(async (user) => {
-      console.log('🔐 認証状態変更:', user ? user.email : '未ログイン');
       setUser(user);
 
       // ユーザーの権限を取得
@@ -58,10 +57,6 @@ function App() {
         try {
           const permissions = await getUserPermissions(user);
           setUserRole(permissions.role);
-          console.log('👤 ユーザー権限:', permissions.role);
-          if (permissions.role === 'admin') {
-            console.log('🔴 管理者アカウントとして認識');
-          }
         } catch (error) {
           console.error('権限取得エラー:', error);
           // エラー時でもinfo@alhena.co.jpは管理者として扱う

@@ -242,9 +242,9 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
           await savePayslip(payslip);
           successCount++;
         } catch (error) {
-          console.error(`${helper.name}の給与明細作成エラー:`, error);
+          console.error('給与明細作成エラー:', error);
           errorCount++;
-          errors.push(`${helper.name}: ${error instanceof Error ? error.message : String(error)}`);
+          errors.push(`ID:${helper.id}: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
 
@@ -318,9 +318,9 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
           await savePayslip(generated);
           successCount++;
         } catch (error) {
-          console.error(`${helper.name}の給与明細作成/更新エラー:`, error);
+          console.error('給与明細作成/更新エラー:', error);
           errorCount++;
-          errors.push(helper.name);
+          errors.push(`ID:${helper.id}`);
         }
       }
 

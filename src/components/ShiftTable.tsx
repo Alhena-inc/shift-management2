@@ -2554,7 +2554,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
             }
           } else {
             unmatchedNames.push(`🚃 ${item.name}`);
-            console.warn(`  ⚠️ ヘルパー "${item.name}" が見つかりません`);
+            console.warn('  ⚠️ ヘルパーが見つかりません');
           }
         });
       }
@@ -2590,7 +2590,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
             }
           } else {
             unmatchedNames.push(`📝 ${item.name}`);
-            console.warn(`  ⚠️ ヘルパー "${item.name}" が見つかりません`);
+            console.warn('  ⚠️ ヘルパーが見つかりません');
           }
         });
       }
@@ -3135,7 +3135,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       return;
     }
 
-    console.log('🎯 ペースト開始:', { helperId, date, rowIndex, data: copyBufferRef.data });
+    // ペースト処理開始
 
     // ペースト前の状態をUndoスタックに保存
     const beforeData: string[] = [];
@@ -3445,7 +3445,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                 }
 
                 const targetHelper = sortedHelpers[targetHelperIndex];
-                console.log(`列${colIndex}: ${targetHelper.name}`);
+                // ペースト対象列を処理
 
                 // 4行ごとにグループ化（1シフト = 4行）、空行も位置として保持
                 for (let i = 0; i < grid.length; i += 4) {
@@ -4471,7 +4471,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         const rowIdx = parseInt(parts[parts.length - 1]);
         const dt = parts.slice(-4, -1).join('-');
         const hId = parts.slice(0, -4).join('-');
-        console.log(`削除中: ${key} (helperId=${hId}, date=${dt}, rowIndex=${rowIdx})`);
+        // シフト削除処理
         const { shiftId, undoData } = await deleteCare(hId, dt, rowIdx, true, true, true);
         deletedShiftIds.push(shiftId);
         undoGroup.push(undoData);
@@ -5530,52 +5530,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       helperData.set('shinya', { hours: 0, amount: 0 });
       helperData.set('shinya_doko', { hours: 0, amount: 0 });
 
-      // 田中航揮の初期化後のデバッグ
-      if (helper.name === '田中航揮') {
-        console.log('=== helperData初期化 ===');
-        console.log('Mapインスタンス:', helperData);
-        console.log('初期化直後のhelperData:', Array.from(helperData.entries()).map(([key, val]) => `${key}: ${val.hours}h`));
-
-        // 既にsummaryに入っている値があるかチェック
-        const existingData = summary.get(String(helper.id));
-        if (existingData) {
-          console.warn('⚠️ 既存のデータが見つかりました！');
-          console.log('既存データ:', Array.from(existingData.entries()).map(([key, val]) => `${key}: ${val.hours}h`));
-        }
-      }
-
-      // デバッグ：田中航揮のシフトを確認
       const helperIdStr = String(helper.id);
-      if (helper.name === '田中航揮') {
-        const tanakShifts = shiftsByHelper.get(helperIdStr) || [];
-        console.log('=== 田中航揮の集計デバッグ ===');
-        console.log('ヘルパーID:', helper.id, '型:', typeof helper.id);
-        console.log('文字列化ID:', helperIdStr);
-        console.log('シフト総数:', tanakShifts.length);
-
-        // 重複チェック
-        const uniqueDates = new Set(tanakShifts.map(s => `${s.date}-${s.rowIndex}`));
-        console.log('ユニークなシフト数:', uniqueDates.size);
-
-        // 実際のシフト詳細
-        const validShifts = tanakShifts.filter(s => s.duration && s.duration > 0);
-        console.log('有効なシフト数（duration > 0）:', validShifts.length);
-        console.log('シフト詳細:', validShifts.map(s => ({
-          date: s.date,
-          rowIndex: s.rowIndex,
-          time: `${s.startTime}-${s.endTime}`,
-          duration: s.duration,
-          serviceType: s.serviceType,
-          clientName: s.clientName,
-          helperId: s.helperId,
-          helperIdType: typeof s.helperId
-        })));
-
-        // 合計時間
-        const totalHours = validShifts.reduce((sum, s) => sum + (s.duration || 0), 0);
-        console.log('合計時間（計算値）:', totalHours);
-        console.log('=========================');
-      }
 
       // シフトから集計
       const shiftsToProcess = (shiftsByHelper.get(helperIdStr) || []).filter(s => {
@@ -5584,29 +5539,9 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         return !isExcluded && (s.duration || 0) > 0;
       });
 
-      // 田中航揮の場合、処理前後の時間を追跡
-      let processedHours = 0;
-      if (helper.name === '田中航揮') {
-        console.log('処理するシフト数:', shiftsToProcess.length);
-      }
-
-      shiftsToProcess.forEach((shift, index) => {
+      shiftsToProcess.forEach((shift) => {
 
         const { serviceType, startTime, endTime, duration } = shift;
-
-        if (helper.name === '田中航揮') {
-          console.log(`シフト${index + 1}の処理:`, {
-            serviceType,
-            startTime,
-            endTime,
-            duration,
-            date: shift.date,
-            shiftId: shift.id
-          });
-
-          // serviceTypeが正しく取得できているか確認
-          console.log(`  serviceTypeの型: ${typeof serviceType}, 値: "${serviceType}"`);
-        }
 
         // ヘルパー個別の時給を使用（田中航揮のように時給が設定されている場合）
         const hourlyRate = helper.hourlyRate || SERVICE_CONFIG[serviceType]?.hourlyRate || 0;
@@ -5647,16 +5582,6 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
             const current = helperData.get(serviceType) || { hours: 0, amount: 0 };
             const newHours = current.hours + regularHours;
 
-            if (helper.name === '田中航揮') {
-              console.log(`シフト${index + 1}処理（時間帯指定）:`);
-              console.log(`  - serviceType: ${serviceType}`);
-              console.log(`  - 時間帯: ${startTime}-${endTime}`);
-              console.log(`  - 通常時間: ${regularHours}h, 深夜時間: ${nightHours}h`);
-              console.log(`  - 現在の${serviceType}の時間: ${current.hours}h`);
-              console.log(`  - 新しい合計: ${newHours}h`);
-              processedHours += regularHours;
-            }
-
             helperData.set(serviceType, {
               hours: newHours,
               amount: current.amount + (regularHours * hourlyRate)
@@ -5667,66 +5592,16 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           const current = helperData.get(serviceType) || { hours: 0, amount: 0 };
           const newHours = current.hours + duration;
 
-          if (helper.name === '田中航揮') {
-            console.log(`シフト${index + 1}処理（duration使用）:`);
-            console.log(`  - serviceType: ${serviceType}`);
-            console.log(`  - 現在の${serviceType}の時間: ${current.hours}h`);
-            console.log(`  - 追加する時間: ${duration}h`);
-            console.log(`  - 新しい合計: ${newHours}h`);
-            processedHours += duration;
-          }
-
           helperData.set(serviceType, {
             hours: newHours,
             amount: current.amount + (duration * hourlyRate)
           });
         }
 
-        // 田中航揮の場合、深夜時間も追跡
-        if (helper.name === '田中航揮' && nightHours > 0) {
-          processedHours += nightHours;
-        }
-
-        // 各シフト処理後のhelperData状態を確認
-        if (helper.name === '田中航揮') {
-          console.log(`シフト${index + 1}処理完了後のhelperData:`,
-            Array.from(helperData.entries())
-              .filter(([_, val]) => val.hours > 0)
-              .map(([key, val]) => `${key}: ${val.hours}h`)
-          );
-        }
       });
-
-      if (helper.name === '田中航揮') {
-        console.log('処理後の合計時間:', processedHours);
-        console.log('helperDataの内容 (時間がある項目のみ):',
-          Array.from(helperData.entries())
-            .filter(([_, val]) => val.hours > 0)
-            .map(([key, val]) => ({ serviceType: key, hours: val.hours, amount: val.amount }))
-        );
-        console.log('helperDataの全エントリー数:', helperData.size);
-
-        // Map自体のデバッグ
-        const mapCopy = new Map(helperData);
-        console.log('Mapのコピー確認:', mapCopy.size, '個のエントリー');
-      }
 
       summary.set(helperIdStr, helperData);
     });
-
-    // 最終的なsummaryのデバッグ
-    const tanakaData = summary.get(String(sortedHelpers.find(h => h.name === '田中航揮')?.id));
-    if (tanakaData) {
-      console.log('=== 最終的な田中航揮のサマリーデータ ===');
-      let debugTotal = 0;
-      tanakaData.forEach((value, key) => {
-        if (value.hours > 0) {
-          console.log(`  ${key}: ${value.hours}時間`);
-          debugTotal += value.hours;
-        }
-      });
-      console.log(`  合計: ${debugTotal}時間`);
-    }
 
     return summary;
   }, [sortedHelpers, shifts]);
@@ -6199,17 +6074,6 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                       'shintai', 'judo', 'kaji', 'tsuin', 'ido',
                       'jimu', 'eigyo', 'doko', 'shinya', 'shinya_doko'
                     ];
-
-                    // 田中航揮のデバッグ
-                    if (helper.name === '田中航揮') {
-                      console.log('=== 給与算定行での田中航揮の時間集計 ===');
-                      allTypes.forEach(type => {
-                        const data = helperData.get(type);
-                        if (data && data.hours > 0) {
-                          console.log(`  ${type}: ${data.hours}時間`);
-                        }
-                      });
-                    }
 
                     allTypes.forEach(type => {
                       const data = helperData.get(type);

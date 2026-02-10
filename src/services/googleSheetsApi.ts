@@ -5,8 +5,8 @@
 
 import { getCurrentUser } from './googleAuthService';
 
-const SPREADSHEET_ID = '1hrNbQ3X9bkFqNe3zoZgs3vQF54K2rmFxXNJm_0Xg5m0';
-const SHEET_ID = 503376053;
+const SPREADSHEET_ID = import.meta.env.VITE_GOOGLE_SHEETS_PAYROLL_ID || '';
+const SHEET_ID = Number(import.meta.env.VITE_GOOGLE_SHEETS_SHEET_ID) || 0;
 
 /**
  * 現在のユーザーのメールアドレスを取得
@@ -36,8 +36,7 @@ export const getColumnLetter = (columnNumber: number): string => {
  */
 export const addHelperColumn = async (helperName: string, accessToken: string): Promise<void> => {
   try {
-    console.log(`📊 スプレッドシートにヘルパー列を追加: ${helperName}`);
-    console.log(`🔑 アクセストークン: ${accessToken.substring(0, 20)}...`);
+    console.log('📊 スプレッドシートにヘルパー列を追加中...');
 
     // 1. 現在の列数を取得
     const metadataRes = await fetch(
@@ -56,8 +55,7 @@ export const addHelperColumn = async (helperName: string, accessToken: string): 
       const errorText = await metadataRes.text();
       console.error(`❌ メタデータ取得エラー詳細:`, errorText);
       console.error(`❌ ステータスコード: ${metadataRes.status}`);
-      console.error(`❌ 認証ユーザー: ${getCurrentUserEmail()}`);
-      console.error(`❌ スプレッドシートID: ${SPREADSHEET_ID}`);
+      console.error('❌ スプレッドシートへのアクセス権限エラー');
 
       let errorMessage = `スプレッドシートにアクセスできません (${metadataRes.status})。\n\n`;
 
@@ -145,8 +143,7 @@ export const addHelperColumn = async (helperName: string, accessToken: string): 
       throw new Error(`ヘッダー更新に失敗しました (${updateRes.status})。詳細はコンソールを確認してください。`);
     }
 
-    console.log(`  ✅ ヘッダーを設定しました: ${columnLetter}1 = "${helperName}"`);
-    console.log(`✅ スプレッドシートにヘルパー列を追加完了: ${helperName}`);
+    console.log(`✅ スプレッドシートにヘルパー列を追加完了`);
 
   } catch (error) {
     console.error('❌ スプレッドシートへの列追加に失敗:', error);
