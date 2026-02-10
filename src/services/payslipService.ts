@@ -1,6 +1,5 @@
 // @ts-nocheck
-import { db } from '../lib/firebase';
-import { collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, Timestamp } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import type { Payslip, FixedPayslip, HourlyPayslip } from '../types/payslip';
 import type { Helper } from '../types';
 import { generateFixedDailyAttendanceFromTemplate } from '../utils/attendanceTemplate';
@@ -32,7 +31,6 @@ const getInsuranceTypes = (employmentType: string | undefined): string[] => {
 // undefinedフィールドを削除する関数
 const removeUndefinedFields = (obj: any): any => {
   if (obj === null || obj === undefined) return obj;
-  if (obj instanceof Timestamp) return obj; // Timestampはそのまま返す
   if (typeof obj !== 'object') return obj;
   if (Array.isArray(obj)) {
     return obj.map(removeUndefinedFields);
@@ -49,8 +47,6 @@ const removeUndefinedFields = (obj: any): any => {
 // 給与明細を保存（作成・更新）
 export const savePayslip = async (payslip: Payslip): Promise<void> => {
   try {
-    const docRef = doc(db, 'payslips', payslip.id);
-
     // 一時的なフィールドを削除
     const cleanedPayslip = { ...payslip };
     if (cleanedPayslip.deductions) {
@@ -58,14 +54,35 @@ export const savePayslip = async (payslip: Payslip): Promise<void> => {
       delete (cleanedPayslip.deductions as any).yearEndAdjustmentRaw;
     }
 
-    // undefinedフィールドを削除（Firestoreは undefined を保存できないため）
-    const data = removeUndefinedFields({
-      ...cleanedPayslip,
-      updatedAt: Timestamp.now(),
-      createdAt: payslip.createdAt || Timestamp.now(),
-    });
+    // undefinedフィールドを削除
+    const data = removeUndefinedFields(cleanedPayslip);
 
-    await setDoc(docRef, data);
+    const yearMonth = `${payslip.year}-${String(payslip.month).padStart(2, '0')}`;
+
+    const { error } = await supabase
+      .from('payslips')
+      .upsert({
+        id: payslip.id,
+        helper_id: payslip.helperId,
+        helper_name: payslip.helperName,
+        year: payslip.year,
+        month: payslip.month,
+        year_month: yearMonth,
+        employment_type: payslip.employmentType,
+        dependents: payslip.dependents || 0,
+        age: payslip.age,
+        insurance_types: payslip.insuranceTypes || [],
+        standard_remuneration: payslip.standardRemuneration || 0,
+        base_salary: payslip.baseSalary || (payslip as any).baseHourlyRate || 0,
+        total_hours: payslip.attendance?.totalWorkHours || 0,
+        total_amount: payslip.payments?.totalPayment || 0,
+        daily_attendance: payslip.dailyAttendance || [],
+        care_list: (payslip as any).careList || [],
+        details: data,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
+
+    if (error) throw error;
     console.log(`💰 給与明細を保存しました: ${payslip.helperName} (${payslip.year}年${payslip.month}月)`);
   } catch (error) {
     console.error('給与明細保存エラー:', error);
@@ -73,32 +90,20 @@ export const savePayslip = async (payslip: Payslip): Promise<void> => {
   }
 };
 
-// 給与明細を読み込み（ID指定）
-export const loadPayslip = async (id: string): Promise<Payslip | null> => {
-  try {
-    const docRef = doc(db, 'payslips', id);
-    const docSnap = await getDoc(docRef);
-
-    if (docSnap.exists()) {
-      const data = docSnap.data() as Payslip;
-
-      // 後方互換性：古いデータにage、dependents、insuranceTypesがない場合はデフォルト値を設定
-      if (data.age === undefined) {
-        data.age = 30; // デフォルト年齢
-      }
-      if (data.dependents === undefined) {
-        data.dependents = 0; // デフォルト扶養人数
-      }
-      if (!data.insuranceTypes) {
-        // 雇用形態から保険加入状況を推定
-        if (data.employmentType === '契約社員') {
-          data.insuranceTypes = ['health', 'pension', 'employment'];
-        } else {
-          data.insuranceTypes = ['employment'];
-        }
-      }
-
-      // 控除項目のデフォルト値を設定
+// Supabaseの行からPayslipオブジェクトを復元
+const rowToPayslip = (row: any): Payslip => {
+  // detailsにフルデータが入っている場合はそれを使う
+  if (row.details && typeof row.details === 'object' && row.details.id) {
+    const data = row.details as Payslip;
+    // 後方互換性
+    if (data.age === undefined) data.age = 30;
+    if (data.dependents === undefined) data.dependents = 0;
+    if (!data.insuranceTypes) {
+      data.insuranceTypes = data.employmentType === '契約社員'
+        ? ['health', 'pension', 'employment']
+        : ['employment'];
+    }
+    if (data.deductions) {
       if (!data.deductions.healthInsurance) data.deductions.healthInsurance = 0;
       if (!data.deductions.careInsurance) data.deductions.careInsurance = 0;
       if (!data.deductions.pensionInsurance) data.deductions.pensionInsurance = 0;
@@ -112,14 +117,45 @@ export const loadPayslip = async (id: string): Promise<Payslip | null> => {
       if (!data.deductions.advancePayment) data.deductions.advancePayment = 0;
       if (!data.deductions.yearEndAdjustment) data.deductions.yearEndAdjustment = 0;
       if (!data.deductions.deductionTotal) data.deductions.deductionTotal = 0;
+    }
+    return data;
+  }
+  // fallback: 個別カラムから組み立て
+  return {
+    id: row.id,
+    helperId: row.helper_id,
+    helperName: row.helper_name,
+    year: row.year,
+    month: row.month,
+    employmentType: row.employment_type || 'アルバイト',
+    dependents: row.dependents || 0,
+    age: row.age || 30,
+    insuranceTypes: row.insurance_types || [],
+    standardRemuneration: row.standard_remuneration || 0,
+    ...(row.details || {}),
+  } as Payslip;
+};
 
-      console.log(`💰 給与明細を読み込みました: ${data.helperName} (${data.year}年${data.month}月)`);
-      console.log('年齢:', data.age, '扶養人数:', data.dependents, '保険:', data.insuranceTypes);
-      return data;
+// 給与明細を読み込み（ID指定）
+export const loadPayslip = async (id: string): Promise<Payslip | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('payslips')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        console.log(`💰 給与明細が見つかりません: ${id}`);
+        return null;
+      }
+      throw error;
     }
 
-    console.log(`💰 給与明細が見つかりません: ${id}`);
-    return null;
+    const payslip = rowToPayslip(data);
+    console.log(`💰 給与明細を読み込みました: ${payslip.helperName} (${payslip.year}年${payslip.month}月)`);
+    return payslip;
   } catch (error) {
     console.error('給与明細読み込みエラー:', error);
     return null;
@@ -129,52 +165,15 @@ export const loadPayslip = async (id: string): Promise<Payslip | null> => {
 // 年月指定で給与明細一覧を取得
 export const loadPayslipsByMonth = async (year: number, month: number): Promise<Payslip[]> => {
   try {
-    const q = query(
-      collection(db, 'payslips'),
-      where('year', '==', year),
-      where('month', '==', month)
-    );
+    const { data, error } = await supabase
+      .from('payslips')
+      .select('*')
+      .eq('year', year)
+      .eq('month', month);
 
-    const querySnapshot = await getDocs(q);
-    const payslips: Payslip[] = [];
+    if (error) throw error;
 
-    querySnapshot.forEach((doc) => {
-      const data = doc.data() as Payslip;
-
-      // 後方互換性：古いデータにage、dependents、insuranceTypesがない場合はデフォルト値を設定
-      if (data.age === undefined) {
-        data.age = 30; // デフォルト年齢
-      }
-      if (data.dependents === undefined) {
-        data.dependents = 0; // デフォルト扶養人数
-      }
-      if (!data.insuranceTypes) {
-        // 雇用形態から保険加入状況を推定
-        if (data.employmentType === '契約社員') {
-          data.insuranceTypes = ['health', 'pension', 'employment'];
-        } else {
-          data.insuranceTypes = ['employment'];
-        }
-      }
-
-      // 控除項目のデフォルト値を設定
-      if (!data.deductions.healthInsurance) data.deductions.healthInsurance = 0;
-      if (!data.deductions.careInsurance) data.deductions.careInsurance = 0;
-      if (!data.deductions.pensionInsurance) data.deductions.pensionInsurance = 0;
-      if (!data.deductions.pensionFund) data.deductions.pensionFund = 0;
-      if (!data.deductions.employmentInsurance) data.deductions.employmentInsurance = 0;
-      if (!data.deductions.socialInsuranceTotal) data.deductions.socialInsuranceTotal = 0;
-      if (!data.deductions.taxableAmount) data.deductions.taxableAmount = 0;
-      if (!data.deductions.incomeTax) data.deductions.incomeTax = 0;
-      if (!data.deductions.residentTax) data.deductions.residentTax = 0;
-      if (!data.deductions.reimbursement) data.deductions.reimbursement = 0;
-      if (!data.deductions.advancePayment) data.deductions.advancePayment = 0;
-      if (!data.deductions.yearEndAdjustment) data.deductions.yearEndAdjustment = 0;
-      if (!data.deductions.deductionTotal) data.deductions.deductionTotal = 0;
-
-      payslips.push(data);
-    });
-
+    const payslips = (data || []).map(rowToPayslip);
     console.log(`💰 給与明細一覧を読み込みました: ${year}年${month}月 (${payslips.length}件)`);
     return payslips;
   } catch (error) {
@@ -190,19 +189,20 @@ export const loadPayslipByHelperAndMonth = async (
   month: number
 ): Promise<Payslip | null> => {
   try {
-    const q = query(
-      collection(db, 'payslips'),
-      where('helperId', '==', helperId),
-      where('year', '==', year),
-      where('month', '==', month)
-    );
+    const { data, error } = await supabase
+      .from('payslips')
+      .select('*')
+      .eq('helper_id', helperId)
+      .eq('year', year)
+      .eq('month', month)
+      .limit(1);
 
-    const querySnapshot = await getDocs(q);
+    if (error) throw error;
 
-    if (!querySnapshot.empty) {
-      const data = querySnapshot.docs[0].data() as Payslip;
-      console.log(`💰 給与明細を読み込みました: ${data.helperName} (${year}年${month}月)`);
-      return data;
+    if (data && data.length > 0) {
+      const payslip = rowToPayslip(data[0]);
+      console.log(`💰 給与明細を読み込みました: ${payslip.helperName} (${year}年${month}月)`);
+      return payslip;
     }
 
     console.log(`💰 給与明細が見つかりません: ${helperId} (${year}年${month}月)`);
@@ -216,8 +216,12 @@ export const loadPayslipByHelperAndMonth = async (
 // 給与明細を削除
 export const deletePayslip = async (id: string): Promise<void> => {
   try {
-    const docRef = doc(db, 'payslips', id);
-    await deleteDoc(docRef);
+    const { error } = await supabase
+      .from('payslips')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
     console.log(`💰 給与明細を削除しました: ${id}`);
   } catch (error) {
     console.error('給与明細削除エラー:', error);
