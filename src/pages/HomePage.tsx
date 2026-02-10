@@ -1,88 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import React, { useState } from 'react';
+import { useAuth } from '../hooks/useAuth';
 import { RoleBadge } from '../components/PermissionGate';
 import { PermissionManager } from '../components/PermissionManager';
 
 const HomePage: React.FC = () => {
-  const [role, setRole] = useState<'admin' | 'staff' | null>(null);
-  const [helperName, setHelperName] = useState<string | null>(null);
+  const { role, helperName } = useAuth();
   const [showPermissionManager, setShowPermissionManager] = useState(false);
-  const [stats, setStats] = useState({
-    monthlyShifts: 0,
-    helpers: 0,
-    users: 0,
-    todaySchedule: 0
-  });
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth!, async (user) => {
-      if (user) {
-        try {
-          // info@alhena.co.jpは必ず管理者として扱う
-          if (user.email === 'info@alhena.co.jp') {
-            setRole('admin');
-            console.log('🔴 管理者アカウントとして認識');
-          } else {
-            const userDoc = await getDoc(doc(db!,'users', user.uid));
-            if (userDoc.exists()) {
-              const userData = userDoc.data();
-              setRole(userData.role || 'staff');
-            } else {
-              setRole('staff');
-            }
-          }
-
-          // 名前の取得
-          const userDoc = await getDoc(doc(db!,'users', user.uid));
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            setHelperName(userData.name || user.displayName || null);
-          } else {
-            setHelperName(user.displayName || null);
-          }
-
-          // 統計情報の取得（管理者のみ）
-          if (role === 'admin') {
-            fetchStatistics();
-          }
-        } catch (error) {
-          console.error('権限情報の取得に失敗:', error);
-          // info@alhena.co.jpの場合でもエラー時は管理者として扱う
-          if (user.email === 'info@alhena.co.jp') {
-            setRole('admin');
-          } else {
-            setRole('staff');
-          }
-          setHelperName(user.displayName || null);
-        }
-      }
-    });
-
-    return () => unsubscribe();
-  }, [role]);
-
-  // 統計情報の取得
-  const fetchStatistics = async () => {
-    try {
-      // ヘルパー数の取得
-      const helpersSnapshot = await getDocs(collection(db!,'helpers'));
-      const helpersCount = helpersSnapshot.size;
-
-      // 利用者数の取得
-      const usersSnapshot = await getDocs(collection(db!,'users'));
-      const usersCount = usersSnapshot.size;
-
-      setStats(prev => ({
-        ...prev,
-        helpers: helpersCount,
-        users: usersCount
-      }));
-    } catch (error) {
-      console.error('統計情報の取得に失敗:', error);
-    }
-  };
 
   // メニュー項目を権限に基づいてフィルタリング
   const allMenuItems: Array<{
@@ -97,58 +20,58 @@ const HomePage: React.FC = () => {
   }> = [
     {
       icon: 'calendar_month',
-      iconBgColor: '#E3F2FD',  // 薄い青
-      hoverColor: '#2196F3',    // 青
+      iconBgColor: '#E3F2FD',
+      hoverColor: '#2196F3',
       title: 'シフト管理',
       description: 'スケジュールの編集・閲覧を行います',
       path: '/shift',
-      requiredRole: null  // 全員アクセス可能
+      requiredRole: null
     },
     {
       icon: 'group',
-      iconBgColor: '#FFF3E0',  // 薄いオレンジ
-      hoverColor: '#FF9800',    // オレンジ
+      iconBgColor: '#FFF3E0',
+      hoverColor: '#FF9800',
       title: 'ヘルパー管理',
       description: 'スタッフプロフィールと稼働状況の管理',
       path: '/helpers',
-      requiredRole: 'admin' as const  // 管理者のみ
+      requiredRole: 'admin' as const
     },
     {
       icon: 'person',
-      iconBgColor: '#E8F5E9',  // 薄い緑
-      hoverColor: '#4CAF50',    // 緑
+      iconBgColor: '#E8F5E9',
+      hoverColor: '#4CAF50',
       title: '利用者管理',
       description: '利用者データベースとケアプランの確認',
       path: '/users',
-      requiredRole: 'admin' as const  // 管理者のみ
+      requiredRole: 'admin' as const
     },
     {
       icon: 'receipt_long',
-      iconBgColor: '#F3E5F5',  // 薄い紫
-      hoverColor: '#9C27B0',    // 紫
+      iconBgColor: '#F3E5F5',
+      hoverColor: '#9C27B0',
       title: '給与明細',
       description: '月次給与計算の確認と明細書の発行',
       path: '/payslip',
-      requiredRole: 'admin' as const  // 管理者のみ
+      requiredRole: 'admin' as const
     },
     {
       icon: 'playlist_add',
-      iconBgColor: '#FFE8E8',  // 薄いピンク
-      hoverColor: '#E91E63',    // ピンク
+      iconBgColor: '#FFE8E8',
+      hoverColor: '#E91E63',
       title: 'シフト一括追加',
       description: '複数のシフトをパターンから迅速に追加',
       path: '/shift-bulk-input',
-      requiredRole: null  // 全員アクセス可能
+      requiredRole: null
     },
     {
       icon: 'security',
-      iconBgColor: '#FFF8E1',  // 薄い黄色
-      hoverColor: '#FFC107',    // 黄色
+      iconBgColor: '#FFF8E1',
+      hoverColor: '#FFC107',
       title: '権限管理',
       description: '管理者設定とシステムアクセス権限の変更',
       path: null,
       onClick: () => setShowPermissionManager(true),
-      requiredRole: 'admin' as const  // 管理者のみ
+      requiredRole: 'admin' as const
     },
   ];
 
@@ -184,7 +107,7 @@ const HomePage: React.FC = () => {
         touchAction: 'pan-y pinch-zoom'
       }}
     >
-      {/* ヘッダーセクション - シンプルで明るいデザイン */}
+      {/* ヘッダーセクション */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
@@ -234,7 +157,7 @@ const HomePage: React.FC = () => {
           <RoleBadge role={role} />
         </div>
 
-        {/* メニューグリッド - ホバー時のエフェクトを強化 */}
+        {/* メニューグリッド */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
           {menuItems.map((item) => (
             <div
@@ -245,7 +168,7 @@ const HomePage: React.FC = () => {
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = item.hoverColor + '33'; // 33は20%の透明度
+                e.currentTarget.style.borderColor = item.hoverColor + '33';
                 e.currentTarget.style.background = `linear-gradient(135deg, ${item.iconBgColor}00 0%, ${item.iconBgColor}33 100%)`;
               }}
               onMouseLeave={(e) => {
@@ -254,7 +177,6 @@ const HomePage: React.FC = () => {
               }}
             >
               <div className="flex flex-col">
-                {/* アイコン - ホバー時に回転とスケールアニメーション */}
                 <div
                   className="w-12 h-12 rounded-lg flex items-center justify-center mb-4 transition-all duration-300 group-hover:scale-110 group-hover:rotate-3"
                   style={{
@@ -270,7 +192,6 @@ const HomePage: React.FC = () => {
                   </span>
                 </div>
 
-                {/* タイトルと説明 */}
                 <h3
                   className="text-base font-bold text-gray-900 mb-2 transition-colors duration-300"
                   style={{
@@ -289,7 +210,6 @@ const HomePage: React.FC = () => {
                   {item.description}
                 </p>
 
-                {/* アクセスリンク - ホバー時に右へスライド */}
                 <div
                   className="mt-4 flex items-center text-blue-600 text-sm transition-all duration-300 group-hover:translate-x-2"
                   style={{
@@ -304,7 +224,6 @@ const HomePage: React.FC = () => {
                 </div>
               </div>
 
-              {/* 下部のカラーバー - ホバー時に拡大 */}
               <div
                 className="absolute bottom-0 left-0 right-0 h-1 transition-all duration-300 transform scale-x-0 group-hover:scale-x-100"
                 style={{

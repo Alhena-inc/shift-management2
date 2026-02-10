@@ -1,8 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../lib/firebase';
 import type { Helper, Shift, ServiceType } from '../types';
-import { subscribeToShiftsForMonth, saveShift } from '../services/dataService';
+import { subscribeToShiftsForMonth, saveShift, loadHelpers } from '../services/dataService';
 import { SERVICE_CONFIG } from '../types';
 
 interface ParsedShiftLine {
@@ -46,19 +44,15 @@ const ShiftBulkInputPage: React.FC = () => {
 
   // ヘルパー一覧を取得
   useEffect(() => {
-    const loadHelpers = async () => {
+    const fetchHelpers = async () => {
       try {
-        const helpersSnapshot = await getDocs(collection(db!, 'helpers'));
-        const helpersData = helpersSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Helper[];
+        const helpersData = await loadHelpers();
         setHelpers(helpersData.filter(h => !h.deleted));
       } catch (error) {
         console.error('ヘルパー情報の取得に失敗:', error);
       }
     };
-    loadHelpers();
+    fetchHelpers();
   }, []);
 
   // 選択された月のシフトを購読

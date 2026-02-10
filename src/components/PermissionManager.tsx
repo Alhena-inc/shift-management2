@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { subscribeToHelpers } from '../services/dataService';
 import type { Helper as HelperType } from '../types';
 
@@ -36,11 +35,12 @@ export const PermissionManager: React.FC<PermissionManagerProps> = ({ onClose })
     setSaving(helperId);
 
     try {
-      // helpersコレクションを更新
-      const helperRef = doc(db!, 'helpers', helperId);
-      await updateDoc(helperRef, {
-        role: newRole
-      });
+      // Supabaseのhelpersテーブルを更新
+      const query = supabase.from('helpers');
+      // @ts-expect-error Database型定義が不完全なため
+      const { error: updateError } = await query.update({ role: newRole }).eq('id', helperId);
+
+      if (updateError) throw updateError;
 
       // ローカル状態を更新
       setHelpers(prev => prev.map(helper =>
