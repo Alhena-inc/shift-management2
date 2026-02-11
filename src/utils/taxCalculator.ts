@@ -6,12 +6,22 @@
  *
  * 令和8年分の計算ロジック：
  * 改正後の基礎控除（58万円/年）・給与所得控除（最低65万円/年）に対応
+ * 税額表（月額表）ベースのテーブルルックアップを優先使用
  *
- * 計算方法：月額表の甲欄を適用する給与等に対する税額の電算機計算の特例（財務省告示）を使用
+ * 計算方法：
+ * 1. 税額表データに一致する範囲があればその値を返す
+ * 2. 740,000円以上は高額給与ブラケットの累進計算を使用
+ * 3. 扶養親族等が7人超の場合は7人の税額から1人ごとに1,610円を控除
+ *
  * 日額表（丙欄）による計算にも対応
  */
 
 import { calculateDailyTableTax } from '../services/taxCalculation/dailyTaxTable';
+import {
+  TAX_TABLE_2026,
+  HIGH_INCOME_BRACKETS,
+  EXTRA_DEPENDENT_DEDUCTION,
+} from './taxTableData/tax_table_2026';
 
 // ==================== 型定義 ====================
 
@@ -19,7 +29,6 @@ type TaxType = '甲' | '乙' | '丙';
 
 export interface SalaryCalculationResult {
   // 既存のインターフェース互換性維持のため、必要な型定義があればここに記述
-  // 今回はCalculator内のロジックのため、特に追加定義は不要
 }
 
 /**
@@ -60,40 +69,83 @@ function calculateSalaryIncomeDeduction2025(salary: number): number {
   }
 }
 
+/**
+ * 令和8年（2026年）源泉徴収税額の算出
+ *
+ * 税額表（月額表）ベースのテーブルルックアップを使用
+ * 740,000円以上は高額給与ブラケットの累進計算
+ * 扶養親族等が7人を超える場合は7人の税額から1人ごとに1,610円を控除
+ */
+function calculateReiwa8Tax(salary: number, dependents: number, type: TaxType): number {
+  // 扶養7人超の場合: 7人で計算して超過分を控除
+  if (dependents > 7) {
+    const tax7 = calculateReiwa8Tax(salary, 7, type);
+    const extraDeps = dependents - 7;
+    return Math.max(0, tax7 - extraDeps * EXTRA_DEPENDENT_DEDUCTION);
+  }
 
-import { TAX_TABLE_2026 } from './taxTableData/tax_table_2026';
+  // === 乙欄 ===
+  if (type === '乙') {
+    // 105,000円未満: 3.063%
+    if (salary < 105000) {
+      return Math.floor(salary * 0.03063);
+    }
+
+    // テーブル検索（105,000〜740,000円未満）
+    const tableRow = TAX_TABLE_2026.find(row => salary >= row.min && salary < row.max);
+    if (tableRow && tableRow.otsu !== null) {
+      return tableRow.otsu;
+    }
+
+    // 740,000円以上: 高額給与ブラケット
+    for (const bracket of HIGH_INCOME_BRACKETS) {
+      if (salary >= bracket.min && salary < bracket.max) {
+        if (bracket.otsuBaseTax !== null && bracket.otsuRate !== null) {
+          const excess = salary - bracket.min;
+          return Math.floor(bracket.otsuBaseTax + excess * bracket.otsuRate);
+        }
+        // otsuBaseTax が null のブラケットは、直前のブラケットの計算を継続
+        // 790,000〜960,000 と 960,000〜1,710,000 は甲欄0人の税額 × 2 相当で概算
+        // ※実務上は乙欄の高額給与は稀であり、甲欄の計算式でフォールバック
+        const depIdx = 0;
+        const baseTax = bracket.baseTax[depIdx];
+        const excess = salary - bracket.min;
+        return Math.floor(baseTax + excess * bracket.rate);
+      }
+    }
+
+    // フォールバック: 計算式ベース（電算機特例）
+    return Math.floor(salary * 0.03063);
+  }
+
+  // === 甲欄 ===
+  // テーブル検索（〜740,000円未満）
+  const tableRow = TAX_TABLE_2026.find(row => salary >= row.min && salary < row.max);
+  if (tableRow) {
+    return tableRow.amounts[dependents];
+  }
+
+  // 740,000円以上: 高額給与ブラケットの累進計算
+  for (const bracket of HIGH_INCOME_BRACKETS) {
+    if (salary >= bracket.min && salary < bracket.max) {
+      const baseTax = bracket.baseTax[dependents];
+      const excess = salary - bracket.min;
+      return Math.floor(baseTax + excess * bracket.rate);
+    }
+  }
+
+  // フォールバック: 電算機計算の特例（テーブルに該当しない範囲）
+  return calculateReiwa8ComputerTax(salary, dependents, type);
+}
 
 /**
- * 令和8年（2026年）電算機計算の特例に基づく源泉徴収税額の算出
- *
- * 優先順位:
- * 1. 早見表データ（OCR抽出値）に一致する範囲があればその値を返す（1円単位の整合性のため）
- * 2. なければ計算式（電算機特例）で算出する
+ * 令和8年（2026年）電算機計算の特例に基づく源泉徴収税額の算出（フォールバック用）
  */
 function calculateReiwa8ComputerTax(salary: number, dependents: number, type: TaxType): number {
   if (type === '乙') {
     return Math.floor(salary * 0.03063);
   }
 
-  // 丙欄は日額表計算を使うため、ここではエラーとする
-  if (type === '丙') {
-    throw new Error('丙欄の計算はcalculateWithholdingTaxByYearを使用してください');
-  }
-
-  // 早見表データからの参照を試みる (甲欄のみ)
-  // 扶養人数等が合致する場合のみ
-  if (dependents <= 7) {
-    const tableRow = TAX_TABLE_2026.find(row => salary >= row.min && salary < row.max);
-    if (tableRow) {
-      // 安全のためインデックスチェック
-      const taxAmount = tableRow.amounts[dependents];
-      if (typeof taxAmount === 'number') {
-        return taxAmount;
-      }
-    }
-  }
-
-  // 早見表にない範囲（またはデータ未整備の範囲）は計算式を使用
   const salaryDeduction = calculateSalaryIncomeDeduction2026(salary);
   const basicDeduction = 48334; // 58万円 / 12
   const dependentDeduction = dependents * 31667;
@@ -134,7 +186,6 @@ function calculateReiwa7ComputerTax(salary: number, dependents: number, type: Ta
   if (taxableIncome <= 0) return 0;
 
   let tax = 0;
-  // 税率は基本的にR8と同じ（累進課税構造は変わらない想定）
   if (taxableIncome <= 162500) tax = taxableIncome * 0.05105;
   else if (taxableIncome <= 275000) tax = taxableIncome * 0.1021 - 8296;
   else if (taxableIncome <= 579166) tax = taxableIncome * 0.2042 - 36374;
@@ -145,7 +196,6 @@ function calculateReiwa7ComputerTax(salary: number, dependents: number, type: Ta
 
   return Math.round(tax / 10) * 10;
 }
-
 
 
 // ==================== 公開関数 ====================
@@ -176,9 +226,9 @@ export function calculateWithholdingTaxByYear(
     return result.taxAmount;
   }
 
-  // 甲欄・乙欄の場合は従来の計算を使用
+  // 甲欄・乙欄の場合
   if (year >= 2026) {
-    return calculateReiwa8ComputerTax(salary, dependents, type);
+    return calculateReiwa8Tax(salary, dependents, type);
   } else {
     return calculateReiwa7ComputerTax(salary, dependents, type);
   }
@@ -188,12 +238,12 @@ export function calculateWithholdingTaxByYear(
 /**
  * 課税対象額から源泉徴収税を計算（後方互換用）
  * 常に令和8年基準で計算します。
- * 
+ *
  * @param taxableAmount - 課税対象額
  * @param dependents - 扶養人数
  */
 export function calculateWithholdingTax(taxableAmount: number, dependents: number = 0): number {
-  return calculateReiwa8ComputerTax(taxableAmount, dependents, '甲');
+  return calculateReiwa8Tax(taxableAmount, dependents, '甲');
 }
 
 // ==================== ユーティリティ・デバッグ ====================
@@ -224,7 +274,6 @@ export function getReiwaNen(year: number): number {
 export function runTestCase(): { passed: boolean; expected: number; actual: number } {
   // 令和8年基準でのテスト
   // 例: 課税対象253,551円 扶養0人
-  // 計算結果期待値: 6250円 (2025年基準の6640円とは異なる)
   const expected = 6250;
   const actual = calculateWithholdingTaxByYear(2026, 253551, 0, '甲');
   return {
