@@ -450,7 +450,6 @@ interface ShiftInputWizardProps {
   onCancel: () => void;
 }
 
-const MINUTE_OPTIONS = [0, 10, 20, 30, 40, 50];
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
 // 時間の表示フォーマット（翌日対応）
@@ -459,13 +458,130 @@ function formatTimeDisplay(totalH: number, m: number): string {
   return `${totalH}:${pad2(m)}`;
 }
 
+// ドラムロール式スクロールピッカー（1カラム）
+const ITEM_HEIGHT = 44;
+const VISIBLE_ITEMS = 5;
+const PICKER_HEIGHT = ITEM_HEIGHT * VISIBLE_ITEMS;
+
+interface WheelColumnProps {
+  items: { value: number; label: string }[];
+  selectedValue: number;
+  onChange: (value: number) => void;
+}
+
+const WheelColumn = ({ items, selectedValue, onChange }: WheelColumnProps) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isScrollingRef = useRef(false);
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTouchingRef = useRef(false);
+
+  // 選択中のインデックス
+  const selectedIndex = useMemo(() => {
+    const idx = items.findIndex(it => it.value === selectedValue);
+    return idx >= 0 ? idx : 0;
+  }, [items, selectedValue]);
+
+  // 初期スクロール位置
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    isScrollingRef.current = true;
+    el.scrollTop = selectedIndex * ITEM_HEIGHT;
+    requestAnimationFrame(() => { isScrollingRef.current = false; });
+  }, [items]); // items変更時のみリセット
+
+  // スクロール停止を検知して最も近いアイテムにスナップ
+  const handleScroll = useCallback(() => {
+    if (isScrollingRef.current) return;
+    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+    scrollTimerRef.current = setTimeout(() => {
+      if (isTouchingRef.current) return;
+      const el = containerRef.current;
+      if (!el) return;
+      const idx = Math.round(el.scrollTop / ITEM_HEIGHT);
+      const clamped = Math.max(0, Math.min(idx, items.length - 1));
+      isScrollingRef.current = true;
+      el.scrollTo({ top: clamped * ITEM_HEIGHT, behavior: 'smooth' });
+      setTimeout(() => { isScrollingRef.current = false; }, 150);
+      if (items[clamped] && items[clamped].value !== selectedValue) {
+        onChange(items[clamped].value);
+      }
+    }, 80);
+  }, [items, selectedValue, onChange]);
+
+  const handleTouchStart = useCallback(() => { isTouchingRef.current = true; }, []);
+  const handleTouchEnd = useCallback(() => {
+    isTouchingRef.current = false;
+    handleScroll(); // タッチ終了時にスナップ
+  }, [handleScroll]);
+
+  // アイテムクリックで選択
+  const handleItemClick = useCallback((idx: number) => {
+    const el = containerRef.current;
+    if (!el) return;
+    isScrollingRef.current = true;
+    el.scrollTo({ top: idx * ITEM_HEIGHT, behavior: 'smooth' });
+    setTimeout(() => { isScrollingRef.current = false; }, 200);
+    if (items[idx]) onChange(items[idx].value);
+  }, [items, onChange]);
+
+  return (
+    <div className="relative" style={{ height: PICKER_HEIGHT }}>
+      {/* 選択ハイライト帯 */}
+      <div
+        className="absolute left-0 right-0 pointer-events-none border-t-2 border-b-2 border-green-500 bg-green-50/50 z-10"
+        style={{ top: ITEM_HEIGHT * 2, height: ITEM_HEIGHT }}
+      />
+      {/* 上下のフェードグラデーション */}
+      <div className="absolute left-0 right-0 top-0 h-16 pointer-events-none z-20"
+        style={{ background: 'linear-gradient(to bottom, rgba(255,255,255,0.9), rgba(255,255,255,0))' }}
+      />
+      <div className="absolute left-0 right-0 bottom-0 h-16 pointer-events-none z-20"
+        style={{ background: 'linear-gradient(to top, rgba(255,255,255,0.9), rgba(255,255,255,0))' }}
+      />
+      <div
+        ref={containerRef}
+        className="h-full overflow-y-auto scrollbar-hide"
+        style={{
+          scrollSnapType: 'y mandatory',
+          WebkitOverflowScrolling: 'touch',
+          msOverflowStyle: 'none',
+          scrollbarWidth: 'none',
+        }}
+        onScroll={handleScroll}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        {/* 上下パディング（2アイテム分） */}
+        <div style={{ height: ITEM_HEIGHT * 2 }} />
+        {items.map((item, idx) => {
+          const isSel = item.value === selectedValue;
+          return (
+            <div
+              key={`${item.value}-${idx}`}
+              className={`flex items-center justify-center cursor-pointer select-none transition-all ${
+                isSel ? 'text-gray-900 font-bold text-xl' : 'text-gray-400 text-lg'
+              }`}
+              style={{ height: ITEM_HEIGHT, scrollSnapAlign: 'start' }}
+              onClick={() => handleItemClick(idx)}
+            >
+              {item.label}
+            </div>
+          );
+        })}
+        <div style={{ height: ITEM_HEIGHT * 2 }} />
+      </div>
+    </div>
+  );
+};
+
 const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: ShiftInputWizardProps) => {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
-  // 時間→分の2段階選択用
-  const [pickerPhase, setPickerPhase] = useState<'hour' | 'minute'>('hour');
-  const [selectedHour, setSelectedHour] = useState<number | null>(null);
+  // ドラムロール選択値
+  const [pickerHour, setPickerHour] = useState(9);
+  const [pickerMinute, setPickerMinute] = useState(0);
   // 終了時間の翌日トグル
   const [showNextDay, setShowNextDay] = useState(false);
 
@@ -515,55 +631,41 @@ const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: Sh
     { type: 'other', label: 'その他' },
   ];
 
-  // 時間選択で「時」を押した → 分選択へ
-  const handleHourSelect = (h: number) => {
-    setSelectedHour(h);
-    setPickerPhase('minute');
-  };
+  // 時の選択肢
+  const hourItems = useMemo(() => {
+    const hours = Array.from({ length: 24 }, (_, i) => i);
+    const prefix = showNextDay && step === 2 ? '翌' : '';
+    return hours.map(h => ({ value: h, label: `${prefix}${h}` }));
+  }, [step, showNextDay]);
 
-  // 分を押した → 時間確定
-  const handleMinuteSelect = (m: number) => {
-    const h = selectedHour!;
+  // 分の選択肢（10分単位）
+  const minuteItems = useMemo(() => {
+    return [0, 10, 20, 30, 40, 50].map(m => ({ value: m, label: pad2(m) }));
+  }, []);
+
+  // 「設定」ボタン押下 → 時間確定
+  const handleTimeConfirm = useCallback(() => {
     if (step === 1) {
-      const time = `${h}:${pad2(m)}`;
+      const time = `${pickerHour}:${pad2(pickerMinute)}`;
       setStartTime(time);
       setStep(2);
-      setPickerPhase('hour');
-      setSelectedHour(null);
+      // 終了時間の初期値: 開始の1時間後
+      const nextH = (pickerHour + 1) % 24;
+      setPickerHour(nextH);
+      setPickerMinute(0);
       setShowNextDay(false);
     } else if (step === 2) {
-      const actualH = showNextDay ? h + 24 : h;
-      const endVal = `${actualH}:${pad2(m)}`;
+      const actualH = showNextDay ? pickerHour + 24 : pickerHour;
+      const endVal = `${actualH}:${pad2(pickerMinute)}`;
+      // 開始時間より後かチェック
+      const [sh, sm] = startTime.split(':').map(Number);
+      if (actualH * 60 + pickerMinute <= sh * 60 + sm) {
+        return; // 開始以前は設定不可
+      }
       setEndTime(endVal);
       setStep(3);
-      setPickerPhase('hour');
-      setSelectedHour(null);
     }
-  };
-
-  // 開始時間の「時」選択肢: 0〜23
-  const startHours = Array.from({ length: 24 }, (_, i) => i);
-
-  // 終了時間の「時」選択肢
-  const endHours = useMemo(() => {
-    if (!startTime) return [];
-    const [sh] = startTime.split(':').map(Number);
-    if (showNextDay) {
-      // 翌日: 0〜12時
-      return Array.from({ length: 13 }, (_, i) => i);
-    }
-    // 当日: 開始時間以降〜23
-    return Array.from({ length: 24 - sh }, (_, i) => sh + i);
-  }, [startTime, showNextDay]);
-
-  // 終了時間の「分」選択肢（開始時間と同じ時ならそれ以降の分のみ）
-  const endMinuteOptions = useMemo(() => {
-    if (selectedHour === null || !startTime) return MINUTE_OPTIONS;
-    const [sh, sm] = startTime.split(':').map(Number);
-    const actualH = showNextDay ? selectedHour + 24 : selectedHour;
-    const startTotal = sh * 60 + sm;
-    return MINUTE_OPTIONS.filter(m => (actualH * 60 + m) > startTotal);
-  }, [selectedHour, startTime, showNextDay]);
+  }, [step, pickerHour, pickerMinute, showNextDay, startTime]);
 
   const handleServiceSelect = (serviceType: ServiceType) => {
     if (!selectedClient) return;
@@ -591,6 +693,20 @@ const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: Sh
     return formatTimeDisplay(h, m);
   }, [endTime]);
 
+  // 現在のピッカー表示時間
+  const pickerDisplay = useMemo(() => {
+    const prefix = showNextDay && step === 2 ? '翌' : '';
+    return `${prefix}${pickerHour}:${pad2(pickerMinute)}`;
+  }, [pickerHour, pickerMinute, showNextDay, step]);
+
+  // 開始時間より後かチェック（終了時間ステップ用）
+  const isEndTimeValid = useMemo(() => {
+    if (step !== 2 || !startTime) return true;
+    const [sh, sm] = startTime.split(':').map(Number);
+    const actualH = showNextDay ? pickerHour + 24 : pickerHour;
+    return (actualH * 60 + pickerMinute) > (sh * 60 + sm);
+  }, [step, startTime, pickerHour, pickerMinute, showNextDay]);
+
   return (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center"
@@ -598,14 +714,14 @@ const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: Sh
       onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}
     >
       <div
-        className="bg-white rounded-xl shadow-2xl w-[380px] max-h-[80vh] flex flex-col"
+        className="bg-white rounded-xl shadow-2xl w-[340px] flex flex-col"
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-5 py-3 border-b bg-green-600 text-white rounded-t-xl">
           <div className="text-sm font-bold">
-            {step === 1 && (pickerPhase === 'hour' ? '開始: 時を選択' : `開始: ${selectedHour}時 → 分を選択`)}
-            {step === 2 && (pickerPhase === 'hour' ? '終了: 時を選択' : `終了: ${showNextDay ? '翌' : ''}${selectedHour}時 → 分を選択`)}
+            {step === 1 && '開始時間'}
+            {step === 2 && '終了時間'}
             {step === 3 && !selectedClient && '利用者を選択'}
             {step === 3 && selectedClient && 'サービス種別を選択'}
           </div>
@@ -625,7 +741,11 @@ const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: Sh
             {startTime && (
               <span
                 className="cursor-pointer hover:text-green-600"
-                onClick={() => { setStep(1); setPickerPhase('hour'); setSelectedHour(null); setStartTime(''); setEndTime(''); setSelectedClient(null); setShowNextDay(false); }}
+                onClick={() => {
+                  const [h, m] = startTime.split(':').map(Number);
+                  setStep(1); setPickerHour(h); setPickerMinute(m);
+                  setStartTime(''); setEndTime(''); setSelectedClient(null); setShowNextDay(false);
+                }}
               >
                 開始: <span className="font-bold text-gray-800">{startTime}</span>
               </span>
@@ -633,7 +753,11 @@ const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: Sh
             {endTime && (
               <span
                 className="cursor-pointer hover:text-green-600"
-                onClick={() => { setStep(2); setPickerPhase('hour'); setSelectedHour(null); setEndTime(''); setSelectedClient(null); }}
+                onClick={() => {
+                  const [h, m] = endTime.split(':').map(Number);
+                  setStep(2); setPickerHour(h >= 24 ? h - 24 : h); setPickerMinute(m);
+                  setShowNextDay(h >= 24); setEndTime(''); setSelectedClient(null);
+                }}
               >
                 終了: <span className="font-bold text-gray-800">{displayEnd}</span>
               </span>
@@ -650,69 +774,63 @@ const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: Sh
         )}
 
         {/* コンテンツ */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="p-4">
 
-          {/* Step 1 & 2: 時間選択（時→分の2段階） */}
-          {(step === 1 || step === 2) && pickerPhase === 'hour' && (
+          {/* Step 1 & 2: ドラムロール式時間ピッカー */}
+          {(step === 1 || step === 2) && (
             <div>
-              {/* 終了時間時: 翌日トグル */}
+              {/* 終了時間: 翌日トグル */}
               {step === 2 && (
                 <div className="flex mb-3 rounded-lg overflow-hidden border border-gray-300">
                   <button
                     className={`flex-1 py-2 text-sm font-medium transition-colors ${!showNextDay ? 'bg-green-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-                    onClick={() => { setShowNextDay(false); setSelectedHour(null); }}
+                    onClick={() => setShowNextDay(false)}
                   >
                     当日
                   </button>
                   <button
                     className={`flex-1 py-2 text-sm font-medium transition-colors ${showNextDay ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-                    onClick={() => { setShowNextDay(true); setSelectedHour(null); }}
+                    onClick={() => setShowNextDay(true)}
                   >
                     翌日
                   </button>
                 </div>
               )}
-              <div className="grid grid-cols-6 gap-1.5">
-                {(step === 1 ? startHours : endHours).map(h => (
-                  <button
-                    key={h}
-                    className={`py-3 text-sm font-bold rounded-lg border transition-colors ${
-                      showNextDay
-                        ? 'border-blue-300 hover:bg-blue-50 hover:border-blue-500 text-blue-700'
-                        : 'border-gray-300 hover:bg-green-50 hover:border-green-500 hover:text-green-700'
-                    }`}
-                    onClick={() => handleHourSelect(h)}
-                  >
-                    {showNextDay ? `翌${h}` : h}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
-          {(step === 1 || step === 2) && pickerPhase === 'minute' && (
-            <div>
-              <button
-                className="mb-3 text-sm text-gray-500 hover:text-green-600 flex items-center gap-1"
-                onClick={() => { setPickerPhase('hour'); setSelectedHour(null); }}
-              >
-                ← 時を選び直す
-              </button>
-              <div className="grid grid-cols-3 gap-2">
-                {endMinuteOptions.map(m => (
-                  <button
-                    key={m}
-                    className={`py-4 text-base font-bold rounded-lg border transition-colors ${
-                      showNextDay && step === 2
-                        ? 'border-blue-300 hover:bg-blue-50 hover:border-blue-500 text-blue-700'
-                        : 'border-gray-300 hover:bg-green-50 hover:border-green-500 hover:text-green-700'
-                    }`}
-                    onClick={() => handleMinuteSelect(m)}
-                  >
-                    {step === 2 && showNextDay ? `翌${selectedHour}:${pad2(m)}` : `${selectedHour}:${pad2(m)}`}
-                  </button>
-                ))}
+              {/* ドラムロール: 時 : 分 */}
+              <div className="flex items-center justify-center gap-0">
+                <div className="flex-1">
+                  <WheelColumn
+                    items={hourItems}
+                    selectedValue={pickerHour}
+                    onChange={setPickerHour}
+                  />
+                </div>
+                <div className="text-3xl font-bold text-gray-400 px-1 select-none">:</div>
+                <div className="flex-1">
+                  <WheelColumn
+                    items={minuteItems}
+                    selectedValue={pickerMinute}
+                    onChange={setPickerMinute}
+                  />
+                </div>
               </div>
+
+              {/* 設定ボタン */}
+              <button
+                className={`w-full mt-3 py-3 rounded-xl text-white font-bold text-base transition-colors ${
+                  isEndTimeValid
+                    ? 'bg-green-600 hover:bg-green-700 active:bg-green-800'
+                    : 'bg-gray-300 cursor-not-allowed'
+                }`}
+                onClick={handleTimeConfirm}
+                disabled={!isEndTimeValid}
+              >
+                {pickerDisplay} に設定
+              </button>
+              {step === 2 && !isEndTimeValid && (
+                <p className="text-xs text-red-500 text-center mt-1">開始時間より後の時間を選択してください</p>
+              )}
             </div>
           )}
 
