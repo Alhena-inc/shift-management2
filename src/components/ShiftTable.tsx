@@ -1,10 +1,10 @@
 import { useMemo, useCallback, useEffect, useLayoutEffect, memo, useState, useRef, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import FloatingEditor from './FloatingEditor';
-import type { Helper, Shift, ServiceType, CareClient } from '../types';
+import type { Helper, Shift, ServiceType } from '../types';
 import { useScrollDetection } from '../hooks/useScrollDetection';
 import { SERVICE_CONFIG } from '../types';
-import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts, subscribeToDayOffRequestsMap, subscribeToDisplayTextsMap, subscribeToShiftsForMonth, subscribeToScheduledDayOffs, clearCancelStatus, restoreShift, moveShift, subscribeToCareClients } from '../services/dataService';
+import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts, subscribeToDayOffRequestsMap, subscribeToDisplayTextsMap, subscribeToShiftsForMonth, subscribeToScheduledDayOffs, clearCancelStatus, restoreShift, moveShift } from '../services/dataService';
 import { Timestamp, deleteField } from 'firebase/firestore';
 import { calculateNightHours, calculateRegularHours, calculateTimeDuration } from '../utils/timeCalculations';
 import { calculateShiftPay } from '../utils/salaryCalculations';
@@ -190,7 +190,6 @@ const ShiftTableCellLine = memo(({
   onDoubleClick,
   handleManualShiftSave,
   isActive,
-  careClients,
 }: {
   helperId: string;
   date: string;
@@ -202,12 +201,9 @@ const ShiftTableCellLine = memo(({
   onDoubleClick: (e: React.MouseEvent, lineIndex: number) => void;
   handleManualShiftSave: (helperId: string, date: string, rowIndex: number, lineIndex: number, value: string) => void;
   isActive: boolean;
-  careClients?: CareClient[];
 }) => {
   const [localValue, setLocalValue] = useState(content);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   // 常にフォーカスを管理（isActiveならフォーカスを維持してタイピングを待機）
   useEffect(() => {
@@ -241,49 +237,10 @@ const ShiftTableCellLine = memo(({
     }
   }, [isEditing, isActive, initialInputValue, content]);
 
-  // 利用者ドロップダウンの表示判定
-  const showDropdown = lineIndex === 1 && (isEditing || isActive) && careClients && careClients.length > 0;
-
-  // ドロップダウン位置の計算
-  useEffect(() => {
-    if (showDropdown && textareaRef.current) {
-      const wrapper = textareaRef.current.closest('.editable-cell-wrapper');
-      if (wrapper) {
-        const rect = wrapper.getBoundingClientRect();
-        setDropdownPos({
-          top: rect.bottom + window.scrollY,
-          left: rect.left + window.scrollX,
-          width: Math.max(rect.width, 160),
-        });
-      }
-    } else {
-      setDropdownPos(null);
-    }
-  }, [showDropdown, isEditing, isActive]);
-
-  // フィルタされた利用者リスト
-  const filteredClients = useMemo(() => {
-    if (!careClients) return [];
-    const query = localValue.trim().toLowerCase();
-    const filtered = query
-      ? careClients.filter(c => c.name.toLowerCase().includes(query) || (c.nameKana && c.nameKana.toLowerCase().includes(query)))
-      : careClients;
-    return filtered.slice(0, 5);
-  }, [careClients, localValue]);
-
-  const handleBlur = (e: React.FocusEvent) => {
-    // ドロップダウンのクリック中はblurを無視する
-    if (dropdownRef.current && dropdownRef.current.contains(e.relatedTarget as Node)) {
-      return;
-    }
+  const handleBlur = () => {
     if (isEditing) {
       handleManualShiftSave(helperId, date, rowIndex, lineIndex, localValue);
     }
-  };
-
-  const handleSelectClient = (clientName: string) => {
-    setLocalValue(clientName);
-    handleManualShiftSave(helperId, date, rowIndex, lineIndex, clientName);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -346,59 +303,13 @@ const ShiftTableCellLine = memo(({
           }}
         />
       )}
-
-      {/* 利用者候補ドロップダウン（lineIndex === 1 の場合のみ） */}
-      {showDropdown && dropdownPos && filteredClients.length > 0 && createPortal(
-        <div
-          ref={dropdownRef}
-          style={{
-            position: 'absolute',
-            top: dropdownPos.top,
-            left: dropdownPos.left,
-            width: dropdownPos.width,
-            maxHeight: '130px',
-            overflowY: 'auto',
-            backgroundColor: '#fff',
-            border: '1px solid #d1d5db',
-            borderRadius: '4px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-            zIndex: 9999,
-            fontSize: '12px',
-          }}
-          onMouseDown={(e) => e.preventDefault()}
-        >
-          {filteredClients.map((client) => (
-            <div
-              key={client.id}
-              style={{
-                padding: '4px 8px',
-                cursor: 'pointer',
-                borderBottom: '1px solid #f3f4f6',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}
-              onMouseOver={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#eff6ff'; }}
-              onMouseOut={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#fff'; }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                handleSelectClient(client.name);
-              }}
-            >
-              {client.name}
-            </div>
-          ))}
-        </div>,
-        document.body
-      )}
     </div>
   );
 }, (prev, next) => {
   return prev.isEditing === next.isEditing &&
     prev.content === next.content &&
     prev.isActive === next.isActive &&
-    prev.initialInputValue === next.initialInputValue &&
-    prev.careClients === next.careClients;
+    prev.initialInputValue === next.initialInputValue;
 });
 
 
@@ -428,7 +339,6 @@ const ShiftTableTd = memo(({
   activeCellKey,
   isEditingMode,
   initialInputValue,
-  careClients,
 }: {
   helper: Helper;
   day: any;
@@ -451,7 +361,6 @@ const ShiftTableTd = memo(({
   activeCellKey: string | null;
   isEditingMode: boolean;
   initialInputValue: string;
-  careClients?: CareClient[];
 }) => {
   const rowKey = `${helper.id}-${day.date}-${rowIndex}`;
 
@@ -500,7 +409,6 @@ const ShiftTableTd = memo(({
               onDoubleClick={onLineDoubleClick}
               handleManualShiftSave={handleManualShiftSave}
               isActive={activeCellKey === `${rowKey}-${lineIndex}`}
-              careClients={lineIndex === 1 ? careClients : undefined}
             />
           );
         })}
@@ -516,8 +424,6 @@ const ShiftTableTd = memo(({
   if (prev.isEditingMode !== next.isEditingMode) return false;
   if (prev.activeCellKey !== next.activeCellKey) return false;
   if (prev.initialInputValue !== next.initialInputValue) return false;
-  if (prev.careClients !== next.careClients) return false;
-
   // データ表示が変更されたら再レンダリング
   if (prev.cellDisplayData !== next.cellDisplayData) {
     const pData = prev.cellDisplayData;
@@ -543,16 +449,6 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
   // true: 文字キー入力時（既存内容を上書き）
   // false: ダブルクリック/F2時（既存内容に追記）
   const [isOverwriteMode, setIsOverwriteMode] = useState(false);
-
-  // 利用者リスト（ドロップダウン選択用）
-  const [careClients, setCareClients] = useState<CareClient[]>([]);
-
-  useEffect(() => {
-    const unsubscribe = subscribeToCareClients((clients) => {
-      setCareClients((clients ?? []).filter(c => !c.deleted));
-    });
-    return () => unsubscribe();
-  }, []);
 
   // ★ Event Listener用のRef (useEffectの再実行を防ぐため)
   const activeCellKeyRef = useRef(activeCellKey);
@@ -5966,7 +5862,6 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                           activeCellKey={activeCellKey}
                           isEditingMode={isEditingMode}
                           initialInputValue={initialInputValue}
-                          careClients={careClients}
                         />
                       );
                     })
