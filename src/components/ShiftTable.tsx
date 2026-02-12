@@ -999,7 +999,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     const area = lines[3];
 
     const match = clientInfo.match(/[(\uFF08](.+?)[)\uFF09]/);
-    let serviceType: ServiceType = 'yotei'; // デフォルトは予定（サービス種別なし→紫）
+    let serviceType: ServiceType = 'other'; // デフォルトはother（自由入力）
     if (match) {
       const serviceLabel = match[1];
       const serviceEntry = Object.entries(SERVICE_CONFIG).find(([_, config]) => config.label === serviceLabel);
@@ -4939,6 +4939,37 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     if (hasCanceledShift && undoCancelBtn) {
       menu.appendChild(undoCancelBtn);
     }
+
+    // 予定に設定ボタン（背景色を紫に変更）
+    const yoteiBtn = document.createElement('div');
+    yoteiBtn.textContent = '予定に設定';
+    yoteiBtn.style.padding = '8px 16px';
+    yoteiBtn.style.cursor = 'pointer';
+    yoteiBtn.style.color = '#7c3aed';
+    yoteiBtn.style.borderTop = '1px solid #e5e7eb';
+    yoteiBtn.onmouseover = () => yoteiBtn.style.backgroundColor = '#ede9fe';
+    yoteiBtn.onmouseout = () => yoteiBtn.style.backgroundColor = 'transparent';
+    yoteiBtn.onclick = () => {
+      safelyRemoveMenu();
+      targetRows.forEach(key => {
+        const parts = key.split('-');
+        const ri = parseInt(parts[parts.length - 1]);
+        const d = parts.slice(parts.length - 4, parts.length - 1).join('-');
+        const hid = parts.slice(0, parts.length - 4).join('-');
+        const ck = `${hid}-${d}-${ri}`;
+        const existing = shiftsRef.current.find(s => `${s.helperId}-${s.date}-${s.rowIndex}` === ck);
+        if (existing) {
+          const updated: Shift = { ...existing, serviceType: 'yotei' as ServiceType };
+          const config = SERVICE_CONFIG['yotei'];
+          const td = document.querySelector(`td[data-cell-key="${ck}"]`) as HTMLElement;
+          if (td && config) td.style.backgroundColor = config.bgColor;
+          const updatedShifts = shiftsRef.current.map(s => s.id === existing.id ? updated : s);
+          handleShiftsUpdate(updatedShifts, true);
+          saveShiftWithCorrectYearMonth(updated);
+        }
+      });
+    };
+    menu.appendChild(yoteiBtn);
 
     menu.appendChild(deleteBtn);
 
