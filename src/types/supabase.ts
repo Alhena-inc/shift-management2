@@ -224,8 +224,13 @@ export interface Database {
           address: string | null
           phone: string | null
           emergency_contact: string | null
+          emergency_contact_name: string | null
+          emergency_contact_relation: string | null
+          emergency_contact_phone: string | null
           care_level: string | null
           notes: string | null
+          services: Json
+          billing: Json
           deleted: boolean
           deleted_at: string | null
           created_at: string
@@ -237,8 +242,13 @@ export interface Database {
           address?: string | null
           phone?: string | null
           emergency_contact?: string | null
+          emergency_contact_name?: string | null
+          emergency_contact_relation?: string | null
+          emergency_contact_phone?: string | null
           care_level?: string | null
           notes?: string | null
+          services?: Json
+          billing?: Json
           deleted?: boolean
           deleted_at?: string | null
           created_at?: string
@@ -250,8 +260,13 @@ export interface Database {
           address?: string | null
           phone?: string | null
           emergency_contact?: string | null
+          emergency_contact_name?: string | null
+          emergency_contact_relation?: string | null
+          emergency_contact_phone?: string | null
           care_level?: string | null
           notes?: string | null
+          services?: Json
+          billing?: Json
           deleted?: boolean
           deleted_at?: string | null
           created_at?: string

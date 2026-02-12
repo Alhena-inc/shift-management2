@@ -206,14 +206,26 @@ export interface Helper {
   }>;
 }
 
+export interface CareClientServices {
+  shogaiSogo?: boolean;      // 障害者総合支援
+  chiikiSeikatsu?: boolean;  // 地域生活支援事業
+  kaigoHoken?: boolean;      // 介護保険
+  jihiService?: boolean;     // 自費サービス
+}
+
 export interface CareClient {
   id: string;
   name: string;
   address?: string;
   phone?: string;
   emergencyContact?: string;
+  emergencyContactName?: string;
+  emergencyContactRelation?: string;
+  emergencyContactPhone?: string;
   careLevel?: string;
   notes?: string;
+  services?: CareClientServices;
+  billing?: Record<string, any>;
   deleted?: boolean;
   deletedAt?: string;
   createdAt?: string;

@@ -9,6 +9,8 @@ const HelperDetailPage: React.FC = () => {
   const [helper, setHelper] = useState<Helper | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [showQualificationPicker, setShowQualificationPicker] = useState(false);
+  const [qualificationSearch, setQualificationSearch] = useState('');
 
   // URLからIDを取得
   const helperId = window.location.pathname.split('/helpers/')[1];
@@ -521,25 +523,39 @@ const HelperDetailPage: React.FC = () => {
           {/* タブ2: 資格 */}
           {activeTab === 'qualifications' && (
             <div className="space-y-6">
-              <h2 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">保有資格</h2>
-              <div className="grid grid-cols-1 gap-4">
-                {qualificationOptions.map((qual) => {
-                  const isChecked = helper.qualifications?.includes(qual) || false;
-                  const acquiredDate = helper.qualificationDates?.[qual] || '';
+              <div className="flex items-center justify-between mb-4 pb-2 border-b">
+                <h2 className="text-lg font-bold text-gray-800">保有資格</h2>
+                <button
+                  onClick={() => setShowQualificationPicker(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2 text-sm"
+                >
+                  <span className="text-lg">+</span>
+                  新規追加
+                </button>
+              </div>
 
-                  return (
-                    <div key={qual} className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => toggleArrayItem('qualifications', qual)}
-                          className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                        />
-                        <span className="text-gray-700 font-medium flex-1">{qual}</span>
-                        {isChecked && (
+              {/* 登録済み資格一覧 */}
+              {(helper.qualifications || []).length === 0 ? (
+                <div className="text-center py-12">
+                  <svg className="mx-auto w-16 h-16 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <p className="text-gray-500 text-lg font-medium">資格が登録されていません</p>
+                  <p className="text-gray-400 text-sm mt-2">「新規追加」ボタンから資格を追加してください</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {(helper.qualifications || []).map((qual) => {
+                    const acquiredDate = helper.qualificationDates?.[qual] || '';
+                    return (
+                      <div key={qual} className="p-4 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
+                          <span className="text-gray-800 font-medium truncate">{qual}</span>
+                        </div>
+                        <div className="flex items-center gap-3 flex-shrink-0">
                           <div className="flex items-center gap-2">
-                            <label className="text-sm text-gray-600">取得日:</label>
+                            <label className="text-sm text-gray-500">取得日:</label>
                             <input
                               type="date"
                               value={acquiredDate}
@@ -552,15 +568,89 @@ const HelperDetailPage: React.FC = () => {
                                 }
                                 handleChange('qualificationDates', newDates);
                               }}
-                              className="px-3 py-1 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                              className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                             />
+                            {acquiredDate && (
+                              <span className="text-sm text-gray-600 hidden sm:inline">
+                                ({new Date(acquiredDate).toLocaleDateString('ja-JP')})
+                              </span>
+                            )}
                           </div>
-                        )}
+                          <button
+                            onClick={() => {
+                              if (!confirm(`「${qual}」を削除しますか？`)) return;
+                              const newQuals = (helper.qualifications || []).filter(q => q !== qual);
+                              const newDates = { ...(helper.qualificationDates || {}) };
+                              delete newDates[qual];
+                              setHelper({ ...helper, qualifications: newQuals, qualificationDates: newDates });
+                            }}
+                            className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                            title="削除"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* 資格選択モーダル */}
+              {showQualificationPicker && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowQualificationPicker(false)}>
+                  <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                    <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                      <h3 className="text-lg font-bold text-gray-800">資格を追加</h3>
+                      <button onClick={() => setShowQualificationPicker(false)} className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
+                        <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
                     </div>
-                  );
-                })}
-              </div>
+                    <div className="px-6 py-3 border-b border-gray-100">
+                      <input
+                        type="text"
+                        value={qualificationSearch}
+                        onChange={(e) => setQualificationSearch(e.target.value)}
+                        placeholder="資格名で検索..."
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="overflow-y-auto flex-1 px-2 py-2">
+                      {qualificationOptions
+                        .filter(q => !(helper.qualifications || []).includes(q))
+                        .filter(q => q.toLowerCase().includes(qualificationSearch.toLowerCase()))
+                        .map((qual) => (
+                          <button
+                            key={qual}
+                            onClick={() => {
+                              const newQuals = [...(helper.qualifications || []), qual];
+                              setHelper({ ...helper, qualifications: newQuals });
+                              setShowQualificationPicker(false);
+                              setQualificationSearch('');
+                            }}
+                            className="w-full text-left px-4 py-3 hover:bg-blue-50 rounded-lg transition-colors text-gray-700 text-sm"
+                          >
+                            {qual}
+                          </button>
+                        ))
+                      }
+                      {qualificationOptions
+                        .filter(q => !(helper.qualifications || []).includes(q))
+                        .filter(q => q.toLowerCase().includes(qualificationSearch.toLowerCase()))
+                        .length === 0 && (
+                        <p className="text-center text-gray-400 py-8 text-sm">
+                          {qualificationSearch ? '該当する資格がありません' : '追加できる資格がありません'}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
