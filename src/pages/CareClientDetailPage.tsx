@@ -25,12 +25,33 @@ const CareClientDetailPage: React.FC = () => {
   useEffect(() => {
     if (!clientId) return;
     if (isNewMode) {
-      // 新規作成モード: 空の利用者を作成
-      setClient({
-        id: clientId,
-        name: '',
-      });
-      setIsLoading(false);
+      // 新規作成モード: 顧客番号を自動採番
+      const init = async () => {
+        try {
+          const clients = await loadCareClients();
+          // 既存の顧客番号から最大値を取得して+1
+          let maxNum = 0;
+          clients.forEach((c: CareClient) => {
+            const num = parseInt(c.customerNumber || '0', 10);
+            if (!isNaN(num) && num > maxNum) maxNum = num;
+          });
+          const nextNumber = String(maxNum + 1);
+          setClient({
+            id: clientId,
+            name: '',
+            customerNumber: nextNumber,
+          });
+        } catch (error) {
+          console.error('利用者読み込みエラー:', error);
+          setClient({
+            id: clientId,
+            name: '',
+          });
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      init();
       return;
     }
     const load = async () => {
