@@ -451,9 +451,9 @@ interface ShiftInputWizardProps {
 }
 
 const TIME_SLOTS: string[] = [];
-for (let h = 7; h <= 22; h++) {
+for (let h = 0; h <= 24; h++) {
   TIME_SLOTS.push(`${h}:00`);
-  if (h < 22) TIME_SLOTS.push(`${h}:30`);
+  if (h < 24) TIME_SLOTS.push(`${h}:30`);
 }
 
 const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: ShiftInputWizardProps) => {
@@ -1500,25 +1500,6 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     // すでにそのセルが編集モードなら何もしない
     if (isEditingModeRef.current && activeCellKeyRef.current === newActiveKey) {
       return;
-    }
-
-    // ★ 空セルクリック時: ウィザードを起動
-    if (!readOnly) {
-      const helperId = td.dataset.helperId!;
-      const date = td.dataset.date!;
-      const rowIndex = parseInt(td.dataset.rowIndex!);
-      const cellKey = `${helperId}-${date}-${rowIndex}`;
-      const existingShift = shiftsRef.current.find(s => `${s.helperId}-${s.date}-${s.rowIndex}` === cellKey);
-      const isEmpty = !existingShift || (
-        !existingShift.startTime && !existingShift.endTime &&
-        !existingShift.clientName?.trim() && !existingShift.content?.trim()
-      );
-      if (isEmpty) {
-        e.preventDefault();
-        e.stopPropagation();
-        setWizardTarget({ helperId, date, rowIndex });
-        return;
-      }
     }
 
     // 全ての is-editing-mode クラスを一旦除去
@@ -5569,6 +5550,23 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       safelyRemoveMenu();
     };
     menu.appendChild(scheduledBtn);
+
+    // ケア追加ボタン（ウィザード起動）
+    const addCareBtn = document.createElement('div');
+    addCareBtn.textContent = '➕ ケア追加';
+    addCareBtn.style.padding = '8px 16px';
+    addCareBtn.style.cursor = 'pointer';
+    addCareBtn.style.borderTop = '1px solid #e5e7eb';
+    addCareBtn.style.color = '#059669';
+    addCareBtn.style.fontWeight = 'bold';
+    addCareBtn.onmouseover = () => addCareBtn.style.backgroundColor = '#d1fae5';
+    addCareBtn.onmouseout = () => addCareBtn.style.backgroundColor = 'transparent';
+    addCareBtn.onclick = () => {
+      safelyRemoveMenu();
+      setWizardTarget({ helperId, date, rowIndex });
+    };
+    menu.appendChild(addCareBtn);
+
     document.body.appendChild(menu);
 
     // 外部クリックでメニューを閉じる
