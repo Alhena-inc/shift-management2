@@ -19,10 +19,20 @@ const CareClientDetailPage: React.FC = () => {
   const [hasChanges, setHasChanges] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>('basic');
 
-  const clientId = window.location.pathname.match(/^\/users\/(.+)$/)?.[1];
+  const clientId = window.location.pathname.match(/^\/users\/(.+?)(\?|$)/)?.[1];
+  const isNewMode = new URLSearchParams(window.location.search).get('new') === '1';
 
   useEffect(() => {
     if (!clientId) return;
+    if (isNewMode) {
+      // 新規作成モード: 空の利用者を作成
+      setClient({
+        id: clientId,
+        name: '',
+      });
+      setIsLoading(false);
+      return;
+    }
     const load = async () => {
       try {
         const clients = await loadCareClients();
@@ -56,11 +66,19 @@ const CareClientDetailPage: React.FC = () => {
 
   const handleSave = async () => {
     if (!client) return;
+    if (!client.name.trim()) {
+      alert('氏名を入力してください');
+      return;
+    }
     setIsSaving(true);
     try {
       await saveCareClient(client);
       setHasChanges(false);
       alert('保存しました');
+      if (isNewMode) {
+        // 新規モードのURLパラメータを除去
+        window.history.replaceState(null, '', `/users/${client.id}`);
+      }
     } catch (error: any) {
       console.error('保存エラー:', error);
       alert('保存に失敗しました: ' + (error?.message || ''));
@@ -127,30 +145,32 @@ const CareClientDetailPage: React.FC = () => {
             <div className="flex items-center gap-2 sm:gap-4">
               <button
                 onClick={() => {
-                  if (hasChanges && !confirm('変更が保存されていません。戻りますか？')) return;
+                  if (!isNewMode && hasChanges && !confirm('変更が保存されていません。戻りますか？')) return;
                   window.location.href = '/users';
                 }}
                 className="p-2 sm:px-4 sm:py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-2 text-gray-700"
               >
-                <span className="hidden sm:inline">← 利用者一覧</span>
+                <span className="hidden sm:inline">← {isNewMode ? '戻る' : '利用者一覧'}</span>
                 <span className="sm:hidden">←</span>
               </button>
-              <h1 className="text-lg sm:text-2xl font-bold text-gray-800">{client.name}</h1>
+              <h1 className="text-lg sm:text-2xl font-bold text-gray-800">{isNewMode && !client.name ? '新規利用者' : client.name}</h1>
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={handleDelete}
-                className="p-2 sm:px-4 sm:py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors font-medium flex items-center gap-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                <span className="hidden sm:inline">削除</span>
-              </button>
+              {!isNewMode && (
+                <button
+                  onClick={handleDelete}
+                  className="p-2 sm:px-4 sm:py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors font-medium flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  <span className="hidden sm:inline">削除</span>
+                </button>
+              )}
               <button
                 onClick={handleSave}
-                disabled={isSaving || !hasChanges}
-                className={`p-2 sm:px-6 sm:py-2 rounded-lg font-medium flex items-center gap-2 transition-colors ${hasChanges ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                disabled={isSaving || (!isNewMode && !hasChanges)}
+                className={`p-2 sm:px-6 sm:py-2 rounded-lg font-medium flex items-center gap-2 transition-colors ${(isNewMode || hasChanges) ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
               >
                 {isSaving ? (
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
@@ -159,7 +179,7 @@ const CareClientDetailPage: React.FC = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                 )}
-                <span className="hidden sm:inline">{isSaving ? '保存中...' : '保存'}</span>
+                <span className="hidden sm:inline">{isSaving ? '保存中...' : (isNewMode ? '登録' : '保存')}</span>
               </button>
             </div>
           </div>
@@ -195,14 +215,75 @@ const CareClientDetailPage: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    利用者名 <span className="text-red-500">*</span>
+                    氏名 <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     value={client.name}
                     onChange={(e) => updateField('name', e.target.value)}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="利用者名を入力"
+                    placeholder="氏名を入力"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">フリガナ</label>
+                  <input
+                    type="text"
+                    value={client.nameKana || ''}
+                    onChange={(e) => updateField('nameKana', e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="フリガナを入力"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">性別</label>
+                  <select
+                    value={client.gender || ''}
+                    onChange={(e) => updateField('gender', e.target.value || undefined)}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
+                  >
+                    <option value="">未設定</option>
+                    <option value="male">男性</option>
+                    <option value="female">女性</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">生年月日</label>
+                  <input
+                    type="date"
+                    value={client.birthDate || ''}
+                    onChange={(e) => updateField('birthDate', e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">顧客番号</label>
+                  <input
+                    type="text"
+                    value={client.customerNumber || ''}
+                    onChange={(e) => updateField('customerNumber', e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="顧客番号を入力"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">略称</label>
+                  <input
+                    type="text"
+                    value={client.abbreviation || ''}
+                    onChange={(e) => updateField('abbreviation', e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="略称を入力"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">郵便番号</label>
+                  <input
+                    type="text"
+                    value={client.postalCode || ''}
+                    onChange={(e) => updateField('postalCode', e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="123-4567"
                   />
                 </div>
                 <div>
@@ -228,39 +309,98 @@ const CareClientDetailPage: React.FC = () => {
                   placeholder="住所を入力"
                 />
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">電話番号</label>
+                  <input
+                    type="tel"
+                    value={client.phone || ''}
+                    onChange={(e) => updateField('phone', e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="090-1234-5678"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">携帯番号</label>
+                  <input
+                    type="tel"
+                    value={client.mobilePhone || ''}
+                    onChange={(e) => updateField('mobilePhone', e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="080-1234-5678"
+                  />
+                </div>
+              </div>
+
+              {/* 契約期間 */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">電話番号</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">契約期間</label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">開始日</label>
+                    <input
+                      type="date"
+                      value={client.contractStart || ''}
+                      onChange={(e) => updateField('contractStart', e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">終了日</label>
+                    <input
+                      type="date"
+                      value={client.contractEnd || ''}
+                      onChange={(e) => updateField('contractEnd', e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">終了理由</label>
                 <input
-                  type="tel"
-                  value={client.phone || ''}
-                  onChange={(e) => updateField('phone', e.target.value)}
+                  type="text"
+                  value={client.endReason || ''}
+                  onChange={(e) => updateField('endReason', e.target.value)}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  placeholder="090-1234-5678"
+                  placeholder="終了理由を入力"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">備考</label>
+                <textarea
+                  value={client.notes || ''}
+                  onChange={(e) => updateField('notes', e.target.value)}
+                  rows={4}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y"
+                  placeholder="備考を入力..."
                 />
               </div>
 
               {/* システム情報 */}
-              <div className="mt-8 pt-6 border-t border-gray-200">
-                <h3 className="text-sm font-medium text-gray-500 mb-3">システム情報</h3>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500">利用者ID:</span>
-                    <span className="font-mono text-gray-700 bg-gray-100 px-2 py-1 rounded text-xs">{client.id}</span>
+              {!isNewMode && (
+                <div className="mt-8 pt-6 border-t border-gray-200">
+                  <h3 className="text-sm font-medium text-gray-500 mb-3">システム情報</h3>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">利用者ID:</span>
+                      <span className="font-mono text-gray-700 bg-gray-100 px-2 py-1 rounded text-xs">{client.id}</span>
+                    </div>
+                    {client.createdAt && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-500">登録日:</span>
+                        <span className="text-gray-700">{new Date(client.createdAt).toLocaleDateString('ja-JP')}</span>
+                      </div>
+                    )}
+                    {client.updatedAt && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-500">最終更新:</span>
+                        <span className="text-gray-700">{new Date(client.updatedAt).toLocaleDateString('ja-JP')}</span>
+                      </div>
+                    )}
                   </div>
-                  {client.createdAt && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-500">登録日:</span>
-                      <span className="text-gray-700">{new Date(client.createdAt).toLocaleDateString('ja-JP')}</span>
-                    </div>
-                  )}
-                  {client.updatedAt && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-500">最終更新:</span>
-                      <span className="text-gray-700">{new Date(client.updatedAt).toLocaleDateString('ja-JP')}</span>
-                    </div>
-                  )}
                 </div>
-              </div>
+              )}
             </div>
           )}
 

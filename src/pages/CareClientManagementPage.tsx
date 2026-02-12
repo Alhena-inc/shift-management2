@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { CareClient } from '../types';
-import { subscribeToCareClients, saveCareClient } from '../services/dataService';
+import { subscribeToCareClients } from '../services/dataService';
 
 const CareClientManagementPage: React.FC = () => {
   const [clients, setClients] = useState<CareClient[]>([]);
@@ -46,30 +46,10 @@ const CareClientManagementPage: React.FC = () => {
     }
   };
 
-  const handleCreateNew = async () => {
-    try {
-      const newId = crypto.randomUUID ? crypto.randomUUID() :
-                   `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-      const newClient: CareClient = {
-        id: newId,
-        name: '新規利用者',
-        address: '',
-        phone: '',
-        emergencyContact: '',
-        careLevel: '',
-        notes: '',
-      };
-
-      await saveCareClient(newClient);
-
-      setTimeout(() => {
-        window.location.href = `/users/${newId}`;
-      }, 500);
-    } catch (error: any) {
-      console.error('新規利用者作成エラー:', error);
-      alert('新規利用者の作成に失敗しました。\n\n' + (error?.message || ''));
-    }
+  const handleCreateNew = () => {
+    const newId = crypto.randomUUID ? crypto.randomUUID() :
+                 `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    window.location.href = `/users/${newId}?new=1`;
   };
 
   return (

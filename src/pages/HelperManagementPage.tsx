@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import type { Helper } from '../types';
-import { loadHelpers, saveHelpers, subscribeToHelpers } from '../services/dataService';
+import { subscribeToHelpers } from '../services/dataService';
 
 const HelperManagementPage: React.FC = () => {
   const [helpers, setHelpers] = useState<Helper[]>([]);
@@ -52,66 +52,10 @@ const HelperManagementPage: React.FC = () => {
     }
   };
 
-  const handleCreateNew = async () => {
-    try {
-      console.log('🔨 新規ヘルパー作成開始...');
-
-      // UUID形式のIDを生成（Supabaseと互換性のある形式）
-      const newId = crypto.randomUUID ? crypto.randomUUID() :
-                   `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-      const newHelper: Helper = {
-        id: newId,
-        name: '新規ヘルパー',
-        gender: 'male',  // デフォルトで男性に設定
-        order: helpers.length + 1,  // 順番を設定
-        email: '',  // メールアドレスは空
-        hourlyRate: 0,
-        employmentType: 'parttime',
-        treatmentImprovementPerHour: 0,
-        baseSalary: 0,
-        treatmentAllowance: 0,
-        otherAllowances: [],
-        dependents: 0,
-        // 保険関連の初期値
-        insurances: [],
-        standardRemuneration: 0,
-        role: 'staff',  // デフォルトはスタッフ
-      };
-
-      console.log('📝 新規ヘルパーデータ:', newHelper);
-      console.log('📋 既存ヘルパー数:', helpers.length);
-
-      const updatedHelpers = [...helpers, newHelper];
-      console.log('💾 保存するヘルパー数:', updatedHelpers.length);
-
-      await saveHelpers(updatedHelpers);
-
-      console.log('✅ 保存完了、リダイレクト中...');
-
-      // リダイレクト前に少し待機（保存の確実性のため）
-      setTimeout(() => {
-        window.location.href = `/helpers/${newId}`;
-      }, 500);
-
-    } catch (error: any) {
-      console.error('❌ 新規ヘルパー作成エラー:', error);
-      console.error('エラー詳細:', {
-        message: error?.message,
-        stack: error?.stack,
-        response: error?.response,
-        data: error?.data
-      });
-
-      // より詳細なエラーメッセージ
-      let errorMessage = '新規ヘルパーの作成に失敗しました。\n\n';
-      if (error?.message) {
-        errorMessage += `エラー: ${error.message}\n`;
-      }
-      errorMessage += '\nブラウザのコンソールを確認し、Supabaseの接続を確認してください。';
-
-      alert(errorMessage);
-    }
+  const handleCreateNew = () => {
+    const newId = crypto.randomUUID ? crypto.randomUUID() :
+                 `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    window.location.href = `/helpers/${newId}?new=1`;
   };
 
   return (

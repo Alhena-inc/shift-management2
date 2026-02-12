@@ -216,8 +216,18 @@ export interface CareClientServices {
 export interface CareClient {
   id: string;
   name: string;
+  nameKana?: string;
+  gender?: 'male' | 'female';
+  birthDate?: string;
+  customerNumber?: string;
+  abbreviation?: string;
+  postalCode?: string;
   address?: string;
   phone?: string;
+  mobilePhone?: string;
+  contractStart?: string;
+  contractEnd?: string;
+  endReason?: string;
   emergencyContact?: string;
   emergencyContactName?: string;
   emergencyContactRelation?: string;

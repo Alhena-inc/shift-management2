@@ -11,11 +11,34 @@ const HelperDetailPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [showQualificationPicker, setShowQualificationPicker] = useState(false);
   const [qualificationSearch, setQualificationSearch] = useState('');
+  const [pendingQualifications, setPendingQualifications] = useState<{ name: string; date: string }[]>([]);
 
   // URLからIDを取得
-  const helperId = window.location.pathname.split('/helpers/')[1];
+  const helperId = window.location.pathname.split('/helpers/')[1]?.split('?')[0];
+  const isNewMode = new URLSearchParams(window.location.search).get('new') === '1';
 
   useEffect(() => {
+    if (isNewMode) {
+      // 新規作成モード: 空のヘルパーを作成
+      setHelper({
+        id: helperId,
+        name: '',
+        gender: 'male',
+        order: 0,
+        employmentType: 'parttime',
+        hourlyRate: 0,
+        treatmentImprovementPerHour: 0,
+        baseSalary: 0,
+        treatmentAllowance: 0,
+        otherAllowances: [],
+        dependents: 0,
+        insurances: [],
+        standardRemuneration: 0,
+        role: 'staff',
+      });
+      setIsLoading(false);
+      return;
+    }
     const fetchHelper = async () => {
       setIsLoading(true);
       const helpers = await loadHelpers();
@@ -36,10 +59,12 @@ const HelperDetailPage: React.FC = () => {
 
   const handleSave = async () => {
     if (!helper) return;
+    if (isNewMode && !helper.name.trim()) {
+      alert('氏名を入力してください');
+      return;
+    }
     setIsSaving(true);
     try {
-      // ヘルパーデータ保存開始
-
       // 性別が設定されていない場合はデフォルトをmaleに
       const helperToSave = {
         ...helper,
@@ -47,9 +72,19 @@ const HelperDetailPage: React.FC = () => {
       };
 
       const helpers = await loadHelpers();
-      const updatedHelpers = helpers.map(h => h.id === helper.id ? helperToSave : h);
-      await saveHelpers(updatedHelpers);
-      alert('保存しました');
+      if (isNewMode) {
+        // 新規作成: orderを設定して追加
+        helperToSave.order = helpers.filter(h => !h.deleted).length + 1;
+        const updatedHelpers = [...helpers, helperToSave];
+        await saveHelpers(updatedHelpers);
+        alert('保存しました');
+        // 新規モードのURLパラメータを除去
+        window.history.replaceState(null, '', `/helpers/${helper.id}`);
+      } else {
+        const updatedHelpers = helpers.map(h => h.id === helper.id ? helperToSave : h);
+        await saveHelpers(updatedHelpers);
+        alert('保存しました');
+      }
     } catch (error) {
       console.error('保存エラー:', error);
       alert('保存に失敗しました');
@@ -291,23 +326,25 @@ const HelperDetailPage: React.FC = () => {
                 onClick={() => window.location.href = '/helpers'}
                 className="px-3 py-2 sm:px-4 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-1 text-gray-700 text-sm sm:text-base flex-shrink-0"
               >
-                ← <span className="hidden sm:inline">戻る</span>
+                ← <span className="hidden sm:inline">{isNewMode ? '戻る' : '戻る'}</span>
               </button>
               <h1 className="text-lg sm:text-2xl font-bold text-gray-800 truncate">
-                {helper.name}
+                {isNewMode && !helper.name ? '新規ヘルパー' : helper.name}
               </h1>
             </div>
             <div className="flex gap-2 sm:gap-3 flex-shrink-0">
-              <button
-                onClick={handleDelete}
-                disabled={isSaving}
-                className={`p-2 sm:px-4 sm:py-2 rounded-lg font-medium flex items-center gap-2 border ${isSaving
-                  ? 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed'
-                  : 'text-red-600 border-red-200 hover:bg-red-50'
-                  }`}
-              >
-                🗑️ <span className="hidden sm:inline">削除</span>
-              </button>
+              {!isNewMode && (
+                <button
+                  onClick={handleDelete}
+                  disabled={isSaving}
+                  className={`p-2 sm:px-4 sm:py-2 rounded-lg font-medium flex items-center gap-2 border ${isSaving
+                    ? 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed'
+                    : 'text-red-600 border-red-200 hover:bg-red-50'
+                    }`}
+                >
+                  🗑️ <span className="hidden sm:inline">削除</span>
+                </button>
+              )}
               <button
                 onClick={handleSave}
                 disabled={isSaving}
@@ -316,7 +353,7 @@ const HelperDetailPage: React.FC = () => {
                   : 'bg-blue-600 text-white hover:bg-blue-700'
                   }`}
               >
-                {isSaving ? '保存中...' : '💾 保存'}
+                {isSaving ? '保存中...' : (isNewMode ? '💾 登録' : '💾 保存')}
               </button>
             </div>
           </div>
@@ -598,17 +635,46 @@ const HelperDetailPage: React.FC = () => {
                 </div>
               )}
 
-              {/* 資格選択モーダル */}
+              {/* 資格選択モーダル（複数選択+取得日） */}
               {showQualificationPicker && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowQualificationPicker(false)}>
-                  <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => { setShowQualificationPicker(false); setQualificationSearch(''); }}>
+                  <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                     <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                      <h3 className="text-lg font-bold text-gray-800">資格を追加</h3>
-                      <button onClick={() => setShowQualificationPicker(false)} className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
-                        <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-800">資格を追加</h3>
+                        {pendingQualifications.length > 0 && (
+                          <p className="text-sm text-blue-600 mt-0.5">{pendingQualifications.length}件選択中</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            if (pendingQualifications.length === 0) {
+                              setShowQualificationPicker(false);
+                              setQualificationSearch('');
+                              return;
+                            }
+                            const newQuals = [...(helper.qualifications || []), ...pendingQualifications.map(p => p.name)];
+                            const newDates = { ...(helper.qualificationDates || {}) };
+                            pendingQualifications.forEach(p => {
+                              if (p.date) newDates[p.name] = p.date;
+                            });
+                            setHelper({ ...helper, qualifications: newQuals, qualificationDates: newDates });
+                            setPendingQualifications([]);
+                            setShowQualificationPicker(false);
+                            setQualificationSearch('');
+                          }}
+                          disabled={pendingQualifications.length === 0}
+                          className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${pendingQualifications.length > 0 ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                        >
+                          追加する ({pendingQualifications.length})
+                        </button>
+                        <button onClick={() => { setShowQualificationPicker(false); setQualificationSearch(''); setPendingQualifications([]); }} className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
+                          <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                     <div className="px-6 py-3 border-b border-gray-100">
                       <input
@@ -624,20 +690,40 @@ const HelperDetailPage: React.FC = () => {
                       {qualificationOptions
                         .filter(q => !(helper.qualifications || []).includes(q))
                         .filter(q => q.toLowerCase().includes(qualificationSearch.toLowerCase()))
-                        .map((qual) => (
-                          <button
-                            key={qual}
-                            onClick={() => {
-                              const newQuals = [...(helper.qualifications || []), qual];
-                              setHelper({ ...helper, qualifications: newQuals });
-                              setShowQualificationPicker(false);
-                              setQualificationSearch('');
-                            }}
-                            className="w-full text-left px-4 py-3 hover:bg-blue-50 rounded-lg transition-colors text-gray-700 text-sm"
-                          >
-                            {qual}
-                          </button>
-                        ))
+                        .map((qual) => {
+                          const pending = pendingQualifications.find(p => p.name === qual);
+                          const isSelected = !!pending;
+                          return (
+                            <div key={qual} className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {
+                                  if (isSelected) {
+                                    setPendingQualifications(prev => prev.filter(p => p.name !== qual));
+                                  } else {
+                                    setPendingQualifications(prev => [...prev, { name: qual, date: '' }]);
+                                  }
+                                }}
+                                className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer flex-shrink-0"
+                              />
+                              <span className="text-gray-700 text-sm flex-1">{qual}</span>
+                              {isSelected && (
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  <label className="text-xs text-gray-500">取得日:</label>
+                                  <input
+                                    type="date"
+                                    value={pending?.date || ''}
+                                    onChange={(e) => {
+                                      setPendingQualifications(prev => prev.map(p => p.name === qual ? { ...p, date: e.target.value } : p));
+                                    }}
+                                    className="px-2 py-1 bg-white border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
                       }
                       {qualificationOptions
                         .filter(q => !(helper.qualifications || []).includes(q))
