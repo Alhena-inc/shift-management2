@@ -450,10 +450,32 @@ interface ShiftInputWizardProps {
   onCancel: () => void;
 }
 
-const TIME_SLOTS: string[] = [];
-for (let h = 0; h <= 24; h++) {
-  TIME_SLOTS.push(`${h}:00`);
-  if (h < 24) TIME_SLOTS.push(`${h}:30`);
+// 開始時間用スロット（0:00〜23:30）
+const START_TIME_SLOTS: string[] = [];
+for (let h = 0; h <= 23; h++) {
+  START_TIME_SLOTS.push(`${h}:00`);
+  START_TIME_SLOTS.push(`${h}:30`);
+}
+
+// 終了時間用スロット生成（開始時間以降 + 翌日8:00まで）
+function buildEndTimeSlots(startTime: string): { value: string; label: string }[] {
+  const [sh, sm] = startTime.split(':').map(Number);
+  const startMinutes = sh * 60 + sm;
+  const slots: { value: string; label: string }[] = [];
+  // 開始時間の30分後 〜 翌日8:00（= 32:00相当）まで
+  for (let m = startMinutes + 30; m <= 32 * 60; m += 30) {
+    const h = Math.floor(m / 60);
+    const mm = m % 60;
+    if (h >= 48) break; // 安全上限
+    const isNextDay = h >= 24;
+    const displayH = isNextDay ? h - 24 : h;
+    const value = `${h}:${mm === 0 ? '00' : '30'}`;
+    const label = isNextDay
+      ? `翌${displayH}:${mm === 0 ? '00' : '30'}`
+      : `${displayH}:${mm === 0 ? '00' : '30'}`;
+    slots.push({ value, label });
+  }
+  return slots;
 }
 
 const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: ShiftInputWizardProps) => {
@@ -480,8 +502,7 @@ const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: Sh
 
   const endTimeSlots = useMemo(() => {
     if (!startTime) return [];
-    const startIdx = TIME_SLOTS.indexOf(startTime);
-    return TIME_SLOTS.slice(startIdx + 1);
+    return buildEndTimeSlots(startTime);
   }, [startTime]);
 
   const filteredClients = useMemo(() => {
@@ -532,15 +553,15 @@ const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: Sh
     );
   };
 
-  return createPortal(
+  return (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center"
       style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
-      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}
     >
       <div
         className="bg-white rounded-xl shadow-2xl w-[420px] max-h-[80vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-5 py-3 border-b bg-green-600 text-white rounded-t-xl">
@@ -576,7 +597,10 @@ const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: Sh
                 className="cursor-pointer hover:text-green-600"
                 onClick={() => { setStep(2); setEndTime(''); setSelectedClient(null); }}
               >
-                終了: <span className="font-bold text-gray-800">{endTime}</span>
+                終了: <span className="font-bold text-gray-800">{(() => {
+                  const [h, m] = endTime.split(':').map(Number);
+                  return h >= 24 ? `翌${h - 24}:${m === 0 ? '00' : '30'}` : endTime;
+                })()}</span>
               </span>
             )}
             {selectedClient && (
@@ -595,7 +619,7 @@ const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: Sh
           {/* Step 1: 開始時間 */}
           {step === 1 && (
             <div className="grid grid-cols-4 gap-2">
-              {TIME_SLOTS.map(time => (
+              {START_TIME_SLOTS.map(time => (
                 <button
                   key={time}
                   className="px-3 py-2.5 text-sm font-medium border border-gray-300 rounded-lg hover:bg-green-50 hover:border-green-500 hover:text-green-700 transition-colors"
@@ -610,13 +634,15 @@ const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: Sh
           {/* Step 2: 終了時間 */}
           {step === 2 && (
             <div className="grid grid-cols-4 gap-2">
-              {endTimeSlots.map(time => (
+              {endTimeSlots.map(slot => (
                 <button
-                  key={time}
-                  className="px-3 py-2.5 text-sm font-medium border border-gray-300 rounded-lg hover:bg-green-50 hover:border-green-500 hover:text-green-700 transition-colors"
-                  onClick={() => { setEndTime(time); setStep(3); }}
+                  key={slot.value}
+                  className={`px-3 py-2.5 text-sm font-medium border rounded-lg hover:bg-green-50 hover:border-green-500 hover:text-green-700 transition-colors ${
+                    slot.label.startsWith('翌') ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-300'
+                  }`}
+                  onClick={() => { setEndTime(slot.value); setStep(3); }}
                 >
-                  {time}
+                  {slot.label}
                 </button>
               ))}
             </div>
@@ -674,8 +700,7 @@ const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: Sh
           )}
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
   );
 });
 ShiftInputWizard.displayName = 'ShiftInputWizard';
@@ -1255,7 +1280,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     const area = lines[3];
 
     const match = clientInfo.match(/[(\uFF08](.+?)[)\uFF09]/);
-    let serviceType: ServiceType = 'other';
+    let serviceType: ServiceType = 'yotei'; // デフォルトは予定（サービス種別なし→紫）
     if (match) {
       const serviceLabel = match[1];
       const serviceEntry = Object.entries(SERVICE_CONFIG).find(([_, config]) => config.label === serviceLabel);
@@ -1351,7 +1376,12 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     const existingShift = shiftsRef.current.find(s => `${s.helperId}-${s.date}-${s.rowIndex}` === cellKey);
 
     const formatTime = (t: string) => t.replace(/^(\d):/, '0$1:');
-    const line0 = `${startTime}-${endTime}`;
+    // 翌日時間の処理（25:00 → 1:00 等）
+    const [endH, endM] = endTime.split(':').map(Number);
+    const isOvernight = endH >= 24;
+    const actualEndTime = isOvernight ? `${endH - 24}:${endM === 0 ? '00' : '30'}` : endTime;
+    const displayEndTime = isOvernight ? `翌${endH - 24}:${endM === 0 ? '00' : '30'}` : endTime;
+    const line0 = `${startTime}-${displayEndTime}`;
     const serviceLabel = SERVICE_CONFIG[serviceType]?.label || '';
     const line1 = serviceType !== 'other' ? `${clientName}(${serviceLabel})` : clientName;
     const line2 = String(duration);
@@ -1366,7 +1396,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       clientName,
       serviceType,
       startTime: formatTime(startTime),
-      endTime: formatTime(endTime),
+      endTime: formatTime(actualEndTime),
       duration,
       area,
       rowIndex,
@@ -1378,16 +1408,15 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       !(s.helperId === helperId && s.date === date && s.rowIndex === rowIndex)
     )];
     updatedShifts.push(newShift);
-    handleShiftsUpdate(updatedShifts, true);
-    saveShiftWithCorrectYearMonth(newShift);
 
-    // 背景色の即時反映
-    const config = SERVICE_CONFIG[serviceType];
-    const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
-    if (td && config) td.style.backgroundColor = config.bgColor;
-
-    setTimeout(() => updateTotalsForHelperAndDate(helperId, date), 10);
+    // まずウィザードを閉じてからデータ更新（DOM競合防止）
     setWizardTarget(null);
+    // React のバッチ更新が完了した後にデータ更新を実行
+    requestAnimationFrame(() => {
+      handleShiftsUpdate(updatedShifts, true);
+      saveShiftWithCorrectYearMonth(newShift);
+      setTimeout(() => updateTotalsForHelperAndDate(helperId, date), 10);
+    });
   }, [handleShiftsUpdate, updateTotalsForHelperAndDate]);
 
   const handleWizardCancel = useCallback(() => {
@@ -5256,301 +5285,6 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
     menu.appendChild(deleteBtn);
 
-    // 予定（紫）背景の切り替え（右クリックで選択 → クリックで紫に）
-    // ※ 休み希望/指定休の行は対象外（背景優先ロジックを崩さない）
-    const parseRowKey = (key: string): { hId: string; dt: string; rowIdx: number } => {
-      const parts = key.split('-');
-      const rowIdx = parseInt(parts[parts.length - 1]);
-      const dt = parts.slice(parts.length - 4, parts.length - 1).join('-'); // YYYY-MM-DD
-      const hId = parts.slice(0, parts.length - 4).join('-');
-      return { hId, dt, rowIdx };
-    };
-
-    const parsedTargets = targetRows.map(parseRowKey).filter(t => t.hId && t.dt && !Number.isNaN(t.rowIdx));
-    const getExistingShiftByKey = (cellKey: string) => {
-      const fromMap = shiftMap.get(cellKey);
-      if (fromMap) return fromMap;
-      // shiftMapが古い瞬間があるので、常に最新参照のrefでも探す
-      const id = `shift-${cellKey}`;
-      return shiftsRef.current.find(s => s.id === id);
-    };
-    const allAreYotei = parsedTargets.length > 0 && parsedTargets.every(({ hId, dt, rowIdx }) => {
-      const key = `${hId}-${dt}-${rowIdx}`;
-      return getExistingShiftByKey(key)?.serviceType === 'yotei';
-    });
-
-    const purpleBtn = document.createElement('div');
-    const purpleCountText = parsedTargets.length > 1 ? ` (${parsedTargets.length}件)` : '';
-    purpleBtn.textContent = allAreYotei ? `🟣 予定（紫）を解除${purpleCountText}` : `🟣 予定（紫）にする${purpleCountText}`;
-    purpleBtn.style.padding = '8px 16px';
-    purpleBtn.style.cursor = 'pointer';
-    purpleBtn.style.borderTop = '1px solid #e5e7eb';
-    purpleBtn.onmouseover = () => purpleBtn.style.backgroundColor = '#f3f4f6';
-    purpleBtn.onmouseout = () => purpleBtn.style.backgroundColor = 'transparent';
-    purpleBtn.onclick = async () => {
-      const setToYotei = !allAreYotei;
-      // 二重クリック等で不安定にならないよう、操作中は無効化
-      purpleBtn.style.pointerEvents = 'none';
-      const originalText = purpleBtn.textContent;
-      purpleBtn.textContent = '💾 保存中...';
-
-      const updatedShifts: Shift[] = [];
-
-      // 重複排除（複数選択状態によって同じキーが混ざることがある）
-      const uniqTargets = new Map<string, { hId: string; dt: string; rowIdx: number }>();
-      parsedTargets.forEach(t => {
-        const key = `${t.hId}-${t.dt}-${t.rowIdx}`;
-        uniqTargets.set(key, t);
-      });
-
-      for (const { hId, dt, rowIdx } of uniqTargets.values()) {
-        // 休み希望/指定休は対象外
-        const isDayOffRow = checkIsDayOffRow(hId, dt, rowIdx);
-        const isScheduled = scheduledDayOffs.has(`${hId}-${dt}`);
-        if (isDayOffRow || isScheduled) continue;
-
-        const cellKey = `${hId}-${dt}-${rowIdx}`;
-        const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement | null;
-        const cells = td ? td.querySelectorAll('.editable-cell-wrapper') : null;
-
-        // 背景を即時反映（DOM）
-        if (td) {
-          if (setToYotei) {
-            td.style.backgroundColor = SERVICE_CONFIG.yotei.bgColor;
-          } else {
-            td.style.backgroundColor = '#ffffff';
-          }
-        }
-        if (cells) {
-          cells.forEach(cell => {
-            const el = cell as HTMLElement;
-            if (setToYotei) {
-              el.style.backgroundColor = SERVICE_CONFIG.yotei.bgColor;
-            } else {
-              el.style.removeProperty('background-color');
-            }
-          });
-        }
-
-        const existingShift = getExistingShiftByKey(cellKey);
-        if (setToYotei) {
-          // 予定（紫）へ
-          let newShift: Shift;
-          if (existingShift) {
-            newShift = {
-              ...existingShift,
-              serviceType: 'yotei',
-              // 予定は給与計算しない
-              regularHours: 0,
-              nightHours: 0,
-              regularPay: 0,
-              nightPay: 0,
-              totalPay: 0,
-              deleted: false
-            };
-          } else {
-            // まだShiftがない場合は、現在のセル内容から作成（最低限）
-            const readLine = (idx: number) => {
-              const sel = `.editable-cell-wrapper[data-row="${rowIdx}"][data-line="${idx}"][data-helper="${hId}"][data-date="${dt}"]`;
-              const el = document.querySelector(sel) as HTMLElement | null;
-              return (el?.textContent ?? '').trimEnd();
-            };
-            const timeRange = readLine(0);
-            const clientInfo = readLine(1);
-            const durationStr = readLine(2);
-            const area = readLine(3);
-
-            const timeMatch = timeRange.match(/(\d{1,2}:\d{2})(?:\s*[-~]\s*(\d{1,2}:\d{2}))?/);
-            const startTime = timeMatch ? timeMatch[1] : '';
-            const endTime = timeMatch && timeMatch[2] ? timeMatch[2] : '';
-            const clientName = clientInfo.replace(/\(.+?\)/, '').trim();
-            const duration = parseFloat(durationStr) || 0;
-
-            newShift = {
-              id: `shift-${hId}-${dt}-${rowIdx}`,
-              date: dt,
-              helperId: String(hId),
-              clientName,
-              serviceType: 'yotei',
-              startTime,
-              endTime,
-              duration,
-              area,
-              rowIndex: rowIdx,
-              regularHours: 0,
-              nightHours: 0,
-              regularPay: 0,
-              nightPay: 0,
-              totalPay: 0,
-              deleted: false
-            };
-          }
-
-          // 既にyoteiなら保存不要
-          if (existingShift?.serviceType !== 'yotei') {
-            updatedShifts.push(newShift);
-          }
-        } else {
-          // 解除（yotei → other）
-          if (existingShift && existingShift.serviceType === 'yotei') {
-            const newShift: Shift = {
-              ...existingShift,
-              serviceType: 'other',
-              regularHours: 0,
-              nightHours: 0,
-              regularPay: 0,
-              nightPay: 0,
-              totalPay: 0,
-              deleted: false
-            };
-            updatedShifts.push(newShift);
-          }
-        }
-      }
-
-      if (updatedShifts.length > 0) {
-        const updatedIds = new Set(updatedShifts.map(s => s.id));
-        // まずローカルをref基準で即時更新（直後のonBlur等でotherに上書きされないように）
-        const next = [...shiftsRef.current.filter(s => !updatedIds.has(s.id)), ...updatedShifts];
-        shiftsRef.current = next;
-        handleShiftsUpdate(next);
-
-        // Firestoreは一括保存（セルごとのPromise.allより安定）
-        const delays = [0, 400, 1200];
-        let saved = false;
-        let lastError: unknown = null;
-        for (let i = 0; i < delays.length; i++) {
-          if (delays[i] > 0) {
-            await new Promise(resolve => setTimeout(resolve, delays[i]));
-          }
-          try {
-            await saveShiftsByYearMonth(updatedShifts);
-            saved = true;
-            break;
-          } catch (e) {
-            lastError = e;
-            console.error(`予定（紫）の一括保存に失敗（retry ${i + 1}/${delays.length}）:`, e);
-          }
-        }
-        if (!saved) {
-          console.error('予定（紫）の保存が最終的に失敗しました:', lastError);
-          alert('予定（紫）の保存に失敗しました。通信状況を確認して、もう一度お試しください。');
-        }
-      }
-
-      if (document.body.contains(menu)) {
-        safelyRemoveMenu();
-      }
-
-      // ボタン状態を戻す
-      purpleBtn.style.pointerEvents = 'auto';
-      purpleBtn.textContent = originalText || (setToYotei ? '🟣 予定（紫）にする' : '🟣 予定（紫）を解除');
-    };
-    // メニューに追加（← これが抜けていたため表示されなかった）
-    menu.appendChild(purpleBtn);
-
-    // 休み希望の設定/解除ボタン
-    // Shift+クリックでの複数選択をチェック
-    // 選択されている行をチェック
-    const allSelectedRows = Array.from(selectedRows)
-      .filter(rowKey => rowKey.startsWith(`${helperId}-${date}-`))
-      .map(rowKey => {
-        const parts = rowKey.split('-');
-        return parseInt(parts[parts.length - 1]);
-      });
-
-    const rowsToCheck = allSelectedRows.length > 0
-      ? allSelectedRows
-      : [rowIndex];
-
-    // いずれかの行が休み希望かチェック
-    const isDayOff = rowsToCheck.some(row => dayOffRequests.has(`${helperId}-${date}-${row}`));
-
-    // 選択数を表示
-    const countText = rowsToCheck.length > 1 ? ` (${rowsToCheck.length}件)` : '';
-
-    // 休み希望を設定するボタン（休み希望がない場合のみ表示）
-    if (!isDayOff) {
-      const setDayOffBtn = document.createElement('div');
-      setDayOffBtn.textContent = `🏖️ 休み希望を設定${countText}`;
-      setDayOffBtn.style.padding = '8px 16px';
-      setDayOffBtn.style.cursor = 'pointer';
-      setDayOffBtn.style.borderTop = '1px solid #e5e7eb';
-      setDayOffBtn.style.color = '#d97706';
-      setDayOffBtn.onmouseover = () => setDayOffBtn.style.backgroundColor = '#fef3c7';
-      setDayOffBtn.onmouseout = () => setDayOffBtn.style.backgroundColor = 'transparent';
-      setDayOffBtn.onclick = () => {
-        toggleDayOff(helperId, date, rowIndex);
-        safelyRemoveMenu();
-      };
-      menu.appendChild(setDayOffBtn);
-    }
-
-    // 休み希望を削除するボタン（休み希望がある場合のみ表示）
-    if (isDayOff) {
-      const deleteDayOffBtn = document.createElement('div');
-      deleteDayOffBtn.textContent = `🗑️ 休み希望を削除${countText}`;
-      deleteDayOffBtn.style.padding = '8px 16px';
-      deleteDayOffBtn.style.cursor = 'pointer';
-      deleteDayOffBtn.style.borderTop = '1px solid #e5e7eb';
-      deleteDayOffBtn.style.color = '#dc2626';
-      deleteDayOffBtn.onmouseover = () => deleteDayOffBtn.style.backgroundColor = '#fee2e2';
-      deleteDayOffBtn.onmouseout = () => deleteDayOffBtn.style.backgroundColor = 'transparent';
-      deleteDayOffBtn.onclick = () => {
-        // 休み希望を削除（ケアは維持）
-        const keysToDelete = rowsToCheck.map(row => `${helperId}-${date}-${row}`);
-        setDayOffRequests(prev => {
-          const next = new Map(prev);
-          keysToDelete.forEach(key => {
-            if (next.has(key)) {
-              next.delete(key);
-              console.log(`🏖️ 休み希望を削除: ${key}`);
-
-              // DOMの背景色を白に戻す（ケアがある場合はケアの色に）
-              const parts = key.split('-');
-              const rowIdx = parseInt(parts[parts.length - 1]);
-              const dt = parts.slice(-4, -1).join('-');
-              const hId = parts.slice(0, -4).join('-');
-
-              const shiftKey = `${hId}-${dt}-${rowIdx}`;
-              const existingShift = shiftMap.get(shiftKey);
-              const bgColor = existingShift ? (SERVICE_CONFIG[existingShift.serviceType]?.bgColor || '#ffffff') : '#ffffff';
-
-              const cellSelector = `.editable-cell-wrapper[data-row="${rowIdx}"][data-helper="${hId}"][data-date="${dt}"]`;
-              const cells = document.querySelectorAll(cellSelector);
-              cells.forEach(cell => {
-                (cell as HTMLElement).style.backgroundColor = bgColor;
-              });
-              const td = document.querySelector(`td[data-cell-key="${shiftKey}"]`) as HTMLElement;
-              if (td) {
-                td.style.backgroundColor = bgColor;
-              }
-            }
-          });
-          // Firestoreに保存
-          saveDayOffToFirestore(next);
-          return next;
-        });
-        safelyRemoveMenu();
-      };
-      menu.appendChild(deleteDayOffBtn);
-    }
-
-    // 指定休の設定/解除ボタンを追加
-    const isScheduled = scheduledDayOffs.has(`${helperId}-${date}`);
-    const scheduledBtn = document.createElement('div');
-    scheduledBtn.textContent = isScheduled ? '🟢 指定休（緑背景）を解除' : '🟢 指定休（緑背景）を設定';
-    scheduledBtn.style.padding = '8px 16px';
-    scheduledBtn.style.cursor = 'pointer';
-    scheduledBtn.style.borderTop = '1px solid #e5e7eb';
-    scheduledBtn.onmouseover = () => scheduledBtn.style.backgroundColor = '#f3f4f6';
-    scheduledBtn.onmouseout = () => scheduledBtn.style.backgroundColor = 'transparent';
-    scheduledBtn.onclick = () => {
-      toggleScheduledDayOff(helperId, date);
-      safelyRemoveMenu();
-    };
-    menu.appendChild(scheduledBtn);
-
     // ケア追加ボタン（ウィザード起動）
     const addCareBtn = document.createElement('div');
     addCareBtn.textContent = '➕ ケア追加';
@@ -5563,7 +5297,10 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     addCareBtn.onmouseout = () => addCareBtn.style.backgroundColor = 'transparent';
     addCareBtn.onclick = () => {
       safelyRemoveMenu();
-      setWizardTarget({ helperId, date, rowIndex });
+      // DOM メニュー削除後に React state を更新（removeChild 競合回避）
+      requestAnimationFrame(() => {
+        setWizardTarget({ helperId, date, rowIndex });
+      });
     };
     menu.appendChild(addCareBtn);
 
@@ -5579,7 +5316,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     setTimeout(() => {
       document.addEventListener('mousedown', closeMenu, { capture: true });
     }, 0);
-  }, [deleteCare, selectedRows, setSelectedRows, dayOffRequests, toggleDayOff, saveDayOffToFirestore, checkIsDayOffRow, scheduledDayOffs, shiftMap, shifts, handleShiftsUpdate]);
+  }, [deleteCare, selectedRows, setSelectedRows, shiftMap, shifts, handleShiftsUpdate]);
 
   // ドラッグ開始
   const handleDragStart = useCallback((e: React.DragEvent, helperId: string, date: string, rowIndex: number) => {
