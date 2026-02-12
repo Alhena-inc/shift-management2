@@ -4969,9 +4969,9 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         }
       });
     };
-    menu.appendChild(yoteiBtn);
-
     menu.appendChild(deleteBtn);
+
+    menu.appendChild(yoteiBtn);
 
     document.body.appendChild(menu);
 
