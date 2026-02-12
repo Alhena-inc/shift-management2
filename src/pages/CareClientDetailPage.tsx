@@ -288,13 +288,14 @@ const CareClientDetailPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">略称</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">シフト照合名</label>
+                  <p className="text-xs text-gray-500 mb-1">シフト表の利用者名と一致させる名前（例: 同姓同名の場合「田中卓」のように区別）</p>
                   <input
                     type="text"
                     value={client.abbreviation || ''}
                     onChange={(e) => updateField('abbreviation', e.target.value)}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="略称を入力"
+                    placeholder="例: 田中、田中卓"
                   />
                 </div>
                 <div>

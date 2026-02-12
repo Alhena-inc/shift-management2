@@ -1,10 +1,10 @@
 import { useMemo, useCallback, useEffect, useLayoutEffect, memo, useState, useRef, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import FloatingEditor from './FloatingEditor';
-import type { Helper, Shift, ServiceType } from '../types';
+import type { Helper, Shift, ServiceType, CareClient } from '../types';
 import { useScrollDetection } from '../hooks/useScrollDetection';
 import { SERVICE_CONFIG } from '../types';
-import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts, subscribeToDayOffRequestsMap, subscribeToDisplayTextsMap, subscribeToShiftsForMonth, subscribeToScheduledDayOffs, clearCancelStatus, restoreShift, moveShift } from '../services/dataService';
+import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts, subscribeToDayOffRequestsMap, subscribeToDisplayTextsMap, subscribeToShiftsForMonth, subscribeToScheduledDayOffs, clearCancelStatus, restoreShift, moveShift, subscribeToCareClients } from '../services/dataService';
 import { Timestamp, deleteField } from 'firebase/firestore';
 import { calculateNightHours, calculateRegularHours, calculateTimeDuration } from '../utils/timeCalculations';
 import { calculateShiftPay } from '../utils/salaryCalculations';
@@ -501,6 +501,20 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
   const [shifts, setShifts] = useState(shiftsProp);
 
   const shiftsRef = useRef<Shift[]>(shiftsProp);
+
+  // 利用者マスタ（シフト照合名マッチング用）
+  const [careClients, setCareClients] = useState<CareClient[]>([]);
+  const careClientsLoadedRef = useRef(false);
+  useEffect(() => {
+    if (careClientsLoadedRef.current) return;
+    careClientsLoadedRef.current = true;
+    const unsub = subscribeToCareClients((clients) => {
+      if (clients) setCareClients(clients);
+    });
+    return () => { if (typeof unsub === 'function') unsub(); };
+  }, []);
+  const careClientsRef = useRef<CareClient[]>([]);
+  useEffect(() => { careClientsRef.current = careClients; }, [careClients]);
 
   // ★ FloatingEditorの位置計算 (DOM更新後に行うためuseLayoutEffect)
   useLayoutEffect(() => {
@@ -1010,6 +1024,22 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
     const clientName = clientInfo.replace(/[(\uFF08].+?[)\uFF09]/g, '').trim();
 
+    // ★ 利用者マスタとのマッチング（abbreviation → area自動セット）
+    let matchedClient: CareClient | undefined;
+    if (clientName) {
+      const activeClients = careClientsRef.current.filter(c => !c.deleted);
+      // abbreviation（シフト照合名）で完全一致を優先
+      matchedClient = activeClients.find(c => c.abbreviation && c.abbreviation === clientName);
+      // abbreviationが未設定の場合はname（正式名）で一致
+      if (!matchedClient) {
+        matchedClient = activeClients.find(c => c.name === clientName);
+      }
+    }
+    // マッチした利用者のareaを4行目に自動反映（4行目が未入力の場合のみ）
+    if (matchedClient?.area && lineIndex === 1 && !lines[3]) {
+      lines[3] = matchedClient.area;
+    }
+
     // ★ 背景色の即時反映（行による制限を撤廃）
     const config = SERVICE_CONFIG[serviceType];
     const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
@@ -1054,7 +1084,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       startTime: startTimeResult,
       endTime: endTimeResult,
       duration: finalDuration,
-      area: (lineIndex === 3) ? area : (existingShift?.area || area),
+      area: (lineIndex === 3) ? area : (matchedClient?.area || existingShift?.area || area),
       rowIndex,
       // ケア内容（自由入力テキスト）を保存
       content: lines.join('\n').trim() || existingShift?.content || undefined,
