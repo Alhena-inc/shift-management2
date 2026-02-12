@@ -105,14 +105,16 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
 
     // 課税対象額の計算
     if (newPayslip.deductions.manualTaxableAmount === undefined) {
-      const taxableOtherAllowances = (newPayslip.payments.otherAllowances || [])
-        .filter(item => !(item as any).taxExempt)
+      const nonTaxableOtherAllowances = (newPayslip.payments.otherAllowances || [])
+        .filter(item => (item as any).taxExempt)
         .reduce((sum, item) => sum + (item.amount || 0), 0);
 
+      // 課税支給額 = 支給合計 - 非課税項目（経費精算・交通費・非課税手当）
       const taxableMonthlySalary =
-        (newPayslip.baseSalary || 0) +
-        (newPayslip.treatmentAllowance || 0) +
-        taxableOtherAllowances;
+        (newPayslip.payments.totalPayment || 0) -
+        (newPayslip.payments.expenseReimbursement || 0) -
+        (newPayslip.payments.transportAllowance || 0) -
+        nonTaxableOtherAllowances;
 
       newPayslip.deductions.taxableAmount = Math.max(0, taxableMonthlySalary - (newPayslip.deductions.socialInsuranceTotal || 0));
     }

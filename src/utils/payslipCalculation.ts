@@ -463,15 +463,11 @@ export function generateFixedPayslipFromShifts(
   payslip.deductions.socialInsuranceTotal = insuranceResult.total || 0;
 
   // 課税対象額を計算（課税月給 - 社会保険料）
-  // ※固定給の課税月給は「基本給＋処遇改善＋課税その他手当」
-  // ★ 処遇改善手当（treatmentImprovement）も課税対象として含める
-  // ★ 通勤手当（非課税）は除外されている（taxExempt=trueの手当は除外）
+  // basePay = totalSalary = baseSalary + treatmentAllowance + otherAllowancesTotal
+  // ※basePay には既に全ての手当が含まれているため、非課税分のみ除外する
   const taxableBaseSalary =
-    (payslip.payments.basePay || 0) +
-    (payslip.payments.treatmentImprovement || 0) +  // ★ 処遇改善手当を追加
-    (payslip.payments.otherAllowances || [])
-      .filter(a => !(a as any).taxExempt)
-      .reduce((sum, a) => sum + (a.amount || 0), 0);
+    (payslip.payments.basePay || 0) -
+    nonTaxableOtherAllowances;
   // 参照用金額 = 課税支給額 - 社会保険料計
   const taxableAmount = taxableBaseSalary - (insuranceResult.total || 0);
   payslip.deductions.taxableAmount = taxableAmount;
@@ -896,14 +892,18 @@ export function generateHourlyPayslipFromShifts(
     : 0;
 
   // 保険計算用：給与コア（交通費・経費精算など非課税は除外）
+  // ※basePay + treatmentAllowancePay + 各種手当から非課税分を除外
+  const taxableOtherAllowancesAmount =
+    payslip.payments.otherAllowances.filter(a => !a.taxExempt).reduce((sum, item) => sum + item.amount, 0);
   const salaryCoreAmount =
-    payslip.payments.normalWorkPay +
+    payslip.payments.basePay +
+    ((payslip.payments as any).treatmentAllowancePay || 0) +
     payslip.payments.accompanyPay +
     payslip.payments.officePay +
+    payslip.payments.nightAllowance +
+    (payslip.payments.specialAllowance || 0) +
     payslip.payments.yearEndNewYearAllowance +
-    payslip.payments.nightNormalPay +
-    payslip.payments.nightAccompanyPay +
-    payslip.payments.otherAllowances.filter(a => !a.taxExempt).reduce((sum, item) => sum + item.amount, 0);
+    taxableOtherAllowancesAmount;
 
   // 社会保険は加入がある場合のみ計算（未加入でも源泉/住民税は計算する）
   // 雇用保険料計算用：非課税その他手当のみ（交通費立替・手当は除外）

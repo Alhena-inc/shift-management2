@@ -206,6 +206,20 @@ export interface Helper {
   }>;
 }
 
+export interface CareClient {
+  id: string;
+  name: string;
+  address?: string;
+  phone?: string;
+  emergencyContact?: string;
+  careLevel?: string;
+  notes?: string;
+  deleted?: boolean;
+  deletedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Shift {
   id: string;
   date: string;           // YYYY-MM-DD

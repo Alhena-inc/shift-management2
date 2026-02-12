@@ -217,6 +217,47 @@ export interface Database {
           updated_at?: string
         }
       }
+      users_care: {
+        Row: {
+          id: string
+          name: string
+          address: string | null
+          phone: string | null
+          emergency_contact: string | null
+          care_level: string | null
+          notes: string | null
+          deleted: boolean
+          deleted_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          address?: string | null
+          phone?: string | null
+          emergency_contact?: string | null
+          care_level?: string | null
+          notes?: string | null
+          deleted?: boolean
+          deleted_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          address?: string | null
+          phone?: string | null
+          emergency_contact?: string | null
+          care_level?: string | null
+          notes?: string | null
+          deleted?: boolean
+          deleted_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
       backups: {
         Row: {
           id: string

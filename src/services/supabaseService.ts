@@ -1470,3 +1470,131 @@ export const deleteShiftsByMonth = async (year: number, month: number): Promise<
 
 // Firebase互換のバックアップ関数（Supabaseの場合は同じ）
 export const backupToFirebase = backupToSupabase;
+
+// ========== 利用者（CareClient）関連 ==========
+
+import type { CareClient } from '../types';
+
+// 利用者一覧を読み込み
+export const loadCareClients = async (): Promise<CareClient[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('users_care')
+      .select('*')
+      .order('name', { ascending: true });
+
+    if (error) throw error;
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      address: row.address || '',
+      phone: row.phone || '',
+      emergencyContact: row.emergency_contact || '',
+      careLevel: row.care_level || '',
+      notes: row.notes || '',
+      deleted: row.deleted || false,
+      deletedAt: row.deleted_at || null,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  } catch (error) {
+    console.error('利用者読み込みエラー:', error);
+    throw error;
+  }
+};
+
+// 利用者を保存（新規 & 更新）
+export const saveCareClient = async (client: CareClient): Promise<void> => {
+  try {
+    const saveData = {
+      id: client.id,
+      name: client.name || '名前未設定',
+      address: client.address || null,
+      phone: client.phone || null,
+      emergency_contact: client.emergencyContact || null,
+      care_level: client.careLevel || null,
+      notes: client.notes || null,
+      deleted: client.deleted || false,
+      deleted_at: client.deletedAt || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+      .from('users_care')
+      .upsert(saveData, { onConflict: 'id' });
+
+    if (error) throw error;
+    console.log('✅ 利用者を保存しました:', client.name);
+  } catch (error) {
+    console.error('利用者保存エラー:', error);
+    throw error;
+  }
+};
+
+// 利用者を論理削除
+export const softDeleteCareClient = async (clientId: string): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('users_care')
+      .update({
+        deleted: true,
+        deleted_at: new Date().toISOString(),
+      })
+      .eq('id', clientId);
+
+    if (error) throw error;
+    console.log('✅ 利用者を論理削除しました:', clientId);
+  } catch (error) {
+    console.error('利用者削除エラー:', error);
+    throw error;
+  }
+};
+
+// 利用者を復元
+export const restoreCareClient = async (clientId: string): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('users_care')
+      .update({
+        deleted: false,
+        deleted_at: null,
+      })
+      .eq('id', clientId);
+
+    if (error) throw error;
+    console.log('✅ 利用者を復元しました:', clientId);
+  } catch (error) {
+    console.error('利用者復元エラー:', error);
+    throw error;
+  }
+};
+
+// 利用者のリアルタイム監視
+export const subscribeToCareClients = (callback: (clients: CareClient[] | null) => void) => {
+  // 初回読み込み
+  loadCareClients().then(clients => {
+    callback(clients);
+  }).catch(error => {
+    console.error('利用者初回読み込みエラー:', error);
+    callback(null);
+  });
+
+  // リアルタイム購読
+  const channel = supabase
+    .channel('users_care_changes')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'users_care' },
+      () => {
+        loadCareClients().then(clients => {
+          callback(clients);
+        }).catch(error => {
+          console.error('利用者リアルタイム更新エラー:', error);
+        });
+      }
+    )
+    .subscribe();
+
+  return channel;
+};

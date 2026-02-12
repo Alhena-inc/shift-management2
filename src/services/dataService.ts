@@ -40,6 +40,7 @@ const wrappedSupabaseService = USE_SUPABASE ? {
   subscribeToDayOffRequestsMap: wrapSubscription(supabaseService.subscribeToDayOffRequestsMap),
   subscribeToScheduledDayOffs: wrapSubscription(supabaseService.subscribeToScheduledDayOffs),
   subscribeToDisplayTextsMap: wrapSubscription(supabaseService.subscribeToDisplayTextsMap),
+  subscribeToCareClients: wrapSubscription(supabaseService.subscribeToCareClients),
 } : null;
 
 // 使用するサービスを選択
@@ -82,6 +83,13 @@ export const {
 
   // バックアップ関連
   backupToFirebase,
+
+  // 利用者関連
+  loadCareClients,
+  saveCareClient,
+  softDeleteCareClient,
+  restoreCareClient,
+  subscribeToCareClients,
 } = dataService;
 
 // 日付ごとのシフト削除機能を追加

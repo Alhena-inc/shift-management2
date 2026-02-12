@@ -1141,3 +1141,29 @@ export const deleteShiftsByMonth = async (year: number, month: number): Promise<
     throw error;
   }
 };
+
+// ========== 利用者（CareClient）関連（Firebaseスタブ） ==========
+// Firebaseモードでは利用者管理はサポートしない（Supabaseのみ）
+
+export const loadCareClients = async () => {
+  console.warn('利用者管理はSupabaseモードでのみ利用可能です');
+  return [];
+};
+
+export const saveCareClient = async (_client: any) => {
+  throw new Error('利用者管理はSupabaseモードでのみ利用可能です');
+};
+
+export const softDeleteCareClient = async (_clientId: string) => {
+  throw new Error('利用者管理はSupabaseモードでのみ利用可能です');
+};
+
+export const restoreCareClient = async (_clientId: string) => {
+  throw new Error('利用者管理はSupabaseモードでのみ利用可能です');
+};
+
+export const subscribeToCareClients = (callback: (clients: any[] | null) => void) => {
+  console.warn('利用者管理はSupabaseモードでのみ利用可能です');
+  callback([]);
+  return () => {};
+};

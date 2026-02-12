@@ -17,6 +17,8 @@ import HomePage from './pages/HomePage';
 import HelperManagementPage from './pages/HelperManagementPage';
 import HelperDetailPage from './pages/HelperDetailPage';
 import DeletedHelpersPage from './pages/DeletedHelpersPage';
+import CareClientManagementPage from './pages/CareClientManagementPage';
+import CareClientDetailPage from './pages/CareClientDetailPage';
 import PayslipDemo from './pages/PayslipDemo';
 import RangeSelectionDemo from './pages/RangeSelectionDemo';
 import ShiftGridPage from './pages/ShiftGridPage';
@@ -412,6 +414,61 @@ function App() {
     return (
       <Layout user={user}>
         <HomePage />
+      </Layout>
+    );
+  }
+
+  // /users/:id の形式の場合（利用者詳細・編集）- 管理者のみ
+  const careClientDetailMatch = path.match(/^\/users\/(.+)$/);
+  if (careClientDetailMatch) {
+    if (userRole !== 'admin') {
+      return (
+        <Layout user={user}>
+          <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-md p-8 max-w-md w-full">
+              <div className="text-center">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
+                  <span className="text-2xl">🚫</span>
+                </div>
+                <h2 className="text-xl font-bold text-gray-800 mb-2">アクセス権限がありません</h2>
+                <p className="text-gray-600 mb-6">このページは管理者のみアクセスできます。</p>
+                <button onClick={() => window.location.href = '/'} className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">ホームに戻る</button>
+              </div>
+            </div>
+          </div>
+        </Layout>
+      );
+    }
+    return (
+      <Layout user={user}>
+        <CareClientDetailPage />
+      </Layout>
+    );
+  }
+
+  // /users の形式の場合（利用者管理一覧）- 管理者のみ
+  if (path === '/users' || path === '/users/') {
+    if (userRole !== 'admin') {
+      return (
+        <Layout user={user}>
+          <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-md p-8 max-w-md w-full">
+              <div className="text-center">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
+                  <span className="text-2xl">🚫</span>
+                </div>
+                <h2 className="text-xl font-bold text-gray-800 mb-2">アクセス権限がありません</h2>
+                <p className="text-gray-600 mb-6">このページは管理者のみアクセスできます。</p>
+                <button onClick={() => window.location.href = '/'} className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">ホームに戻る</button>
+              </div>
+            </div>
+          </div>
+        </Layout>
+      );
+    }
+    return (
+      <Layout user={user}>
+        <CareClientManagementPage />
       </Layout>
     );
   }
