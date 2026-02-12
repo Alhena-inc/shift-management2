@@ -233,6 +233,7 @@ export interface CareClient {
   emergencyContactRelation?: string;
   emergencyContactPhone?: string;
   careLevel?: string;
+  area?: string;           // シフト地域（例: 渋谷区）
   notes?: string;
   services?: CareClientServices;
   billing?: Record<string, any>;

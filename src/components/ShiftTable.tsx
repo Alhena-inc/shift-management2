@@ -1,10 +1,10 @@
 import { useMemo, useCallback, useEffect, useLayoutEffect, memo, useState, useRef, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import FloatingEditor from './FloatingEditor';
-import type { Helper, Shift, ServiceType } from '../types';
+import type { Helper, Shift, ServiceType, CareClient } from '../types';
 import { useScrollDetection } from '../hooks/useScrollDetection';
 import { SERVICE_CONFIG } from '../types';
-import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts, subscribeToDayOffRequestsMap, subscribeToDisplayTextsMap, subscribeToShiftsForMonth, subscribeToScheduledDayOffs, clearCancelStatus, restoreShift, moveShift } from '../services/dataService';
+import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts, subscribeToDayOffRequestsMap, subscribeToDisplayTextsMap, subscribeToShiftsForMonth, subscribeToScheduledDayOffs, clearCancelStatus, restoreShift, moveShift, subscribeToCareClients } from '../services/dataService';
 import { Timestamp, deleteField } from 'firebase/firestore';
 import { calculateNightHours, calculateRegularHours, calculateTimeDuration } from '../utils/timeCalculations';
 import { calculateShiftPay } from '../utils/salaryCalculations';
@@ -436,6 +436,250 @@ const ShiftTableTd = memo(({
   return true;
 });
 
+// ========== シフト入力ウィザード ==========
+interface WizardTarget {
+  helperId: string;
+  date: string;
+  rowIndex: number;
+}
+
+interface ShiftInputWizardProps {
+  target: WizardTarget;
+  careClients: CareClient[];
+  onComplete: (target: WizardTarget, startTime: string, endTime: string, clientName: string, serviceType: ServiceType, duration: number, area: string) => void;
+  onCancel: () => void;
+}
+
+const TIME_SLOTS: string[] = [];
+for (let h = 7; h <= 22; h++) {
+  TIME_SLOTS.push(`${h}:00`);
+  if (h < 22) TIME_SLOTS.push(`${h}:30`);
+}
+
+const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: ShiftInputWizardProps) => {
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [searchText, setSearchText] = useState('');
+  const [selectedClient, setSelectedClient] = useState<CareClient | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onCancel]);
+
+  useEffect(() => {
+    if (step === 3 && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [step, selectedClient]);
+
+  const endTimeSlots = useMemo(() => {
+    if (!startTime) return [];
+    const startIdx = TIME_SLOTS.indexOf(startTime);
+    return TIME_SLOTS.slice(startIdx + 1);
+  }, [startTime]);
+
+  const filteredClients = useMemo(() => {
+    const active = careClients.filter(c => !c.deleted);
+    if (!searchText) return active;
+    const lower = searchText.toLowerCase();
+    return active.filter(c =>
+      c.name.toLowerCase().includes(lower) ||
+      (c.nameKana && c.nameKana.toLowerCase().includes(lower)) ||
+      (c.abbreviation && c.abbreviation.toLowerCase().includes(lower))
+    );
+  }, [careClients, searchText]);
+
+  const serviceOptions: { type: ServiceType; label: string }[] = [
+    { type: 'kaji', label: '家事' },
+    { type: 'shintai', label: '身体' },
+    { type: 'judo', label: '重度' },
+    { type: 'doko', label: '同行' },
+    { type: 'tsuin', label: '通院' },
+    { type: 'kodo_engo', label: '行動' },
+    { type: 'ido', label: '移動' },
+    { type: 'shinya', label: '深夜' },
+    { type: 'shinya_doko', label: '深夜(同行)' },
+    { type: 'jimu', label: '事務' },
+    { type: 'eigyo', label: '営業' },
+    { type: 'kaigi', label: '会議' },
+    { type: 'yotei', label: '予定' },
+    { type: 'other', label: 'その他' },
+  ];
+
+  const handleServiceSelect = (serviceType: ServiceType) => {
+    if (!selectedClient) return;
+    // 時間差の計算
+    const parseTime = (t: string) => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    };
+    const diffMinutes = parseTime(endTime) - parseTime(startTime);
+    const duration = diffMinutes / 60;
+    onComplete(
+      target,
+      startTime,
+      endTime,
+      selectedClient.name,
+      serviceType,
+      duration,
+      selectedClient.area || ''
+    );
+  };
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div
+        className="bg-white rounded-xl shadow-2xl w-[420px] max-h-[80vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* ヘッダー */}
+        <div className="flex items-center justify-between px-5 py-3 border-b bg-green-600 text-white rounded-t-xl">
+          <div className="text-sm font-bold">
+            {step === 1 && 'Step 1: 開始時間'}
+            {step === 2 && 'Step 2: 終了時間'}
+            {step === 3 && !selectedClient && 'Step 3: 利用者'}
+            {step === 3 && selectedClient && 'Step 3: サービス種別'}
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1">
+              {[1, 2, 3].map(s => (
+                <div key={s} className={`w-2.5 h-2.5 rounded-full ${s <= step ? 'bg-white' : 'bg-green-400'}`} />
+              ))}
+            </div>
+            <button onClick={onCancel} className="ml-2 text-white hover:text-green-200 text-lg font-bold leading-none">&times;</button>
+          </div>
+        </div>
+
+        {/* 選択済み情報バー */}
+        {(startTime || endTime) && (
+          <div className="px-5 py-2 bg-gray-50 border-b text-sm text-gray-600 flex gap-4">
+            {startTime && (
+              <span
+                className="cursor-pointer hover:text-green-600"
+                onClick={() => { setStep(1); setStartTime(''); setEndTime(''); setSelectedClient(null); }}
+              >
+                開始: <span className="font-bold text-gray-800">{startTime}</span>
+              </span>
+            )}
+            {endTime && (
+              <span
+                className="cursor-pointer hover:text-green-600"
+                onClick={() => { setStep(2); setEndTime(''); setSelectedClient(null); }}
+              >
+                終了: <span className="font-bold text-gray-800">{endTime}</span>
+              </span>
+            )}
+            {selectedClient && (
+              <span
+                className="cursor-pointer hover:text-green-600"
+                onClick={() => setSelectedClient(null)}
+              >
+                利用者: <span className="font-bold text-gray-800">{selectedClient.name}</span>
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* コンテンツ */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {/* Step 1: 開始時間 */}
+          {step === 1 && (
+            <div className="grid grid-cols-4 gap-2">
+              {TIME_SLOTS.map(time => (
+                <button
+                  key={time}
+                  className="px-3 py-2.5 text-sm font-medium border border-gray-300 rounded-lg hover:bg-green-50 hover:border-green-500 hover:text-green-700 transition-colors"
+                  onClick={() => { setStartTime(time); setStep(2); }}
+                >
+                  {time}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Step 2: 終了時間 */}
+          {step === 2 && (
+            <div className="grid grid-cols-4 gap-2">
+              {endTimeSlots.map(time => (
+                <button
+                  key={time}
+                  className="px-3 py-2.5 text-sm font-medium border border-gray-300 rounded-lg hover:bg-green-50 hover:border-green-500 hover:text-green-700 transition-colors"
+                  onClick={() => { setEndTime(time); setStep(3); }}
+                >
+                  {time}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Step 3: 利用者 + サービス種別 */}
+          {step === 3 && !selectedClient && (
+            <div>
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="利用者を検索..."
+                value={searchText}
+                onChange={e => setSearchText(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-3 focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+              />
+              <div className="space-y-1 max-h-[40vh] overflow-y-auto">
+                {filteredClients.map(client => (
+                  <button
+                    key={client.id}
+                    className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-green-50 border border-transparent hover:border-green-300 transition-colors text-sm"
+                    onClick={() => setSelectedClient(client)}
+                  >
+                    <span className="font-medium text-gray-800">{client.name}</span>
+                    {client.area && <span className="ml-2 text-xs text-gray-500">{client.area}</span>}
+                  </button>
+                ))}
+                {filteredClients.length === 0 && (
+                  <p className="text-sm text-gray-400 text-center py-4">該当する利用者がいません</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {step === 3 && selectedClient && (
+            <div className="grid grid-cols-2 gap-2">
+              {serviceOptions.map(({ type, label }) => {
+                const config = SERVICE_CONFIG[type];
+                return (
+                  <button
+                    key={type}
+                    className="px-3 py-3 text-sm font-medium rounded-lg border transition-colors hover:opacity-80"
+                    style={{
+                      backgroundColor: config.bgColor,
+                      color: config.color,
+                      borderColor: config.color + '40',
+                    }}
+                    onClick={() => handleServiceSelect(type)}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+});
+ShiftInputWizard.displayName = 'ShiftInputWizard';
+
 const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdateShifts: onUpdateShiftsProp, readOnly = false }: Props) => {
   const [isEditingMode, setIsEditingMode] = useState(false);
   const [initialInputValue, setInitialInputValue] = useState("");
@@ -497,6 +741,21 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
   }, []);
 
   const [shifts, setShifts] = useState(shiftsProp);
+
+  // ========== ウィザード関連 ==========
+  const [wizardTarget, setWizardTarget] = useState<WizardTarget | null>(null);
+  const [careClients, setCareClients] = useState<CareClient[]>([]);
+  const careClientsLoadedRef = useRef(false);
+
+  // 利用者データの購読（一度だけ）
+  useEffect(() => {
+    if (careClientsLoadedRef.current) return;
+    careClientsLoadedRef.current = true;
+    const channel = subscribeToCareClients((clients) => {
+      if (clients) setCareClients(clients);
+    });
+    return () => { channel?.unsubscribe?.(); };
+  }, []);
   const shiftsRef = useRef<Shift[]>(shiftsProp);
 
   // ★ FloatingEditorの位置計算 (DOM更新後に行うためuseLayoutEffect)
@@ -1077,6 +1336,64 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     setTimeout(() => updateTotalsForHelperAndDate(helperId, date), 10);
   }, [updateTotalsForHelperAndDate, handleShiftsUpdate]);
 
+  // ========== ウィザード完了ハンドラー ==========
+  const handleWizardComplete = useCallback((
+    target: WizardTarget,
+    startTime: string,
+    endTime: string,
+    clientName: string,
+    serviceType: ServiceType,
+    duration: number,
+    area: string
+  ) => {
+    const { helperId, date, rowIndex } = target;
+    const cellKey = `${helperId}-${date}-${rowIndex}`;
+    const existingShift = shiftsRef.current.find(s => `${s.helperId}-${s.date}-${s.rowIndex}` === cellKey);
+
+    const formatTime = (t: string) => t.replace(/^(\d):/, '0$1:');
+    const line0 = `${startTime}-${endTime}`;
+    const serviceLabel = SERVICE_CONFIG[serviceType]?.label || '';
+    const line1 = serviceType !== 'other' ? `${clientName}(${serviceLabel})` : clientName;
+    const line2 = String(duration);
+    const line3 = area;
+
+    const newShift: Shift = {
+      regularHours: 0, nightHours: 0, regularPay: 0, nightPay: 0, totalPay: 0,
+      ...(existingShift || {}),
+      id: existingShift?.id || `shift-${helperId}-${date}-${rowIndex}`,
+      date,
+      helperId,
+      clientName,
+      serviceType,
+      startTime: formatTime(startTime),
+      endTime: formatTime(endTime),
+      duration,
+      area,
+      rowIndex,
+      content: [line0, line1, line2, line3].join('\n').trim(),
+    };
+
+    const updatedShifts = [...shiftsRef.current.filter(s =>
+      s.id !== newShift.id &&
+      !(s.helperId === helperId && s.date === date && s.rowIndex === rowIndex)
+    )];
+    updatedShifts.push(newShift);
+    handleShiftsUpdate(updatedShifts, true);
+    saveShiftWithCorrectYearMonth(newShift);
+
+    // 背景色の即時反映
+    const config = SERVICE_CONFIG[serviceType];
+    const td = document.querySelector(`td[data-cell-key="${cellKey}"]`) as HTMLElement;
+    if (td && config) td.style.backgroundColor = config.bgColor;
+
+    setTimeout(() => updateTotalsForHelperAndDate(helperId, date), 10);
+    setWizardTarget(null);
+  }, [handleShiftsUpdate, updateTotalsForHelperAndDate]);
+
+  const handleWizardCancel = useCallback(() => {
+    setWizardTarget(null);
+  }, []);
+
   // ★ 選択操作のロジック (最速・高精度設定)
   const updateSelectionFromTd = useCallback((td: HTMLElement, lineIndex: number) => {
     if (readOnly) return;
@@ -1183,6 +1500,25 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     // すでにそのセルが編集モードなら何もしない
     if (isEditingModeRef.current && activeCellKeyRef.current === newActiveKey) {
       return;
+    }
+
+    // ★ 空セルクリック時: ウィザードを起動
+    if (!readOnly) {
+      const helperId = td.dataset.helperId!;
+      const date = td.dataset.date!;
+      const rowIndex = parseInt(td.dataset.rowIndex!);
+      const cellKey = `${helperId}-${date}-${rowIndex}`;
+      const existingShift = shiftsRef.current.find(s => `${s.helperId}-${s.date}-${s.rowIndex}` === cellKey);
+      const isEmpty = !existingShift || (
+        !existingShift.startTime && !existingShift.endTime &&
+        !existingShift.clientName?.trim() && !existingShift.content?.trim()
+      );
+      if (isEmpty) {
+        e.preventDefault();
+        e.stopPropagation();
+        setWizardTarget({ helperId, date, rowIndex });
+        return;
+      }
     }
 
     // 全ての is-editing-mode クラスを一旦除去
@@ -6393,6 +6729,16 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           </table>
         </div>
       </div>
+
+      {/* シフト入力ウィザード */}
+      {wizardTarget && (
+        <ShiftInputWizard
+          target={wizardTarget}
+          careClients={careClients}
+          onComplete={handleWizardComplete}
+          onCancel={handleWizardCancel}
+        />
+      )}
     </div>
   );
 };

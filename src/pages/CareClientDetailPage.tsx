@@ -330,6 +330,16 @@ const CareClientDetailPage: React.FC = () => {
                   placeholder="住所を入力"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">シフト地域</label>
+                <input
+                  type="text"
+                  value={client.area || ''}
+                  onChange={(e) => updateField('area', e.target.value)}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  placeholder="例: 渋谷区"
+                />
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">電話番号</label>
