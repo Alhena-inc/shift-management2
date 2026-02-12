@@ -450,38 +450,25 @@ interface ShiftInputWizardProps {
   onCancel: () => void;
 }
 
-// 開始時間用スロット（0:00〜23:30）
-const START_TIME_SLOTS: string[] = [];
-for (let h = 0; h <= 23; h++) {
-  START_TIME_SLOTS.push(`${h}:00`);
-  START_TIME_SLOTS.push(`${h}:30`);
-}
+const MINUTE_OPTIONS = [0, 10, 20, 30, 40, 50];
+const pad2 = (n: number) => String(n).padStart(2, '0');
 
-// 終了時間用スロット生成（開始時間以降 + 翌日8:00まで）
-function buildEndTimeSlots(startTime: string): { value: string; label: string }[] {
-  const [sh, sm] = startTime.split(':').map(Number);
-  const startMinutes = sh * 60 + sm;
-  const slots: { value: string; label: string }[] = [];
-  // 開始時間の30分後 〜 翌日8:00（= 32:00相当）まで
-  for (let m = startMinutes + 30; m <= 32 * 60; m += 30) {
-    const h = Math.floor(m / 60);
-    const mm = m % 60;
-    if (h >= 48) break; // 安全上限
-    const isNextDay = h >= 24;
-    const displayH = isNextDay ? h - 24 : h;
-    const value = `${h}:${mm === 0 ? '00' : '30'}`;
-    const label = isNextDay
-      ? `翌${displayH}:${mm === 0 ? '00' : '30'}`
-      : `${displayH}:${mm === 0 ? '00' : '30'}`;
-    slots.push({ value, label });
-  }
-  return slots;
+// 時間の表示フォーマット（翌日対応）
+function formatTimeDisplay(totalH: number, m: number): string {
+  if (totalH >= 24) return `翌${totalH - 24}:${pad2(m)}`;
+  return `${totalH}:${pad2(m)}`;
 }
 
 const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: ShiftInputWizardProps) => {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
+  // 時間→分の2段階選択用
+  const [pickerPhase, setPickerPhase] = useState<'hour' | 'minute'>('hour');
+  const [selectedHour, setSelectedHour] = useState<number | null>(null);
+  // 終了時間の翌日トグル
+  const [showNextDay, setShowNextDay] = useState(false);
+
   const [searchText, setSearchText] = useState('');
   const [selectedClient, setSelectedClient] = useState<CareClient | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -499,11 +486,6 @@ const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: Sh
       searchInputRef.current.focus();
     }
   }, [step, selectedClient]);
-
-  const endTimeSlots = useMemo(() => {
-    if (!startTime) return [];
-    return buildEndTimeSlots(startTime);
-  }, [startTime]);
 
   const filteredClients = useMemo(() => {
     const active = careClients.filter(c => !c.deleted);
@@ -533,15 +515,64 @@ const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: Sh
     { type: 'other', label: 'その他' },
   ];
 
+  // 時間選択で「時」を押した → 分選択へ
+  const handleHourSelect = (h: number) => {
+    setSelectedHour(h);
+    setPickerPhase('minute');
+  };
+
+  // 分を押した → 時間確定
+  const handleMinuteSelect = (m: number) => {
+    const h = selectedHour!;
+    if (step === 1) {
+      const time = `${h}:${pad2(m)}`;
+      setStartTime(time);
+      setStep(2);
+      setPickerPhase('hour');
+      setSelectedHour(null);
+      setShowNextDay(false);
+    } else if (step === 2) {
+      const actualH = showNextDay ? h + 24 : h;
+      const endVal = `${actualH}:${pad2(m)}`;
+      setEndTime(endVal);
+      setStep(3);
+      setPickerPhase('hour');
+      setSelectedHour(null);
+    }
+  };
+
+  // 開始時間の「時」選択肢: 0〜23
+  const startHours = Array.from({ length: 24 }, (_, i) => i);
+
+  // 終了時間の「時」選択肢
+  const endHours = useMemo(() => {
+    if (!startTime) return [];
+    const [sh] = startTime.split(':').map(Number);
+    if (showNextDay) {
+      // 翌日: 0〜12時
+      return Array.from({ length: 13 }, (_, i) => i);
+    }
+    // 当日: 開始時間以降〜23
+    return Array.from({ length: 24 - sh }, (_, i) => sh + i);
+  }, [startTime, showNextDay]);
+
+  // 終了時間の「分」選択肢（開始時間と同じ時ならそれ以降の分のみ）
+  const endMinuteOptions = useMemo(() => {
+    if (selectedHour === null || !startTime) return MINUTE_OPTIONS;
+    const [sh, sm] = startTime.split(':').map(Number);
+    const actualH = showNextDay ? selectedHour + 24 : selectedHour;
+    const startTotal = sh * 60 + sm;
+    return MINUTE_OPTIONS.filter(m => (actualH * 60 + m) > startTotal);
+  }, [selectedHour, startTime, showNextDay]);
+
   const handleServiceSelect = (serviceType: ServiceType) => {
     if (!selectedClient) return;
-    // 時間差の計算
     const parseTime = (t: string) => {
       const [h, m] = t.split(':').map(Number);
       return h * 60 + m;
     };
     const diffMinutes = parseTime(endTime) - parseTime(startTime);
-    const duration = diffMinutes / 60;
+    const duration = Math.round((diffMinutes / 60) * 100) / 100;
     onComplete(
       target,
       startTime,
@@ -553,6 +584,13 @@ const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: Sh
     );
   };
 
+  // 表示用フォーマット
+  const displayEnd = useMemo(() => {
+    if (!endTime) return '';
+    const [h, m] = endTime.split(':').map(Number);
+    return formatTimeDisplay(h, m);
+  }, [endTime]);
+
   return (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center"
@@ -560,16 +598,16 @@ const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: Sh
       onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}
     >
       <div
-        className="bg-white rounded-xl shadow-2xl w-[420px] max-h-[80vh] flex flex-col"
+        className="bg-white rounded-xl shadow-2xl w-[380px] max-h-[80vh] flex flex-col"
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-5 py-3 border-b bg-green-600 text-white rounded-t-xl">
           <div className="text-sm font-bold">
-            {step === 1 && 'Step 1: 開始時間'}
-            {step === 2 && 'Step 2: 終了時間'}
-            {step === 3 && !selectedClient && 'Step 3: 利用者'}
-            {step === 3 && selectedClient && 'Step 3: サービス種別'}
+            {step === 1 && (pickerPhase === 'hour' ? '開始: 時を選択' : `開始: ${selectedHour}時 → 分を選択`)}
+            {step === 2 && (pickerPhase === 'hour' ? '終了: 時を選択' : `終了: ${showNextDay ? '翌' : ''}${selectedHour}時 → 分を選択`)}
+            {step === 3 && !selectedClient && '利用者を選択'}
+            {step === 3 && selectedClient && 'サービス種別を選択'}
           </div>
           <div className="flex items-center gap-2">
             <div className="flex gap-1">
@@ -587,7 +625,7 @@ const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: Sh
             {startTime && (
               <span
                 className="cursor-pointer hover:text-green-600"
-                onClick={() => { setStep(1); setStartTime(''); setEndTime(''); setSelectedClient(null); }}
+                onClick={() => { setStep(1); setPickerPhase('hour'); setSelectedHour(null); setStartTime(''); setEndTime(''); setSelectedClient(null); setShowNextDay(false); }}
               >
                 開始: <span className="font-bold text-gray-800">{startTime}</span>
               </span>
@@ -595,12 +633,9 @@ const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: Sh
             {endTime && (
               <span
                 className="cursor-pointer hover:text-green-600"
-                onClick={() => { setStep(2); setEndTime(''); setSelectedClient(null); }}
+                onClick={() => { setStep(2); setPickerPhase('hour'); setSelectedHour(null); setEndTime(''); setSelectedClient(null); }}
               >
-                終了: <span className="font-bold text-gray-800">{(() => {
-                  const [h, m] = endTime.split(':').map(Number);
-                  return h >= 24 ? `翌${h - 24}:${m === 0 ? '00' : '30'}` : endTime;
-                })()}</span>
+                終了: <span className="font-bold text-gray-800">{displayEnd}</span>
               </span>
             )}
             {selectedClient && (
@@ -616,35 +651,68 @@ const ShiftInputWizard = memo(({ target, careClients, onComplete, onCancel }: Sh
 
         {/* コンテンツ */}
         <div className="flex-1 overflow-y-auto p-4">
-          {/* Step 1: 開始時間 */}
-          {step === 1 && (
-            <div className="grid grid-cols-4 gap-2">
-              {START_TIME_SLOTS.map(time => (
-                <button
-                  key={time}
-                  className="px-3 py-2.5 text-sm font-medium border border-gray-300 rounded-lg hover:bg-green-50 hover:border-green-500 hover:text-green-700 transition-colors"
-                  onClick={() => { setStartTime(time); setStep(2); }}
-                >
-                  {time}
-                </button>
-              ))}
+
+          {/* Step 1 & 2: 時間選択（時→分の2段階） */}
+          {(step === 1 || step === 2) && pickerPhase === 'hour' && (
+            <div>
+              {/* 終了時間時: 翌日トグル */}
+              {step === 2 && (
+                <div className="flex mb-3 rounded-lg overflow-hidden border border-gray-300">
+                  <button
+                    className={`flex-1 py-2 text-sm font-medium transition-colors ${!showNextDay ? 'bg-green-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                    onClick={() => { setShowNextDay(false); setSelectedHour(null); }}
+                  >
+                    当日
+                  </button>
+                  <button
+                    className={`flex-1 py-2 text-sm font-medium transition-colors ${showNextDay ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                    onClick={() => { setShowNextDay(true); setSelectedHour(null); }}
+                  >
+                    翌日
+                  </button>
+                </div>
+              )}
+              <div className="grid grid-cols-6 gap-1.5">
+                {(step === 1 ? startHours : endHours).map(h => (
+                  <button
+                    key={h}
+                    className={`py-3 text-sm font-bold rounded-lg border transition-colors ${
+                      showNextDay
+                        ? 'border-blue-300 hover:bg-blue-50 hover:border-blue-500 text-blue-700'
+                        : 'border-gray-300 hover:bg-green-50 hover:border-green-500 hover:text-green-700'
+                    }`}
+                    onClick={() => handleHourSelect(h)}
+                  >
+                    {showNextDay ? `翌${h}` : h}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
-          {/* Step 2: 終了時間 */}
-          {step === 2 && (
-            <div className="grid grid-cols-4 gap-2">
-              {endTimeSlots.map(slot => (
-                <button
-                  key={slot.value}
-                  className={`px-3 py-2.5 text-sm font-medium border rounded-lg hover:bg-green-50 hover:border-green-500 hover:text-green-700 transition-colors ${
-                    slot.label.startsWith('翌') ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-300'
-                  }`}
-                  onClick={() => { setEndTime(slot.value); setStep(3); }}
-                >
-                  {slot.label}
-                </button>
-              ))}
+          {(step === 1 || step === 2) && pickerPhase === 'minute' && (
+            <div>
+              <button
+                className="mb-3 text-sm text-gray-500 hover:text-green-600 flex items-center gap-1"
+                onClick={() => { setPickerPhase('hour'); setSelectedHour(null); }}
+              >
+                ← 時を選び直す
+              </button>
+              <div className="grid grid-cols-3 gap-2">
+                {endMinuteOptions.map(m => (
+                  <button
+                    key={m}
+                    className={`py-4 text-base font-bold rounded-lg border transition-colors ${
+                      showNextDay && step === 2
+                        ? 'border-blue-300 hover:bg-blue-50 hover:border-blue-500 text-blue-700'
+                        : 'border-gray-300 hover:bg-green-50 hover:border-green-500 hover:text-green-700'
+                    }`}
+                    onClick={() => handleMinuteSelect(m)}
+                  >
+                    {step === 2 && showNextDay ? `翌${selectedHour}:${pad2(m)}` : `${selectedHour}:${pad2(m)}`}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
