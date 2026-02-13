@@ -143,8 +143,6 @@ const CareClientDetailPage: React.FC = () => {
     );
   }
 
-  const CARE_LEVELS = ['', '要支援1', '要支援2', '要介護1', '要介護2', '要介護3', '要介護4', '要介護5'];
-
   // 利用する制度からタブを動的生成
   const enabledServices = SERVICE_OPTIONS.filter(s => client.services?.[s.key]);
 
@@ -278,16 +276,6 @@ const CareClientDetailPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">顧客番号</label>
-                  <input
-                    type="text"
-                    value={client.customerNumber || ''}
-                    onChange={(e) => updateField('customerNumber', e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="顧客番号を入力"
-                  />
-                </div>
-                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">シフト照合名</label>
                   <p className="text-xs text-gray-500 mb-1">シフト表の利用者名と一致させる名前（例: 同姓同名の場合「田中卓」のように区別）</p>
                   <input
@@ -307,18 +295,6 @@ const CareClientDetailPage: React.FC = () => {
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                     placeholder="123-4567"
                   />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">介護度</label>
-                  <select
-                    value={client.careLevel || ''}
-                    onChange={(e) => updateField('careLevel', e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
-                  >
-                    {CARE_LEVELS.map(level => (
-                      <option key={level} value={level}>{level || '未設定'}</option>
-                    ))}
-                  </select>
                 </div>
               </div>
               <div>
