@@ -8,15 +8,21 @@ import { loadShogaiSogoCities, loadShogaiSogoCareCategories } from '../../servic
 interface Props {
   client: CareClient;
   updateField: (field: keyof CareClient, value: any) => void;
+  onSubPageChange?: (isSubPage: boolean) => void;
 }
 
-type SubPage = null | 'jukyu';
+type SubPage = null | 'jukyu' | 'cities' | 'categories';
 
-const ShogaiSogoTab: React.FC<Props> = ({ client, updateField }) => {
+const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }) => {
   const [cities, setCities] = useState<ShogaiSogoCity[]>([]);
   const [categories, setCategories] = useState<ShogaiSogoCareCategory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [subPage, setSubPage] = useState<SubPage>(null);
+  const [subPage, setSubPageState] = useState<SubPage>(null);
+
+  const setSubPage = (page: SubPage) => {
+    setSubPageState(page);
+    onSubPageChange?.(page !== null);
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -45,6 +51,30 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField }) => {
     );
   }
 
+  // ========== 支給市町村サブページ ==========
+  if (subPage === 'cities') {
+    return (
+      <ShogaiCityList
+        careClientId={client.id}
+        cities={cities}
+        onUpdate={setCities}
+        onBack={() => setSubPage('jukyu')}
+      />
+    );
+  }
+
+  // ========== 障害支援区分サブページ ==========
+  if (subPage === 'categories') {
+    return (
+      <ShogaiCareCategoryList
+        careClientId={client.id}
+        categories={categories}
+        onUpdate={setCategories}
+        onBack={() => setSubPage('jukyu')}
+      />
+    );
+  }
+
   // ========== 受給者証サブページ ==========
   if (subPage === 'jukyu') {
     // サマリー用ヘルパー
@@ -69,6 +99,10 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField }) => {
 
         {/* 受給者証の中のアコーディオン */}
         <AccordionSection
+          onNavigate={(key) => {
+            if (key === 'shikyuShichoson') setSubPage('cities');
+            if (key === 'shogaiShienKubun') setSubPage('categories');
+          }}
           sections={[
             {
               key: 'shikyuShichoson',
@@ -77,13 +111,8 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField }) => {
                 ? cities.map(c => c.municipality).filter(Boolean).join('、')
                 : '情報を入力してください。',
               summaryColor: hasCities ? undefined : '#dc2626',
-              content: (
-                <ShogaiCityList
-                  careClientId={client.id}
-                  cities={cities}
-                  onUpdate={setCities}
-                />
-              ),
+              navigable: true,
+              content: null,
             },
             {
               key: 'shogaiShienKubun',
@@ -92,13 +121,8 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField }) => {
                 ? categories.map(c => [c.disabilityType, c.supportCategory].filter(Boolean).join(' ')).filter(Boolean).join('、')
                 : '情報を入力してください。',
               summaryColor: hasCategories ? undefined : '#dc2626',
-              content: (
-                <ShogaiCareCategoryList
-                  careClientId={client.id}
-                  categories={categories}
-                  onUpdate={setCategories}
-                />
-              ),
+              navigable: true,
+              content: null,
             },
             {
               key: 'burdenLimitMonthly',

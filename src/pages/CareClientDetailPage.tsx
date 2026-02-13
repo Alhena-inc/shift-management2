@@ -20,6 +20,7 @@ const CareClientDetailPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>('basic');
+  const [isSubPage, setIsSubPage] = useState(false);
 
   const clientId = window.location.pathname.match(/^\/users\/(.+?)(\?|$)/)?.[1];
   const isNewMode = new URLSearchParams(window.location.search).get('new') === '1';
@@ -160,70 +161,72 @@ const CareClientDetailPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* ヘッダー */}
-      <header className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 sm:gap-4">
-              <button
-                onClick={() => {
-                  if (!isNewMode && hasChanges && !confirm('変更が保存されていません。戻りますか？')) return;
-                  window.location.href = '/users';
-                }}
-                className="p-2 sm:px-4 sm:py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-2 text-gray-700"
-              >
-                <span className="hidden sm:inline">← {isNewMode ? '戻る' : '利用者一覧'}</span>
-                <span className="sm:hidden">←</span>
-              </button>
-              <h1 className="text-lg sm:text-2xl font-bold text-gray-800">{isNewMode && !client.name ? '新規利用者' : client.name}</h1>
-            </div>
-            <div className="flex gap-2">
-              {!isNewMode && (
+      {!isSubPage && (
+        <header className="bg-white shadow-sm sticky top-0 z-10">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 sm:gap-4">
                 <button
-                  onClick={handleDelete}
-                  className="p-2 sm:px-4 sm:py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors font-medium flex items-center gap-2"
+                  onClick={() => {
+                    if (!isNewMode && hasChanges && !confirm('変更が保存されていません。戻りますか？')) return;
+                    window.location.href = '/users';
+                  }}
+                  className="p-2 sm:px-4 sm:py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-2 text-gray-700"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                  <span className="hidden sm:inline">削除</span>
+                  <span className="hidden sm:inline">← {isNewMode ? '戻る' : '利用者一覧'}</span>
+                  <span className="sm:hidden">←</span>
                 </button>
-              )}
-              <button
-                onClick={handleSave}
-                disabled={isSaving || (!isNewMode && !hasChanges)}
-                className={`p-2 sm:px-6 sm:py-2 rounded-lg font-medium flex items-center gap-2 transition-colors ${(isNewMode || hasChanges) ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
-              >
-                {isSaving ? (
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+                <h1 className="text-lg sm:text-2xl font-bold text-gray-800">{isNewMode && !client.name ? '新規利用者' : client.name}</h1>
+              </div>
+              <div className="flex gap-2">
+                {!isNewMode && (
+                  <button
+                    onClick={handleDelete}
+                    className="p-2 sm:px-4 sm:py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors font-medium flex items-center gap-2"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    <span className="hidden sm:inline">削除</span>
+                  </button>
                 )}
-                <span className="hidden sm:inline">{isSaving ? '保存中...' : (isNewMode ? '登録' : '保存')}</span>
-              </button>
+                <button
+                  onClick={handleSave}
+                  disabled={isSaving || (!isNewMode && !hasChanges)}
+                  className={`p-2 sm:px-6 sm:py-2 rounded-lg font-medium flex items-center gap-2 transition-colors ${(isNewMode || hasChanges) ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                >
+                  {isSaving ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                  <span className="hidden sm:inline">{isSaving ? '保存中...' : (isNewMode ? '登録' : '保存')}</span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* タブナビゲーション */}
-        <div className="max-w-6xl mx-auto px-4 sm:px-6">
-          <div className="flex gap-0 sm:gap-2 border-b border-gray-200 overflow-x-auto">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-4 sm:px-6 py-3 font-medium transition-colors whitespace-nowrap text-sm sm:text-base ${activeTab === tab.id
-                  ? 'text-green-600 border-b-2 border-green-600'
-                  : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+          {/* タブナビゲーション */}
+          <div className="max-w-6xl mx-auto px-4 sm:px-6">
+            <div className="flex gap-0 sm:gap-2 border-b border-gray-200 overflow-x-auto">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-4 sm:px-6 py-3 font-medium transition-colors whitespace-nowrap text-sm sm:text-base ${activeTab === tab.id
+                    ? 'text-green-600 border-b-2 border-green-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* メインコンテンツ */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-8">
@@ -444,7 +447,7 @@ const CareClientDetailPage: React.FC = () => {
 
           {/* 障害者総合支援タブ */}
           {activeTab === 'shogaiSogo' && (
-            <ShogaiSogoTab client={client} updateField={updateField} />
+            <ShogaiSogoTab client={client} updateField={updateField} onSubPageChange={setIsSubPage} />
           )}
 
           {/* 介護保険タブ */}
