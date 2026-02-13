@@ -1473,7 +1473,7 @@ export const backupToFirebase = backupToSupabase;
 
 // ========== 利用者（CareClient）関連 ==========
 
-import type { CareClient, ShogaiSogoCity, ShogaiSogoCareCategory, ShogaiBurdenLimit, ShogaiBurdenLimitOffice, ShogaiServiceResponsible, ShogaiPlanConsultation, ShogaiCarePlan, ShogaiSameBuildingDeduction } from '../types';
+import type { CareClient, ShogaiSogoCity, ShogaiSogoCareCategory, ShogaiBurdenLimit, ShogaiBurdenLimitOffice, ShogaiServiceResponsible, ShogaiPlanConsultation, ShogaiCarePlan, ShogaiSameBuildingDeduction, ShogaiSupplyAmount } from '../types';
 
 // 利用者一覧を読み込み
 export const loadCareClients = async (): Promise<CareClient[]> => {
@@ -2222,6 +2222,99 @@ export const deleteShogaiSameBuildingDeduction = async (id: string): Promise<voi
     if (error) throw error;
   } catch (error) {
     console.error('同一建物減算削除エラー:', error);
+    throw error;
+  }
+};
+
+// ========== 障害者総合支援 - 契約支給量/決定支給量 ==========
+
+export const loadShogaiSupplyAmounts = async (careClientId: string, supplyType?: string): Promise<ShogaiSupplyAmount[]> => {
+  try {
+    let query = supabase
+      .from('shogai_supply_amounts')
+      .select('*')
+      .eq('care_client_id', careClientId);
+
+    if (supplyType) {
+      query = query.eq('supply_type', supplyType);
+    }
+
+    const { data, error } = await query.order('sort_order', { ascending: true });
+
+    if (error) throw error;
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      careClientId: row.care_client_id,
+      supplyType: row.supply_type || 'contract',
+      serviceCategory: row.service_category || '',
+      serviceContent: row.service_content || '',
+      officeEntryNumber: row.office_entry_number || '',
+      officeName: row.office_name || '',
+      supplyAmount: row.supply_amount || '',
+      maxSingleAmount: row.max_single_amount || '',
+      validFrom: row.valid_from || '',
+      validUntil: row.valid_until || '',
+      sortOrder: row.sort_order || 0,
+    }));
+  } catch (error) {
+    console.error('支給量読み込みエラー:', error);
+    throw error;
+  }
+};
+
+export const saveShogaiSupplyAmount = async (item: ShogaiSupplyAmount): Promise<ShogaiSupplyAmount> => {
+  try {
+    const saveData: any = {
+      care_client_id: item.careClientId,
+      supply_type: item.supplyType || 'contract',
+      service_category: item.serviceCategory || null,
+      service_content: item.serviceContent || null,
+      office_entry_number: item.officeEntryNumber || null,
+      office_name: item.officeName || null,
+      supply_amount: item.supplyAmount || null,
+      max_single_amount: item.maxSingleAmount || null,
+      valid_from: item.validFrom || null,
+      valid_until: item.validUntil || null,
+      sort_order: item.sortOrder || 0,
+      updated_at: new Date().toISOString(),
+    };
+    if (item.id) saveData.id = item.id;
+
+    const { data, error } = await supabase
+      .from('shogai_supply_amounts')
+      .upsert(saveData, { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return {
+      id: data.id,
+      careClientId: data.care_client_id,
+      supplyType: data.supply_type || 'contract',
+      serviceCategory: data.service_category || '',
+      serviceContent: data.service_content || '',
+      officeEntryNumber: data.office_entry_number || '',
+      officeName: data.office_name || '',
+      supplyAmount: data.supply_amount || '',
+      maxSingleAmount: data.max_single_amount || '',
+      validFrom: data.valid_from || '',
+      validUntil: data.valid_until || '',
+      sortOrder: data.sort_order || 0,
+    };
+  } catch (error) {
+    console.error('支給量保存エラー:', error);
+    throw error;
+  }
+};
+
+export const deleteShogaiSupplyAmount = async (id: string): Promise<void> => {
+  try {
+    const { error } = await supabase.from('shogai_supply_amounts').delete().eq('id', id);
+    if (error) throw error;
+  } catch (error) {
+    console.error('支給量削除エラー:', error);
     throw error;
   }
 };

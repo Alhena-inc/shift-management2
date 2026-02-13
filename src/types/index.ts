@@ -292,6 +292,22 @@ export interface ShogaiSameBuildingDeduction {
   sortOrder: number;
 }
 
+// 障害者総合支援 - 契約支給量/決定支給量
+export interface ShogaiSupplyAmount {
+  id: string;
+  careClientId: string;
+  supplyType: 'contract' | 'decided';
+  serviceCategory: string;
+  serviceContent: string;
+  officeEntryNumber: string;
+  officeName: string;
+  supplyAmount: string;
+  maxSingleAmount: string;
+  validFrom: string;
+  validUntil: string;
+  sortOrder: number;
+}
+
 export interface CareClientServices {
   shogaiSogo?: boolean;      // 障害者総合支援
   chiikiSeikatsu?: boolean;  // 地域生活支援事業

@@ -1275,3 +1275,16 @@ export const saveShogaiSameBuildingDeduction = async (_item: any) => {
 export const deleteShogaiSameBuildingDeduction = async (_id: string) => {
   throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
 };
+
+export const loadShogaiSupplyAmounts = async (_careClientId: string, _supplyType?: string) => {
+  console.warn('障害者総合支援はSupabaseモードでのみ利用可能です');
+  return [];
+};
+
+export const saveShogaiSupplyAmount = async (_item: any) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const deleteShogaiSupplyAmount = async (_id: string) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};

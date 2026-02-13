@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { CareClient, ShogaiSogoCity, ShogaiSogoCareCategory, ShogaiBurdenLimit, ShogaiBurdenLimitOffice, ShogaiServiceResponsible, ShogaiPlanConsultation, ShogaiCarePlan, ShogaiSameBuildingDeduction, Helper } from '../../types';
+import type { CareClient, ShogaiSogoCity, ShogaiSogoCareCategory, ShogaiBurdenLimit, ShogaiBurdenLimitOffice, ShogaiServiceResponsible, ShogaiPlanConsultation, ShogaiCarePlan, ShogaiSameBuildingDeduction, ShogaiSupplyAmount, Helper } from '../../types';
 import AccordionSection from '../AccordionSection';
 import ShogaiCityList from './ShogaiCityList';
 import ShogaiCareCategoryList from './ShogaiCareCategoryList';
@@ -9,11 +9,13 @@ import ShogaiServiceResponsibleList from './ShogaiServiceResponsibleList';
 import ShogaiPlanConsultationList from './ShogaiPlanConsultationList';
 import ShogaiCarePlanList from './ShogaiCarePlanList';
 import ShogaiSameBuildingDeductionList from './ShogaiSameBuildingDeductionList';
+import ShogaiSupplyAmountList from './ShogaiSupplyAmountList';
 import {
   loadShogaiSogoCities, loadShogaiSogoCareCategories,
   loadShogaiBurdenLimits, loadShogaiBurdenLimitOffices,
   loadShogaiServiceResponsibles, loadShogaiPlanConsultations,
   loadShogaiCarePlans, loadShogaiSameBuildingDeductions,
+  loadShogaiSupplyAmounts,
   loadHelpers,
 } from '../../services/dataService';
 
@@ -25,7 +27,8 @@ interface Props {
 
 type SubPage = null | 'jukyu' | 'cities' | 'categories'
   | 'burdenLimits' | 'burdenLimitOffices' | 'serviceResponsibles'
-  | 'planConsultations' | 'carePlans' | 'sameBuildingDeductions';
+  | 'planConsultations' | 'carePlans' | 'sameBuildingDeductions'
+  | 'supplyAmounts';
 
 const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }) => {
   const [cities, setCities] = useState<ShogaiSogoCity[]>([]);
@@ -37,6 +40,8 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
   const [initialCarePlans, setInitialCarePlans] = useState<ShogaiCarePlan[]>([]);
   const [supportPlans, setSupportPlans] = useState<ShogaiCarePlan[]>([]);
   const [sameBuildingDeductions, setSameBuildingDeductions] = useState<ShogaiSameBuildingDeduction[]>([]);
+  const [contractSupplyAmounts, setContractSupplyAmounts] = useState<ShogaiSupplyAmount[]>([]);
+  const [decidedSupplyAmounts, setDecidedSupplyAmounts] = useState<ShogaiSupplyAmount[]>([]);
   const [helpers, setHelpers] = useState<Helper[]>([]);
   const [loading, setLoading] = useState(true);
   const [subPage, setSubPageState] = useState<SubPage>(null);
@@ -54,7 +59,9 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
           loadedBurdenLimits, loadedBurdenLimitOffices,
           loadedServiceResponsibles, loadedPlanConsultations,
           loadedInitialCarePlans, loadedSupportPlans,
-          loadedSameBuildingDeductions, loadedHelpers,
+          loadedSameBuildingDeductions,
+          loadedContractSupply, loadedDecidedSupply,
+          loadedHelpers,
         ] = await Promise.all([
           loadShogaiSogoCities(client.id),
           loadShogaiSogoCareCategories(client.id),
@@ -65,6 +72,8 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
           loadShogaiCarePlans(client.id, 'initial_care'),
           loadShogaiCarePlans(client.id, 'support'),
           loadShogaiSameBuildingDeductions(client.id),
+          loadShogaiSupplyAmounts(client.id, 'contract'),
+          loadShogaiSupplyAmounts(client.id, 'decided'),
           loadHelpers(),
         ]);
         setCities(loadedCities);
@@ -76,6 +85,8 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
         setInitialCarePlans(loadedInitialCarePlans);
         setSupportPlans(loadedSupportPlans);
         setSameBuildingDeductions(loadedSameBuildingDeductions);
+        setContractSupplyAmounts(loadedContractSupply);
+        setDecidedSupplyAmounts(loadedDecidedSupply);
         setHelpers(loadedHelpers);
       } catch (error) {
         console.error('障害者総合支援データ読み込みエラー:', error);
@@ -190,6 +201,20 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
         items={sameBuildingDeductions}
         onUpdate={setSameBuildingDeductions}
         onBack={() => setSubPage('jukyu')}
+      />
+    );
+  }
+
+  // ========== 契約支給量サブページ ==========
+  if (subPage === 'supplyAmounts') {
+    return (
+      <ShogaiSupplyAmountList
+        careClientId={client.id}
+        contractItems={contractSupplyAmounts}
+        decidedItems={decidedSupplyAmounts}
+        onUpdateContract={setContractSupplyAmounts}
+        onUpdateDecided={setDecidedSupplyAmounts}
+        onBack={() => setSubPage(null)}
       />
     );
   }
@@ -325,10 +350,17 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
     : '情報を入力してください。';
   const jukyuSummaryColor = hasJukyuData ? undefined : '#dc2626';
 
+  const hasSupplyData = contractSupplyAmounts.length > 0 || decidedSupplyAmounts.length > 0;
+  const supplySummary = hasSupplyData
+    ? [...contractSupplyAmounts, ...decidedSupplyAmounts].map(s => s.serviceContent || s.serviceCategory).filter(Boolean).join('、')
+    : '情報を入力してください。';
+  const supplySummaryColor = hasSupplyData ? undefined : '#dc2626';
+
   return (
     <AccordionSection
       onNavigate={(key) => {
         if (key === 'jukyu') setSubPage('jukyu');
+        if (key === 'keiyaku') setSubPage('supplyAmounts');
       }}
       sections={[
         {
@@ -340,34 +372,12 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
           content: null,
         },
         {
-          key: 'seikyu',
-          title: '請求保留・再請求',
-          summary: client.billing?.shogaiSeikyuHoryu ? '請求保留があります。' : undefined,
-          summaryColor: client.billing?.shogaiSeikyuHoryu ? '#dc2626' : undefined,
-          content: (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <label className="text-sm font-medium text-gray-700">請求保留</label>
-                <input type="checkbox" checked={client.billing?.shogaiSeikyuHoryu || false} onChange={(e) => updateField('billing', { ...client.billing, shogaiSeikyuHoryu: e.target.checked })} className="w-5 h-5 text-green-600 rounded" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">備考</label>
-                <textarea value={client.billing?.shogaiSeikyuNotes || ''} onChange={(e) => updateField('billing', { ...client.billing, shogaiSeikyuNotes: e.target.value })} rows={2} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="備考" />
-              </div>
-            </div>
-          ),
-        },
-        {
           key: 'keiyaku',
           title: '契約支給量',
-          summary: client.billing?.shogaiKeiyaku ? client.billing.shogaiKeiyaku : '情報を入力してください。',
-          summaryColor: client.billing?.shogaiKeiyaku ? undefined : '#dc2626',
-          content: (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">契約支給量</label>
-              <input type="text" value={client.billing?.shogaiKeiyaku || ''} onChange={(e) => updateField('billing', { ...client.billing, shogaiKeiyaku: e.target.value })} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="例: 居宅介護家事援助決定　37時間" />
-            </div>
-          ),
+          summary: supplySummary,
+          summaryColor: supplySummaryColor,
+          navigable: true,
+          content: null,
         },
         { key: 'kyotakuKeikaku', title: '居宅介護計画書', content: <div><textarea value={client.billing?.shogaiKyotakuKeikaku || ''} onChange={(e) => updateField('billing', { ...client.billing, shogaiKyotakuKeikaku: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="居宅介護計画書を入力..." /></div> },
         { key: 'shienKeika', title: '介護支援経過', content: <div><textarea value={client.billing?.shogaiShienKeika || ''} onChange={(e) => updateField('billing', { ...client.billing, shogaiShienKeika: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="介護支援経過を入力..." /></div> },

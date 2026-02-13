@@ -130,6 +130,11 @@ export const {
   loadShogaiSameBuildingDeductions,
   saveShogaiSameBuildingDeduction,
   deleteShogaiSameBuildingDeduction,
+
+  // 障害者総合支援 - 契約支給量/決定支給量
+  loadShogaiSupplyAmounts,
+  saveShogaiSupplyAmount,
+  deleteShogaiSupplyAmount,
 } = dataService;
 
 // 日付ごとのシフト削除機能を追加
