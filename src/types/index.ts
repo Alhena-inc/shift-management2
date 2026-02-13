@@ -292,6 +292,34 @@ export interface ShogaiSameBuildingDeduction {
   sortOrder: number;
 }
 
+// 障害者総合支援 - 居宅介護計画書ドキュメント
+export interface ShogaiCarePlanDocument {
+  id: string;
+  careClientId: string;
+  planCategory: 'kyotaku' | 'judo' | 'kodo' | 'doko';
+  fileName: string;
+  fileUrl: string;
+  fileSize: number;
+  notes: string;
+  sortOrder: number;
+  createdAt?: string;
+}
+
+// 障害者総合支援 - 汎用ドキュメント（サービス担当者会議の要点、アセスメント、モニタリング表、訪問介護手順書）
+export type ShogaiDocType = 'tantousha_kaigi' | 'assessment' | 'monitoring' | 'tejunsho';
+
+export interface ShogaiDocument {
+  id: string;
+  careClientId: string;
+  docType: ShogaiDocType;
+  fileName: string;
+  fileUrl: string;
+  fileSize: number;
+  notes: string;
+  sortOrder: number;
+  createdAt?: string;
+}
+
 // 障害者総合支援 - 契約支給量/決定支給量
 export interface ShogaiSupplyAmount {
   id: string;

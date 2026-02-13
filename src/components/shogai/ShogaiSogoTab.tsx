@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { CareClient, ShogaiSogoCity, ShogaiSogoCareCategory, ShogaiBurdenLimit, ShogaiBurdenLimitOffice, ShogaiServiceResponsible, ShogaiPlanConsultation, ShogaiCarePlan, ShogaiSameBuildingDeduction, ShogaiSupplyAmount, Helper } from '../../types';
+import type { CareClient, ShogaiSogoCity, ShogaiSogoCareCategory, ShogaiBurdenLimit, ShogaiBurdenLimitOffice, ShogaiServiceResponsible, ShogaiPlanConsultation, ShogaiCarePlan, ShogaiSameBuildingDeduction, ShogaiSupplyAmount, ShogaiCarePlanDocument, ShogaiDocument, Helper } from '../../types';
 import AccordionSection from '../AccordionSection';
 import ShogaiCityList from './ShogaiCityList';
 import ShogaiCareCategoryList from './ShogaiCareCategoryList';
@@ -10,12 +10,16 @@ import ShogaiPlanConsultationList from './ShogaiPlanConsultationList';
 import ShogaiCarePlanList from './ShogaiCarePlanList';
 import ShogaiSameBuildingDeductionList from './ShogaiSameBuildingDeductionList';
 import ShogaiSupplyAmountList from './ShogaiSupplyAmountList';
+import ShogaiCarePlanDocList from './ShogaiCarePlanDocList';
+import ShogaiDocumentList from './ShogaiDocumentList';
 import {
   loadShogaiSogoCities, loadShogaiSogoCareCategories,
   loadShogaiBurdenLimits, loadShogaiBurdenLimitOffices,
   loadShogaiServiceResponsibles, loadShogaiPlanConsultations,
   loadShogaiCarePlans, loadShogaiSameBuildingDeductions,
   loadShogaiSupplyAmounts,
+  loadShogaiCarePlanDocuments,
+  loadShogaiDocuments,
   loadHelpers,
 } from '../../services/dataService';
 
@@ -28,7 +32,8 @@ interface Props {
 type SubPage = null | 'jukyu' | 'cities' | 'categories'
   | 'burdenLimits' | 'burdenLimitOffices' | 'serviceResponsibles'
   | 'planConsultations' | 'carePlans' | 'sameBuildingDeductions'
-  | 'supplyAmounts';
+  | 'supplyAmounts' | 'carePlanDocs'
+  | 'tantoushaKaigi' | 'assessment' | 'monitoring' | 'tejunsho';
 
 const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }) => {
   const [cities, setCities] = useState<ShogaiSogoCity[]>([]);
@@ -42,6 +47,11 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
   const [sameBuildingDeductions, setSameBuildingDeductions] = useState<ShogaiSameBuildingDeduction[]>([]);
   const [contractSupplyAmounts, setContractSupplyAmounts] = useState<ShogaiSupplyAmount[]>([]);
   const [decidedSupplyAmounts, setDecidedSupplyAmounts] = useState<ShogaiSupplyAmount[]>([]);
+  const [carePlanDocuments, setCarePlanDocuments] = useState<ShogaiCarePlanDocument[]>([]);
+  const [tantoushaKaigiDocs, setTantoushaKaigiDocs] = useState<ShogaiDocument[]>([]);
+  const [assessmentDocs, setAssessmentDocs] = useState<ShogaiDocument[]>([]);
+  const [monitoringDocs, setMonitoringDocs] = useState<ShogaiDocument[]>([]);
+  const [tejunshoDocs, setTejunshoDocs] = useState<ShogaiDocument[]>([]);
   const [helpers, setHelpers] = useState<Helper[]>([]);
   const [loading, setLoading] = useState(true);
   const [subPage, setSubPageState] = useState<SubPage>(null);
@@ -61,6 +71,8 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
           loadedInitialCarePlans, loadedSupportPlans,
           loadedSameBuildingDeductions,
           loadedContractSupply, loadedDecidedSupply,
+          loadedCarePlanDocs,
+          loadedTantoushaKaigi, loadedAssessment, loadedMonitoring, loadedTejunsho,
           loadedHelpers,
         ] = await Promise.all([
           loadShogaiSogoCities(client.id),
@@ -74,6 +86,11 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
           loadShogaiSameBuildingDeductions(client.id),
           loadShogaiSupplyAmounts(client.id, 'contract'),
           loadShogaiSupplyAmounts(client.id, 'decided'),
+          loadShogaiCarePlanDocuments(client.id),
+          loadShogaiDocuments(client.id, 'tantousha_kaigi'),
+          loadShogaiDocuments(client.id, 'assessment'),
+          loadShogaiDocuments(client.id, 'monitoring'),
+          loadShogaiDocuments(client.id, 'tejunsho'),
           loadHelpers(),
         ]);
         setCities(loadedCities);
@@ -87,6 +104,11 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
         setSameBuildingDeductions(loadedSameBuildingDeductions);
         setContractSupplyAmounts(loadedContractSupply);
         setDecidedSupplyAmounts(loadedDecidedSupply);
+        setCarePlanDocuments(loadedCarePlanDocs);
+        setTantoushaKaigiDocs(loadedTantoushaKaigi);
+        setAssessmentDocs(loadedAssessment);
+        setMonitoringDocs(loadedMonitoring);
+        setTejunshoDocs(loadedTejunsho);
         setHelpers(loadedHelpers);
       } catch (error) {
         console.error('障害者総合支援データ読み込みエラー:', error);
@@ -201,6 +223,74 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
         items={sameBuildingDeductions}
         onUpdate={setSameBuildingDeductions}
         onBack={() => setSubPage('jukyu')}
+      />
+    );
+  }
+
+  // ========== 居宅介護計画書ドキュメントサブページ ==========
+  if (subPage === 'carePlanDocs') {
+    return (
+      <ShogaiCarePlanDocList
+        careClientId={client.id}
+        documents={carePlanDocuments}
+        onUpdate={setCarePlanDocuments}
+        onBack={() => setSubPage(null)}
+      />
+    );
+  }
+
+  // ========== サービス担当者会議の要点サブページ ==========
+  if (subPage === 'tantoushaKaigi') {
+    return (
+      <ShogaiDocumentList
+        careClientId={client.id}
+        docType="tantousha_kaigi"
+        title="サービス担当者会議の要点"
+        documents={tantoushaKaigiDocs}
+        onUpdate={setTantoushaKaigiDocs}
+        onBack={() => setSubPage(null)}
+      />
+    );
+  }
+
+  // ========== アセスメントサブページ ==========
+  if (subPage === 'assessment') {
+    return (
+      <ShogaiDocumentList
+        careClientId={client.id}
+        docType="assessment"
+        title="アセスメント"
+        documents={assessmentDocs}
+        onUpdate={setAssessmentDocs}
+        onBack={() => setSubPage(null)}
+      />
+    );
+  }
+
+  // ========== モニタリング表サブページ ==========
+  if (subPage === 'monitoring') {
+    return (
+      <ShogaiDocumentList
+        careClientId={client.id}
+        docType="monitoring"
+        title="モニタリング表"
+        documents={monitoringDocs}
+        onUpdate={setMonitoringDocs}
+        onBack={() => setSubPage(null)}
+      />
+    );
+  }
+
+  // ========== 訪問介護手順書サブページ ==========
+  if (subPage === 'tejunsho') {
+    return (
+      <ShogaiDocumentList
+        careClientId={client.id}
+        docType="tejunsho"
+        title="訪問介護手順書"
+        documents={tejunshoDocs}
+        onUpdate={setTejunshoDocs}
+        onBack={() => setSubPage(null)}
       />
     );
   }
@@ -356,11 +446,41 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
     : '情報を入力してください。';
   const supplySummaryColor = hasSupplyData ? undefined : '#dc2626';
 
+  const hasCarePlanDocs = carePlanDocuments.length > 0;
+  const carePlanDocsSummary = hasCarePlanDocs
+    ? `${carePlanDocuments.length}件のファイル`
+    : undefined;
+
+  const hasTantoushaKaigiDocs = tantoushaKaigiDocs.length > 0;
+  const tantoushaKaigiSummary = hasTantoushaKaigiDocs
+    ? `${tantoushaKaigiDocs.length}件のファイル`
+    : undefined;
+
+  const hasAssessmentDocs = assessmentDocs.length > 0;
+  const assessmentSummary = hasAssessmentDocs
+    ? `${assessmentDocs.length}件のファイル`
+    : undefined;
+
+  const hasMonitoringDocs = monitoringDocs.length > 0;
+  const monitoringSummary = hasMonitoringDocs
+    ? `${monitoringDocs.length}件のファイル`
+    : undefined;
+
+  const hasTejunshoDocs = tejunshoDocs.length > 0;
+  const tejunshoSummary = hasTejunshoDocs
+    ? `${tejunshoDocs.length}件のファイル`
+    : undefined;
+
   return (
     <AccordionSection
       onNavigate={(key) => {
         if (key === 'jukyu') setSubPage('jukyu');
         if (key === 'keiyaku') setSubPage('supplyAmounts');
+        if (key === 'kyotakuKeikaku') setSubPage('carePlanDocs');
+        if (key === 'tantoushaKaigi') setSubPage('tantoushaKaigi');
+        if (key === 'assessment') setSubPage('assessment');
+        if (key === 'monitoring') setSubPage('monitoring');
+        if (key === 'tejunsho') setSubPage('tejunsho');
       }}
       sections={[
         {
@@ -379,12 +499,42 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
           navigable: true,
           content: null,
         },
-        { key: 'kyotakuKeikaku', title: '居宅介護計画書', content: <div><textarea value={client.billing?.shogaiKyotakuKeikaku || ''} onChange={(e) => updateField('billing', { ...client.billing, shogaiKyotakuKeikaku: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="居宅介護計画書を入力..." /></div> },
+        {
+          key: 'kyotakuKeikaku',
+          title: '居宅介護計画書',
+          summary: carePlanDocsSummary,
+          navigable: true,
+          content: null,
+        },
         { key: 'shienKeika', title: '介護支援経過', content: <div><textarea value={client.billing?.shogaiShienKeika || ''} onChange={(e) => updateField('billing', { ...client.billing, shogaiShienKeika: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="介護支援経過を入力..." /></div> },
-        { key: 'tantoushaKaigi', title: 'サービス担当者会議の要点', content: <div><textarea value={client.billing?.shogaiTantoushaKaigi || ''} onChange={(e) => updateField('billing', { ...client.billing, shogaiTantoushaKaigi: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="サービス担当者会議の要点を入力..." /></div> },
-        { key: 'assessment', title: 'アセスメント', content: <div><textarea value={client.billing?.shogaiAssessment || ''} onChange={(e) => updateField('billing', { ...client.billing, shogaiAssessment: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="アセスメントを入力..." /></div> },
-        { key: 'monitoring', title: 'モニタリング表', content: <div><textarea value={client.billing?.shogaiMonitoring || ''} onChange={(e) => updateField('billing', { ...client.billing, shogaiMonitoring: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="モニタリング表を入力..." /></div> },
-        { key: 'tejunsho', title: '訪問介護手順書', content: <div><textarea value={client.billing?.shogaiTejunsho || ''} onChange={(e) => updateField('billing', { ...client.billing, shogaiTejunsho: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="訪問介護手順書を入力..." /></div> },
+        {
+          key: 'tantoushaKaigi',
+          title: 'サービス担当者会議の要点',
+          summary: tantoushaKaigiSummary,
+          navigable: true,
+          content: null,
+        },
+        {
+          key: 'assessment',
+          title: 'アセスメント',
+          summary: assessmentSummary,
+          navigable: true,
+          content: null,
+        },
+        {
+          key: 'monitoring',
+          title: 'モニタリング表',
+          summary: monitoringSummary,
+          navigable: true,
+          content: null,
+        },
+        {
+          key: 'tejunsho',
+          title: '訪問介護手順書',
+          summary: tejunshoSummary,
+          navigable: true,
+          content: null,
+        },
         { key: 'riyouService', title: '利用サービス', content: <div><textarea value={client.billing?.shogaiRiyouService || ''} onChange={(e) => updateField('billing', { ...client.billing, shogaiRiyouService: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="利用サービスを入力..." /></div> },
       ]}
     />

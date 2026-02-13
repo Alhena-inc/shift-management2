@@ -2318,3 +2318,190 @@ export const deleteShogaiSupplyAmount = async (id: string): Promise<void> => {
     throw error;
   }
 };
+
+// ========== 障害者総合支援 - 居宅介護計画書ドキュメント ==========
+
+export const loadShogaiCarePlanDocuments = async (careClientId: string, planCategory?: string): Promise<any[]> => {
+  try {
+    let query = supabase
+      .from('shogai_care_plan_documents')
+      .select('*')
+      .eq('care_client_id', careClientId);
+    if (planCategory) {
+      query = query.eq('plan_category', planCategory);
+    }
+    const { data, error } = await query.order('sort_order');
+    if (error) throw error;
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      careClientId: row.care_client_id,
+      planCategory: row.plan_category,
+      fileName: row.file_name || '',
+      fileUrl: row.file_url || '',
+      fileSize: row.file_size || 0,
+      notes: row.notes || '',
+      sortOrder: row.sort_order || 0,
+      createdAt: row.created_at || '',
+    }));
+  } catch (error) {
+    console.error('介護計画書ドキュメント読み込みエラー:', error);
+    throw error;
+  }
+};
+
+export const saveShogaiCarePlanDocument = async (item: any): Promise<any> => {
+  try {
+    const saveData: any = {
+      care_client_id: item.careClientId,
+      plan_category: item.planCategory,
+      file_name: item.fileName || null,
+      file_url: item.fileUrl || null,
+      file_size: item.fileSize || null,
+      notes: item.notes || null,
+      sort_order: item.sortOrder || 0,
+      updated_at: new Date().toISOString(),
+    };
+    if (item.id) {
+      saveData.id = item.id;
+    }
+    const { data, error } = await supabase
+      .from('shogai_care_plan_documents')
+      .upsert(saveData, { onConflict: 'id' })
+      .select()
+      .single();
+    if (error) throw error;
+    return {
+      id: data.id,
+      careClientId: data.care_client_id,
+      planCategory: data.plan_category,
+      fileName: data.file_name || '',
+      fileUrl: data.file_url || '',
+      fileSize: data.file_size || 0,
+      notes: data.notes || '',
+      sortOrder: data.sort_order || 0,
+      createdAt: data.created_at || '',
+    };
+  } catch (error) {
+    console.error('介護計画書ドキュメント保存エラー:', error);
+    throw error;
+  }
+};
+
+export const deleteShogaiCarePlanDocument = async (id: string): Promise<void> => {
+  try {
+    const { error } = await supabase.from('shogai_care_plan_documents').delete().eq('id', id);
+    if (error) throw error;
+  } catch (error) {
+    console.error('介護計画書ドキュメント削除エラー:', error);
+    throw error;
+  }
+};
+
+export const uploadCarePlanFile = async (careClientId: string, planCategory: string, file: File): Promise<{ url: string; path: string }> => {
+  const ext = file.name.split('.').pop() || 'bin';
+  const filePath = `${careClientId}/${planCategory}/${Date.now()}.${ext}`;
+  const { error } = await supabase.storage
+    .from('care-plan-documents')
+    .upload(filePath, file);
+  if (error) throw error;
+  const { data } = supabase.storage
+    .from('care-plan-documents')
+    .getPublicUrl(filePath);
+  return { url: data.publicUrl, path: filePath };
+};
+
+export const deleteCarePlanFile = async (filePath: string): Promise<void> => {
+  const { error } = await supabase.storage
+    .from('care-plan-documents')
+    .remove([filePath]);
+  if (error) throw error;
+};
+
+// ========== 障害者総合支援 - 汎用ドキュメント ==========
+
+export const loadShogaiDocuments = async (careClientId: string, docType: string): Promise<any[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('shogai_documents')
+      .select('*')
+      .eq('care_client_id', careClientId)
+      .eq('doc_type', docType)
+      .order('sort_order');
+    if (error) throw error;
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      careClientId: row.care_client_id,
+      docType: row.doc_type,
+      fileName: row.file_name || '',
+      fileUrl: row.file_url || '',
+      fileSize: row.file_size || 0,
+      notes: row.notes || '',
+      sortOrder: row.sort_order || 0,
+      createdAt: row.created_at || '',
+    }));
+  } catch (error) {
+    console.error('障害ドキュメント読み込みエラー:', error);
+    throw error;
+  }
+};
+
+export const saveShogaiDocument = async (item: any): Promise<any> => {
+  try {
+    const saveData: any = {
+      care_client_id: item.careClientId,
+      doc_type: item.docType,
+      file_name: item.fileName || null,
+      file_url: item.fileUrl || null,
+      file_size: item.fileSize || null,
+      notes: item.notes || null,
+      sort_order: item.sortOrder || 0,
+      updated_at: new Date().toISOString(),
+    };
+    if (item.id) {
+      saveData.id = item.id;
+    }
+    const { data, error } = await supabase
+      .from('shogai_documents')
+      .upsert(saveData, { onConflict: 'id' })
+      .select()
+      .single();
+    if (error) throw error;
+    return {
+      id: data.id,
+      careClientId: data.care_client_id,
+      docType: data.doc_type,
+      fileName: data.file_name || '',
+      fileUrl: data.file_url || '',
+      fileSize: data.file_size || 0,
+      notes: data.notes || '',
+      sortOrder: data.sort_order || 0,
+      createdAt: data.created_at || '',
+    };
+  } catch (error) {
+    console.error('障害ドキュメント保存エラー:', error);
+    throw error;
+  }
+};
+
+export const deleteShogaiDocument = async (id: string): Promise<void> => {
+  try {
+    const { error } = await supabase.from('shogai_documents').delete().eq('id', id);
+    if (error) throw error;
+  } catch (error) {
+    console.error('障害ドキュメント削除エラー:', error);
+    throw error;
+  }
+};
+
+export const uploadShogaiDocFile = async (careClientId: string, docType: string, file: File): Promise<{ url: string; path: string }> => {
+  const ext = file.name.split('.').pop() || 'bin';
+  const filePath = `${careClientId}/${docType}/${Date.now()}.${ext}`;
+  const { error } = await supabase.storage
+    .from('shogai-documents')
+    .upload(filePath, file);
+  if (error) throw error;
+  const { data } = supabase.storage
+    .from('shogai-documents')
+    .getPublicUrl(filePath);
+  return { url: data.publicUrl, path: filePath };
+};

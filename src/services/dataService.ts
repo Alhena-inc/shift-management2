@@ -135,6 +135,17 @@ export const {
   loadShogaiSupplyAmounts,
   saveShogaiSupplyAmount,
   deleteShogaiSupplyAmount,
+
+  // 障害者総合支援 - 居宅介護計画書ドキュメント
+  loadShogaiCarePlanDocuments,
+  saveShogaiCarePlanDocument,
+  deleteShogaiCarePlanDocument,
+  uploadCarePlanFile,
+  deleteCarePlanFile,
+  loadShogaiDocuments,
+  saveShogaiDocument,
+  deleteShogaiDocument,
+  uploadShogaiDocFile,
 } = dataService;
 
 // 日付ごとのシフト削除機能を追加

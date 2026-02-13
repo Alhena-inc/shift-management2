@@ -1288,3 +1288,41 @@ export const saveShogaiSupplyAmount = async (_item: any) => {
 export const deleteShogaiSupplyAmount = async (_id: string) => {
   throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
 };
+
+export const loadShogaiCarePlanDocuments = async (_careClientId: string, _planCategory?: string) => {
+  console.warn('障害者総合支援はSupabaseモードでのみ利用可能です');
+  return [];
+};
+
+export const saveShogaiCarePlanDocument = async (_item: any) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const deleteShogaiCarePlanDocument = async (_id: string) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const uploadCarePlanFile = async (_careClientId: string, _planCategory: string, _file: File) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const deleteCarePlanFile = async (_filePath: string) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const loadShogaiDocuments = async (_careClientId: string, _docType: string) => {
+  console.warn('障害者総合支援はSupabaseモードでのみ利用可能です');
+  return [];
+};
+
+export const saveShogaiDocument = async (_item: any) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const deleteShogaiDocument = async (_id: string) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const uploadShogaiDocFile = async (_careClientId: string, _docType: string, _file: File) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
