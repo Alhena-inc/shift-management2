@@ -90,6 +90,16 @@ export const {
   softDeleteCareClient,
   restoreCareClient,
   subscribeToCareClients,
+
+  // 障害者総合支援 - 支給市町村
+  loadShogaiSogoCities,
+  saveShogaiSogoCity,
+  deleteShogaiSogoCity,
+
+  // 障害者総合支援 - 障害支援区分
+  loadShogaiSogoCareCategories,
+  saveShogaiSogoCareCategory,
+  deleteShogaiSogoCareCategory,
 } = dataService;
 
 // 日付ごとのシフト削除機能を追加

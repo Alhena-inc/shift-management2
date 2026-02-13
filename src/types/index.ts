@@ -206,6 +206,28 @@ export interface Helper {
   }>;
 }
 
+// 障害者総合支援 - 支給市町村
+export interface ShogaiSogoCity {
+  id: string;
+  careClientId: string;
+  municipality: string;
+  certificateNumber: string;
+  validFrom: string;
+  validUntil: string;
+  sortOrder: number;
+}
+
+// 障害者総合支援 - 障害支援区分
+export interface ShogaiSogoCareCategory {
+  id: string;
+  careClientId: string;
+  disabilityType: string;
+  supportCategory: string;
+  validFrom: string;
+  validUntil: string;
+  sortOrder: number;
+}
+
 export interface CareClientServices {
   shogaiSogo?: boolean;      // 障害者総合支援
   chiikiSeikatsu?: boolean;  // 地域生活支援事業

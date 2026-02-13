@@ -1473,7 +1473,7 @@ export const backupToFirebase = backupToSupabase;
 
 // ========== 利用者（CareClient）関連 ==========
 
-import type { CareClient } from '../types';
+import type { CareClient, ShogaiSogoCity, ShogaiSogoCareCategory } from '../types';
 
 // 利用者一覧を読み込み
 export const loadCareClients = async (): Promise<CareClient[]> => {
@@ -1629,4 +1629,162 @@ export const subscribeToCareClients = (callback: (clients: CareClient[] | null) 
     .subscribe();
 
   return channel;
+};
+
+// ========== 障害者総合支援 - 支給市町村 ==========
+
+export const loadShogaiSogoCities = async (careClientId: string): Promise<ShogaiSogoCity[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('shogai_sogo_cities')
+      .select('*')
+      .eq('care_client_id', careClientId)
+      .order('sort_order', { ascending: true });
+
+    if (error) throw error;
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      careClientId: row.care_client_id,
+      municipality: row.municipality || '',
+      certificateNumber: row.certificate_number || '',
+      validFrom: row.valid_from || '',
+      validUntil: row.valid_until || '',
+      sortOrder: row.sort_order || 0,
+    }));
+  } catch (error) {
+    console.error('支給市町村読み込みエラー:', error);
+    throw error;
+  }
+};
+
+export const saveShogaiSogoCity = async (city: ShogaiSogoCity): Promise<ShogaiSogoCity> => {
+  try {
+    const saveData: any = {
+      care_client_id: city.careClientId,
+      municipality: city.municipality || null,
+      certificate_number: city.certificateNumber || null,
+      valid_from: city.validFrom || null,
+      valid_until: city.validUntil || null,
+      sort_order: city.sortOrder || 0,
+      updated_at: new Date().toISOString(),
+    };
+    if (city.id) {
+      saveData.id = city.id;
+    }
+
+    const { data, error } = await supabase
+      .from('shogai_sogo_cities')
+      .upsert(saveData, { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return {
+      id: data.id,
+      careClientId: data.care_client_id,
+      municipality: data.municipality || '',
+      certificateNumber: data.certificate_number || '',
+      validFrom: data.valid_from || '',
+      validUntil: data.valid_until || '',
+      sortOrder: data.sort_order || 0,
+    };
+  } catch (error) {
+    console.error('支給市町村保存エラー:', error);
+    throw error;
+  }
+};
+
+export const deleteShogaiSogoCity = async (cityId: string): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('shogai_sogo_cities')
+      .delete()
+      .eq('id', cityId);
+
+    if (error) throw error;
+  } catch (error) {
+    console.error('支給市町村削除エラー:', error);
+    throw error;
+  }
+};
+
+// ========== 障害者総合支援 - 障害支援区分 ==========
+
+export const loadShogaiSogoCareCategories = async (careClientId: string): Promise<ShogaiSogoCareCategory[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('shogai_sogo_care_categories')
+      .select('*')
+      .eq('care_client_id', careClientId)
+      .order('sort_order', { ascending: true });
+
+    if (error) throw error;
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      careClientId: row.care_client_id,
+      disabilityType: row.disability_type || '',
+      supportCategory: row.support_category || '',
+      validFrom: row.valid_from || '',
+      validUntil: row.valid_until || '',
+      sortOrder: row.sort_order || 0,
+    }));
+  } catch (error) {
+    console.error('障害支援区分読み込みエラー:', error);
+    throw error;
+  }
+};
+
+export const saveShogaiSogoCareCategory = async (category: ShogaiSogoCareCategory): Promise<ShogaiSogoCareCategory> => {
+  try {
+    const saveData: any = {
+      care_client_id: category.careClientId,
+      disability_type: category.disabilityType || null,
+      support_category: category.supportCategory || null,
+      valid_from: category.validFrom || null,
+      valid_until: category.validUntil || null,
+      sort_order: category.sortOrder || 0,
+      updated_at: new Date().toISOString(),
+    };
+    if (category.id) {
+      saveData.id = category.id;
+    }
+
+    const { data, error } = await supabase
+      .from('shogai_sogo_care_categories')
+      .upsert(saveData, { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return {
+      id: data.id,
+      careClientId: data.care_client_id,
+      disabilityType: data.disability_type || '',
+      supportCategory: data.support_category || '',
+      validFrom: data.valid_from || '',
+      validUntil: data.valid_until || '',
+      sortOrder: data.sort_order || 0,
+    };
+  } catch (error) {
+    console.error('障害支援区分保存エラー:', error);
+    throw error;
+  }
+};
+
+export const deleteShogaiSogoCareCategory = async (categoryId: string): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('shogai_sogo_care_categories')
+      .delete()
+      .eq('id', categoryId);
+
+    if (error) throw error;
+  } catch (error) {
+    console.error('障害支援区分削除エラー:', error);
+    throw error;
+  }
 };

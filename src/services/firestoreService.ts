@@ -1167,3 +1167,31 @@ export const subscribeToCareClients = (callback: (clients: any[] | null) => void
   callback([]);
   return () => {};
 };
+
+// ========== 障害者総合支援関連（Firebaseスタブ） ==========
+
+export const loadShogaiSogoCities = async (_careClientId: string) => {
+  console.warn('障害者総合支援はSupabaseモードでのみ利用可能です');
+  return [];
+};
+
+export const saveShogaiSogoCity = async (_city: any) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const deleteShogaiSogoCity = async (_cityId: string) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const loadShogaiSogoCareCategories = async (_careClientId: string) => {
+  console.warn('障害者総合支援はSupabaseモードでのみ利用可能です');
+  return [];
+};
+
+export const saveShogaiSogoCareCategory = async (_category: any) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const deleteShogaiSogoCareCategory = async (_categoryId: string) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
