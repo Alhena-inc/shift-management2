@@ -228,6 +228,70 @@ export interface ShogaiSogoCareCategory {
   sortOrder: number;
 }
 
+// 障害者総合支援 - 利用者負担上限月額
+export interface ShogaiBurdenLimit {
+  id: string;
+  careClientId: string;
+  burdenLimitMonthly: string;
+  validFrom: string;
+  validUntil: string;
+  sortOrder: number;
+}
+
+// 障害者総合支援 - 利用者負担上限額管理事業所
+export interface ShogaiBurdenLimitOffice {
+  id: string;
+  careClientId: string;
+  officeName: string;
+  validFrom: string;
+  validUntil: string;
+  sortOrder: number;
+}
+
+// 障害者総合支援 - サービス提供責任者
+export interface ShogaiServiceResponsible {
+  id: string;
+  careClientId: string;
+  helperId: string;
+  helperName: string;
+  validFrom: string;
+  validUntil: string;
+  sortOrder: number;
+}
+
+// 障害者総合支援 - 計画相談支援
+export interface ShogaiPlanConsultation {
+  id: string;
+  careClientId: string;
+  consultationOffice: string;
+  consultationSpecialist: string;
+  validFrom: string;
+  validUntil: string;
+  sortOrder: number;
+}
+
+// 障害者総合支援 - 初任者介護計画/支援計画
+export interface ShogaiCarePlan {
+  id: string;
+  careClientId: string;
+  planType: 'initial_care' | 'support';
+  officeName: string;
+  validFrom: string;
+  validUntil: string;
+  sortOrder: number;
+}
+
+// 障害者総合支援 - 同一建物減算
+export interface ShogaiSameBuildingDeduction {
+  id: string;
+  careClientId: string;
+  officeName: string;
+  deductionCategory: string;
+  validFrom: string;
+  validUntil: string;
+  sortOrder: number;
+}
+
 export interface CareClientServices {
   shogaiSogo?: boolean;      // 障害者総合支援
   chiikiSeikatsu?: boolean;  // 地域生活支援事業

@@ -100,6 +100,36 @@ export const {
   loadShogaiSogoCareCategories,
   saveShogaiSogoCareCategory,
   deleteShogaiSogoCareCategory,
+
+  // 障害者総合支援 - 利用者負担上限月額
+  loadShogaiBurdenLimits,
+  saveShogaiBurdenLimit,
+  deleteShogaiBurdenLimit,
+
+  // 障害者総合支援 - 利用者負担上限額管理事業所
+  loadShogaiBurdenLimitOffices,
+  saveShogaiBurdenLimitOffice,
+  deleteShogaiBurdenLimitOffice,
+
+  // 障害者総合支援 - サービス提供責任者
+  loadShogaiServiceResponsibles,
+  saveShogaiServiceResponsible,
+  deleteShogaiServiceResponsible,
+
+  // 障害者総合支援 - 計画相談支援
+  loadShogaiPlanConsultations,
+  saveShogaiPlanConsultation,
+  deleteShogaiPlanConsultation,
+
+  // 障害者総合支援 - 初任者介護計画/支援計画
+  loadShogaiCarePlans,
+  saveShogaiCarePlan,
+  deleteShogaiCarePlan,
+
+  // 障害者総合支援 - 同一建物減算
+  loadShogaiSameBuildingDeductions,
+  saveShogaiSameBuildingDeduction,
+  deleteShogaiSameBuildingDeduction,
 } = dataService;
 
 // 日付ごとのシフト削除機能を追加

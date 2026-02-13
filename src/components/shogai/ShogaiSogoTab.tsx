@@ -1,9 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import type { CareClient, ShogaiSogoCity, ShogaiSogoCareCategory } from '../../types';
+import type { CareClient, ShogaiSogoCity, ShogaiSogoCareCategory, ShogaiBurdenLimit, ShogaiBurdenLimitOffice, ShogaiServiceResponsible, ShogaiPlanConsultation, ShogaiCarePlan, ShogaiSameBuildingDeduction, Helper } from '../../types';
 import AccordionSection from '../AccordionSection';
 import ShogaiCityList from './ShogaiCityList';
 import ShogaiCareCategoryList from './ShogaiCareCategoryList';
-import { loadShogaiSogoCities, loadShogaiSogoCareCategories } from '../../services/dataService';
+import ShogaiBurdenLimitList from './ShogaiBurdenLimitList';
+import ShogaiBurdenLimitOfficeList from './ShogaiBurdenLimitOfficeList';
+import ShogaiServiceResponsibleList from './ShogaiServiceResponsibleList';
+import ShogaiPlanConsultationList from './ShogaiPlanConsultationList';
+import ShogaiCarePlanList from './ShogaiCarePlanList';
+import ShogaiSameBuildingDeductionList from './ShogaiSameBuildingDeductionList';
+import {
+  loadShogaiSogoCities, loadShogaiSogoCareCategories,
+  loadShogaiBurdenLimits, loadShogaiBurdenLimitOffices,
+  loadShogaiServiceResponsibles, loadShogaiPlanConsultations,
+  loadShogaiCarePlans, loadShogaiSameBuildingDeductions,
+  loadHelpers,
+} from '../../services/dataService';
 
 interface Props {
   client: CareClient;
@@ -11,11 +23,21 @@ interface Props {
   onSubPageChange?: (isSubPage: boolean) => void;
 }
 
-type SubPage = null | 'jukyu' | 'cities' | 'categories';
+type SubPage = null | 'jukyu' | 'cities' | 'categories'
+  | 'burdenLimits' | 'burdenLimitOffices' | 'serviceResponsibles'
+  | 'planConsultations' | 'carePlans' | 'sameBuildingDeductions';
 
 const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }) => {
   const [cities, setCities] = useState<ShogaiSogoCity[]>([]);
   const [categories, setCategories] = useState<ShogaiSogoCareCategory[]>([]);
+  const [burdenLimits, setBurdenLimits] = useState<ShogaiBurdenLimit[]>([]);
+  const [burdenLimitOffices, setBurdenLimitOffices] = useState<ShogaiBurdenLimitOffice[]>([]);
+  const [serviceResponsibles, setServiceResponsibles] = useState<ShogaiServiceResponsible[]>([]);
+  const [planConsultations, setPlanConsultations] = useState<ShogaiPlanConsultation[]>([]);
+  const [initialCarePlans, setInitialCarePlans] = useState<ShogaiCarePlan[]>([]);
+  const [supportPlans, setSupportPlans] = useState<ShogaiCarePlan[]>([]);
+  const [sameBuildingDeductions, setSameBuildingDeductions] = useState<ShogaiSameBuildingDeduction[]>([]);
+  const [helpers, setHelpers] = useState<Helper[]>([]);
   const [loading, setLoading] = useState(true);
   const [subPage, setSubPageState] = useState<SubPage>(null);
 
@@ -27,12 +49,34 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
   useEffect(() => {
     const load = async () => {
       try {
-        const [loadedCities, loadedCategories] = await Promise.all([
+        const [
+          loadedCities, loadedCategories,
+          loadedBurdenLimits, loadedBurdenLimitOffices,
+          loadedServiceResponsibles, loadedPlanConsultations,
+          loadedInitialCarePlans, loadedSupportPlans,
+          loadedSameBuildingDeductions, loadedHelpers,
+        ] = await Promise.all([
           loadShogaiSogoCities(client.id),
           loadShogaiSogoCareCategories(client.id),
+          loadShogaiBurdenLimits(client.id),
+          loadShogaiBurdenLimitOffices(client.id),
+          loadShogaiServiceResponsibles(client.id),
+          loadShogaiPlanConsultations(client.id),
+          loadShogaiCarePlans(client.id, 'initial_care'),
+          loadShogaiCarePlans(client.id, 'support'),
+          loadShogaiSameBuildingDeductions(client.id),
+          loadHelpers(),
         ]);
         setCities(loadedCities);
         setCategories(loadedCategories);
+        setBurdenLimits(loadedBurdenLimits);
+        setBurdenLimitOffices(loadedBurdenLimitOffices);
+        setServiceResponsibles(loadedServiceResponsibles);
+        setPlanConsultations(loadedPlanConsultations);
+        setInitialCarePlans(loadedInitialCarePlans);
+        setSupportPlans(loadedSupportPlans);
+        setSameBuildingDeductions(loadedSameBuildingDeductions);
+        setHelpers(loadedHelpers);
       } catch (error) {
         console.error('障害者総合支援データ読み込みエラー:', error);
       } finally {
@@ -75,12 +119,91 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
     );
   }
 
+  // ========== 利用者負担上限月額サブページ ==========
+  if (subPage === 'burdenLimits') {
+    return (
+      <ShogaiBurdenLimitList
+        careClientId={client.id}
+        items={burdenLimits}
+        onUpdate={setBurdenLimits}
+        onBack={() => setSubPage('jukyu')}
+      />
+    );
+  }
+
+  // ========== 利用者負担上限額管理事業所サブページ ==========
+  if (subPage === 'burdenLimitOffices') {
+    return (
+      <ShogaiBurdenLimitOfficeList
+        careClientId={client.id}
+        items={burdenLimitOffices}
+        onUpdate={setBurdenLimitOffices}
+        onBack={() => setSubPage('jukyu')}
+      />
+    );
+  }
+
+  // ========== サービス提供責任者サブページ ==========
+  if (subPage === 'serviceResponsibles') {
+    return (
+      <ShogaiServiceResponsibleList
+        careClientId={client.id}
+        items={serviceResponsibles}
+        helpers={helpers}
+        onUpdate={setServiceResponsibles}
+        onBack={() => setSubPage('jukyu')}
+      />
+    );
+  }
+
+  // ========== 計画相談支援サブページ ==========
+  if (subPage === 'planConsultations') {
+    return (
+      <ShogaiPlanConsultationList
+        careClientId={client.id}
+        items={planConsultations}
+        onUpdate={setPlanConsultations}
+        onBack={() => setSubPage('jukyu')}
+      />
+    );
+  }
+
+  // ========== 初任者介護計画サブページ ==========
+  if (subPage === 'carePlans') {
+    return (
+      <ShogaiCarePlanList
+        careClientId={client.id}
+        initialCarePlans={initialCarePlans}
+        supportPlans={supportPlans}
+        onUpdateInitialCare={setInitialCarePlans}
+        onUpdateSupport={setSupportPlans}
+        onBack={() => setSubPage('jukyu')}
+      />
+    );
+  }
+
+  // ========== 同一建物減算サブページ ==========
+  if (subPage === 'sameBuildingDeductions') {
+    return (
+      <ShogaiSameBuildingDeductionList
+        careClientId={client.id}
+        items={sameBuildingDeductions}
+        onUpdate={setSameBuildingDeductions}
+        onBack={() => setSubPage('jukyu')}
+      />
+    );
+  }
+
   // ========== 受給者証サブページ ==========
   if (subPage === 'jukyu') {
-    // サマリー用ヘルパー
     const hasCities = cities.length > 0 && cities.some(c => c.municipality);
     const hasCategories = categories.length > 0 && categories.some(c => c.disabilityType || c.supportCategory);
-    const hasBurdenLimit = !!client.billing?.shogaiBurdenLimitMonthly;
+    const hasBurdenLimits = burdenLimits.length > 0 && burdenLimits.some(b => b.burdenLimitMonthly);
+    const hasBurdenLimitOffices = burdenLimitOffices.length > 0 && burdenLimitOffices.some(b => b.officeName);
+    const hasServiceResponsibles = serviceResponsibles.length > 0 && serviceResponsibles.some(s => s.helperName);
+    const hasPlanConsultations = planConsultations.length > 0 && planConsultations.some(p => p.consultationOffice);
+    const hasCarePlans = initialCarePlans.length > 0 || supportPlans.length > 0;
+    const hasSameBuildingDeductions = sameBuildingDeductions.length > 0 && sameBuildingDeductions.some(s => s.officeName);
 
     return (
       <div>
@@ -102,6 +225,12 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
           onNavigate={(key) => {
             if (key === 'shikyuShichoson') setSubPage('cities');
             if (key === 'shogaiShienKubun') setSubPage('categories');
+            if (key === 'burdenLimitMonthly') setSubPage('burdenLimits');
+            if (key === 'burdenLimitManagementOffice') setSubPage('burdenLimitOffices');
+            if (key === 'serviceResponsible') setSubPage('serviceResponsibles');
+            if (key === 'planConsultation') setSubPage('planConsultations');
+            if (key === 'initialCarePlan') setSubPage('carePlans');
+            if (key === 'sameBuildingDeduction') setSubPage('sameBuildingDeductions');
           }}
           sections={[
             {
@@ -127,105 +256,56 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
             {
               key: 'burdenLimitMonthly',
               title: '利用者負担上限月額',
-              summary: hasBurdenLimit ? client.billing!.shogaiBurdenLimitMonthly : '情報を入力してください。',
-              summaryColor: hasBurdenLimit ? undefined : '#dc2626',
-              content: (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">利用者負担上限月額</label>
-                  <input
-                    type="text"
-                    value={client.billing?.shogaiBurdenLimitMonthly || ''}
-                    onChange={(e) => updateField('billing', { ...client.billing, shogaiBurdenLimitMonthly: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="例: 9,300円"
-                  />
-                </div>
-              ),
+              summary: hasBurdenLimits
+                ? burdenLimits.map(b => b.burdenLimitMonthly).filter(Boolean).join('、')
+                : undefined,
+              navigable: true,
+              content: null,
             },
             {
               key: 'burdenLimitManagementOffice',
               title: '利用者負担上限額管理事業所',
-              summary: client.billing?.shogaiBurdenLimitManagementOffice || undefined,
-              content: (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">利用者負担上限額管理事業所</label>
-                  <input
-                    type="text"
-                    value={client.billing?.shogaiBurdenLimitManagementOffice || ''}
-                    onChange={(e) => updateField('billing', { ...client.billing, shogaiBurdenLimitManagementOffice: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="事業所名を入力"
-                  />
-                </div>
-              ),
+              summary: hasBurdenLimitOffices
+                ? burdenLimitOffices.map(b => b.officeName).filter(Boolean).join('、')
+                : undefined,
+              navigable: true,
+              content: null,
             },
             {
               key: 'serviceResponsible',
               title: 'サービス提供責任者',
-              summary: client.billing?.shogaiServiceResponsible || undefined,
-              content: (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">サービス提供責任者</label>
-                  <input
-                    type="text"
-                    value={client.billing?.shogaiServiceResponsible || ''}
-                    onChange={(e) => updateField('billing', { ...client.billing, shogaiServiceResponsible: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="責任者名を入力"
-                  />
-                </div>
-              ),
+              summary: hasServiceResponsibles
+                ? serviceResponsibles.map(s => s.helperName).filter(Boolean).join('、')
+                : undefined,
+              navigable: true,
+              content: null,
             },
             {
               key: 'planConsultation',
               title: '計画相談支援',
-              summary: client.billing?.shogaiPlanConsultation || undefined,
-              content: (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">計画相談支援</label>
-                  <input
-                    type="text"
-                    value={client.billing?.shogaiPlanConsultation || ''}
-                    onChange={(e) => updateField('billing', { ...client.billing, shogaiPlanConsultation: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="計画相談支援を入力"
-                  />
-                </div>
-              ),
+              summary: hasPlanConsultations
+                ? planConsultations.map(p => p.consultationOffice).filter(Boolean).join('、')
+                : undefined,
+              navigable: true,
+              content: null,
             },
             {
               key: 'initialCarePlan',
               title: '初任者介護計画',
-              summary: client.billing?.shogaiInitialCarePlan || undefined,
-              content: (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">初任者介護計画</label>
-                  <input
-                    type="text"
-                    value={client.billing?.shogaiInitialCarePlan || ''}
-                    onChange={(e) => updateField('billing', { ...client.billing, shogaiInitialCarePlan: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="初任者介護計画を入力"
-                  />
-                </div>
-              ),
+              summary: hasCarePlans
+                ? [...initialCarePlans, ...supportPlans].map(p => p.officeName).filter(Boolean).join('、')
+                : undefined,
+              navigable: true,
+              content: null,
             },
             {
               key: 'sameBuildingDeduction',
               title: '同一建物減算',
-              summary: client.billing?.shogaiSameBuildingDeduction || undefined,
-              content: (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">同一建物減算</label>
-                  <input
-                    type="text"
-                    value={client.billing?.shogaiSameBuildingDeduction || ''}
-                    onChange={(e) => updateField('billing', { ...client.billing, shogaiSameBuildingDeduction: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="同一建物減算を入力"
-                  />
-                </div>
-              ),
+              summary: hasSameBuildingDeductions
+                ? sameBuildingDeductions.map(s => `${s.officeName} ${s.deductionCategory}`).filter(Boolean).join('、')
+                : undefined,
+              navigable: true,
+              content: null,
             },
           ]}
         />
@@ -236,7 +316,7 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
   // ========== メイン（障害者総合支援タブのトップレベル） ==========
 
   // 受給者証サマリー
-  const hasJukyuData = cities.length > 0 || categories.length > 0 || !!client.billing?.shogaiBurdenLimitMonthly;
+  const hasJukyuData = cities.length > 0 || categories.length > 0 || burdenLimits.length > 0;
   const jukyuSummary = hasJukyuData
     ? [
         ...cities.map(c => c.municipality).filter(Boolean),

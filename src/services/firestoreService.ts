@@ -1195,3 +1195,83 @@ export const saveShogaiSogoCareCategory = async (_category: any) => {
 export const deleteShogaiSogoCareCategory = async (_categoryId: string) => {
   throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
 };
+
+// ========== 障害者総合支援 - 追加6項目（Firebaseスタブ） ==========
+
+export const loadShogaiBurdenLimits = async (_careClientId: string) => {
+  console.warn('障害者総合支援はSupabaseモードでのみ利用可能です');
+  return [];
+};
+
+export const saveShogaiBurdenLimit = async (_item: any) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const deleteShogaiBurdenLimit = async (_id: string) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const loadShogaiBurdenLimitOffices = async (_careClientId: string) => {
+  console.warn('障害者総合支援はSupabaseモードでのみ利用可能です');
+  return [];
+};
+
+export const saveShogaiBurdenLimitOffice = async (_item: any) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const deleteShogaiBurdenLimitOffice = async (_id: string) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const loadShogaiServiceResponsibles = async (_careClientId: string) => {
+  console.warn('障害者総合支援はSupabaseモードでのみ利用可能です');
+  return [];
+};
+
+export const saveShogaiServiceResponsible = async (_item: any) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const deleteShogaiServiceResponsible = async (_id: string) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const loadShogaiPlanConsultations = async (_careClientId: string) => {
+  console.warn('障害者総合支援はSupabaseモードでのみ利用可能です');
+  return [];
+};
+
+export const saveShogaiPlanConsultation = async (_item: any) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const deleteShogaiPlanConsultation = async (_id: string) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const loadShogaiCarePlans = async (_careClientId: string, _planType?: string) => {
+  console.warn('障害者総合支援はSupabaseモードでのみ利用可能です');
+  return [];
+};
+
+export const saveShogaiCarePlan = async (_item: any) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const deleteShogaiCarePlan = async (_id: string) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const loadShogaiSameBuildingDeductions = async (_careClientId: string) => {
+  console.warn('障害者総合支援はSupabaseモードでのみ利用可能です');
+  return [];
+};
+
+export const saveShogaiSameBuildingDeduction = async (_item: any) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const deleteShogaiSameBuildingDeduction = async (_id: string) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
