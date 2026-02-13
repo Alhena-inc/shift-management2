@@ -17,6 +17,7 @@ interface Props {
   cities: ShogaiSogoCity[];
   onUpdate: (cities: ShogaiSogoCity[]) => void;
   onBack: () => void;
+  source?: string;
 }
 
 // 西暦→和暦変換
@@ -50,7 +51,7 @@ const addPeriod = (startDate: string, months: number): string => {
 
 type View = 'list' | 'form';
 
-const ShogaiCityList: React.FC<Props> = ({ careClientId, cities, onUpdate, onBack }) => {
+const ShogaiCityList: React.FC<Props> = ({ careClientId, cities, onUpdate, onBack, source = 'shogai' }) => {
   const [view, setView] = useState<View>('list');
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -89,7 +90,7 @@ const ShogaiCityList: React.FC<Props> = ({ careClientId, cities, onUpdate, onBac
   const handleSave = async () => {
     setSaving(true);
     try {
-      const saved = await saveShogaiSogoCity(formData);
+      const saved = await saveShogaiSogoCity(formData, source);
       if (editIndex !== null) {
         // 編集
         const updated = [...cities];

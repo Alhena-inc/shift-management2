@@ -7,6 +7,7 @@ interface Props {
   items: ShogaiBurdenLimit[];
   onUpdate: (items: ShogaiBurdenLimit[]) => void;
   onBack: () => void;
+  source?: string;
 }
 
 const toWareki = (dateStr: string): string => {
@@ -30,7 +31,7 @@ const addPeriod = (startDate: string, months: number): string => {
 
 type View = 'list' | 'form';
 
-const ShogaiBurdenLimitList: React.FC<Props> = ({ careClientId, items, onUpdate, onBack }) => {
+const ShogaiBurdenLimitList: React.FC<Props> = ({ careClientId, items, onUpdate, onBack, source = 'shogai' }) => {
   const [view, setView] = useState<View>('list');
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -53,7 +54,7 @@ const ShogaiBurdenLimitList: React.FC<Props> = ({ careClientId, items, onUpdate,
   const handleSave = async () => {
     setSaving(true);
     try {
-      const saved = await saveShogaiBurdenLimit(formData);
+      const saved = await saveShogaiBurdenLimit(formData, source);
       if (editIndex !== null) {
         const updated = [...items];
         updated[editIndex] = saved;

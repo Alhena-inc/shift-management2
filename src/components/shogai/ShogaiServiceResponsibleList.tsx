@@ -8,6 +8,7 @@ interface Props {
   helpers: Helper[];
   onUpdate: (items: ShogaiServiceResponsible[]) => void;
   onBack: () => void;
+  source?: string;
 }
 
 const toWareki = (dateStr: string): string => {
@@ -31,7 +32,7 @@ const addPeriod = (startDate: string, months: number): string => {
 
 type View = 'list' | 'form';
 
-const ShogaiServiceResponsibleList: React.FC<Props> = ({ careClientId, items, helpers, onUpdate, onBack }) => {
+const ShogaiServiceResponsibleList: React.FC<Props> = ({ careClientId, items, helpers, onUpdate, onBack, source = 'shogai' }) => {
   const [view, setView] = useState<View>('list');
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -59,7 +60,7 @@ const ShogaiServiceResponsibleList: React.FC<Props> = ({ careClientId, items, he
   const handleSave = async () => {
     setSaving(true);
     try {
-      const saved = await saveShogaiServiceResponsible(formData);
+      const saved = await saveShogaiServiceResponsible(formData, source);
       if (editIndex !== null) {
         const updated = [...items];
         updated[editIndex] = saved;

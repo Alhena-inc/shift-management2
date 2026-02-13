@@ -1,9 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import type { CareClient, ShogaiDocument } from '../../types';
+import type { CareClient, ShogaiSogoCity, ShogaiSogoCareCategory, ShogaiBurdenLimit, ShogaiBurdenLimitOffice, ShogaiServiceResponsible, ShogaiSupplyAmount, ShogaiUsedService, ShogaiDocument, Helper } from '../../types';
 import AccordionSection from '../AccordionSection';
+import ShogaiCityList from './ShogaiCityList';
+import ShogaiCareCategoryList from './ShogaiCareCategoryList';
+import ShogaiBurdenLimitList from './ShogaiBurdenLimitList';
+import ShogaiBurdenLimitOfficeList from './ShogaiBurdenLimitOfficeList';
+import ShogaiServiceResponsibleList from './ShogaiServiceResponsibleList';
+import ShogaiSupplyAmountList from './ShogaiSupplyAmountList';
+import ShogaiUsedServiceList from './ShogaiUsedServiceList';
 import ShogaiDocumentList from './ShogaiDocumentList';
 import {
+  loadShogaiSogoCities, loadShogaiSogoCareCategories,
+  loadShogaiBurdenLimits, loadShogaiBurdenLimitOffices,
+  loadShogaiServiceResponsibles,
+  loadShogaiSupplyAmounts,
+  loadShogaiUsedServices,
   loadShogaiDocuments,
+  loadHelpers,
 } from '../../services/dataService';
 
 interface Props {
@@ -12,10 +25,21 @@ interface Props {
   onSubPageChange?: (isSubPage: boolean) => void;
 }
 
-type SubPage = null | 'jukyu' | 'keiyaku'
+type SubPage = null | 'jukyu' | 'cities' | 'categories'
+  | 'burdenLimits' | 'burdenLimitOffices' | 'serviceResponsibles'
+  | 'supplyAmounts' | 'usedServices'
   | 'idouKeikaku' | 'shienKeika' | 'assessment' | 'monitoring' | 'tejunsho';
 
 const ChiikiSeikatsuTab: React.FC<Props> = ({ client, updateField, onSubPageChange }) => {
+  const [cities, setCities] = useState<ShogaiSogoCity[]>([]);
+  const [categories, setCategories] = useState<ShogaiSogoCareCategory[]>([]);
+  const [burdenLimits, setBurdenLimits] = useState<ShogaiBurdenLimit[]>([]);
+  const [burdenLimitOffices, setBurdenLimitOffices] = useState<ShogaiBurdenLimitOffice[]>([]);
+  const [serviceResponsibles, setServiceResponsibles] = useState<ShogaiServiceResponsible[]>([]);
+  const [contractSupplyAmounts, setContractSupplyAmounts] = useState<ShogaiSupplyAmount[]>([]);
+  const [decidedSupplyAmounts, setDecidedSupplyAmounts] = useState<ShogaiSupplyAmount[]>([]);
+  const [usedServices, setUsedServices] = useState<ShogaiUsedService[]>([]);
+  const [helpers, setHelpers] = useState<Helper[]>([]);
   const [idouKeikakuDocs, setIdouKeikakuDocs] = useState<ShogaiDocument[]>([]);
   const [shienKeikaDocs, setShienKeikaDocs] = useState<ShogaiDocument[]>([]);
   const [assessmentDocs, setAssessmentDocs] = useState<ShogaiDocument[]>([]);
@@ -33,19 +57,43 @@ const ChiikiSeikatsuTab: React.FC<Props> = ({ client, updateField, onSubPageChan
     const load = async () => {
       try {
         const [
+          loadedCities, loadedCategories,
+          loadedBurdenLimits, loadedBurdenLimitOffices,
+          loadedServiceResponsibles,
+          loadedContractSupply, loadedDecidedSupply,
+          loadedUsedServices,
           loadedIdouKeikaku, loadedShienKeika, loadedAssessment, loadedMonitoring, loadedTejunsho,
+          loadedHelpers,
         ] = await Promise.all([
+          loadShogaiSogoCities(client.id, 'chiiki'),
+          loadShogaiSogoCareCategories(client.id, 'chiiki'),
+          loadShogaiBurdenLimits(client.id, 'chiiki'),
+          loadShogaiBurdenLimitOffices(client.id, 'chiiki'),
+          loadShogaiServiceResponsibles(client.id, 'chiiki'),
+          loadShogaiSupplyAmounts(client.id, 'contract', 'chiiki'),
+          loadShogaiSupplyAmounts(client.id, 'decided', 'chiiki'),
+          loadShogaiUsedServices(client.id, 'chiiki'),
           loadShogaiDocuments(client.id, 'chiiki_idou_keikaku'),
           loadShogaiDocuments(client.id, 'chiiki_shien_keika'),
           loadShogaiDocuments(client.id, 'chiiki_assessment'),
           loadShogaiDocuments(client.id, 'chiiki_monitoring'),
           loadShogaiDocuments(client.id, 'chiiki_tejunsho'),
+          loadHelpers(),
         ]);
+        setCities(loadedCities);
+        setCategories(loadedCategories);
+        setBurdenLimits(loadedBurdenLimits);
+        setBurdenLimitOffices(loadedBurdenLimitOffices);
+        setServiceResponsibles(loadedServiceResponsibles);
+        setContractSupplyAmounts(loadedContractSupply);
+        setDecidedSupplyAmounts(loadedDecidedSupply);
+        setUsedServices(loadedUsedServices);
         setIdouKeikakuDocs(loadedIdouKeikaku);
         setShienKeikaDocs(loadedShienKeika);
         setAssessmentDocs(loadedAssessment);
         setMonitoringDocs(loadedMonitoring);
         setTejunshoDocs(loadedTejunsho);
+        setHelpers(loadedHelpers);
       } catch (error) {
         console.error('地域生活支援事業データ読み込みエラー:', error);
       } finally {
@@ -64,83 +112,97 @@ const ChiikiSeikatsuTab: React.FC<Props> = ({ client, updateField, onSubPageChan
     );
   }
 
-  // ========== 受給者証サブページ ==========
-  if (subPage === 'jukyu') {
+  // ========== 支給市町村サブページ ==========
+  if (subPage === 'cities') {
     return (
-      <div>
-        <button
-          onClick={() => setSubPage(null)}
-          className="mb-4 px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-gray-700"
-        >
-          ← 戻る
-        </button>
+      <ShogaiCityList
+        careClientId={client.id}
+        cities={cities}
+        onUpdate={setCities}
+        onBack={() => setSubPage('jukyu')}
+        source="chiiki"
+      />
+    );
+  }
 
-        <div className="border border-gray-300 rounded-lg p-4 mb-4">
-          <h3 className="font-bold text-gray-800">地域生活支援事業の受給者証</h3>
-        </div>
+  // ========== 障害支援区分サブページ ==========
+  if (subPage === 'categories') {
+    return (
+      <ShogaiCareCategoryList
+        careClientId={client.id}
+        categories={categories}
+        onUpdate={setCategories}
+        onBack={() => setSubPage('jukyu')}
+        source="chiiki"
+      />
+    );
+  }
 
-        <div className="space-y-5 px-1">
-          <div className="flex items-center gap-4">
-            <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0">受給者証番号</label>
-            <input
-              type="text"
-              value={client.billing?.chiikiNumber || ''}
-              onChange={(e) => updateField('billing', { ...client.billing, chiikiNumber: e.target.value })}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
-              placeholder="受給者証番号"
-            />
-          </div>
-          <div className="flex items-start gap-4">
-            <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0 pt-2">支給決定期間</label>
-            <div className="flex items-center gap-2 flex-wrap">
-              <input
-                type="date"
-                value={client.billing?.chiikiStart || ''}
-                onChange={(e) => updateField('billing', { ...client.billing, chiikiStart: e.target.value })}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
-              />
-              <span className="text-gray-500">〜</span>
-              <input
-                type="date"
-                value={client.billing?.chiikiEnd || ''}
-                onChange={(e) => updateField('billing', { ...client.billing, chiikiEnd: e.target.value })}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
+  // ========== 利用者負担上限月額サブページ ==========
+  if (subPage === 'burdenLimits') {
+    return (
+      <ShogaiBurdenLimitList
+        careClientId={client.id}
+        items={burdenLimits}
+        onUpdate={setBurdenLimits}
+        onBack={() => setSubPage('jukyu')}
+        source="chiiki"
+      />
+    );
+  }
+
+  // ========== 利用者負担上限額管理事業所サブページ ==========
+  if (subPage === 'burdenLimitOffices') {
+    return (
+      <ShogaiBurdenLimitOfficeList
+        careClientId={client.id}
+        items={burdenLimitOffices}
+        onUpdate={setBurdenLimitOffices}
+        onBack={() => setSubPage('jukyu')}
+        source="chiiki"
+      />
+    );
+  }
+
+  // ========== サービス提供責任者サブページ ==========
+  if (subPage === 'serviceResponsibles') {
+    return (
+      <ShogaiServiceResponsibleList
+        careClientId={client.id}
+        items={serviceResponsibles}
+        helpers={helpers}
+        onUpdate={setServiceResponsibles}
+        onBack={() => setSubPage('jukyu')}
+        source="chiiki"
+      />
     );
   }
 
   // ========== 契約支給量サブページ ==========
-  if (subPage === 'keiyaku') {
+  if (subPage === 'supplyAmounts') {
     return (
-      <div>
-        <button
-          onClick={() => setSubPage(null)}
-          className="mb-4 px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-gray-700"
-        >
-          ← 戻る
-        </button>
+      <ShogaiSupplyAmountList
+        careClientId={client.id}
+        contractItems={contractSupplyAmounts}
+        decidedItems={decidedSupplyAmounts}
+        onUpdateContract={setContractSupplyAmounts}
+        onUpdateDecided={setDecidedSupplyAmounts}
+        onBack={() => setSubPage(null)}
+        source="chiiki"
+      />
+    );
+  }
 
-        <div className="border border-gray-300 rounded-lg p-4 mb-4">
-          <h3 className="font-bold text-gray-800">契約支給量</h3>
-        </div>
-
-        <div className="space-y-5 px-1">
-          <div className="flex items-center gap-4">
-            <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0">契約支給量</label>
-            <input
-              type="text"
-              value={client.billing?.chiikiKeiyaku || ''}
-              onChange={(e) => updateField('billing', { ...client.billing, chiikiKeiyaku: e.target.value })}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
-              placeholder="契約支給量"
-            />
-          </div>
-        </div>
-      </div>
+  // ========== 利用サービスサブページ ==========
+  if (subPage === 'usedServices') {
+    return (
+      <ShogaiUsedServiceList
+        careClientId={client.id}
+        items={usedServices}
+        onUpdate={setUsedServices}
+        onBack={() => setSubPage(null)}
+        source="chiiki"
+      />
     );
   }
 
@@ -214,9 +276,105 @@ const ChiikiSeikatsuTab: React.FC<Props> = ({ client, updateField, onSubPageChan
     );
   }
 
+  // ========== 受給者証サブページ ==========
+  if (subPage === 'jukyu') {
+    const hasCities = cities.length > 0 && cities.some(c => c.municipality);
+    const hasCategories = categories.length > 0 && categories.some(c => c.disabilityType || c.supportCategory);
+    const hasBurdenLimits = burdenLimits.length > 0 && burdenLimits.some(b => b.burdenLimitMonthly);
+    const hasBurdenLimitOffices = burdenLimitOffices.length > 0 && burdenLimitOffices.some(b => b.officeName);
+    const hasServiceResponsibles = serviceResponsibles.length > 0 && serviceResponsibles.some(s => s.helperName);
+
+    return (
+      <div>
+        <button
+          onClick={() => setSubPage(null)}
+          className="mb-4 px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-gray-700"
+        >
+          ← 戻る
+        </button>
+
+        <div className="border border-gray-300 rounded-lg p-4 mb-4">
+          <h3 className="font-bold text-gray-800">地域生活支援事業の受給者証</h3>
+        </div>
+
+        <AccordionSection
+          onNavigate={(key) => {
+            if (key === 'shikyuShichoson') setSubPage('cities');
+            if (key === 'shogaiShienKubun') setSubPage('categories');
+            if (key === 'burdenLimitMonthly') setSubPage('burdenLimits');
+            if (key === 'burdenLimitManagementOffice') setSubPage('burdenLimitOffices');
+            if (key === 'serviceResponsible') setSubPage('serviceResponsibles');
+          }}
+          sections={[
+            {
+              key: 'shikyuShichoson',
+              title: '支給市町村',
+              summary: hasCities
+                ? cities.map(c => c.municipality).filter(Boolean).join('、')
+                : '情報を入力してください。',
+              summaryColor: hasCities ? undefined : '#dc2626',
+              navigable: true,
+              content: null,
+            },
+            {
+              key: 'shogaiShienKubun',
+              title: '障害支援区分',
+              summary: hasCategories
+                ? categories.map(c => [c.disabilityType, c.supportCategory].filter(Boolean).join(' ')).filter(Boolean).join('、')
+                : '情報を入力してください。',
+              summaryColor: hasCategories ? undefined : '#dc2626',
+              navigable: true,
+              content: null,
+            },
+            {
+              key: 'burdenLimitMonthly',
+              title: '利用者負担上限月額',
+              summary: hasBurdenLimits
+                ? burdenLimits.map(b => b.burdenLimitMonthly).filter(Boolean).join('、')
+                : '情報を入力してください。',
+              summaryColor: hasBurdenLimits ? undefined : '#dc2626',
+              navigable: true,
+              content: null,
+            },
+            {
+              key: 'burdenLimitManagementOffice',
+              title: '利用者負担上限額管理事業所',
+              summary: hasBurdenLimitOffices
+                ? burdenLimitOffices.map(b => b.officeName).filter(Boolean).join('、')
+                : undefined,
+              navigable: true,
+              content: null,
+            },
+            {
+              key: 'serviceResponsible',
+              title: 'サービス提供責任者',
+              summary: hasServiceResponsibles
+                ? serviceResponsibles.map(s => s.helperName).filter(Boolean).join('、')
+                : undefined,
+              navigable: true,
+              content: null,
+            },
+          ]}
+        />
+      </div>
+    );
+  }
+
   // ========== メイン ==========
-  const jukyuSummary = client.billing?.chiikiNumber || undefined;
-  const keiyakuSummary = client.billing?.chiikiKeiyaku || undefined;
+  const hasJukyuData = cities.length > 0 || categories.length > 0 || burdenLimits.length > 0;
+  const jukyuSummary = hasJukyuData
+    ? [
+        ...cities.map(c => c.municipality).filter(Boolean),
+        ...categories.map(c => [c.disabilityType, c.supportCategory].filter(Boolean).join(' ')).filter(Boolean),
+      ].join('、') || undefined
+    : '情報を入力してください。';
+  const jukyuSummaryColor = hasJukyuData ? undefined : '#dc2626';
+
+  const hasSupplyData = contractSupplyAmounts.length > 0 || decidedSupplyAmounts.length > 0;
+  const supplySummary = hasSupplyData
+    ? [...contractSupplyAmounts, ...decidedSupplyAmounts].map(s => s.serviceContent || s.serviceCategory).filter(Boolean).join('、')
+    : '情報を入力してください。';
+  const supplySummaryColor = hasSupplyData ? undefined : '#dc2626';
 
   const hasIdouKeikakuDocs = idouKeikakuDocs.length > 0;
   const idouKeikakuSummary = hasIdouKeikakuDocs ? `${idouKeikakuDocs.length}件のファイル` : undefined;
@@ -237,25 +395,28 @@ const ChiikiSeikatsuTab: React.FC<Props> = ({ client, updateField, onSubPageChan
     <AccordionSection
       onNavigate={(key) => {
         if (key === 'jukyu') setSubPage('jukyu');
-        if (key === 'keiyaku') setSubPage('keiyaku');
+        if (key === 'keiyaku') setSubPage('supplyAmounts');
         if (key === 'idouKeikaku') setSubPage('idouKeikaku');
         if (key === 'shienKeika') setSubPage('shienKeika');
         if (key === 'assessment') setSubPage('assessment');
         if (key === 'monitoring') setSubPage('monitoring');
         if (key === 'tejunsho') setSubPage('tejunsho');
+        if (key === 'riyouService') setSubPage('usedServices');
       }}
       sections={[
         {
           key: 'jukyu',
           title: '受給者証',
           summary: jukyuSummary,
+          summaryColor: jukyuSummaryColor,
           navigable: true,
           content: null,
         },
         {
           key: 'keiyaku',
           title: '契約支給量',
-          summary: keiyakuSummary,
+          summary: supplySummary,
+          summaryColor: supplySummaryColor,
           navigable: true,
           content: null,
         },
@@ -291,6 +452,15 @@ const ChiikiSeikatsuTab: React.FC<Props> = ({ client, updateField, onSubPageChan
           key: 'tejunsho',
           title: '訪問介護手順書',
           summary: tejunshoSummary,
+          navigable: true,
+          content: null,
+        },
+        {
+          key: 'riyouService',
+          title: '利用サービス',
+          summary: usedServices.length > 0
+            ? usedServices.map(s => s.serviceType).filter(Boolean).join('、')
+            : undefined,
           navigable: true,
           content: null,
         },

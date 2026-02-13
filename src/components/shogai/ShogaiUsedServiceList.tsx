@@ -7,6 +7,7 @@ interface Props {
   items: ShogaiUsedService[];
   onUpdate: (items: ShogaiUsedService[]) => void;
   onBack: () => void;
+  source?: string;
 }
 
 const SERVICE_TYPE_OPTIONS = ['居宅介護', '重度訪問介護', '行動援護', '同行援護'];
@@ -32,7 +33,7 @@ const addPeriod = (startDate: string, months: number): string => {
 
 type View = 'list' | 'form';
 
-const ShogaiUsedServiceList: React.FC<Props> = ({ careClientId, items, onUpdate, onBack }) => {
+const ShogaiUsedServiceList: React.FC<Props> = ({ careClientId, items, onUpdate, onBack, source = 'shogai' }) => {
   const [view, setView] = useState<View>('list');
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -55,7 +56,7 @@ const ShogaiUsedServiceList: React.FC<Props> = ({ careClientId, items, onUpdate,
   const handleSave = async () => {
     setSaving(true);
     try {
-      const saved = await saveShogaiUsedService(formData);
+      const saved = await saveShogaiUsedService(formData, source);
       if (editIndex !== null) {
         const updated = [...items];
         updated[editIndex] = saved;

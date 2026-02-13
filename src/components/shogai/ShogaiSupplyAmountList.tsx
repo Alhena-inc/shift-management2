@@ -13,6 +13,7 @@ interface Props {
   onUpdateContract: (items: ShogaiSupplyAmount[]) => void;
   onUpdateDecided: (items: ShogaiSupplyAmount[]) => void;
   onBack: () => void;
+  source?: string;
 }
 
 const toWareki = (dateStr: string): string => {
@@ -37,7 +38,7 @@ const addPeriod = (startDate: string, months: number): string => {
 type Tab = 'contract' | 'decided';
 type View = 'list' | 'form';
 
-const ShogaiSupplyAmountList: React.FC<Props> = ({ careClientId, contractItems, decidedItems, onUpdateContract, onUpdateDecided, onBack }) => {
+const ShogaiSupplyAmountList: React.FC<Props> = ({ careClientId, contractItems, decidedItems, onUpdateContract, onUpdateDecided, onBack, source = 'shogai' }) => {
   const [activeTab, setActiveTab] = useState<Tab>('contract');
   const [view, setView] = useState<View>('list');
   const [editIndex, setEditIndex] = useState<number | null>(null);
@@ -70,7 +71,7 @@ const ShogaiSupplyAmountList: React.FC<Props> = ({ careClientId, contractItems, 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const saved = await saveShogaiSupplyAmount(formData);
+      const saved = await saveShogaiSupplyAmount(formData, source);
       if (editIndex !== null) {
         const updated = [...currentItems];
         updated[editIndex] = saved;

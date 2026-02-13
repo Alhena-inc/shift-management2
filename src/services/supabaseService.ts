@@ -1633,12 +1633,13 @@ export const subscribeToCareClients = (callback: (clients: CareClient[] | null) 
 
 // ========== 障害者総合支援 - 支給市町村 ==========
 
-export const loadShogaiSogoCities = async (careClientId: string): Promise<ShogaiSogoCity[]> => {
+export const loadShogaiSogoCities = async (careClientId: string, source: string = 'shogai'): Promise<ShogaiSogoCity[]> => {
   try {
     const { data, error } = await supabase
       .from('shogai_sogo_cities')
       .select('*')
       .eq('care_client_id', careClientId)
+      .eq('source', source)
       .order('sort_order', { ascending: true });
 
     if (error) throw error;
@@ -1658,7 +1659,7 @@ export const loadShogaiSogoCities = async (careClientId: string): Promise<Shogai
   }
 };
 
-export const saveShogaiSogoCity = async (city: ShogaiSogoCity): Promise<ShogaiSogoCity> => {
+export const saveShogaiSogoCity = async (city: ShogaiSogoCity, source: string = 'shogai'): Promise<ShogaiSogoCity> => {
   try {
     const saveData: any = {
       care_client_id: city.careClientId,
@@ -1667,6 +1668,7 @@ export const saveShogaiSogoCity = async (city: ShogaiSogoCity): Promise<ShogaiSo
       valid_from: city.validFrom || null,
       valid_until: city.validUntil || null,
       sort_order: city.sortOrder || 0,
+      source,
       updated_at: new Date().toISOString(),
     };
     if (city.id) {
@@ -1712,12 +1714,13 @@ export const deleteShogaiSogoCity = async (cityId: string): Promise<void> => {
 
 // ========== 障害者総合支援 - 障害支援区分 ==========
 
-export const loadShogaiSogoCareCategories = async (careClientId: string): Promise<ShogaiSogoCareCategory[]> => {
+export const loadShogaiSogoCareCategories = async (careClientId: string, source: string = 'shogai'): Promise<ShogaiSogoCareCategory[]> => {
   try {
     const { data, error } = await supabase
       .from('shogai_sogo_care_categories')
       .select('*')
       .eq('care_client_id', careClientId)
+      .eq('source', source)
       .order('sort_order', { ascending: true });
 
     if (error) throw error;
@@ -1737,7 +1740,7 @@ export const loadShogaiSogoCareCategories = async (careClientId: string): Promis
   }
 };
 
-export const saveShogaiSogoCareCategory = async (category: ShogaiSogoCareCategory): Promise<ShogaiSogoCareCategory> => {
+export const saveShogaiSogoCareCategory = async (category: ShogaiSogoCareCategory, source: string = 'shogai'): Promise<ShogaiSogoCareCategory> => {
   try {
     const saveData: any = {
       care_client_id: category.careClientId,
@@ -1746,6 +1749,7 @@ export const saveShogaiSogoCareCategory = async (category: ShogaiSogoCareCategor
       valid_from: category.validFrom || null,
       valid_until: category.validUntil || null,
       sort_order: category.sortOrder || 0,
+      source,
       updated_at: new Date().toISOString(),
     };
     if (category.id) {
@@ -1791,12 +1795,13 @@ export const deleteShogaiSogoCareCategory = async (categoryId: string): Promise<
 
 // ========== 障害者総合支援 - 利用者負担上限月額 ==========
 
-export const loadShogaiBurdenLimits = async (careClientId: string): Promise<ShogaiBurdenLimit[]> => {
+export const loadShogaiBurdenLimits = async (careClientId: string, source: string = 'shogai'): Promise<ShogaiBurdenLimit[]> => {
   try {
     const { data, error } = await supabase
       .from('shogai_burden_limits')
       .select('*')
       .eq('care_client_id', careClientId)
+      .eq('source', source)
       .order('sort_order', { ascending: true });
 
     if (error) throw error;
@@ -1815,7 +1820,7 @@ export const loadShogaiBurdenLimits = async (careClientId: string): Promise<Shog
   }
 };
 
-export const saveShogaiBurdenLimit = async (item: ShogaiBurdenLimit): Promise<ShogaiBurdenLimit> => {
+export const saveShogaiBurdenLimit = async (item: ShogaiBurdenLimit, source: string = 'shogai'): Promise<ShogaiBurdenLimit> => {
   try {
     const saveData: any = {
       care_client_id: item.careClientId,
@@ -1823,6 +1828,7 @@ export const saveShogaiBurdenLimit = async (item: ShogaiBurdenLimit): Promise<Sh
       valid_from: item.validFrom || null,
       valid_until: item.validUntil || null,
       sort_order: item.sortOrder || 0,
+      source,
       updated_at: new Date().toISOString(),
     };
     if (item.id) saveData.id = item.id;
@@ -1861,12 +1867,13 @@ export const deleteShogaiBurdenLimit = async (id: string): Promise<void> => {
 
 // ========== 障害者総合支援 - 利用者負担上限額管理事業所 ==========
 
-export const loadShogaiBurdenLimitOffices = async (careClientId: string): Promise<ShogaiBurdenLimitOffice[]> => {
+export const loadShogaiBurdenLimitOffices = async (careClientId: string, source: string = 'shogai'): Promise<ShogaiBurdenLimitOffice[]> => {
   try {
     const { data, error } = await supabase
       .from('shogai_burden_limit_offices')
       .select('*')
       .eq('care_client_id', careClientId)
+      .eq('source', source)
       .order('sort_order', { ascending: true });
 
     if (error) throw error;
@@ -1885,11 +1892,12 @@ export const loadShogaiBurdenLimitOffices = async (careClientId: string): Promis
   }
 };
 
-export const saveShogaiBurdenLimitOffice = async (item: ShogaiBurdenLimitOffice): Promise<ShogaiBurdenLimitOffice> => {
+export const saveShogaiBurdenLimitOffice = async (item: ShogaiBurdenLimitOffice, source: string = 'shogai'): Promise<ShogaiBurdenLimitOffice> => {
   try {
     const saveData: any = {
       care_client_id: item.careClientId,
       office_name: item.officeName || null,
+      source,
       valid_from: item.validFrom || null,
       valid_until: item.validUntil || null,
       sort_order: item.sortOrder || 0,
@@ -1931,12 +1939,13 @@ export const deleteShogaiBurdenLimitOffice = async (id: string): Promise<void> =
 
 // ========== 障害者総合支援 - サービス提供責任者 ==========
 
-export const loadShogaiServiceResponsibles = async (careClientId: string): Promise<ShogaiServiceResponsible[]> => {
+export const loadShogaiServiceResponsibles = async (careClientId: string, source: string = 'shogai'): Promise<ShogaiServiceResponsible[]> => {
   try {
     const { data, error } = await supabase
       .from('shogai_service_responsibles')
       .select('*')
       .eq('care_client_id', careClientId)
+      .eq('source', source)
       .order('sort_order', { ascending: true });
 
     if (error) throw error;
@@ -1956,7 +1965,7 @@ export const loadShogaiServiceResponsibles = async (careClientId: string): Promi
   }
 };
 
-export const saveShogaiServiceResponsible = async (item: ShogaiServiceResponsible): Promise<ShogaiServiceResponsible> => {
+export const saveShogaiServiceResponsible = async (item: ShogaiServiceResponsible, source: string = 'shogai'): Promise<ShogaiServiceResponsible> => {
   try {
     const saveData: any = {
       care_client_id: item.careClientId,
@@ -1965,6 +1974,7 @@ export const saveShogaiServiceResponsible = async (item: ShogaiServiceResponsibl
       valid_from: item.validFrom || null,
       valid_until: item.validUntil || null,
       sort_order: item.sortOrder || 0,
+      source,
       updated_at: new Date().toISOString(),
     };
     if (item.id) saveData.id = item.id;
@@ -2228,12 +2238,13 @@ export const deleteShogaiSameBuildingDeduction = async (id: string): Promise<voi
 
 // ========== 障害者総合支援 - 契約支給量/決定支給量 ==========
 
-export const loadShogaiSupplyAmounts = async (careClientId: string, supplyType?: string): Promise<ShogaiSupplyAmount[]> => {
+export const loadShogaiSupplyAmounts = async (careClientId: string, supplyType?: string, source: string = 'shogai'): Promise<ShogaiSupplyAmount[]> => {
   try {
     let query = supabase
       .from('shogai_supply_amounts')
       .select('*')
-      .eq('care_client_id', careClientId);
+      .eq('care_client_id', careClientId)
+      .eq('source', source);
 
     if (supplyType) {
       query = query.eq('supply_type', supplyType);
@@ -2263,7 +2274,7 @@ export const loadShogaiSupplyAmounts = async (careClientId: string, supplyType?:
   }
 };
 
-export const saveShogaiSupplyAmount = async (item: ShogaiSupplyAmount): Promise<ShogaiSupplyAmount> => {
+export const saveShogaiSupplyAmount = async (item: ShogaiSupplyAmount, source: string = 'shogai'): Promise<ShogaiSupplyAmount> => {
   try {
     const saveData: any = {
       care_client_id: item.careClientId,
@@ -2277,6 +2288,7 @@ export const saveShogaiSupplyAmount = async (item: ShogaiSupplyAmount): Promise<
       valid_from: item.validFrom || null,
       valid_until: item.validUntil || null,
       sort_order: item.sortOrder || 0,
+      source,
       updated_at: new Date().toISOString(),
     };
     if (item.id) saveData.id = item.id;
@@ -2508,12 +2520,13 @@ export const uploadShogaiDocFile = async (careClientId: string, docType: string,
 
 // ========== 障害者総合支援 - 利用サービス ==========
 
-export const loadShogaiUsedServices = async (careClientId: string): Promise<import('../types').ShogaiUsedService[]> => {
+export const loadShogaiUsedServices = async (careClientId: string, source: string = 'shogai'): Promise<import('../types').ShogaiUsedService[]> => {
   try {
     const { data, error } = await supabase
       .from('shogai_used_services')
       .select('*')
       .eq('care_client_id', careClientId)
+      .eq('source', source)
       .order('sort_order', { ascending: true });
 
     if (error) throw error;
@@ -2532,7 +2545,7 @@ export const loadShogaiUsedServices = async (careClientId: string): Promise<impo
   }
 };
 
-export const saveShogaiUsedService = async (item: import('../types').ShogaiUsedService): Promise<import('../types').ShogaiUsedService> => {
+export const saveShogaiUsedService = async (item: import('../types').ShogaiUsedService, source: string = 'shogai'): Promise<import('../types').ShogaiUsedService> => {
   try {
     const saveData: any = {
       care_client_id: item.careClientId,
@@ -2540,6 +2553,7 @@ export const saveShogaiUsedService = async (item: import('../types').ShogaiUsedS
       service_start_date: item.serviceStartDate || null,
       service_end_date: item.serviceEndDate || null,
       sort_order: item.sortOrder || 0,
+      source,
       updated_at: new Date().toISOString(),
     };
     if (item.id) saveData.id = item.id;

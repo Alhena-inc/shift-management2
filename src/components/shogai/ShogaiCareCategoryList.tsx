@@ -36,11 +36,12 @@ interface Props {
   categories: ShogaiSogoCareCategory[];
   onUpdate: (categories: ShogaiSogoCareCategory[]) => void;
   onBack: () => void;
+  source?: string;
 }
 
 type View = 'list' | 'form';
 
-const ShogaiCareCategoryList: React.FC<Props> = ({ careClientId, categories, onUpdate, onBack }) => {
+const ShogaiCareCategoryList: React.FC<Props> = ({ careClientId, categories, onUpdate, onBack, source = 'shogai' }) => {
   const [view, setView] = useState<View>('list');
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -78,7 +79,7 @@ const ShogaiCareCategoryList: React.FC<Props> = ({ careClientId, categories, onU
   const handleSave = async () => {
     setSaving(true);
     try {
-      const saved = await saveShogaiSogoCareCategory(formData);
+      const saved = await saveShogaiSogoCareCategory(formData, source);
       if (editIndex !== null) {
         const updated = [...categories];
         updated[editIndex] = saved;
