@@ -233,7 +233,7 @@ const ShogaiCareCategoryList: React.FC<Props> = ({ careClientId, categories, onU
               className="flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer gap-6"
               onClick={() => handleEdit(index)}
             >
-              <span className="text-sm text-gray-800">{cat.disabilityType || '未設定'}</span>
+              <span className="text-sm text-gray-800">{cat.disabilityType}</span>
               <span className="text-sm text-gray-600">{cat.supportCategory}</span>
               <span className="text-sm text-gray-600">
                 {cat.validFrom && cat.validUntil

@@ -256,7 +256,7 @@ const ShogaiCityList: React.FC<Props> = ({ careClientId, cities, onUpdate, onBac
               className="flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer gap-6"
               onClick={() => handleEdit(index)}
             >
-              <span className="text-sm text-gray-800">{city.municipality || '未設定'}</span>
+              <span className="text-sm text-gray-800">{city.municipality}</span>
               <span className="text-sm text-gray-600">{city.certificateNumber}</span>
               <span className="text-sm text-gray-600">
                 {city.validFrom && city.validUntil
