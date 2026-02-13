@@ -307,7 +307,8 @@ export interface ShogaiCarePlanDocument {
 
 // 障害者総合支援 - 汎用ドキュメント（サービス担当者会議の要点、アセスメント、モニタリング表、訪問介護手順書）
 export type ShogaiDocType = 'tantousha_kaigi' | 'assessment' | 'monitoring' | 'tejunsho'
-  | 'chiiki_idou_keikaku' | 'chiiki_shien_keika' | 'chiiki_assessment' | 'chiiki_monitoring' | 'chiiki_tejunsho';
+  | 'chiiki_idou_keikaku' | 'chiiki_shien_keika' | 'chiiki_assessment' | 'chiiki_monitoring' | 'chiiki_tejunsho'
+  | 'kaigo_houmon_keikaku' | 'kaigo_tuusho_keikaku' | 'kaigo_shien_keika' | 'kaigo_assessment' | 'kaigo_monitoring' | 'kaigo_tejunsho';
 
 export interface ShogaiDocument {
   id: string;

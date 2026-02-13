@@ -4,6 +4,7 @@ import { loadCareClients, saveCareClient, softDeleteCareClient } from '../servic
 import AccordionSection from '../components/AccordionSection';
 import ShogaiSogoTab from '../components/shogai/ShogaiSogoTab';
 import ChiikiSeikatsuTab from '../components/shogai/ChiikiSeikatsuTab';
+import KaigoHokenTab from '../components/kaigo/KaigoHokenTab';
 
 // 制度の定義
 const SERVICE_OPTIONS: { key: keyof CareClientServices; label: string }[] = [
@@ -453,53 +454,10 @@ const CareClientDetailPage: React.FC = () => {
 
           {/* 介護保険タブ */}
           {activeTab === 'kaigoHoken' && (
-            <AccordionSection
-              sections={[
-                { key: 'hihokensha', title: '被保険者証', summary: client.billing?.kaigoNumber || undefined, content: (
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">被保険者番号</label>
-                      <input type="text" value={client.billing?.kaigoNumber || ''} onChange={(e) => updateField('billing', { ...client.billing, kaigoNumber: e.target.value })} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="被保険者番号" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">認定有効期間</label>
-                      <div className="grid grid-cols-2 gap-4">
-                        <input type="date" value={client.billing?.kaigoStart || ''} onChange={(e) => updateField('billing', { ...client.billing, kaigoStart: e.target.value })} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" />
-                        <input type="date" value={client.billing?.kaigoEnd || ''} onChange={(e) => updateField('billing', { ...client.billing, kaigoEnd: e.target.value })} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">介護度</label>
-                      <select value={client.billing?.kaigoCareLevel || ''} onChange={(e) => updateField('billing', { ...client.billing, kaigoCareLevel: e.target.value })} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white">
-                        {['', '要支援1', '要支援2', '要介護1', '要介護2', '要介護3', '要介護4', '要介護5'].map(l => <option key={l} value={l}>{l || '未設定'}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                )},
-                { key: 'seikyu', title: '請求保留・再請求・計画単位数', summary: client.billing?.kaigoSeikyuHoryu ? '情報を入力してください。' : undefined, summaryColor: client.billing?.kaigoSeikyuHoryu ? '#dc2626' : undefined, content: (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3">
-                      <label className="text-sm font-medium text-gray-700">請求保留</label>
-                      <input type="checkbox" checked={client.billing?.kaigoSeikyuHoryu || false} onChange={(e) => updateField('billing', { ...client.billing, kaigoSeikyuHoryu: e.target.checked })} className="w-5 h-5 text-green-600 rounded" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">計画単位数</label>
-                      <input type="text" value={client.billing?.kaigoKeikakuTani || ''} onChange={(e) => updateField('billing', { ...client.billing, kaigoKeikakuTani: e.target.value })} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="計画単位数" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">備考</label>
-                      <textarea value={client.billing?.kaigoSeikyuNotes || ''} onChange={(e) => updateField('billing', { ...client.billing, kaigoSeikyuNotes: e.target.value })} rows={2} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="備考" />
-                    </div>
-                  </div>
-                )},
-                { key: 'houmonKeikaku', title: '訪問介護計画書', content: <div><textarea value={client.billing?.kaigoHoumonKeikaku || ''} onChange={(e) => updateField('billing', { ...client.billing, kaigoHoumonKeikaku: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="訪問介護計画書を入力..." /></div> },
-                { key: 'tuushoKeikaku', title: '通所介護計画書', content: <div><textarea value={client.billing?.kaigoTuushoKeikaku || ''} onChange={(e) => updateField('billing', { ...client.billing, kaigoTuushoKeikaku: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="通所介護計画書を入力..." /></div> },
-                { key: 'shienKeika', title: '介護支援経過', content: <div><textarea value={client.billing?.kaigoShienKeika || ''} onChange={(e) => updateField('billing', { ...client.billing, kaigoShienKeika: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="介護支援経過を入力..." /></div> },
-                { key: 'assessment', title: 'アセスメント', content: <div><textarea value={client.billing?.kaigoAssessment || ''} onChange={(e) => updateField('billing', { ...client.billing, kaigoAssessment: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="アセスメントを入力..." /></div> },
-                { key: 'monitoring', title: 'モニタリング表', content: <div><textarea value={client.billing?.kaigoMonitoring || ''} onChange={(e) => updateField('billing', { ...client.billing, kaigoMonitoring: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="モニタリング表を入力..." /></div> },
-                { key: 'tejunsho', title: '訪問介護手順書', content: <div><textarea value={client.billing?.kaigoTejunsho || ''} onChange={(e) => updateField('billing', { ...client.billing, kaigoTejunsho: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="訪問介護手順書を入力..." /></div> },
-                { key: 'riyouService', title: '利用サービス', content: <div><textarea value={client.billing?.kaigoRiyouService || ''} onChange={(e) => updateField('billing', { ...client.billing, kaigoRiyouService: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="利用サービスを入力..." /></div> },
-              ]}
+            <KaigoHokenTab
+              client={client}
+              updateField={updateField}
+              onSubPageChange={setIsSubPage}
             />
           )}
 
