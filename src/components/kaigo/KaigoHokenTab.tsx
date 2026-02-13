@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import type { CareClient, ShogaiSupplyAmount, ShogaiUsedService, ShogaiDocument, ShogaiSogoCity, ShogaiSogoCareCategory, ShogaiServiceResponsible, ShogaiSameBuildingDeduction, KaigoHihokenshaItem, Helper } from '../../types';
+import type { CareClient, ShogaiUsedService, ShogaiDocument, ShogaiSogoCity, ShogaiSogoCareCategory, ShogaiServiceResponsible, ShogaiSameBuildingDeduction, KaigoHihokenshaItem, Helper } from '../../types';
 import AccordionSection from '../AccordionSection';
-import ShogaiSupplyAmountList from '../shogai/ShogaiSupplyAmountList';
 import ShogaiUsedServiceList from '../shogai/ShogaiUsedServiceList';
 import ShogaiDocumentList from '../shogai/ShogaiDocumentList';
 import ShogaiCityList from '../shogai/ShogaiCityList';
@@ -10,7 +9,6 @@ import ShogaiServiceResponsibleList from '../shogai/ShogaiServiceResponsibleList
 import ShogaiSameBuildingDeductionList from '../shogai/ShogaiSameBuildingDeductionList';
 import KaigoGenericItemList from './KaigoGenericItemList';
 import {
-  loadShogaiSupplyAmounts,
   loadShogaiUsedServices,
   loadShogaiDocuments,
   loadShogaiSogoCities,
@@ -27,7 +25,7 @@ interface Props {
   onSubPageChange?: (isSubPage: boolean) => void;
 }
 
-type SubPage = null | 'hihokensha' | 'supplyAmounts' | 'usedServices'
+type SubPage = null | 'hihokensha' | 'usedServices'
   | 'houmonKeikaku' | 'tuushoKeikaku' | 'shienKeika' | 'assessment' | 'monitoring' | 'tejunsho'
   // 被保険者証の子ページ
   | 'hihokensha_city' | 'hihokensha_careCategory' | 'hihokensha_careManager'
@@ -36,8 +34,6 @@ type SubPage = null | 'hihokensha' | 'supplyAmounts' | 'usedServices'
   | 'hihokensha_benefitRestriction' | 'hihokensha_reduction';
 
 const KaigoHokenTab: React.FC<Props> = ({ client, updateField, onSubPageChange }) => {
-  const [contractSupplyAmounts, setContractSupplyAmounts] = useState<ShogaiSupplyAmount[]>([]);
-  const [decidedSupplyAmounts, setDecidedSupplyAmounts] = useState<ShogaiSupplyAmount[]>([]);
   const [usedServices, setUsedServices] = useState<ShogaiUsedService[]>([]);
   const [houmonKeikakuDocs, setHoumonKeikakuDocs] = useState<ShogaiDocument[]>([]);
   const [tuushoKeikakuDocs, setTuushoKeikakuDocs] = useState<ShogaiDocument[]>([]);
@@ -72,7 +68,6 @@ const KaigoHokenTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
     const load = async () => {
       try {
         const [
-          loadedContractSupply, loadedDecidedSupply,
           loadedUsedServices,
           loadedHoumonKeikaku, loadedTuushoKeikaku, loadedShienKeika,
           loadedAssessment, loadedMonitoring, loadedTejunsho,
@@ -84,8 +79,6 @@ const KaigoHokenTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
           loadedReduction,
           loadedHelpers,
         ] = await Promise.all([
-          loadShogaiSupplyAmounts(client.id, 'contract', 'kaigo'),
-          loadShogaiSupplyAmounts(client.id, 'decided', 'kaigo'),
           loadShogaiUsedServices(client.id, 'kaigo'),
           loadShogaiDocuments(client.id, 'kaigo_houmon_keikaku'),
           loadShogaiDocuments(client.id, 'kaigo_tuusho_keikaku'),
@@ -107,8 +100,6 @@ const KaigoHokenTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
           loadKaigoHihokenshaItems(client.id, 'reduction'),
           loadHelpers(),
         ]);
-        setContractSupplyAmounts(loadedContractSupply);
-        setDecidedSupplyAmounts(loadedDecidedSupply);
         setUsedServices(loadedUsedServices);
         setHoumonKeikakuDocs(loadedHoumonKeikaku);
         setTuushoKeikakuDocs(loadedTuushoKeikaku);
@@ -234,21 +225,6 @@ const KaigoHokenTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
     );
   }
 
-  // ========== 契約支給量サブページ ==========
-  if (subPage === 'supplyAmounts') {
-    return (
-      <ShogaiSupplyAmountList
-        careClientId={client.id}
-        contractItems={contractSupplyAmounts}
-        decidedItems={decidedSupplyAmounts}
-        onUpdateContract={setContractSupplyAmounts}
-        onUpdateDecided={setDecidedSupplyAmounts}
-        onBack={() => setSubPage(null)}
-        source="kaigo"
-      />
-    );
-  }
-
   // ========== 利用サービスサブページ ==========
   if (subPage === 'usedServices') {
     return (
@@ -347,16 +323,10 @@ const KaigoHokenTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
   }
 
   // ========== メイン ==========
-  const hasSupplyData = contractSupplyAmounts.length > 0 || decidedSupplyAmounts.length > 0;
-  const supplySummary = hasSupplyData
-    ? [...contractSupplyAmounts, ...decidedSupplyAmounts].map(s => s.serviceContent || s.serviceCategory).filter(Boolean).join('、')
-    : undefined;
-
   return (
     <AccordionSection
       onNavigate={(key) => {
         if (key === 'hihokensha') setSubPage('hihokensha');
-        if (key === 'keiyaku') setSubPage('supplyAmounts');
         if (key === 'houmonKeikaku') setSubPage('houmonKeikaku');
         if (key === 'tuushoKeikaku') setSubPage('tuushoKeikaku');
         if (key === 'shienKeika') setSubPage('shienKeika');
@@ -370,13 +340,6 @@ const KaigoHokenTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
           key: 'hihokensha',
           title: '被保険者証',
           summary: client.billing?.kaigoNumber || undefined,
-          navigable: true,
-          content: null,
-        },
-        {
-          key: 'keiyaku',
-          title: '契約支給量',
-          summary: supplySummary,
           navigable: true,
           content: null,
         },

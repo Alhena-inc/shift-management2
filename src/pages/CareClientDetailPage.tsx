@@ -5,6 +5,7 @@ import AccordionSection from '../components/AccordionSection';
 import ShogaiSogoTab from '../components/shogai/ShogaiSogoTab';
 import ChiikiSeikatsuTab from '../components/shogai/ChiikiSeikatsuTab';
 import KaigoHokenTab from '../components/kaigo/KaigoHokenTab';
+import JihiServiceTab from '../components/jihi/JihiServiceTab';
 
 // 制度の定義
 const SERVICE_OPTIONS: { key: keyof CareClientServices; label: string }[] = [
@@ -472,47 +473,11 @@ const CareClientDetailPage: React.FC = () => {
 
           {/* 自費サービスタブ */}
           {activeTab === 'jihiService' && (
-            <div className="space-y-6">
-              <h2 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">自費サービス</h2>
-              <p className="text-sm text-gray-500">自費サービスに関する情報を入力してください。</p>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">契約内容</label>
-                <textarea
-                  value={client.billing?.jihiContract || ''}
-                  onChange={(e) => updateField('billing', { ...client.billing, jihiContract: e.target.value })}
-                  rows={3}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y"
-                  placeholder="契約内容を入力..."
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">契約期間</label>
-                <div className="grid grid-cols-2 gap-4">
-                  <input
-                    type="date"
-                    value={client.billing?.jihiStart || ''}
-                    onChange={(e) => updateField('billing', { ...client.billing, jihiStart: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  />
-                  <input
-                    type="date"
-                    value={client.billing?.jihiEnd || ''}
-                    onChange={(e) => updateField('billing', { ...client.billing, jihiEnd: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">備考</label>
-                <textarea
-                  value={client.billing?.jihiNotes || ''}
-                  onChange={(e) => updateField('billing', { ...client.billing, jihiNotes: e.target.value })}
-                  rows={3}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y"
-                  placeholder="備考を入力..."
-                />
-              </div>
-            </div>
+            <JihiServiceTab
+              client={client}
+              updateField={updateField}
+              onSubPageChange={setIsSubPage}
+            />
           )}
 
           {/* 請求タブ */}

@@ -54,6 +54,7 @@ const ShogaiCareCategoryList: React.FC<Props> = ({ careClientId, categories, onU
     careClientId,
     disabilityType: '',
     supportCategory: '',
+    certificationDate: '',
     validFrom: '',
     validUntil: '',
     sortOrder: 0,
@@ -66,6 +67,7 @@ const ShogaiCareCategoryList: React.FC<Props> = ({ careClientId, categories, onU
       careClientId,
       disabilityType: '',
       supportCategory: '',
+      certificationDate: '',
       validFrom: '',
       validUntil: '',
       sortOrder: categories.length,
@@ -163,6 +165,15 @@ const ShogaiCareCategoryList: React.FC<Props> = ({ careClientId, categories, onU
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
+              </div>
+              <div className="flex items-center gap-4">
+                <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0">認定日</label>
+                <input
+                  type="date"
+                  value={formData.certificationDate}
+                  onChange={(e) => setFormData({ ...formData, certificationDate: e.target.value })}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+                />
               </div>
             </>
           ) : (
