@@ -2,6 +2,17 @@ import React, { useState } from 'react';
 import type { KaigoHihokenshaItem } from '../../types';
 import { saveKaigoHihokenshaItem, deleteKaigoHihokenshaItem } from '../../services/dataService';
 
+type ValueKey = 'value1' | 'value2' | 'value3' | 'value4' | 'value5';
+
+interface FieldConfig {
+  key: ValueKey;
+  label: string;
+  type: 'text' | 'select' | 'radio' | 'checkbox';
+  options?: string[];
+  suffix?: string;
+  sideCheckbox?: { label: string; valueKey: ValueKey };
+}
+
 interface Props {
   careClientId: string;
   category: string;
@@ -9,12 +20,8 @@ interface Props {
   onUpdate: (items: KaigoHihokenshaItem[]) => void;
   onBack: () => void;
   title: string;
-  field1Label: string;
-  field1Type: 'text' | 'select';
-  field1Options?: string[];
-  field2Label?: string;
-  field2Type?: 'text' | 'select';
-  field2Options?: string[];
+  fields: FieldConfig[];
+  periodLabel?: string;
 }
 
 const toWareki = (dateStr: string): string => {
@@ -40,19 +47,18 @@ type View = 'list' | 'form';
 
 const KaigoGenericItemList: React.FC<Props> = ({
   careClientId, category, items, onUpdate, onBack,
-  title, field1Label, field1Type, field1Options,
-  field2Label, field2Type, field2Options,
+  title, fields, periodLabel = '適用期間',
 }) => {
   const [view, setView] = useState<View>('list');
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState<KaigoHihokenshaItem>({
-    id: '', careClientId, category, value1: '', value2: '', validFrom: '', validUntil: '', sortOrder: 0,
+    id: '', careClientId, category, value1: '', value2: '', value3: '', value4: '', value5: '', validFrom: '', validUntil: '', sortOrder: 0,
   });
 
   const handleAdd = () => {
     setEditIndex(null);
-    setFormData({ id: '', careClientId, category, value1: '', value2: '', validFrom: '', validUntil: '', sortOrder: items.length });
+    setFormData({ id: '', careClientId, category, value1: '', value2: '', value3: '', value4: '', value5: '', validFrom: '', validUntil: '', sortOrder: items.length });
     setView('form');
   };
 
@@ -98,22 +104,55 @@ const KaigoGenericItemList: React.FC<Props> = ({
     setFormData({ ...formData, validUntil: addPeriod(formData.validFrom, months) });
   };
 
-  const renderField = (
-    label: string, value: string, type: 'text' | 'select', options: string[] | undefined,
-    onChange: (val: string) => void,
-  ) => (
-    <div className="flex items-center gap-4">
-      <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0">{label}</label>
-      {type === 'select' && options ? (
-        <select value={value} onChange={(e) => onChange(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-sm">
-          <option value="">選択してください</option>
-          {options.map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-      ) : (
-        <input type="text" value={value} onChange={(e) => onChange(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm flex-1" placeholder={label} />
-      )}
-    </div>
-  );
+  const getFieldValue = (key: ValueKey) => formData[key];
+  const setFieldValue = (key: ValueKey, val: string) => setFormData({ ...formData, [key]: val });
+
+  const renderField = (field: FieldConfig) => {
+    const value = getFieldValue(field.key);
+
+    if (field.type === 'radio' && field.options) {
+      return (
+        <div className="flex items-center gap-4" key={field.key + field.label}>
+          <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0">{field.label}</label>
+          <div className="flex items-center gap-4">
+            {field.options.map(o => (
+              <label key={o} className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                <input type="radio" name={field.key} value={o} checked={value === o} onChange={(e) => setFieldValue(field.key, e.target.value)} className="accent-green-600" />
+                {o}
+              </label>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (field.type === 'select' && field.options) {
+      return (
+        <div className="flex items-center gap-4" key={field.key + field.label}>
+          <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0">{field.label}</label>
+          <select value={value} onChange={(e) => setFieldValue(field.key, e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-sm">
+            <option value="">選択してください</option>
+            {field.options.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+          {field.sideCheckbox && (
+            <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer ml-2">
+              <input type="checkbox" checked={getFieldValue(field.sideCheckbox.valueKey) === 'true'} onChange={(e) => setFieldValue(field.sideCheckbox!.valueKey, e.target.checked ? 'true' : '')} className="accent-green-600" />
+              {field.sideCheckbox.label}
+            </label>
+          )}
+        </div>
+      );
+    }
+
+    // text
+    return (
+      <div className="flex items-center gap-4" key={field.key + field.label}>
+        <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0">{field.label}</label>
+        <input type="text" value={value} onChange={(e) => setFieldValue(field.key, e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm" placeholder={field.label} />
+        {field.suffix && <span className="text-sm text-gray-700">{field.suffix}</span>}
+      </div>
+    );
+  };
 
   if (view === 'form') {
     return (
@@ -123,10 +162,9 @@ const KaigoGenericItemList: React.FC<Props> = ({
           <button onClick={handleSave} disabled={saving} className="px-6 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50">{saving ? '保存中...' : '保存'}</button>
         </div>
         <div className="space-y-5">
-          {renderField(field1Label, formData.value1, field1Type, field1Options, (val) => setFormData({ ...formData, value1: val }))}
-          {field2Label && field2Type && renderField(field2Label, formData.value2, field2Type, field2Options, (val) => setFormData({ ...formData, value2: val }))}
+          {fields.map(renderField)}
           <div className="flex items-start gap-4">
-            <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0 pt-2">適用期間</label>
+            <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0 pt-2">{periodLabel}</label>
             <div className="flex items-center gap-2 flex-wrap">
               <input type="date" value={formData.validFrom} onChange={(e) => setFormData({ ...formData, validFrom: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm" />
               <span className="text-gray-500">〜</span>
@@ -157,7 +195,7 @@ const KaigoGenericItemList: React.FC<Props> = ({
           {items.map((item, index) => (
             <div key={item.id} className="flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer gap-6" onClick={() => handleEdit(index)}>
               <span className="text-sm text-gray-800">{item.value1}</span>
-              {field2Label && <span className="text-sm text-gray-600">{item.value2}</span>}
+              {item.value2 && <span className="text-sm text-gray-600">{item.value2}</span>}
               <span className="text-sm text-gray-600">
                 {item.validFrom && item.validUntil ? `${toWareki(item.validFrom)}〜${toWareki(item.validUntil)}` : item.validFrom ? `${toWareki(item.validFrom)}〜` : ''}
               </span>

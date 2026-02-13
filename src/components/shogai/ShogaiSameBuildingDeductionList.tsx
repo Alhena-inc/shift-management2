@@ -3,7 +3,7 @@ import type { ShogaiSameBuildingDeduction } from '../../types';
 import { saveShogaiSameBuildingDeduction, deleteShogaiSameBuildingDeduction } from '../../services/dataService';
 
 const OFFICE_OPTIONS = ['訪問介護事業所のあ'];
-const DEDUCTION_CATEGORY_OPTIONS = ['10%減算', '15%減算'];
+const DEDUCTION_CATEGORY_OPTIONS = ['10%減算', '15%減算', '12%減算'];
 
 interface Props {
   careClientId: string;

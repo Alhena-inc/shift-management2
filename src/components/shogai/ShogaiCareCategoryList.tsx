@@ -4,6 +4,7 @@ import { saveShogaiSogoCareCategory, deleteShogaiSogoCareCategory } from '../../
 
 const DISABILITY_TYPES = ['身体', '知的', '精神', '障害児', '難病等対象者'];
 const SUPPORT_CATEGORIES = ['なし', '区分1', '区分2', '区分3', '区分4', '区分5', '区分6'];
+const KAIGO_CARE_CATEGORIES = ['非該当', '事業対象者', '要支援1', '要支援2', '要介護1', '要介護2', '要介護3', '要介護4', '要介護5'];
 
 // 西暦→和暦変換
 const toWareki = (dateStr: string): string => {
@@ -40,6 +41,8 @@ interface Props {
 }
 
 type View = 'list' | 'form';
+
+const isKaigo = (s: string) => s === 'kaigo';
 
 const ShogaiCareCategoryList: React.FC<Props> = ({ careClientId, categories, onUpdate, onBack, source = 'shogai' }) => {
   const [view, setView] = useState<View>('list');
@@ -136,33 +139,62 @@ const ShogaiCareCategoryList: React.FC<Props> = ({ careClientId, categories, onU
         </div>
 
         <div className="space-y-5">
-          <div className="flex items-center gap-4">
-            <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0">障害区分</label>
-            <select
-              value={formData.disabilityType}
-              onChange={(e) => setFormData({ ...formData, disabilityType: e.target.value })}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-sm"
-            >
-              <option value="">選択してください</option>
-              {DISABILITY_TYPES.map(t => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0">障害支援区分</label>
-            <select
-              value={formData.supportCategory}
-              onChange={(e) => setFormData({ ...formData, supportCategory: e.target.value })}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-sm"
-            >
-              <option value="">選択してください</option>
-              {SUPPORT_CATEGORIES.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
+          {isKaigo(source) ? (
+            <>
+              <div className="flex items-center gap-4">
+                <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0">状態</label>
+                <div className="flex items-center gap-4">
+                  {['申請中', '認定済'].map(s => (
+                    <label key={s} className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                      <input type="radio" name="kaigoStatus" value={s} checked={formData.disabilityType === s} onChange={(e) => setFormData({ ...formData, disabilityType: e.target.value })} className="accent-green-600" />
+                      {s}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0">要介護区分</label>
+                <select
+                  value={formData.supportCategory}
+                  onChange={(e) => setFormData({ ...formData, supportCategory: e.target.value })}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-sm"
+                >
+                  {KAIGO_CARE_CATEGORIES.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-4">
+                <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0">障害区分</label>
+                <select
+                  value={formData.disabilityType}
+                  onChange={(e) => setFormData({ ...formData, disabilityType: e.target.value })}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-sm"
+                >
+                  <option value="">選択してください</option>
+                  {DISABILITY_TYPES.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-4">
+                <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0">障害支援区分</label>
+                <select
+                  value={formData.supportCategory}
+                  onChange={(e) => setFormData({ ...formData, supportCategory: e.target.value })}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-sm"
+                >
+                  <option value="">選択してください</option>
+                  {SUPPORT_CATEGORIES.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
 
           <div className="flex items-start gap-4">
             <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0 pt-2">認定有効期間</label>

@@ -18,6 +18,7 @@ interface Props {
   onUpdate: (cities: ShogaiSogoCity[]) => void;
   onBack: () => void;
   source?: string;
+  certificateLabel?: string;
 }
 
 // 西暦→和暦変換
@@ -51,7 +52,7 @@ const addPeriod = (startDate: string, months: number): string => {
 
 type View = 'list' | 'form';
 
-const ShogaiCityList: React.FC<Props> = ({ careClientId, cities, onUpdate, onBack, source = 'shogai' }) => {
+const ShogaiCityList: React.FC<Props> = ({ careClientId, cities, onUpdate, onBack, source = 'shogai', certificateLabel = '受給者証番号' }) => {
   const [view, setView] = useState<View>('list');
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -166,13 +167,13 @@ const ShogaiCityList: React.FC<Props> = ({ careClientId, cities, onUpdate, onBac
           </div>
 
           <div className="flex items-center gap-4">
-            <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0">受給者証番号</label>
+            <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0">{certificateLabel}</label>
             <input
               type="text"
               value={formData.certificateNumber}
               onChange={(e) => setFormData({ ...formData, certificateNumber: e.target.value })}
               className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
-              placeholder="受給者証番号"
+              placeholder={certificateLabel}
             />
           </div>
 

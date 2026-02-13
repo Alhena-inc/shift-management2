@@ -149,37 +149,54 @@ const KaigoHokenTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
 
   // ========== 被保険者証 子ページ ==========
   if (subPage === 'hihokensha_city') {
-    return <ShogaiCityList careClientId={client.id} cities={cities} onUpdate={setCities} onBack={() => setSubPage('hihokensha')} source="kaigo" />;
+    return <ShogaiCityList careClientId={client.id} cities={cities} onUpdate={setCities} onBack={() => setSubPage('hihokensha')} source="kaigo" certificateLabel="被保険者番号" />;
   }
   if (subPage === 'hihokensha_careCategory') {
     return <ShogaiCareCategoryList careClientId={client.id} categories={careCategories} onUpdate={setCareCategories} onBack={() => setSubPage('hihokensha')} source="kaigo" />;
   }
   if (subPage === 'hihokensha_careManager') {
-    return <KaigoGenericItemList careClientId={client.id} category="care_manager" items={careManagerItems} onUpdate={setCareManagerItems} onBack={() => setSubPage('hihokensha')} title="担当ケアマネ" field1Label="ケアマネ名" field1Type="text" />;
+    return <KaigoGenericItemList careClientId={client.id} category="care_manager" items={careManagerItems} onUpdate={setCareManagerItems} onBack={() => setSubPage('hihokensha')} title="担当ケアマネ" fields={[{ key: 'value1', label: 'ケアマネ名', type: 'text' }]} />;
   }
   if (subPage === 'hihokensha_serviceResponsible') {
     return <ShogaiServiceResponsibleList careClientId={client.id} items={serviceResponsibles} helpers={helpers} onUpdate={setServiceResponsibles} onBack={() => setSubPage('hihokensha')} source="kaigo" />;
   }
   if (subPage === 'hihokensha_publicExpense') {
-    return <KaigoGenericItemList careClientId={client.id} category="public_expense" items={publicExpenseItems} onUpdate={setPublicExpenseItems} onBack={() => setSubPage('hihokensha')} title="公費" field1Label="公費種別" field1Type="text" field2Label="金額" field2Type="text" />;
+    return <KaigoGenericItemList careClientId={client.id} category="public_expense" items={publicExpenseItems} onUpdate={setPublicExpenseItems} onBack={() => setSubPage('hihokensha')} title="公費" periodLabel="有効期間" fields={[
+      { key: 'value1', label: '法別番号', type: 'select', options: ['原爆助成事業', '中国残留邦人', '生活保護'], sideCheckbox: { label: '低所得者', valueKey: 'value2' } },
+      { key: 'value3', label: '公費負担者番号', type: 'text' },
+      { key: 'value4', label: '公費受給者番号', type: 'text' },
+      { key: 'value5', label: '本人負担分', type: 'text' },
+    ]} />;
   }
   if (subPage === 'hihokensha_remoteArea') {
-    return <KaigoGenericItemList careClientId={client.id} category="remote_area" items={remoteAreaItems} onUpdate={setRemoteAreaItems} onBack={() => setSubPage('hihokensha')} title="中山間地域" field1Label="区分" field1Type="text" />;
+    return <KaigoGenericItemList careClientId={client.id} category="remote_area" items={remoteAreaItems} onUpdate={setRemoteAreaItems} onBack={() => setSubPage('hihokensha')} title="中山間地域" fields={[
+      { key: 'value1', label: '事業所', type: 'select', options: ['訪問介護事業所のあ'] },
+    ]} />;
   }
   if (subPage === 'hihokensha_sameBuilding') {
     return <ShogaiSameBuildingDeductionList careClientId={client.id} items={sameBuildingDeductions} onUpdate={setSameBuildingDeductions} onBack={() => setSubPage('hihokensha')} source="kaigo" />;
   }
   if (subPage === 'hihokensha_addressException') {
-    return <KaigoGenericItemList careClientId={client.id} category="address_exception" items={addressExceptionItems} onUpdate={setAddressExceptionItems} onBack={() => setSubPage('hihokensha')} title="住所地特例" field1Label="内容" field1Type="text" />;
+    return <KaigoGenericItemList careClientId={client.id} category="address_exception" items={addressExceptionItems} onUpdate={setAddressExceptionItems} onBack={() => setSubPage('hihokensha')} title="住所地特例" fields={[
+      { key: 'value1', label: '内容', type: 'text' },
+    ]} />;
   }
   if (subPage === 'hihokensha_satellite') {
-    return <KaigoGenericItemList careClientId={client.id} category="satellite_office" items={satelliteItems} onUpdate={setSatelliteItems} onBack={() => setSubPage('hihokensha')} title="サテライト事業所" field1Label="事業所名" field1Type="text" />;
+    return <KaigoGenericItemList careClientId={client.id} category="satellite_office" items={satelliteItems} onUpdate={setSatelliteItems} onBack={() => setSubPage('hihokensha')} title="サテライト事業所" periodLabel="認定有効期間" fields={[
+      { key: 'value1', label: '地域区分', type: 'select', options: ['1級地', '2級地', '3級地', '4級地', '5級地', '6級地', '7級地', 'その他'] },
+      { key: 'value2', label: '特別地域加算', type: 'select', options: ['あり', 'なし'] },
+    ]} />;
   }
   if (subPage === 'hihokensha_benefitRestriction') {
-    return <KaigoGenericItemList careClientId={client.id} category="benefit_restriction" items={benefitRestrictionItems} onUpdate={setBenefitRestrictionItems} onBack={() => setSubPage('hihokensha')} title="給付制限" field1Label="制限内容" field1Type="text" />;
+    return <KaigoGenericItemList careClientId={client.id} category="benefit_restriction" items={benefitRestrictionItems} onUpdate={setBenefitRestrictionItems} onBack={() => setSubPage('hihokensha')} title="給付制限" periodLabel="認定有効期間" fields={[
+      { key: 'value1', label: '給付率', type: 'text', suffix: '%' },
+    ]} />;
   }
   if (subPage === 'hihokensha_reduction') {
-    return <KaigoGenericItemList careClientId={client.id} category="reduction" items={reductionItems} onUpdate={setReductionItems} onBack={() => setSubPage('hihokensha')} title="軽減" field1Label="軽減種別" field1Type="text" />;
+    return <KaigoGenericItemList careClientId={client.id} category="reduction" items={reductionItems} onUpdate={setReductionItems} onBack={() => setSubPage('hihokensha')} title="軽減" periodLabel="認定有効期間" fields={[
+      { key: 'value1', label: '制度', type: 'radio', options: ['その他'] },
+      { key: 'value2', label: '軽減率', type: 'text', suffix: '%' },
+    ]} />;
   }
 
   // ========== 被保険者証サブページ（11項目リスト） ==========
