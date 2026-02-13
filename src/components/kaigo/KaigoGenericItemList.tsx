@@ -1,16 +1,20 @@
 import React, { useState } from 'react';
-import type { ShogaiSameBuildingDeduction } from '../../types';
-import { saveShogaiSameBuildingDeduction, deleteShogaiSameBuildingDeduction } from '../../services/dataService';
-
-const OFFICE_OPTIONS = ['訪問介護事業所のあ'];
-const DEDUCTION_CATEGORY_OPTIONS = ['10%減算', '15%減算'];
+import type { KaigoHihokenshaItem } from '../../types';
+import { saveKaigoHihokenshaItem, deleteKaigoHihokenshaItem } from '../../services/dataService';
 
 interface Props {
   careClientId: string;
-  items: ShogaiSameBuildingDeduction[];
-  onUpdate: (items: ShogaiSameBuildingDeduction[]) => void;
+  category: string;
+  items: KaigoHihokenshaItem[];
+  onUpdate: (items: KaigoHihokenshaItem[]) => void;
   onBack: () => void;
-  source?: string;
+  title: string;
+  field1Label: string;
+  field1Type: 'text' | 'select';
+  field1Options?: string[];
+  field2Label?: string;
+  field2Type?: 'text' | 'select';
+  field2Options?: string[];
 }
 
 const toWareki = (dateStr: string): string => {
@@ -34,17 +38,21 @@ const addPeriod = (startDate: string, months: number): string => {
 
 type View = 'list' | 'form';
 
-const ShogaiSameBuildingDeductionList: React.FC<Props> = ({ careClientId, items, onUpdate, onBack, source = 'shogai' }) => {
+const KaigoGenericItemList: React.FC<Props> = ({
+  careClientId, category, items, onUpdate, onBack,
+  title, field1Label, field1Type, field1Options,
+  field2Label, field2Type, field2Options,
+}) => {
   const [view, setView] = useState<View>('list');
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
-  const [formData, setFormData] = useState<ShogaiSameBuildingDeduction>({
-    id: '', careClientId, officeName: '', deductionCategory: '', validFrom: '', validUntil: '', sortOrder: 0,
+  const [formData, setFormData] = useState<KaigoHihokenshaItem>({
+    id: '', careClientId, category, value1: '', value2: '', validFrom: '', validUntil: '', sortOrder: 0,
   });
 
   const handleAdd = () => {
     setEditIndex(null);
-    setFormData({ id: '', careClientId, officeName: '', deductionCategory: '', validFrom: '', validUntil: '', sortOrder: items.length });
+    setFormData({ id: '', careClientId, category, value1: '', value2: '', validFrom: '', validUntil: '', sortOrder: items.length });
     setView('form');
   };
 
@@ -57,7 +65,7 @@ const ShogaiSameBuildingDeductionList: React.FC<Props> = ({ careClientId, items,
   const handleSave = async () => {
     setSaving(true);
     try {
-      const saved = await saveShogaiSameBuildingDeduction(formData, source);
+      const saved = await saveKaigoHihokenshaItem(formData);
       if (editIndex !== null) {
         const updated = [...items];
         updated[editIndex] = saved;
@@ -75,9 +83,9 @@ const ShogaiSameBuildingDeductionList: React.FC<Props> = ({ careClientId, items,
   };
 
   const handleDelete = async (index: number) => {
-    if (!confirm('この同一建物減算を削除しますか？')) return;
+    if (!confirm(`この${title}を削除しますか？`)) return;
     try {
-      await deleteShogaiSameBuildingDeduction(items[index].id);
+      await deleteKaigoHihokenshaItem(items[index].id);
       onUpdate(items.filter((_, i) => i !== index));
     } catch (error) {
       console.error('削除エラー:', error);
@@ -90,6 +98,23 @@ const ShogaiSameBuildingDeductionList: React.FC<Props> = ({ careClientId, items,
     setFormData({ ...formData, validUntil: addPeriod(formData.validFrom, months) });
   };
 
+  const renderField = (
+    label: string, value: string, type: 'text' | 'select', options: string[] | undefined,
+    onChange: (val: string) => void,
+  ) => (
+    <div className="flex items-center gap-4">
+      <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0">{label}</label>
+      {type === 'select' && options ? (
+        <select value={value} onChange={(e) => onChange(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-sm">
+          <option value="">選択してください</option>
+          {options.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      ) : (
+        <input type="text" value={value} onChange={(e) => onChange(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm flex-1" placeholder={label} />
+      )}
+    </div>
+  );
+
   if (view === 'form') {
     return (
       <div>
@@ -98,20 +123,8 @@ const ShogaiSameBuildingDeductionList: React.FC<Props> = ({ careClientId, items,
           <button onClick={handleSave} disabled={saving} className="px-6 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50">{saving ? '保存中...' : '保存'}</button>
         </div>
         <div className="space-y-5">
-          <div className="flex items-center gap-4">
-            <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0">事業所</label>
-            <select value={formData.officeName} onChange={(e) => setFormData({ ...formData, officeName: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-sm">
-              <option value="">選択してください</option>
-              {OFFICE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
-          </div>
-          <div className="flex items-center gap-4">
-            <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0">区分</label>
-            <select value={formData.deductionCategory} onChange={(e) => setFormData({ ...formData, deductionCategory: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-sm">
-              <option value="">選択してください</option>
-              {DEDUCTION_CATEGORY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
-          </div>
+          {renderField(field1Label, formData.value1, field1Type, field1Options, (val) => setFormData({ ...formData, value1: val }))}
+          {field2Label && field2Type && renderField(field2Label, formData.value2, field2Type, field2Options, (val) => setFormData({ ...formData, value2: val }))}
           <div className="flex items-start gap-4">
             <label className="text-sm font-medium text-gray-700 w-28 text-right shrink-0 pt-2">適用期間</label>
             <div className="flex items-center gap-2 flex-wrap">
@@ -135,7 +148,7 @@ const ShogaiSameBuildingDeductionList: React.FC<Props> = ({ careClientId, items,
       <button onClick={onBack} className="mb-4 px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-gray-700">← 戻る</button>
       <div className="border border-gray-300 rounded-lg overflow-hidden">
         <div className="flex items-center gap-3 bg-gray-100 px-4 py-3">
-          <span className="font-bold text-gray-800">同一建物減算</span>
+          <span className="font-bold text-gray-800">{title}</span>
         </div>
         <div className="divide-y divide-gray-200">
           <div className="px-4 py-3">
@@ -143,8 +156,8 @@ const ShogaiSameBuildingDeductionList: React.FC<Props> = ({ careClientId, items,
           </div>
           {items.map((item, index) => (
             <div key={item.id} className="flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer gap-6" onClick={() => handleEdit(index)}>
-              <span className="text-sm text-gray-800">{item.officeName}</span>
-              <span className="text-sm text-gray-800">{item.deductionCategory}</span>
+              <span className="text-sm text-gray-800">{item.value1}</span>
+              {field2Label && <span className="text-sm text-gray-600">{item.value2}</span>}
               <span className="text-sm text-gray-600">
                 {item.validFrom && item.validUntil ? `${toWareki(item.validFrom)}〜${toWareki(item.validUntil)}` : item.validFrom ? `${toWareki(item.validFrom)}〜` : ''}
               </span>
@@ -159,4 +172,4 @@ const ShogaiSameBuildingDeductionList: React.FC<Props> = ({ careClientId, items,
   );
 };
 
-export default ShogaiSameBuildingDeductionList;
+export default KaigoGenericItemList;

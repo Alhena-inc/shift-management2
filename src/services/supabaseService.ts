@@ -1473,7 +1473,7 @@ export const backupToFirebase = backupToSupabase;
 
 // ========== 利用者（CareClient）関連 ==========
 
-import type { CareClient, ShogaiSogoCity, ShogaiSogoCareCategory, ShogaiBurdenLimit, ShogaiBurdenLimitOffice, ShogaiServiceResponsible, ShogaiPlanConsultation, ShogaiCarePlan, ShogaiSameBuildingDeduction, ShogaiSupplyAmount } from '../types';
+import type { CareClient, ShogaiSogoCity, ShogaiSogoCareCategory, ShogaiBurdenLimit, ShogaiBurdenLimitOffice, ShogaiServiceResponsible, ShogaiPlanConsultation, ShogaiCarePlan, ShogaiSameBuildingDeduction, ShogaiSupplyAmount, KaigoHihokenshaItem } from '../types';
 
 // 利用者一覧を読み込み
 export const loadCareClients = async (): Promise<CareClient[]> => {
@@ -2165,12 +2165,13 @@ export const deleteShogaiCarePlan = async (id: string): Promise<void> => {
 
 // ========== 障害者総合支援 - 同一建物減算 ==========
 
-export const loadShogaiSameBuildingDeductions = async (careClientId: string): Promise<ShogaiSameBuildingDeduction[]> => {
+export const loadShogaiSameBuildingDeductions = async (careClientId: string, source: string = 'shogai'): Promise<ShogaiSameBuildingDeduction[]> => {
   try {
     const { data, error } = await supabase
       .from('shogai_same_building_deductions')
       .select('*')
       .eq('care_client_id', careClientId)
+      .eq('source', source)
       .order('sort_order', { ascending: true });
 
     if (error) throw error;
@@ -2190,7 +2191,7 @@ export const loadShogaiSameBuildingDeductions = async (careClientId: string): Pr
   }
 };
 
-export const saveShogaiSameBuildingDeduction = async (item: ShogaiSameBuildingDeduction): Promise<ShogaiSameBuildingDeduction> => {
+export const saveShogaiSameBuildingDeduction = async (item: ShogaiSameBuildingDeduction, source: string = 'shogai'): Promise<ShogaiSameBuildingDeduction> => {
   try {
     const saveData: any = {
       care_client_id: item.careClientId,
@@ -2199,6 +2200,7 @@ export const saveShogaiSameBuildingDeduction = async (item: ShogaiSameBuildingDe
       valid_from: item.validFrom || null,
       valid_until: item.validUntil || null,
       sort_order: item.sortOrder || 0,
+      source,
       updated_at: new Date().toISOString(),
     };
     if (item.id) saveData.id = item.id;
@@ -2586,6 +2588,83 @@ export const deleteShogaiUsedService = async (id: string): Promise<void> => {
     if (error) throw error;
   } catch (error) {
     console.error('利用サービス削除エラー:', error);
+    throw error;
+  }
+};
+
+// ========== 介護保険 - 被保険者証 汎用項目 ==========
+
+export const loadKaigoHihokenshaItems = async (careClientId: string, category: string): Promise<KaigoHihokenshaItem[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('kaigo_hihokensha_items')
+      .select('*')
+      .eq('care_client_id', careClientId)
+      .eq('category', category)
+      .order('sort_order', { ascending: true });
+
+    if (error) throw error;
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      careClientId: row.care_client_id,
+      category: row.category,
+      value1: row.value1 || '',
+      value2: row.value2 || '',
+      validFrom: row.valid_from || '',
+      validUntil: row.valid_until || '',
+      sortOrder: row.sort_order || 0,
+    }));
+  } catch (error) {
+    console.error('介護被保険者証項目読み込みエラー:', error);
+    throw error;
+  }
+};
+
+export const saveKaigoHihokenshaItem = async (item: KaigoHihokenshaItem): Promise<KaigoHihokenshaItem> => {
+  try {
+    const saveData: any = {
+      care_client_id: item.careClientId,
+      category: item.category,
+      value1: item.value1 || null,
+      value2: item.value2 || null,
+      valid_from: item.validFrom || null,
+      valid_until: item.validUntil || null,
+      sort_order: item.sortOrder || 0,
+      updated_at: new Date().toISOString(),
+    };
+    if (item.id) saveData.id = item.id;
+
+    const { data, error } = await supabase
+      .from('kaigo_hihokensha_items')
+      .upsert(saveData, { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return {
+      id: data.id,
+      careClientId: data.care_client_id,
+      category: data.category,
+      value1: data.value1 || '',
+      value2: data.value2 || '',
+      validFrom: data.valid_from || '',
+      validUntil: data.valid_until || '',
+      sortOrder: data.sort_order || 0,
+    };
+  } catch (error) {
+    console.error('介護被保険者証項目保存エラー:', error);
+    throw error;
+  }
+};
+
+export const deleteKaigoHihokenshaItem = async (id: string): Promise<void> => {
+  try {
+    const { error } = await supabase.from('kaigo_hihokensha_items').delete().eq('id', id);
+    if (error) throw error;
+  } catch (error) {
+    console.error('介護被保険者証項目削除エラー:', error);
     throw error;
   }
 };

@@ -1341,3 +1341,18 @@ export const saveShogaiUsedService = async (_item: any) => {
 export const deleteShogaiUsedService = async (_id: string) => {
   throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
 };
+
+// ========== 介護保険 - 被保険者証 汎用項目（Firebaseスタブ） ==========
+
+export const loadKaigoHihokenshaItems = async (_careClientId: string, _category: string) => {
+  console.warn('介護保険はSupabaseモードでのみ利用可能です');
+  return [];
+};
+
+export const saveKaigoHihokenshaItem = async (_item: any) => {
+  throw new Error('介護保険はSupabaseモードでのみ利用可能です');
+};
+
+export const deleteKaigoHihokenshaItem = async (_id: string) => {
+  throw new Error('介護保険はSupabaseモードでのみ利用可能です');
+};

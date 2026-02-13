@@ -151,6 +151,11 @@ export const {
   loadShogaiUsedServices,
   saveShogaiUsedService,
   deleteShogaiUsedService,
+
+  // 介護保険 - 被保険者証 汎用項目
+  loadKaigoHihokenshaItems,
+  saveKaigoHihokenshaItem,
+  deleteKaigoHihokenshaItem,
 } = dataService;
 
 // 日付ごとのシフト削除機能を追加

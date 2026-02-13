@@ -322,6 +322,18 @@ export interface ShogaiDocument {
   createdAt?: string;
 }
 
+// 介護保険 - 被保険者証 汎用項目
+export interface KaigoHihokenshaItem {
+  id: string;
+  careClientId: string;
+  category: string;
+  value1: string;
+  value2: string;
+  validFrom: string;
+  validUntil: string;
+  sortOrder: number;
+}
+
 // 障害者総合支援 - 契約支給量/決定支給量
 export interface ShogaiSupplyAmount {
   id: string;

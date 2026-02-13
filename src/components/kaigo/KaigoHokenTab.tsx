@@ -1,13 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import type { CareClient, ShogaiSupplyAmount, ShogaiUsedService, ShogaiDocument } from '../../types';
+import type { CareClient, ShogaiSupplyAmount, ShogaiUsedService, ShogaiDocument, ShogaiSogoCity, ShogaiSogoCareCategory, ShogaiServiceResponsible, ShogaiSameBuildingDeduction, KaigoHihokenshaItem, Helper } from '../../types';
 import AccordionSection from '../AccordionSection';
 import ShogaiSupplyAmountList from '../shogai/ShogaiSupplyAmountList';
 import ShogaiUsedServiceList from '../shogai/ShogaiUsedServiceList';
 import ShogaiDocumentList from '../shogai/ShogaiDocumentList';
+import ShogaiCityList from '../shogai/ShogaiCityList';
+import ShogaiCareCategoryList from '../shogai/ShogaiCareCategoryList';
+import ShogaiServiceResponsibleList from '../shogai/ShogaiServiceResponsibleList';
+import ShogaiSameBuildingDeductionList from '../shogai/ShogaiSameBuildingDeductionList';
+import KaigoGenericItemList from './KaigoGenericItemList';
 import {
   loadShogaiSupplyAmounts,
   loadShogaiUsedServices,
   loadShogaiDocuments,
+  loadShogaiSogoCities,
+  loadShogaiSogoCareCategories,
+  loadShogaiServiceResponsibles,
+  loadShogaiSameBuildingDeductions,
+  loadKaigoHihokenshaItems,
+  loadHelpers,
 } from '../../services/dataService';
 
 interface Props {
@@ -16,8 +27,13 @@ interface Props {
   onSubPageChange?: (isSubPage: boolean) => void;
 }
 
-type SubPage = null | 'supplyAmounts' | 'usedServices'
-  | 'houmonKeikaku' | 'tuushoKeikaku' | 'shienKeika' | 'assessment' | 'monitoring' | 'tejunsho';
+type SubPage = null | 'hihokensha' | 'supplyAmounts' | 'usedServices'
+  | 'houmonKeikaku' | 'tuushoKeikaku' | 'shienKeika' | 'assessment' | 'monitoring' | 'tejunsho'
+  // 被保険者証の子ページ
+  | 'hihokensha_city' | 'hihokensha_careCategory' | 'hihokensha_careManager'
+  | 'hihokensha_serviceResponsible' | 'hihokensha_publicExpense' | 'hihokensha_remoteArea'
+  | 'hihokensha_sameBuilding' | 'hihokensha_addressException' | 'hihokensha_satellite'
+  | 'hihokensha_benefitRestriction' | 'hihokensha_reduction';
 
 const KaigoHokenTab: React.FC<Props> = ({ client, updateField, onSubPageChange }) => {
   const [contractSupplyAmounts, setContractSupplyAmounts] = useState<ShogaiSupplyAmount[]>([]);
@@ -29,6 +45,21 @@ const KaigoHokenTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
   const [assessmentDocs, setAssessmentDocs] = useState<ShogaiDocument[]>([]);
   const [monitoringDocs, setMonitoringDocs] = useState<ShogaiDocument[]>([]);
   const [tejunshoDocs, setTejunshoDocs] = useState<ShogaiDocument[]>([]);
+
+  // 被保険者証 11項目
+  const [cities, setCities] = useState<ShogaiSogoCity[]>([]);
+  const [careCategories, setCareCategories] = useState<ShogaiSogoCareCategory[]>([]);
+  const [serviceResponsibles, setServiceResponsibles] = useState<ShogaiServiceResponsible[]>([]);
+  const [sameBuildingDeductions, setSameBuildingDeductions] = useState<ShogaiSameBuildingDeduction[]>([]);
+  const [careManagerItems, setCareManagerItems] = useState<KaigoHihokenshaItem[]>([]);
+  const [publicExpenseItems, setPublicExpenseItems] = useState<KaigoHihokenshaItem[]>([]);
+  const [remoteAreaItems, setRemoteAreaItems] = useState<KaigoHihokenshaItem[]>([]);
+  const [addressExceptionItems, setAddressExceptionItems] = useState<KaigoHihokenshaItem[]>([]);
+  const [satelliteItems, setSatelliteItems] = useState<KaigoHihokenshaItem[]>([]);
+  const [benefitRestrictionItems, setBenefitRestrictionItems] = useState<KaigoHihokenshaItem[]>([]);
+  const [reductionItems, setReductionItems] = useState<KaigoHihokenshaItem[]>([]);
+  const [helpers, setHelpers] = useState<Helper[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [subPage, setSubPageState] = useState<SubPage>(null);
 
@@ -45,6 +76,13 @@ const KaigoHokenTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
           loadedUsedServices,
           loadedHoumonKeikaku, loadedTuushoKeikaku, loadedShienKeika,
           loadedAssessment, loadedMonitoring, loadedTejunsho,
+          // 被保険者証 11項目
+          loadedCities, loadedCareCategories, loadedServiceResponsibles,
+          loadedSameBuilding,
+          loadedCareManager, loadedPublicExpense, loadedRemoteArea,
+          loadedAddressException, loadedSatellite, loadedBenefitRestriction,
+          loadedReduction,
+          loadedHelpers,
         ] = await Promise.all([
           loadShogaiSupplyAmounts(client.id, 'contract', 'kaigo'),
           loadShogaiSupplyAmounts(client.id, 'decided', 'kaigo'),
@@ -55,6 +93,19 @@ const KaigoHokenTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
           loadShogaiDocuments(client.id, 'kaigo_assessment'),
           loadShogaiDocuments(client.id, 'kaigo_monitoring'),
           loadShogaiDocuments(client.id, 'kaigo_tejunsho'),
+          // 被保険者証 11項目
+          loadShogaiSogoCities(client.id, 'kaigo'),
+          loadShogaiSogoCareCategories(client.id, 'kaigo'),
+          loadShogaiServiceResponsibles(client.id, 'kaigo'),
+          loadShogaiSameBuildingDeductions(client.id, 'kaigo'),
+          loadKaigoHihokenshaItems(client.id, 'care_manager'),
+          loadKaigoHihokenshaItems(client.id, 'public_expense'),
+          loadKaigoHihokenshaItems(client.id, 'remote_area'),
+          loadKaigoHihokenshaItems(client.id, 'address_exception'),
+          loadKaigoHihokenshaItems(client.id, 'satellite_office'),
+          loadKaigoHihokenshaItems(client.id, 'benefit_restriction'),
+          loadKaigoHihokenshaItems(client.id, 'reduction'),
+          loadHelpers(),
         ]);
         setContractSupplyAmounts(loadedContractSupply);
         setDecidedSupplyAmounts(loadedDecidedSupply);
@@ -65,6 +116,19 @@ const KaigoHokenTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
         setAssessmentDocs(loadedAssessment);
         setMonitoringDocs(loadedMonitoring);
         setTejunshoDocs(loadedTejunsho);
+        // 被保険者証 11項目
+        setCities(loadedCities);
+        setCareCategories(loadedCareCategories);
+        setServiceResponsibles(loadedServiceResponsibles);
+        setSameBuildingDeductions(loadedSameBuilding);
+        setCareManagerItems(loadedCareManager);
+        setPublicExpenseItems(loadedPublicExpense);
+        setRemoteAreaItems(loadedRemoteArea);
+        setAddressExceptionItems(loadedAddressException);
+        setSatelliteItems(loadedSatellite);
+        setBenefitRestrictionItems(loadedBenefitRestriction);
+        setReductionItems(loadedReduction);
+        setHelpers(loadedHelpers);
       } catch (error) {
         console.error('介護保険データ読み込みエラー:', error);
       } finally {
@@ -80,6 +144,76 @@ const KaigoHokenTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
         <span className="ml-3 text-gray-500">読み込み中...</span>
       </div>
+    );
+  }
+
+  // ========== 被保険者証 子ページ ==========
+  if (subPage === 'hihokensha_city') {
+    return <ShogaiCityList careClientId={client.id} cities={cities} onUpdate={setCities} onBack={() => setSubPage('hihokensha')} source="kaigo" />;
+  }
+  if (subPage === 'hihokensha_careCategory') {
+    return <ShogaiCareCategoryList careClientId={client.id} categories={careCategories} onUpdate={setCareCategories} onBack={() => setSubPage('hihokensha')} source="kaigo" />;
+  }
+  if (subPage === 'hihokensha_careManager') {
+    return <KaigoGenericItemList careClientId={client.id} category="care_manager" items={careManagerItems} onUpdate={setCareManagerItems} onBack={() => setSubPage('hihokensha')} title="担当ケアマネ" field1Label="ケアマネ名" field1Type="text" />;
+  }
+  if (subPage === 'hihokensha_serviceResponsible') {
+    return <ShogaiServiceResponsibleList careClientId={client.id} items={serviceResponsibles} helpers={helpers} onUpdate={setServiceResponsibles} onBack={() => setSubPage('hihokensha')} source="kaigo" />;
+  }
+  if (subPage === 'hihokensha_publicExpense') {
+    return <KaigoGenericItemList careClientId={client.id} category="public_expense" items={publicExpenseItems} onUpdate={setPublicExpenseItems} onBack={() => setSubPage('hihokensha')} title="公費" field1Label="公費種別" field1Type="text" field2Label="金額" field2Type="text" />;
+  }
+  if (subPage === 'hihokensha_remoteArea') {
+    return <KaigoGenericItemList careClientId={client.id} category="remote_area" items={remoteAreaItems} onUpdate={setRemoteAreaItems} onBack={() => setSubPage('hihokensha')} title="中山間地域" field1Label="区分" field1Type="text" />;
+  }
+  if (subPage === 'hihokensha_sameBuilding') {
+    return <ShogaiSameBuildingDeductionList careClientId={client.id} items={sameBuildingDeductions} onUpdate={setSameBuildingDeductions} onBack={() => setSubPage('hihokensha')} source="kaigo" />;
+  }
+  if (subPage === 'hihokensha_addressException') {
+    return <KaigoGenericItemList careClientId={client.id} category="address_exception" items={addressExceptionItems} onUpdate={setAddressExceptionItems} onBack={() => setSubPage('hihokensha')} title="住所地特例" field1Label="内容" field1Type="text" />;
+  }
+  if (subPage === 'hihokensha_satellite') {
+    return <KaigoGenericItemList careClientId={client.id} category="satellite_office" items={satelliteItems} onUpdate={setSatelliteItems} onBack={() => setSubPage('hihokensha')} title="サテライト事業所" field1Label="事業所名" field1Type="text" />;
+  }
+  if (subPage === 'hihokensha_benefitRestriction') {
+    return <KaigoGenericItemList careClientId={client.id} category="benefit_restriction" items={benefitRestrictionItems} onUpdate={setBenefitRestrictionItems} onBack={() => setSubPage('hihokensha')} title="給付制限" field1Label="制限内容" field1Type="text" />;
+  }
+  if (subPage === 'hihokensha_reduction') {
+    return <KaigoGenericItemList careClientId={client.id} category="reduction" items={reductionItems} onUpdate={setReductionItems} onBack={() => setSubPage('hihokensha')} title="軽減" field1Label="軽減種別" field1Type="text" />;
+  }
+
+  // ========== 被保険者証サブページ（11項目リスト） ==========
+  if (subPage === 'hihokensha') {
+    return (
+      <AccordionSection
+        onNavigate={(key) => {
+          if (key === 'city') setSubPage('hihokensha_city');
+          if (key === 'careCategory') setSubPage('hihokensha_careCategory');
+          if (key === 'careManager') setSubPage('hihokensha_careManager');
+          if (key === 'serviceResponsible') setSubPage('hihokensha_serviceResponsible');
+          if (key === 'publicExpense') setSubPage('hihokensha_publicExpense');
+          if (key === 'remoteArea') setSubPage('hihokensha_remoteArea');
+          if (key === 'sameBuilding') setSubPage('hihokensha_sameBuilding');
+          if (key === 'addressException') setSubPage('hihokensha_addressException');
+          if (key === 'satellite') setSubPage('hihokensha_satellite');
+          if (key === 'benefitRestriction') setSubPage('hihokensha_benefitRestriction');
+          if (key === 'reduction') setSubPage('hihokensha_reduction');
+        }}
+        sections={[
+          { key: 'city', title: '支給市町村', navigable: true, content: null, summary: cities.length > 0 ? cities.map(c => c.municipality).filter(Boolean).join('、') : undefined },
+          { key: 'careCategory', title: '介護区分', navigable: true, content: null, summary: careCategories.length > 0 ? careCategories.map(c => c.supportCategory).filter(Boolean).join('、') : undefined },
+          { key: 'careManager', title: '担当ケアマネ', navigable: true, content: null, summary: careManagerItems.length > 0 ? careManagerItems.map(i => i.value1).filter(Boolean).join('、') : undefined },
+          { key: 'serviceResponsible', title: 'サービス提供責任者', navigable: true, content: null, summary: serviceResponsibles.length > 0 ? serviceResponsibles.map(s => s.helperName).filter(Boolean).join('、') : undefined },
+          { key: 'publicExpense', title: '公費', navigable: true, content: null, summary: publicExpenseItems.length > 0 ? `${publicExpenseItems.length}件` : undefined },
+          { key: 'remoteArea', title: '中山間地域', navigable: true, content: null, summary: remoteAreaItems.length > 0 ? remoteAreaItems.map(i => i.value1).filter(Boolean).join('、') : undefined },
+          { key: 'sameBuilding', title: '同一建物減算', navigable: true, content: null, summary: sameBuildingDeductions.length > 0 ? `${sameBuildingDeductions.length}件` : undefined },
+          { key: 'addressException', title: '住所地特例', navigable: true, content: null, summary: addressExceptionItems.length > 0 ? `${addressExceptionItems.length}件` : undefined },
+          { key: 'satellite', title: 'サテライト事業所', navigable: true, content: null, summary: satelliteItems.length > 0 ? satelliteItems.map(i => i.value1).filter(Boolean).join('、') : undefined },
+          { key: 'benefitRestriction', title: '給付制限', navigable: true, content: null, summary: benefitRestrictionItems.length > 0 ? `${benefitRestrictionItems.length}件` : undefined },
+          { key: 'reduction', title: '軽減', navigable: true, content: null, summary: reductionItems.length > 0 ? `${reductionItems.length}件` : undefined },
+        ]}
+        backButton={{ label: '← 戻る', onClick: () => setSubPage(null) }}
+      />
     );
   }
 
@@ -204,6 +338,7 @@ const KaigoHokenTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
   return (
     <AccordionSection
       onNavigate={(key) => {
+        if (key === 'hihokensha') setSubPage('hihokensha');
         if (key === 'keiyaku') setSubPage('supplyAmounts');
         if (key === 'houmonKeikaku') setSubPage('houmonKeikaku');
         if (key === 'tuushoKeikaku') setSubPage('tuushoKeikaku');
@@ -218,27 +353,8 @@ const KaigoHokenTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
           key: 'hihokensha',
           title: '被保険者証',
           summary: client.billing?.kaigoNumber || undefined,
-          content: (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">被保険者番号</label>
-                <input type="text" value={client.billing?.kaigoNumber || ''} onChange={(e) => updateField('billing', { ...client.billing, kaigoNumber: e.target.value })} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="被保険者番号" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">認定有効期間</label>
-                <div className="grid grid-cols-2 gap-4">
-                  <input type="date" value={client.billing?.kaigoStart || ''} onChange={(e) => updateField('billing', { ...client.billing, kaigoStart: e.target.value })} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" />
-                  <input type="date" value={client.billing?.kaigoEnd || ''} onChange={(e) => updateField('billing', { ...client.billing, kaigoEnd: e.target.value })} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">介護度</label>
-                <select value={client.billing?.kaigoCareLevel || ''} onChange={(e) => updateField('billing', { ...client.billing, kaigoCareLevel: e.target.value })} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white">
-                  {['', '要支援1', '要支援2', '要介護1', '要介護2', '要介護3', '要介護4', '要介護5'].map(l => <option key={l} value={l}>{l || '未設定'}</option>)}
-                </select>
-              </div>
-            </div>
-          ),
+          navigable: true,
+          content: null,
         },
         {
           key: 'keiyaku',

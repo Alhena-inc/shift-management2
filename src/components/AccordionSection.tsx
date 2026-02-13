@@ -13,9 +13,10 @@ export interface AccordionItem {
 interface Props {
   sections: AccordionItem[];
   onNavigate?: (key: string) => void;
+  backButton?: { label: string; onClick: () => void };
 }
 
-const AccordionSection: React.FC<Props> = ({ sections, onNavigate }) => {
+const AccordionSection: React.FC<Props> = ({ sections, onNavigate, backButton }) => {
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set());
   const toggle = (key: string) => {
     setOpenKeys(prev => {
@@ -26,6 +27,11 @@ const AccordionSection: React.FC<Props> = ({ sections, onNavigate }) => {
   };
   return (
     <div className="divide-y divide-gray-200">
+      {backButton && (
+        <div className="py-3">
+          <button onClick={backButton.onClick} className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-gray-700">{backButton.label}</button>
+        </div>
+      )}
       {sections.map(({ key, title, summary, summaryColor, content, navigable }) => (
         <div key={key}>
           <div className="flex items-center py-3 gap-3">
