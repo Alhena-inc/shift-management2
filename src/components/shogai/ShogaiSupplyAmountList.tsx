@@ -3,7 +3,7 @@ import type { ShogaiSupplyAmount } from '../../types';
 import { saveShogaiSupplyAmount, deleteShogaiSupplyAmount } from '../../services/dataService';
 
 const SERVICE_CATEGORY_OPTIONS = ['居宅介護', '重度訪問介護', '同行援護', '行動援護', '移動支援'];
-const SERVICE_CONTENT_OPTIONS = ['居宅介護身体介護決定', '居宅介護家事援助決定', '居宅介護通院等介助（身体伴う）決定', '居宅介護通院等介助（身体伴わない）決定', '重度訪問介護決定', '同行援護決定', '行動援護決定', '移動支援決定'];
+const SERVICE_CONTENT_OPTIONS = ['居宅介護身体介護決定', '居宅介護家事援助決定', '居宅介護通院介助（身体介護伴う）決定', '居宅介護通院介助（身体介護伴わない）決定', '居宅介護通院等乗降介助決定', '居宅介護加算特別地域加算対象者'];
 const OFFICE_OPTIONS = ['訪問介護事業所のあ'];
 
 interface Props {
