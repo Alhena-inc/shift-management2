@@ -306,7 +306,8 @@ export interface ShogaiCarePlanDocument {
 }
 
 // 障害者総合支援 - 汎用ドキュメント（サービス担当者会議の要点、アセスメント、モニタリング表、訪問介護手順書）
-export type ShogaiDocType = 'tantousha_kaigi' | 'assessment' | 'monitoring' | 'tejunsho';
+export type ShogaiDocType = 'tantousha_kaigi' | 'assessment' | 'monitoring' | 'tejunsho'
+  | 'chiiki_idou_keikaku' | 'chiiki_shien_keika' | 'chiiki_assessment' | 'chiiki_monitoring' | 'chiiki_tejunsho';
 
 export interface ShogaiDocument {
   id: string;
@@ -333,6 +334,16 @@ export interface ShogaiSupplyAmount {
   maxSingleAmount: string;
   validFrom: string;
   validUntil: string;
+  sortOrder: number;
+}
+
+// 障害者総合支援 - 利用サービス
+export interface ShogaiUsedService {
+  id: string;
+  careClientId: string;
+  serviceType: string;      // 居宅介護, 重度訪問介護, 行動援護, 同行援護
+  serviceStartDate: string;
+  serviceEndDate: string;
   sortOrder: number;
 }
 

@@ -3,6 +3,7 @@ import type { CareClient, CareClientServices } from '../types';
 import { loadCareClients, saveCareClient, softDeleteCareClient } from '../services/dataService';
 import AccordionSection from '../components/AccordionSection';
 import ShogaiSogoTab from '../components/shogai/ShogaiSogoTab';
+import ChiikiSeikatsuTab from '../components/shogai/ChiikiSeikatsuTab';
 
 // 制度の定義
 const SERVICE_OPTIONS: { key: keyof CareClientServices; label: string }[] = [
@@ -504,47 +505,10 @@ const CareClientDetailPage: React.FC = () => {
 
           {/* 地域生活支援事業タブ */}
           {activeTab === 'chiikiSeikatsu' && (
-            <AccordionSection
-              sections={[
-                { key: 'jukyu', title: '受給者証', summary: client.billing?.chiikiNumber || undefined, content: (
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">受給者証番号</label>
-                      <input type="text" value={client.billing?.chiikiNumber || ''} onChange={(e) => updateField('billing', { ...client.billing, chiikiNumber: e.target.value })} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="受給者証番号" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">支給決定期間</label>
-                      <div className="grid grid-cols-2 gap-4">
-                        <input type="date" value={client.billing?.chiikiStart || ''} onChange={(e) => updateField('billing', { ...client.billing, chiikiStart: e.target.value })} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" />
-                        <input type="date" value={client.billing?.chiikiEnd || ''} onChange={(e) => updateField('billing', { ...client.billing, chiikiEnd: e.target.value })} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" />
-                      </div>
-                    </div>
-                  </div>
-                )},
-                { key: 'seikyu', title: '請求保留・再請求', summary: client.billing?.chiikiSeikyuHoryu ? '情報を入力してください。' : undefined, summaryColor: client.billing?.chiikiSeikyuHoryu ? '#dc2626' : undefined, content: (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3">
-                      <label className="text-sm font-medium text-gray-700">請求保留</label>
-                      <input type="checkbox" checked={client.billing?.chiikiSeikyuHoryu || false} onChange={(e) => updateField('billing', { ...client.billing, chiikiSeikyuHoryu: e.target.checked })} className="w-5 h-5 text-green-600 rounded" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">備考</label>
-                      <textarea value={client.billing?.chiikiSeikyuNotes || ''} onChange={(e) => updateField('billing', { ...client.billing, chiikiSeikyuNotes: e.target.value })} rows={2} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="備考" />
-                    </div>
-                  </div>
-                )},
-                { key: 'keiyaku', title: '契約支給量', summary: client.billing?.chiikiKeiyaku || undefined, content: (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">契約支給量</label>
-                    <input type="text" value={client.billing?.chiikiKeiyaku || ''} onChange={(e) => updateField('billing', { ...client.billing, chiikiKeiyaku: e.target.value })} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="契約支給量" />
-                  </div>
-                )},
-                { key: 'idouKeikaku', title: '移動介護計画書', content: <div><textarea value={client.billing?.chiikiIdouKeikaku || ''} onChange={(e) => updateField('billing', { ...client.billing, chiikiIdouKeikaku: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="移動介護計画書を入力..." /></div> },
-                { key: 'shienKeika', title: '介護支援経過', content: <div><textarea value={client.billing?.chiikiShienKeika || ''} onChange={(e) => updateField('billing', { ...client.billing, chiikiShienKeika: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="介護支援経過を入力..." /></div> },
-                { key: 'assessment', title: 'アセスメント', content: <div><textarea value={client.billing?.chiikiAssessment || ''} onChange={(e) => updateField('billing', { ...client.billing, chiikiAssessment: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="アセスメントを入力..." /></div> },
-                { key: 'monitoring', title: 'モニタリング表', content: <div><textarea value={client.billing?.chiikiMonitoring || ''} onChange={(e) => updateField('billing', { ...client.billing, chiikiMonitoring: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="モニタリング表を入力..." /></div> },
-                { key: 'tejunsho', title: '訪問介護手順書', content: <div><textarea value={client.billing?.chiikiTejunsho || ''} onChange={(e) => updateField('billing', { ...client.billing, chiikiTejunsho: e.target.value })} rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y" placeholder="訪問介護手順書を入力..." /></div> },
-              ]}
+            <ChiikiSeikatsuTab
+              client={client}
+              updateField={updateField}
+              onSubPageChange={setIsSubPage}
             />
           )}
 

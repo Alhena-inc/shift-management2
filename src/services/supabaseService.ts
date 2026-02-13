@@ -2505,3 +2505,73 @@ export const uploadShogaiDocFile = async (careClientId: string, docType: string,
     .getPublicUrl(filePath);
   return { url: data.publicUrl, path: filePath };
 };
+
+// ========== 障害者総合支援 - 利用サービス ==========
+
+export const loadShogaiUsedServices = async (careClientId: string): Promise<import('../types').ShogaiUsedService[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('shogai_used_services')
+      .select('*')
+      .eq('care_client_id', careClientId)
+      .order('sort_order', { ascending: true });
+
+    if (error) throw error;
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      careClientId: row.care_client_id,
+      serviceType: row.service_type || '',
+      serviceStartDate: row.service_start_date || '',
+      serviceEndDate: row.service_end_date || '',
+      sortOrder: row.sort_order || 0,
+    }));
+  } catch (error) {
+    console.error('利用サービス読み込みエラー:', error);
+    throw error;
+  }
+};
+
+export const saveShogaiUsedService = async (item: import('../types').ShogaiUsedService): Promise<import('../types').ShogaiUsedService> => {
+  try {
+    const saveData: any = {
+      care_client_id: item.careClientId,
+      service_type: item.serviceType || null,
+      service_start_date: item.serviceStartDate || null,
+      service_end_date: item.serviceEndDate || null,
+      sort_order: item.sortOrder || 0,
+      updated_at: new Date().toISOString(),
+    };
+    if (item.id) saveData.id = item.id;
+
+    const { data, error } = await supabase
+      .from('shogai_used_services')
+      .upsert(saveData, { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return {
+      id: data.id,
+      careClientId: data.care_client_id,
+      serviceType: data.service_type || '',
+      serviceStartDate: data.service_start_date || '',
+      serviceEndDate: data.service_end_date || '',
+      sortOrder: data.sort_order || 0,
+    };
+  } catch (error) {
+    console.error('利用サービス保存エラー:', error);
+    throw error;
+  }
+};
+
+export const deleteShogaiUsedService = async (id: string): Promise<void> => {
+  try {
+    const { error } = await supabase.from('shogai_used_services').delete().eq('id', id);
+    if (error) throw error;
+  } catch (error) {
+    console.error('利用サービス削除エラー:', error);
+    throw error;
+  }
+};

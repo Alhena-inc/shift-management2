@@ -1326,3 +1326,18 @@ export const deleteShogaiDocument = async (_id: string) => {
 export const uploadShogaiDocFile = async (_careClientId: string, _docType: string, _file: File) => {
   throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
 };
+
+// ========== 障害者総合支援 - 利用サービス（Firebaseスタブ） ==========
+
+export const loadShogaiUsedServices = async (_careClientId: string) => {
+  console.warn('障害者総合支援はSupabaseモードでのみ利用可能です');
+  return [];
+};
+
+export const saveShogaiUsedService = async (_item: any) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};
+
+export const deleteShogaiUsedService = async (_id: string) => {
+  throw new Error('障害者総合支援はSupabaseモードでのみ利用可能です');
+};

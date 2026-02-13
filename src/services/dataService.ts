@@ -146,6 +146,11 @@ export const {
   saveShogaiDocument,
   deleteShogaiDocument,
   uploadShogaiDocFile,
+
+  // 障害者総合支援 - 利用サービス
+  loadShogaiUsedServices,
+  saveShogaiUsedService,
+  deleteShogaiUsedService,
 } = dataService;
 
 // 日付ごとのシフト削除機能を追加
