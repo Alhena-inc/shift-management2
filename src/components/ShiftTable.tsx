@@ -1,7 +1,7 @@
 import { useMemo, useCallback, useEffect, useLayoutEffect, memo, useState, useRef, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import FloatingEditor from './FloatingEditor';
-import type { Helper, Shift, ServiceType, CareClient } from '../types';
+import type { Helper, Shift, ServiceType, CareClient, BillingRecord } from '../types';
 import { useScrollDetection } from '../hooks/useScrollDetection';
 import { SERVICE_CONFIG } from '../types';
 import { saveShiftsForMonth, deleteShift, softDeleteShift, saveHelpers, loadDayOffRequests, saveDayOffRequests, loadScheduledDayOffs, saveScheduledDayOffs, loadDisplayTexts, subscribeToDayOffRequestsMap, subscribeToDisplayTextsMap, subscribeToShiftsForMonth, subscribeToScheduledDayOffs, clearCancelStatus, restoreShift, moveShift, subscribeToCareClients } from '../services/dataService';
@@ -102,6 +102,7 @@ interface Props {
   month: number;
   onUpdateShifts: (shifts: Shift[], debounce?: boolean) => void;
   readOnly?: boolean;
+  billingRecords?: BillingRecord[];
 }
 
 // 警告が必要なサービスタイプ
@@ -438,7 +439,21 @@ const ShiftTableTd = memo(({
 
 
 
-const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdateShifts: onUpdateShiftsProp, readOnly = false }: Props) => {
+const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdateShifts: onUpdateShiftsProp, readOnly = false, billingRecords }: Props) => {
+  // 請求確定実績のロック判定用ルックアップSet
+  const billingLockedKeys = useMemo(() => {
+    const keys = new Set<string>();
+    if (billingRecords) {
+      for (const br of billingRecords) {
+        if (br.isLocked) {
+          // key: "date|helperName|startTime"
+          keys.add(`${br.serviceDate}|${br.helperName}|${br.startTime}`);
+        }
+      }
+    }
+    return keys;
+  }, [billingRecords]);
+
   const [isEditingMode, setIsEditingMode] = useState(false);
   const [initialInputValue, setInitialInputValue] = useState("");
   const [activeCellKey, setActiveCellKey] = useState<string | null>(null);
@@ -486,6 +501,14 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
 
 
+
+  // 請求確定実績でシフトがロックされているかチェック
+  const isShiftLockedByBilling = useCallback((helperName: string, date: string, startTime: string): boolean => {
+    if (billingLockedKeys.size === 0) return false;
+    // startTime は HH:mm 形式
+    const key = `${date}|${helperName}|${startTime}`;
+    return billingLockedKeys.has(key);
+  }, [billingLockedKeys]);
 
   // ★ 既存の選択枠（手動追加分）を最速で全て消すヘルパー
   const clearManualSelection = useCallback(() => {
@@ -685,7 +708,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
   // --- 再配置: キャッシュとデータ取得ロジック ---
   const cellDisplayCache = useMemo(() => {
-    const cache = new Map<string, { lines: string[]; bgColor: string; hasWarning: boolean }>();
+    const cache = new Map<string, { lines: string[]; bgColor: string; hasWarning: boolean; isLocked?: boolean }>();
 
     sortedHelpers.forEach(helper => {
       weeks.forEach(week => {
@@ -792,7 +815,14 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
                 bgColor = '#ffcccc';
               }
 
-              cache.set(key, { lines, bgColor, hasWarning });
+              // 請求確定実績によるロック判定
+              const stNorm = startTime ? startTime.substring(0, 5) : '';
+              const isLocked = stNorm && billingLockedKeys.has(`${day.date}|${helper.name}|${stNorm}`);
+              if (isLocked && lines[0]) {
+                lines[0] = '🔒' + lines[0];
+              }
+
+              cache.set(key, { lines, bgColor, hasWarning, isLocked: !!isLocked });
             }
           }
         });
@@ -800,7 +830,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     });
 
     return cache;
-  }, [sortedHelpers, weeks, shiftMap, dayOffRequests, scheduledDayOffs, displayTexts]);
+  }, [sortedHelpers, weeks, shiftMap, dayOffRequests, scheduledDayOffs, displayTexts, billingLockedKeys]);
 
   useEffect(() => {
     // シフトデータがあるか、または親からのデータも空（本当にデータがない）でヘルパーがいる場合のみ準備完了
@@ -816,7 +846,8 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     return cellDisplayCache.get(key) || {
       lines: ['', '', '', ''],
       bgColor: '#ffffff',
-      hasWarning: false
+      hasWarning: false,
+      isLocked: false
     };
   }, [cellDisplayCache]);
   // ---------------------------------------------
@@ -1250,6 +1281,14 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     // ShiftTableTdのrenderを強制しないため、DOMから取得
     const currentTd = document.querySelector(`td[data-cell-key="${curr.helperId}-${curr.date}-${curr.rowIndex}"]`) as HTMLTableCellElement;
     if (!currentTd) return;
+
+    // 請求確定実績によるロック判定（編集系キーのみ）
+    const isEditKey = e.key === 'F2' || e.key === 'Backspace' || e.key === 'Delete' ||
+      (!e.metaKey && !e.ctrlKey && !e.altKey && (e.key.length === 1 || e.key === 'Process'));
+    if (isEditKey) {
+      const cellData = getCellDisplayData(curr.helperId, curr.date, curr.rowIndex);
+      if (cellData.isLocked) return;
+    }
 
     let targetTd: HTMLElement | null = currentTd;
     let targetLineIndex = curr.lineIndex;
@@ -2784,6 +2823,13 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     const helperId = wrapper.dataset.helper!;
     const date = wrapper.dataset.date!;
     const rowIndex = parseInt(wrapper.dataset.row!);
+
+    // 請求確定実績によるロック判定
+    const cellData = getCellDisplayData(helperId, date, rowIndex);
+    if (cellData.isLocked) {
+      alert('かんたん介護から取り込んだ確定実績のため編集できません');
+      return;
+    }
 
     // Ref更新
     lastSelectedWrapperRef.current = wrapper;
@@ -6203,6 +6249,11 @@ export const ShiftTable = memo(ShiftTableComponent, (prevProps, nextProps) => {
     if (prevProps.shifts[i] !== nextProps.shifts[i]) {
       return false;
     }
+  }
+
+  // billingRecordsが変わったら再レンダリング必要
+  if (prevProps.billingRecords !== nextProps.billingRecords) {
+    return false;
   }
 
   // 全ての条件を満たした場合は再レンダリング不要

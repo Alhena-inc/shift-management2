@@ -156,6 +156,11 @@ export const {
   loadKaigoHihokenshaItems,
   saveKaigoHihokenshaItem,
   deleteKaigoHihokenshaItem,
+
+  // 請求確定実績
+  saveBillingRecords,
+  loadBillingRecordsForMonth,
+  deleteBillingRecordsByBatch,
 } = dataService;
 
 // 日付ごとのシフト削除機能を追加

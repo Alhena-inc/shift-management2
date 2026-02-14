@@ -1356,3 +1356,18 @@ export const saveKaigoHihokenshaItem = async (_item: any) => {
 export const deleteKaigoHihokenshaItem = async (_id: string) => {
   throw new Error('介護保険はSupabaseモードでのみ利用可能です');
 };
+
+// ========== 請求確定実績（Firebaseスタブ） ==========
+
+export const saveBillingRecords = async (_records: any[]) => {
+  throw new Error('請求確定実績はSupabaseモードでのみ利用可能です');
+};
+
+export const loadBillingRecordsForMonth = async (_year: number, _month: number) => {
+  console.warn('請求確定実績はSupabaseモードでのみ利用可能です');
+  return [];
+};
+
+export const deleteBillingRecordsByBatch = async (_batchId: string) => {
+  throw new Error('請求確定実績はSupabaseモードでのみ利用可能です');
+};

@@ -24,11 +24,12 @@ import RangeSelectionDemo from './pages/RangeSelectionDemo';
 import ShiftGridPage from './pages/ShiftGridPage';
 import EmployeeShiftGridPage from './pages/EmployeeShiftGridPage';
 import ShiftBulkInputPage from './pages/ShiftBulkInputPage';
+import BillingImportPage from './pages/BillingImportPage';
 import TestSupabase from './pages/TestSupabase';
 
 import { helpers as initialHelpers } from './data/mockData';
 import { SERVICE_CONFIG } from './types';
-import type { Helper, Shift } from './types';
+import type { Helper, Shift, BillingRecord } from './types';
 import {
   saveHelpers,
   loadHelpers,
@@ -36,7 +37,8 @@ import {
   saveShiftsForMonth, // 追加
   subscribeToShiftsForMonth,
   subscribeToHelpers,
-  backupToFirebase // 追加
+  backupToFirebase, // 追加
+  loadBillingRecordsForMonth,
 } from './services/dataService';
 import { cleanupDuplicateShifts } from './utils/cleanupDuplicateShifts';
 import { testSupabaseConnection } from './lib/supabase';
@@ -98,6 +100,9 @@ function App() {
   const [isCareContentDeleterOpen, setIsCareContentDeleterOpen] = useState(false);
   const [isShiftBulkInputOpen, setIsShiftBulkInputOpen] = useState(false);
 
+  // 請求確定実績
+  const [billingRecords, setBillingRecords] = useState<BillingRecord[]>([]);
+
   // デバウンス用のRef
   const shiftsUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
   const latestShiftsRef = useRef<Shift[]>(shifts);
@@ -137,6 +142,13 @@ function App() {
       unsubscribe();
     };
   }, [currentYear, currentMonth, shiftCollection]);
+
+  // 請求確定実績を月変更時にロード
+  useEffect(() => {
+    loadBillingRecordsForMonth(currentYear, currentMonth)
+      .then(records => setBillingRecords(records))
+      .catch(err => console.error('billing_records読み込みエラー:', err));
+  }, [currentYear, currentMonth]);
 
   // shiftsステートが変わったらRefも同期
   useEffect(() => {
@@ -498,6 +510,33 @@ function App() {
     return <EmployeeShiftGridPage />;
   }
 
+  // /import/billing の形式の場合（実績CSV取込）- 管理者のみ
+  if (path === '/import/billing' || path === '/import/billing/') {
+    if (userRole !== 'admin') {
+      return (
+        <Layout user={user}>
+          <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-md p-8 max-w-md w-full">
+              <div className="text-center">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
+                  <span className="text-2xl">🚫</span>
+                </div>
+                <h2 className="text-xl font-bold text-gray-800 mb-2">アクセス権限がありません</h2>
+                <p className="text-gray-600 mb-6">このページは管理者のみアクセスできます。</p>
+                <button onClick={() => window.location.href = '/'} className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">ホームに戻る</button>
+              </div>
+            </div>
+          </div>
+        </Layout>
+      );
+    }
+    return (
+      <Layout user={user}>
+        <BillingImportPage />
+      </Layout>
+    );
+  }
+
   // /shift-bulk-input の形式の場合（シフト一括追加）- 全員アクセス可能
   if (path === '/shift-bulk-input' || path === '/shift-bulk-input/') {
     return (
@@ -766,6 +805,7 @@ function App() {
                 year={currentYear}
                 month={currentMonth}
                 onUpdateShifts={handleUpdateShifts}
+                billingRecords={billingRecords}
               />
             </div>
           )}

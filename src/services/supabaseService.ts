@@ -2702,3 +2702,85 @@ export const deleteKaigoHihokenshaItem = async (id: string): Promise<void> => {
     throw error;
   }
 };
+
+// ========== 請求確定実績（billing_records） ==========
+
+export const saveBillingRecords = async (records: Array<{
+  service_date: string;
+  start_time: string;
+  end_time: string;
+  helper_name: string;
+  client_name: string;
+  service_code?: string;
+  is_locked?: boolean;
+  source?: string;
+  import_batch_id?: string;
+}>): Promise<{ inserted: number; updated: number }> => {
+  try {
+    const { data, error } = await supabase
+      .from('billing_records')
+      .upsert(records, { onConflict: 'service_date,helper_name,start_time' })
+      .select();
+
+    if (error) throw error;
+
+    const count = data?.length || 0;
+    console.log(`✅ [Supabase] billing_records upsert: ${count}件`);
+    return { inserted: count, updated: 0 };
+  } catch (error) {
+    console.error('billing_records保存エラー:', error);
+    throw error;
+  }
+};
+
+export const loadBillingRecordsForMonth = async (year: number, month: number) => {
+  try {
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endMonth = month === 12 ? 1 : month + 1;
+    const endYear = month === 12 ? year + 1 : year;
+    const endDate = `${endYear}-${String(endMonth).padStart(2, '0')}-01`;
+
+    const { data, error } = await supabase
+      .from('billing_records')
+      .select('*')
+      .gte('service_date', startDate)
+      .lt('service_date', endDate)
+      .order('service_date', { ascending: true });
+
+    if (error) throw error;
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      serviceDate: row.service_date,
+      startTime: row.start_time?.substring(0, 5) || '',
+      endTime: row.end_time?.substring(0, 5) || '',
+      helperName: row.helper_name,
+      clientName: row.client_name,
+      serviceCode: row.service_code || '',
+      isLocked: row.is_locked,
+      source: row.source,
+      importBatchId: row.import_batch_id,
+      importedAt: row.imported_at,
+      updatedAt: row.updated_at,
+    }));
+  } catch (error) {
+    console.error('billing_records読み込みエラー:', error);
+    throw error;
+  }
+};
+
+export const deleteBillingRecordsByBatch = async (batchId: string): Promise<number> => {
+  try {
+    const { data, error } = await supabase
+      .from('billing_records')
+      .delete()
+      .eq('import_batch_id', batchId)
+      .select();
+
+    if (error) throw error;
+    return data?.length || 0;
+  } catch (error) {
+    console.error('billing_recordsバッチ削除エラー:', error);
+    throw error;
+  }
+};

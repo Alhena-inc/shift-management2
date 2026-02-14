@@ -440,6 +440,22 @@ export interface Shift {
   totalPay?: number;      // 合計給与
 }
 
+// 請求確定実績（かんたん介護インポート）
+export interface BillingRecord {
+  id: string;
+  serviceDate: string;
+  startTime: string;
+  endTime: string;
+  helperName: string;
+  clientName: string;
+  serviceCode: string;
+  isLocked: boolean;
+  source: string;
+  importBatchId: string;
+  importedAt: string;
+  updatedAt: string;
+}
+
 // 日付ごとのデータ構造
 export interface DayData {
   date: string;
