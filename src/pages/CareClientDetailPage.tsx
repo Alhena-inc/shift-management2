@@ -28,12 +28,12 @@ const FormRow: React.FC<{ label: string; required?: boolean; children: React.Rea
 
 const inputClass = 'px-3 py-1.5 border border-gray-300 rounded focus:ring-1 focus:ring-green-500 focus:border-transparent text-sm';
 
-// 和暦元号
+// 和暦元号（実際の期間に制限）
 const ERAS = [
-  { name: '令和', start: 2019 },
-  { name: '平成', start: 1989 },
-  { name: '昭和', start: 1926 },
-  { name: '大正', start: 1912 },
+  { name: '令和', start: 2019, maxYear: 8 },
+  { name: '平成', start: 1989, maxYear: 31 },
+  { name: '昭和', start: 1926, maxYear: 64 },
+  { name: '大正', start: 1912, maxYear: 15 },
 ] as const;
 
 const toWarekiLabel = (iso: string): string => {
@@ -49,17 +49,13 @@ const toWarekiLabel = (iso: string): string => {
   return `${y}年${m}月${day}日`;
 };
 
-// 和暦年の全選択肢を生成（昭和1〜令和今年）
+// 和暦年の全選択肢を生成（大正1〜令和8）
 const buildWarekiYearOptions = () => {
-  const now = new Date().getFullYear();
   const options: { label: string; western: number }[] = [];
-  // 大正→昭和→平成→令和の順で古い方から
-  const sorted = [...ERAS].reverse();
+  const sorted = [...ERAS].reverse(); // 大正→昭和→平成→令和
   for (const era of sorted) {
-    const nextEra = ERAS.find(e => e.start > era.start && e.start <= now);
-    const endWestern = nextEra ? nextEra.start - 1 : now;
-    for (let w = era.start; w <= endWestern; w++) {
-      options.push({ label: `${era.name}${w - era.start + 1}`, western: w });
+    for (let ey = 1; ey <= era.maxYear; ey++) {
+      options.push({ label: `${era.name}${ey}`, western: era.start + ey - 1 });
     }
   }
   return options;
@@ -72,7 +68,7 @@ const WarekiDatePicker: React.FC<{ value: string; onChange: (v: string) => void 
 
   // カレンダー表示中の年月
   const parsed = value ? new Date(value) : null;
-  const [viewYear, setViewYear] = useState(parsed ? parsed.getFullYear() : 1980);
+  const [viewYear, setViewYear] = useState(parsed ? parsed.getFullYear() : 1985);
   const [viewMonth, setViewMonth] = useState(parsed ? parsed.getMonth() : 0);
 
   useEffect(() => {

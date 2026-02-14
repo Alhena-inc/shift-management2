@@ -19,7 +19,7 @@ const CareClientManagementPage: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // 検索フィルター（削除済みを除外）
+  // 検索フィルター（削除済みを除外）+ 登録順（古い順）
   const filteredClients = clients
     .filter(client => !client.deleted)
     .filter(client => {
@@ -29,7 +29,8 @@ const CareClientManagementPage: React.FC = () => {
         (client.address || '').toLowerCase().includes(query) ||
         (client.careLevel || '').toLowerCase().includes(query)
       );
-    });
+    })
+    .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
 
   // 介護度バッジの色
   const getCareLevelBadge = (careLevel?: string) => {
