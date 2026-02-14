@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { CareClient, CareClientServices } from '../types';
 import { loadCareClients, saveCareClient, softDeleteCareClient } from '../services/dataService';
 import ShogaiSogoTab from '../components/shogai/ShogaiSogoTab';
@@ -27,6 +27,178 @@ const FormRow: React.FC<{ label: string; required?: boolean; children: React.Rea
 );
 
 const inputClass = 'px-3 py-1.5 border border-gray-300 rounded focus:ring-1 focus:ring-green-500 focus:border-transparent text-sm';
+
+// 和暦元号
+const ERAS = [
+  { name: '令和', start: 2019 },
+  { name: '平成', start: 1989 },
+  { name: '昭和', start: 1926 },
+  { name: '大正', start: 1912 },
+] as const;
+
+const toWarekiLabel = (iso: string): string => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  for (const era of ERAS) {
+    if (y >= era.start) return `${era.name}${y - era.start + 1}年${m}月${day}日`;
+  }
+  return `${y}年${m}月${day}日`;
+};
+
+// 和暦年の全選択肢を生成（昭和1〜令和今年）
+const buildWarekiYearOptions = () => {
+  const now = new Date().getFullYear();
+  const options: { label: string; western: number }[] = [];
+  // 大正→昭和→平成→令和の順で古い方から
+  const sorted = [...ERAS].reverse();
+  for (const era of sorted) {
+    const nextEra = ERAS.find(e => e.start > era.start && e.start <= now);
+    const endWestern = nextEra ? nextEra.start - 1 : now;
+    for (let w = era.start; w <= endWestern; w++) {
+      options.push({ label: `${era.name}${w - era.start + 1}`, western: w });
+    }
+  }
+  return options;
+};
+const WAREKI_YEAR_OPTIONS = buildWarekiYearOptions();
+
+const WarekiDatePicker: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // カレンダー表示中の年月
+  const parsed = value ? new Date(value) : null;
+  const [viewYear, setViewYear] = useState(parsed ? parsed.getFullYear() : 1980);
+  const [viewMonth, setViewMonth] = useState(parsed ? parsed.getMonth() : 0);
+
+  useEffect(() => {
+    if (value) {
+      const d = new Date(value);
+      if (!isNaN(d.getTime())) { setViewYear(d.getFullYear()); setViewMonth(d.getMonth()); }
+    }
+  }, [value]);
+
+  // 外側クリックで閉じる
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const handlePrevMonth = () => {
+    if (viewMonth === 0) { setViewYear(viewYear - 1); setViewMonth(11); }
+    else setViewMonth(viewMonth - 1);
+  };
+  const handleNextMonth = () => {
+    if (viewMonth === 11) { setViewYear(viewYear + 1); setViewMonth(0); }
+    else setViewMonth(viewMonth + 1);
+  };
+
+  const handleSelectDay = (day: number) => {
+    const iso = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    onChange(iso);
+    setOpen(false);
+  };
+
+  const handleWarekiYearChange = useCallback((western: number) => {
+    setViewYear(western);
+  }, []);
+
+  // カレンダーグリッド
+  const firstDow = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+  const selectedDay = parsed && parsed.getFullYear() === viewYear && parsed.getMonth() === viewMonth ? parsed.getDate() : null;
+
+  // 現在の和暦年ラベル
+  const currentWarekiYear = WAREKI_YEAR_OPTIONS.find(o => o.western === viewYear);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={`${inputClass} w-full text-left flex items-center justify-between`}
+      >
+        <span className={value ? 'text-gray-800' : 'text-gray-400'}>{value ? toWarekiLabel(value) : '選択してください'}</span>
+        <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-3 w-72">
+          {/* ヘッダー: ◀ 和暦年プルダウン 年 月プルダウン ▶ */}
+          <div className="flex items-center gap-1 mb-2">
+            <button type="button" onClick={handlePrevMonth} className="p-1 hover:bg-gray-100 rounded text-gray-600">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            <select
+              value={viewYear}
+              onChange={(e) => handleWarekiYearChange(Number(e.target.value))}
+              className="px-1 py-0.5 border border-gray-300 rounded text-sm bg-white flex-1"
+            >
+              {WAREKI_YEAR_OPTIONS.map(o => (
+                <option key={o.western} value={o.western}>{o.label}</option>
+              ))}
+            </select>
+            <span className="text-sm text-gray-600">年</span>
+            <select
+              value={viewMonth}
+              onChange={(e) => setViewMonth(Number(e.target.value))}
+              className="px-1 py-0.5 border border-gray-300 rounded text-sm bg-white"
+            >
+              {Array.from({ length: 12 }, (_, i) => (
+                <option key={i} value={i}>{i + 1}月</option>
+              ))}
+            </select>
+            <button type="button" onClick={handleNextMonth} className="p-1 hover:bg-gray-100 rounded text-gray-600">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+            </button>
+          </div>
+
+          {/* 曜日ヘッダー */}
+          <div className="grid grid-cols-7 text-center text-xs text-gray-500 mb-1">
+            {['日', '月', '火', '水', '木', '金', '土'].map(d => <div key={d} className="py-0.5">{d}</div>)}
+          </div>
+
+          {/* 日付グリッド */}
+          <div className="grid grid-cols-7 text-center text-sm">
+            {Array.from({ length: firstDow }, (_, i) => <div key={`e${i}`} />)}
+            {Array.from({ length: daysInMonth }, (_, i) => {
+              const day = i + 1;
+              const isSelected = day === selectedDay;
+              const dow = (firstDow + i) % 7;
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  onClick={() => handleSelectDay(day)}
+                  className={`py-1 rounded hover:bg-green-100 transition-colors ${
+                    isSelected ? 'bg-green-600 text-white hover:bg-green-700' :
+                    dow === 0 ? 'text-red-500' : dow === 6 ? 'text-blue-500' : 'text-gray-700'
+                  }`}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* クリアボタン */}
+          {value && (
+            <div className="mt-2 pt-2 border-t border-gray-200 text-center">
+              <button type="button" onClick={() => { onChange(''); setOpen(false); }} className="text-xs text-red-500 hover:text-red-700">クリア</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const CareClientDetailPage: React.FC = () => {
   const [client, setClient] = useState<CareClient | null>(null);
@@ -274,10 +446,10 @@ const CareClientDetailPage: React.FC = () => {
               {/* 生年月日 / 児童生年月日 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormRow label="生年月日">
-                  <input type="date" value={client.birthDate || ''} onChange={(e) => updateField('birthDate', e.target.value)} className={`${inputClass} w-full`} />
+                  <WarekiDatePicker value={client.birthDate || ''} onChange={(v) => updateField('birthDate', v)} />
                 </FormRow>
                 <FormRow label="児童生年月日">
-                  <input type="date" value={client.childBirthDate || ''} onChange={(e) => updateField('childBirthDate', e.target.value)} className={`${inputClass} w-full`} />
+                  <WarekiDatePicker value={client.childBirthDate || ''} onChange={(v) => updateField('childBirthDate', v)} />
                 </FormRow>
               </div>
 
