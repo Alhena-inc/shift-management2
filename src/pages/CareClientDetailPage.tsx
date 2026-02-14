@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { CareClient, CareClientServices } from '../types';
 import { loadCareClients, saveCareClient, softDeleteCareClient } from '../services/dataService';
 import ShogaiSogoTab from '../components/shogai/ShogaiSogoTab';
@@ -14,118 +14,7 @@ const SERVICE_OPTIONS: { key: keyof CareClientServices; label: string }[] = [
   { key: 'jihiService', label: '自費サービス' },
 ];
 
-type TabId = 'basic' | 'system' | 'billing' | 'emergency' | 'other' | 'shogaiSogo' | 'chiikiSeikatsu' | 'kaigoHoken' | 'jihiService';
-
-// 和暦の元号定義
-const ERA_LIST = [
-  { name: '令和', startYear: 2019 },
-  { name: '平成', startYear: 1989 },
-  { name: '昭和', startYear: 1926 },
-  { name: '大正', startYear: 1912 },
-] as const;
-
-// 年齢計算
-const calcAge = (dateStr: string): number | null => {
-  if (!dateStr) return null;
-  const birth = new Date(dateStr);
-  if (isNaN(birth.getTime())) return null;
-  const today = new Date();
-  let age = today.getFullYear() - birth.getFullYear();
-  const m = today.getMonth() - birth.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-  return age;
-};
-
-// ISO日付から和暦パーツに変換
-const isoToWarekiParts = (value: string) => {
-  if (!value) return { era: '', eraYear: '', month: '', day: '' };
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return { era: '', eraYear: '', month: '', day: '' };
-  const y = d.getFullYear();
-  const m = d.getMonth() + 1;
-  const day = d.getDate();
-  for (const era of ERA_LIST) {
-    if (y >= era.startYear) {
-      return { era: era.name, eraYear: String(y - era.startYear + 1), month: String(m), day: String(day) };
-    }
-  }
-  return { era: '', eraYear: String(y), month: String(m), day: String(day) };
-};
-
-// 和暦生年月日ピッカー（インライン版）
-const WarekiBirthDatePicker: React.FC<{
-  value: string;
-  onChange: (value: string) => void;
-}> = ({ value, onChange }) => {
-  const [localParts, setLocalParts] = useState(() => isoToWarekiParts(value));
-
-  useEffect(() => {
-    setLocalParts(isoToWarekiParts(value));
-  }, [value]);
-
-  const handleChange = (field: 'era' | 'eraYear' | 'month' | 'day', v: string) => {
-    const next = { ...localParts, [field]: v };
-    if (field === 'era' && v !== localParts.era) {
-      next.eraYear = '';
-    }
-    setLocalParts(next);
-
-    if (next.era && next.eraYear && next.month && next.day) {
-      const eraObj = ERA_LIST.find(e => e.name === next.era);
-      if (!eraObj) return;
-      const westernYear = eraObj.startYear + parseInt(next.eraYear, 10) - 1;
-      const month = parseInt(next.month, 10);
-      const day = parseInt(next.day, 10);
-      if (isNaN(westernYear) || isNaN(month) || isNaN(day)) return;
-      const dateObj = new Date(westernYear, month - 1, day);
-      if (dateObj.getFullYear() === westernYear && dateObj.getMonth() === month - 1 && dateObj.getDate() === day) {
-        const iso = `${westernYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        onChange(iso);
-      }
-    }
-  };
-
-  const yearOptions = useMemo(() => {
-    if (!localParts.era) return [];
-    const eraObj = ERA_LIST.find(e => e.name === localParts.era);
-    if (!eraObj) return [];
-    const nextEraIdx = ERA_LIST.indexOf(eraObj) - 1;
-    const nextEra = nextEraIdx >= 0 ? ERA_LIST[nextEraIdx] : null;
-    const endYear = nextEra ? nextEra.startYear - 1 : new Date().getFullYear();
-    const maxEraYear = endYear - eraObj.startYear + 1;
-    return Array.from({ length: maxEraYear }, (_, i) => i + 1);
-  }, [localParts.era]);
-
-  const age = calcAge(value);
-  const s = 'px-1.5 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-green-500 focus:border-transparent bg-white text-sm';
-
-  return (
-    <div className="flex items-center gap-1 flex-wrap">
-      <select value={localParts.era} onChange={(e) => handleChange('era', e.target.value)} className={s}>
-        <option value="">元号</option>
-        {ERA_LIST.map(e => <option key={e.name} value={e.name}>{e.name}</option>)}
-      </select>
-      <select value={localParts.eraYear} onChange={(e) => handleChange('eraYear', e.target.value)} className={s}>
-        <option value="">--</option>
-        {yearOptions.map(y => <option key={y} value={String(y)}>{y}</option>)}
-      </select>
-      <span className="text-xs text-gray-500">年</span>
-      <select value={localParts.month} onChange={(e) => handleChange('month', e.target.value)} className={s}>
-        <option value="">--</option>
-        {Array.from({ length: 12 }, (_, i) => i + 1).map(m => <option key={m} value={String(m)}>{m}</option>)}
-      </select>
-      <span className="text-xs text-gray-500">月</span>
-      <select value={localParts.day} onChange={(e) => handleChange('day', e.target.value)} className={s}>
-        <option value="">--</option>
-        {Array.from({ length: 31 }, (_, i) => i + 1).map(d => <option key={d} value={String(d)}>{d}</option>)}
-      </select>
-      <span className="text-xs text-gray-500">日</span>
-      {value && age !== null && (
-        <span className="text-xs text-gray-500 ml-1">（{age}歳）</span>
-      )}
-    </div>
-  );
-};
+type TabId = 'basic' | 'system' | 'emergency' | 'other' | 'shogaiSogo' | 'chiikiSeikatsu' | 'kaigoHoken' | 'jihiService';
 
 // ラベル付き行コンポーネント
 const FormRow: React.FC<{ label: string; required?: boolean; children: React.ReactNode; className?: string }> = ({ label, required, children, className }) => (
@@ -259,7 +148,6 @@ const CareClientDetailPage: React.FC = () => {
     { id: 'basic', label: '基本' },
     ...enabledServices.map(s => ({ id: s.key as TabId, label: s.label })),
     { id: 'system', label: '制度' },
-    { id: 'billing', label: '請求' },
     { id: 'emergency', label: '緊急連絡先' },
     { id: 'other', label: 'その他' },
   ];
@@ -370,9 +258,9 @@ const CareClientDetailPage: React.FC = () => {
               {/* 生年月日行 */}
               <FormRow label="生年月日">
                 <div className="flex items-center gap-4 flex-wrap">
-                  <WarekiBirthDatePicker value={client.birthDate || ''} onChange={(v) => updateField('birthDate', v)} />
+                  <input type="date" value={client.birthDate || ''} onChange={(e) => updateField('birthDate', e.target.value)} className={inputClass} />
                   <label className="text-sm font-medium text-gray-700">児童生年月日</label>
-                  <WarekiBirthDatePicker value={client.childBirthDate || ''} onChange={(v) => updateField('childBirthDate', v)} />
+                  <input type="date" value={client.childBirthDate || ''} onChange={(e) => updateField('childBirthDate', e.target.value)} className={inputClass} />
                 </div>
               </FormRow>
 
@@ -484,47 +372,6 @@ const CareClientDetailPage: React.FC = () => {
           {/* 自費サービスタブ */}
           {activeTab === 'jihiService' && (
             <JihiServiceTab client={client} updateField={updateField} onSubPageChange={setIsSubPage} />
-          )}
-
-          {/* ========== 請求タブ ========== */}
-          {activeTab === 'billing' && (
-            <div className="space-y-6">
-              <h2 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">請求情報</h2>
-              <p className="text-sm text-gray-500">請求に関する情報を入力してください。</p>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">負担割合</label>
-                <select
-                  value={client.billing?.burdenRatio || ''}
-                  onChange={(e) => updateField('billing', { ...client.billing, burdenRatio: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
-                >
-                  <option value="">未設定</option>
-                  <option value="1割">1割</option>
-                  <option value="2割">2割</option>
-                  <option value="3割">3割</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">負担上限月額</label>
-                <input
-                  type="number"
-                  value={client.billing?.burdenLimit || ''}
-                  onChange={(e) => updateField('billing', { ...client.billing, burdenLimit: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  placeholder="0"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">備考</label>
-                <textarea
-                  value={client.billing?.billingNotes || ''}
-                  onChange={(e) => updateField('billing', { ...client.billing, billingNotes: e.target.value })}
-                  rows={3}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y"
-                  placeholder="請求に関する備考..."
-                />
-              </div>
-            </div>
           )}
 
           {/* ========== 緊急連絡先タブ ========== */}
