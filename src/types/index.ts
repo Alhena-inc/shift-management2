@@ -404,6 +404,7 @@ export interface CareClient {
   childNameKana?: string;
   childGender?: 'male' | 'female';
   childBirthDate?: string;
+  shift1Name?: string;
   notes?: string;
   services?: CareClientServices;
   billing?: Record<string, any>;

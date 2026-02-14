@@ -268,18 +268,15 @@ const CareClientDetailPage: React.FC = () => {
                 </FormRow>
               </div>
 
-              {/* 顧客番号 / 略称 */}
+              {/* 略称 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormRow label="顧客番号">
-                  <input type="text" value={client.customerNumber || ''} onChange={(e) => updateField('customerNumber', e.target.value)} className={`${inputClass} w-full`} />
-                </FormRow>
                 <FormRow label="略称">
                   <input type="text" value={client.abbreviation || ''} onChange={(e) => updateField('abbreviation', e.target.value)} className={`${inputClass} w-full`} placeholder="" />
                 </FormRow>
               </div>
 
               {/* 郵便番号 / 住所 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr] gap-4">
                 <FormRow label="郵便番号">
                   <input type="text" value={client.postalCode || ''} onChange={(e) => updateField('postalCode', e.target.value)} className={`${inputClass} w-full`} placeholder="123-4567" />
                 </FormRow>
@@ -453,6 +450,9 @@ const CareClientDetailPage: React.FC = () => {
           {activeTab === 'other' && (
             <div className="space-y-6">
               <h2 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">その他</h2>
+              <FormRow label="Shift1名前">
+                <input type="text" value={client.shift1Name || ''} onChange={(e) => updateField('shift1Name', e.target.value)} className={`${inputClass} w-full max-w-md`} placeholder="Shift1での表示名" />
+              </FormRow>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">備考・メモ</label>
                 <textarea value={client.notes || ''} onChange={(e) => updateField('notes', e.target.value)} rows={8} className={`${inputClass} w-full resize-y`} placeholder="備考・メモを入力..." />
