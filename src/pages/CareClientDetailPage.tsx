@@ -66,7 +66,12 @@ const CareClientDetailPage: React.FC = () => {
       try {
         const clients = await loadCareClients();
         const found = clients.find((c: CareClient) => c.id === clientId);
-        if (found) setClient(found);
+        if (found) {
+          if (!found.shift1Name && found.name) {
+            found.shift1Name = found.name.split(/[\s　]+/)[0];
+          }
+          setClient(found);
+        }
       } catch (error) {
         console.error('利用者読み込みエラー:', error);
       } finally {
@@ -225,7 +230,15 @@ const CareClientDetailPage: React.FC = () => {
               {/* 氏名 / 児童氏名 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormRow label="氏名" required>
-                  <input type="text" value={client.name} onChange={(e) => updateField('name', e.target.value)} className={`${inputClass} w-full`} placeholder="氏名" />
+                  <input type="text" value={client.name} onChange={(e) => {
+                    const newName = e.target.value;
+                    const oldLastName = (client.name || '').split(/[\s　]+/)[0];
+                    const newLastName = newName.split(/[\s　]+/)[0];
+                    updateField('name', newName);
+                    if (!client.shift1Name || client.shift1Name === oldLastName) {
+                      updateField('shift1Name', newLastName);
+                    }
+                  }} className={`${inputClass} w-full`} placeholder="氏名（苗字 名前）" />
                 </FormRow>
                 <FormRow label="児童氏名">
                   <input type="text" value={client.childName || ''} onChange={(e) => updateField('childName', e.target.value)} className={`${inputClass} w-full`} placeholder="" />
@@ -450,8 +463,8 @@ const CareClientDetailPage: React.FC = () => {
           {activeTab === 'other' && (
             <div className="space-y-6">
               <h2 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">その他</h2>
-              <FormRow label="Shift1名前">
-                <input type="text" value={client.shift1Name || ''} onChange={(e) => updateField('shift1Name', e.target.value)} className={`${inputClass} w-full max-w-md`} placeholder="Shift1での表示名" />
+              <FormRow label="シフト名">
+                <input type="text" value={client.shift1Name || ''} onChange={(e) => updateField('shift1Name', e.target.value)} className={`${inputClass} w-full max-w-md`} placeholder="シフトでの表示名" />
               </FormRow>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">備考・メモ</label>
