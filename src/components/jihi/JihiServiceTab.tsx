@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import type { CareClient, ShogaiDocument, ShogaiServiceResponsible, KaigoHihokenshaItem, Helper } from '../../types';
+import type { CareClient, ShogaiDocument, ShogaiServiceResponsible, Helper } from '../../types';
 import AccordionSection from '../AccordionSection';
 import ShogaiDocumentList from '../shogai/ShogaiDocumentList';
 import ShogaiServiceResponsibleList from '../shogai/ShogaiServiceResponsibleList';
-import KaigoGenericItemList from '../kaigo/KaigoGenericItemList';
 import {
   loadShogaiDocuments,
   loadShogaiServiceResponsibles,
-  loadKaigoHihokenshaItems,
   loadHelpers,
 } from '../../services/dataService';
 
@@ -17,10 +15,9 @@ interface Props {
   onSubPageChange?: (isSubPage: boolean) => void;
 }
 
-type SubPage = null | 'billingHold' | 'serviceResponsible' | 'tejunsho';
+type SubPage = null | 'serviceResponsible' | 'tejunsho';
 
 const JihiServiceTab: React.FC<Props> = ({ client, updateField, onSubPageChange }) => {
-  const [billingHoldItems, setBillingHoldItems] = useState<KaigoHihokenshaItem[]>([]);
   const [serviceResponsibles, setServiceResponsibles] = useState<ShogaiServiceResponsible[]>([]);
   const [tejunshoDocs, setTejunshoDocs] = useState<ShogaiDocument[]>([]);
   const [helpers, setHelpers] = useState<Helper[]>([]);
@@ -35,13 +32,11 @@ const JihiServiceTab: React.FC<Props> = ({ client, updateField, onSubPageChange 
   useEffect(() => {
     const load = async () => {
       try {
-        const [loadedBillingHold, loadedServiceResponsibles, loadedTejunsho, loadedHelpers] = await Promise.all([
-          loadKaigoHihokenshaItems(client.id, 'jihi_billing_hold'),
+        const [loadedServiceResponsibles, loadedTejunsho, loadedHelpers] = await Promise.all([
           loadShogaiServiceResponsibles(client.id, 'jihi'),
           loadShogaiDocuments(client.id, 'jihi_tejunsho'),
           loadHelpers(),
         ]);
-        setBillingHoldItems(loadedBillingHold);
         setServiceResponsibles(loadedServiceResponsibles);
         setTejunshoDocs(loadedTejunsho);
         setHelpers(loadedHelpers);
@@ -61,12 +56,6 @@ const JihiServiceTab: React.FC<Props> = ({ client, updateField, onSubPageChange 
         <span className="ml-3 text-gray-500">読み込み中...</span>
       </div>
     );
-  }
-
-  if (subPage === 'billingHold') {
-    return <KaigoGenericItemList careClientId={client.id} category="jihi_billing_hold" items={billingHoldItems} onUpdate={setBillingHoldItems} onBack={() => setSubPage(null)} title="請求保留・再請求" fields={[
-      { key: 'value1', label: '内容', type: 'text' },
-    ]} />;
   }
 
   if (subPage === 'serviceResponsible') {
@@ -89,18 +78,10 @@ const JihiServiceTab: React.FC<Props> = ({ client, updateField, onSubPageChange 
   return (
     <AccordionSection
       onNavigate={(key) => {
-        if (key === 'billingHold') setSubPage('billingHold');
         if (key === 'serviceResponsible') setSubPage('serviceResponsible');
         if (key === 'tejunsho') setSubPage('tejunsho');
       }}
       sections={[
-        {
-          key: 'billingHold',
-          title: '請求保留・再請求',
-          navigable: true,
-          content: null,
-          summary: billingHoldItems.length > 0 ? `${billingHoldItems.length}件` : undefined,
-        },
         {
           key: 'serviceResponsible',
           title: 'サービス提供責任者',

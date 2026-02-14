@@ -391,8 +391,19 @@ export interface CareClient {
   emergencyContactName?: string;
   emergencyContactRelation?: string;
   emergencyContactPhone?: string;
+  emergencyContact2Name?: string;
+  emergencyContact2Relation?: string;
+  emergencyContact2Phone?: string;
+  emergencyContact3Name?: string;
+  emergencyContact3Relation?: string;
+  emergencyContact3Phone?: string;
   careLevel?: string;
   area?: string;           // シフト地域（例: 渋谷区）
+  // 児童情報
+  childName?: string;
+  childNameKana?: string;
+  childGender?: 'male' | 'female';
+  childBirthDate?: string;
   notes?: string;
   services?: CareClientServices;
   billing?: Record<string, any>;

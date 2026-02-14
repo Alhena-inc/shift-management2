@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { CareClient, CareClientServices } from '../types';
 import { loadCareClients, saveCareClient, softDeleteCareClient } from '../services/dataService';
 import AccordionSection from '../components/AccordionSection';
@@ -16,6 +16,160 @@ const SERVICE_OPTIONS: { key: keyof CareClientServices; label: string }[] = [
 ];
 
 type TabId = 'basic' | 'system' | 'billing' | 'emergency' | 'other' | 'shogaiSogo' | 'chiikiSeikatsu' | 'kaigoHoken' | 'jihiService';
+
+// 和暦の元号定義
+const ERA_LIST = [
+  { name: '令和', startYear: 2019 },
+  { name: '平成', startYear: 1989 },
+  { name: '昭和', startYear: 1926 },
+  { name: '大正', startYear: 1912 },
+] as const;
+
+// 西暦 → 和暦表示
+const toWarekiDisplay = (dateStr: string): string => {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  for (const era of ERA_LIST) {
+    if (year >= era.startYear) {
+      const eraYear = year - era.startYear + 1;
+      return `${era.name}${eraYear}年${month}月${day}日`;
+    }
+  }
+  return `${year}年${month}月${day}日`;
+};
+
+// 年齢計算
+const calcAge = (dateStr: string): number | null => {
+  if (!dateStr) return null;
+  const birth = new Date(dateStr);
+  if (isNaN(birth.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+};
+
+// ISO日付から和暦パーツに変換
+const isoToWarekiParts = (value: string) => {
+  if (!value) return { era: '', eraYear: '', month: '', day: '' };
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return { era: '', eraYear: '', month: '', day: '' };
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  for (const era of ERA_LIST) {
+    if (y >= era.startYear) {
+      return { era: era.name, eraYear: String(y - era.startYear + 1), month: String(m), day: String(day) };
+    }
+  }
+  return { era: '', eraYear: String(y), month: String(m), day: String(day) };
+};
+
+// 和暦生年月日ピッカー
+const WarekiBirthDatePicker: React.FC<{
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}> = ({ label, value, onChange }) => {
+  const [localParts, setLocalParts] = useState(() => isoToWarekiParts(value));
+
+  // 外部からvalueが変更されたらローカルを同期
+  useEffect(() => {
+    setLocalParts(isoToWarekiParts(value));
+  }, [value]);
+
+  const handleChange = (field: 'era' | 'eraYear' | 'month' | 'day', v: string) => {
+    const next = { ...localParts, [field]: v };
+    // 元号が変更された場合、年の選択肢が変わるのでeraYearをリセット
+    if (field === 'era' && v !== localParts.era) {
+      next.eraYear = '';
+    }
+    setLocalParts(next);
+
+    // 4つ全て揃ったら親に通知
+    if (next.era && next.eraYear && next.month && next.day) {
+      const eraObj = ERA_LIST.find(e => e.name === next.era);
+      if (!eraObj) return;
+      const westernYear = eraObj.startYear + parseInt(next.eraYear, 10) - 1;
+      const month = parseInt(next.month, 10);
+      const day = parseInt(next.day, 10);
+      if (isNaN(westernYear) || isNaN(month) || isNaN(day)) return;
+      const dateObj = new Date(westernYear, month - 1, day);
+      if (dateObj.getFullYear() === westernYear && dateObj.getMonth() === month - 1 && dateObj.getDate() === day) {
+        const iso = `${westernYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        onChange(iso);
+      }
+    }
+  };
+
+  // 元号ごとの年数リスト生成
+  const yearOptions = useMemo(() => {
+    if (!localParts.era) return [];
+    const eraObj = ERA_LIST.find(e => e.name === localParts.era);
+    if (!eraObj) return [];
+    const nextEraIdx = ERA_LIST.indexOf(eraObj) - 1;
+    const nextEra = nextEraIdx >= 0 ? ERA_LIST[nextEraIdx] : null;
+    const endYear = nextEra ? nextEra.startYear - 1 : new Date().getFullYear();
+    const maxEraYear = endYear - eraObj.startYear + 1;
+    return Array.from({ length: maxEraYear }, (_, i) => i + 1);
+  }, [localParts.era]);
+
+  const age = calcAge(value);
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <select
+          value={localParts.era}
+          onChange={(e) => handleChange('era', e.target.value)}
+          className="px-2 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-sm"
+        >
+          <option value="">元号</option>
+          {ERA_LIST.map(e => <option key={e.name} value={e.name}>{e.name}</option>)}
+        </select>
+        <select
+          value={localParts.eraYear}
+          onChange={(e) => handleChange('eraYear', e.target.value)}
+          className="px-2 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-sm"
+        >
+          <option value="">年</option>
+          {yearOptions.map(y => <option key={y} value={String(y)}>{y}</option>)}
+        </select>
+        <span className="text-sm text-gray-500">年</span>
+        <select
+          value={localParts.month}
+          onChange={(e) => handleChange('month', e.target.value)}
+          className="px-2 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-sm"
+        >
+          <option value="">月</option>
+          {Array.from({ length: 12 }, (_, i) => i + 1).map(m => <option key={m} value={String(m)}>{m}</option>)}
+        </select>
+        <span className="text-sm text-gray-500">月</span>
+        <select
+          value={localParts.day}
+          onChange={(e) => handleChange('day', e.target.value)}
+          className="px-2 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-sm"
+        >
+          <option value="">日</option>
+          {Array.from({ length: 31 }, (_, i) => i + 1).map(d => <option key={d} value={String(d)}>{d}</option>)}
+        </select>
+        <span className="text-sm text-gray-500">日</span>
+        {value && age !== null && (
+          <span className="text-sm text-gray-500 ml-2">（{age}歳）</span>
+        )}
+      </div>
+      {value && (
+        <p className="text-xs text-gray-400 mt-1">{toWarekiDisplay(value)}</p>
+      )}
+    </div>
+  );
+};
 
 const CareClientDetailPage: React.FC = () => {
   const [client, setClient] = useState<CareClient | null>(null);
@@ -239,7 +393,7 @@ const CareClientDetailPage: React.FC = () => {
           {activeTab === 'basic' && (
             <div className="space-y-8">
               <h2 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">基本情報</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     氏名 <span className="text-red-500">*</span>
@@ -253,6 +407,16 @@ const CareClientDetailPage: React.FC = () => {
                   />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">児童氏名</label>
+                  <input
+                    type="text"
+                    value={client.childName || ''}
+                    onChange={(e) => updateField('childName', e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="児童氏名"
+                  />
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">フリガナ</label>
                   <input
                     type="text"
@@ -263,25 +427,49 @@ const CareClientDetailPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">性別</label>
-                  <select
-                    value={client.gender || ''}
-                    onChange={(e) => updateField('gender', e.target.value || undefined)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
-                  >
-                    <option value="">未設定</option>
-                    <option value="male">男性</option>
-                    <option value="female">女性</option>
-                  </select>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">児童フリガナ</label>
+                  <input
+                    type="text"
+                    value={client.childNameKana || ''}
+                    onChange={(e) => updateField('childNameKana', e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="児童フリガナ"
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">生年月日</label>
-                  <input
-                    type="date"
-                    value={client.birthDate || ''}
-                    onChange={(e) => updateField('birthDate', e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">性別</label>
+                  <div className="flex items-center gap-4 pt-2">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="radio" name="gender" value="male" checked={client.gender === 'male'} onChange={() => updateField('gender', 'male')} className="accent-green-600" />
+                      <span className="text-sm text-gray-700">男性</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="radio" name="gender" value="female" checked={client.gender === 'female'} onChange={() => updateField('gender', 'female')} className="accent-green-600" />
+                      <span className="text-sm text-gray-700">女性</span>
+                    </label>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">児童性別</label>
+                  <div className="flex items-center gap-4 pt-2">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="radio" name="childGender" value="male" checked={client.childGender === 'male'} onChange={() => updateField('childGender', 'male')} className="accent-green-600" />
+                      <span className="text-sm text-gray-700">男性</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="radio" name="childGender" value="female" checked={client.childGender === 'female'} onChange={() => updateField('childGender', 'female')} className="accent-green-600" />
+                      <span className="text-sm text-gray-700">女性</span>
+                    </label>
+                    {client.childGender && (
+                      <button onClick={() => updateField('childGender', undefined)} className="text-xs text-gray-400 hover:text-gray-600">クリア</button>
+                    )}
+                  </div>
+                </div>
+                <div className="col-span-2">
+                  <WarekiBirthDatePicker label="生年月日" value={client.birthDate || ''} onChange={(v) => updateField('birthDate', v)} />
+                </div>
+                <div className="col-span-2">
+                  <WarekiBirthDatePicker label="児童生年月日" value={client.childBirthDate || ''} onChange={(v) => updateField('childBirthDate', v)} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">シフト照合名</label>
@@ -313,16 +501,6 @@ const CareClientDetailPage: React.FC = () => {
                   onChange={(e) => updateField('address', e.target.value)}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   placeholder="住所を入力"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">シフト地域</label>
-                <input
-                  type="text"
-                  value={client.area || ''}
-                  onChange={(e) => updateField('area', e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  placeholder="例: 渋谷区"
                 />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -523,41 +701,68 @@ const CareClientDetailPage: React.FC = () => {
 
           {/* 緊急連絡先タブ */}
           {activeTab === 'emergency' && (
-            <div className="space-y-6">
+            <div className="space-y-8">
               <h2 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">緊急連絡先</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">連絡先氏名</label>
-                  <input
-                    type="text"
-                    value={client.emergencyContactName || ''}
-                    onChange={(e) => updateField('emergencyContactName', e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="氏名"
-                  />
+
+              {/* 1人目 */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-bold text-gray-700">緊急連絡先 1</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">連絡先氏名</label>
+                    <input type="text" value={client.emergencyContactName || ''} onChange={(e) => updateField('emergencyContactName', e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="氏名" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">続柄</label>
+                    <input type="text" value={client.emergencyContactRelation || ''} onChange={(e) => updateField('emergencyContactRelation', e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="例: 長男、配偶者" />
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">続柄</label>
-                  <input
-                    type="text"
-                    value={client.emergencyContactRelation || ''}
-                    onChange={(e) => updateField('emergencyContactRelation', e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="例: 長男、配偶者"
-                  />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">電話番号</label>
+                  <input type="tel" value={client.emergencyContactPhone || ''} onChange={(e) => updateField('emergencyContactPhone', e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="090-1234-5678" />
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">電話番号</label>
-                <input
-                  type="tel"
-                  value={client.emergencyContactPhone || ''}
-                  onChange={(e) => updateField('emergencyContactPhone', e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  placeholder="090-1234-5678"
-                />
+
+              {/* 2人目 */}
+              <div className="space-y-4 pt-4 border-t border-gray-200">
+                <h3 className="text-sm font-bold text-gray-700">緊急連絡先 2</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">連絡先氏名</label>
+                    <input type="text" value={client.emergencyContact2Name || ''} onChange={(e) => updateField('emergencyContact2Name', e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="氏名" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">続柄</label>
+                    <input type="text" value={client.emergencyContact2Relation || ''} onChange={(e) => updateField('emergencyContact2Relation', e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="例: 長男、配偶者" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">電話番号</label>
+                  <input type="tel" value={client.emergencyContact2Phone || ''} onChange={(e) => updateField('emergencyContact2Phone', e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="090-1234-5678" />
+                </div>
               </div>
-              <div>
+
+              {/* 3人目 */}
+              <div className="space-y-4 pt-4 border-t border-gray-200">
+                <h3 className="text-sm font-bold text-gray-700">緊急連絡先 3</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">連絡先氏名</label>
+                    <input type="text" value={client.emergencyContact3Name || ''} onChange={(e) => updateField('emergencyContact3Name', e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="氏名" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">続柄</label>
+                    <input type="text" value={client.emergencyContact3Relation || ''} onChange={(e) => updateField('emergencyContact3Relation', e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="例: 長男、配偶者" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">電話番号</label>
+                  <input type="tel" value={client.emergencyContact3Phone || ''} onChange={(e) => updateField('emergencyContact3Phone', e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="090-1234-5678" />
+                </div>
+              </div>
+
+              {/* その他メモ */}
+              <div className="pt-4 border-t border-gray-200">
                 <label className="block text-sm font-medium text-gray-700 mb-1">その他連絡先メモ</label>
                 <textarea
                   value={client.emergencyContact || ''}
