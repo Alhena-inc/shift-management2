@@ -222,94 +222,99 @@ const CareClientDetailPage: React.FC = () => {
           {/* ========== 基本タブ ========== */}
           {activeTab === 'basic' && (
             <div className="space-y-4">
-              {/* 氏名行 */}
-              <FormRow label="氏名" required>
-                <div className="flex items-center gap-4 flex-wrap">
-                  <input type="text" value={client.name} onChange={(e) => updateField('name', e.target.value)} className={`${inputClass} w-40`} placeholder="氏名" />
-                  <label className="text-sm font-medium text-gray-700">児童氏名</label>
-                  <input type="text" value={client.childName || ''} onChange={(e) => updateField('childName', e.target.value)} className={`${inputClass} w-40`} placeholder="" />
-                </div>
-              </FormRow>
+              {/* 氏名 / 児童氏名 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormRow label="氏名" required>
+                  <input type="text" value={client.name} onChange={(e) => updateField('name', e.target.value)} className={`${inputClass} w-full`} placeholder="氏名" />
+                </FormRow>
+                <FormRow label="児童氏名">
+                  <input type="text" value={client.childName || ''} onChange={(e) => updateField('childName', e.target.value)} className={`${inputClass} w-full`} placeholder="" />
+                </FormRow>
+              </div>
 
-              {/* フリガナ行 */}
-              <FormRow label="フリガナ">
-                <div className="flex items-center gap-4 flex-wrap">
-                  <input type="text" value={client.nameKana || ''} onChange={(e) => updateField('nameKana', e.target.value)} className={`${inputClass} w-40`} placeholder="フリガナ" />
-                  <label className="text-sm font-medium text-gray-700">児童フリガナ</label>
-                  <input type="text" value={client.childNameKana || ''} onChange={(e) => updateField('childNameKana', e.target.value)} className={`${inputClass} w-40`} placeholder="" />
-                </div>
-              </FormRow>
+              {/* フリガナ / 児童フリガナ */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormRow label="フリガナ">
+                  <input type="text" value={client.nameKana || ''} onChange={(e) => updateField('nameKana', e.target.value)} className={`${inputClass} w-full`} placeholder="フリガナ" />
+                </FormRow>
+                <FormRow label="児童フリガナ">
+                  <input type="text" value={client.childNameKana || ''} onChange={(e) => updateField('childNameKana', e.target.value)} className={`${inputClass} w-full`} placeholder="" />
+                </FormRow>
+              </div>
 
-              {/* 性別行 */}
-              <FormRow label="性別">
-                <div className="flex items-center gap-6 flex-wrap">
-                  <div className="flex items-center gap-3">
+              {/* 性別 / 児童性別 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormRow label="性別">
+                  <div className="flex items-center gap-3 pt-1.5">
                     <label className="flex items-center gap-1 cursor-pointer"><input type="radio" name="gender" checked={client.gender === 'male'} onChange={() => updateField('gender', 'male')} className="accent-green-600" /><span className="text-sm">男性</span></label>
                     <label className="flex items-center gap-1 cursor-pointer"><input type="radio" name="gender" checked={client.gender === 'female'} onChange={() => updateField('gender', 'female')} className="accent-green-600" /><span className="text-sm">女性</span></label>
                   </div>
-                  <label className="text-sm font-medium text-gray-700">児童性別</label>
-                  <div className="flex items-center gap-3">
+                </FormRow>
+                <FormRow label="児童性別">
+                  <div className="flex items-center gap-3 pt-1.5">
                     <label className="flex items-center gap-1 cursor-pointer"><input type="radio" name="childGender" checked={client.childGender === 'male'} onChange={() => updateField('childGender', 'male')} className="accent-green-600" /><span className="text-sm">男性</span></label>
                     <label className="flex items-center gap-1 cursor-pointer"><input type="radio" name="childGender" checked={client.childGender === 'female'} onChange={() => updateField('childGender', 'female')} className="accent-green-600" /><span className="text-sm">女性</span></label>
                   </div>
-                </div>
-              </FormRow>
+                </FormRow>
+              </div>
 
-              {/* 生年月日行 */}
-              <FormRow label="生年月日">
-                <div className="flex items-center gap-4 flex-wrap">
-                  <input type="date" value={client.birthDate || ''} onChange={(e) => updateField('birthDate', e.target.value)} className={inputClass} />
-                  <label className="text-sm font-medium text-gray-700">児童生年月日</label>
-                  <input type="date" value={client.childBirthDate || ''} onChange={(e) => updateField('childBirthDate', e.target.value)} className={inputClass} />
-                </div>
-              </FormRow>
+              {/* 生年月日 / 児童生年月日 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormRow label="生年月日">
+                  <input type="date" value={client.birthDate || ''} onChange={(e) => updateField('birthDate', e.target.value)} className={`${inputClass} w-full`} />
+                </FormRow>
+                <FormRow label="児童生年月日">
+                  <input type="date" value={client.childBirthDate || ''} onChange={(e) => updateField('childBirthDate', e.target.value)} className={`${inputClass} w-full`} />
+                </FormRow>
+              </div>
 
-              {/* 顧客番号・略称行 */}
-              <FormRow label="顧客番号">
-                <div className="flex items-center gap-4 flex-wrap">
-                  <input type="text" value={client.customerNumber || ''} onChange={(e) => updateField('customerNumber', e.target.value)} className={`${inputClass} w-20`} />
-                  <label className="text-sm font-medium text-gray-700">略称</label>
-                  <input type="text" value={client.abbreviation || ''} onChange={(e) => updateField('abbreviation', e.target.value)} className={`${inputClass} w-28`} placeholder="" />
-                </div>
-              </FormRow>
+              {/* 顧客番号 / 略称 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormRow label="顧客番号">
+                  <input type="text" value={client.customerNumber || ''} onChange={(e) => updateField('customerNumber', e.target.value)} className={`${inputClass} w-full`} />
+                </FormRow>
+                <FormRow label="略称">
+                  <input type="text" value={client.abbreviation || ''} onChange={(e) => updateField('abbreviation', e.target.value)} className={`${inputClass} w-full`} placeholder="" />
+                </FormRow>
+              </div>
 
-              {/* 郵便番号行 */}
-              <FormRow label="郵便番号">
-                <input type="text" value={client.postalCode || ''} onChange={(e) => updateField('postalCode', e.target.value)} className={`${inputClass} w-32`} placeholder="123-4567" />
-              </FormRow>
+              {/* 郵便番号 / 住所 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormRow label="郵便番号">
+                  <input type="text" value={client.postalCode || ''} onChange={(e) => updateField('postalCode', e.target.value)} className={`${inputClass} w-full`} placeholder="123-4567" />
+                </FormRow>
+                <FormRow label="住所">
+                  <input type="text" value={client.address || ''} onChange={(e) => updateField('address', e.target.value)} className={`${inputClass} w-full`} placeholder="住所を入力" />
+                </FormRow>
+              </div>
 
-              {/* 住所行 */}
-              <FormRow label="住所">
-                <input type="text" value={client.address || ''} onChange={(e) => updateField('address', e.target.value)} className={`${inputClass} w-full`} placeholder="住所を入力" />
-              </FormRow>
+              {/* 電話番号 / 携帯番号 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormRow label="電話番号">
+                  <input type="tel" value={client.phone || ''} onChange={(e) => updateField('phone', e.target.value)} className={`${inputClass} w-full`} placeholder="090-1234-5678" />
+                </FormRow>
+                <FormRow label="携帯番号">
+                  <input type="tel" value={client.mobilePhone || ''} onChange={(e) => updateField('mobilePhone', e.target.value)} className={`${inputClass} w-full`} placeholder="080-1234-5678" />
+                </FormRow>
+              </div>
 
-              {/* 電話番号行 */}
-              <FormRow label="電話番号">
-                <input type="tel" value={client.phone || ''} onChange={(e) => updateField('phone', e.target.value)} className={`${inputClass} w-48`} placeholder="090-1234-5678" />
-              </FormRow>
+              {/* 契約期間 / 終了理由 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormRow label="契約期間">
+                  <div className="flex items-center gap-2">
+                    <input type="date" value={client.contractStart || ''} onChange={(e) => updateField('contractStart', e.target.value)} className={`${inputClass} flex-1`} />
+                    <span className="text-gray-500">〜</span>
+                    <input type="date" value={client.contractEnd || ''} onChange={(e) => updateField('contractEnd', e.target.value)} className={`${inputClass} flex-1`} />
+                  </div>
+                </FormRow>
+                <FormRow label="終了理由">
+                  <input type="text" value={client.endReason || ''} onChange={(e) => updateField('endReason', e.target.value)} className={`${inputClass} w-full`} placeholder="終了理由を入力" />
+                </FormRow>
+              </div>
 
-              {/* 携帯番号行 */}
-              <FormRow label="携帯番号">
-                <input type="tel" value={client.mobilePhone || ''} onChange={(e) => updateField('mobilePhone', e.target.value)} className={`${inputClass} w-48`} placeholder="080-1234-5678" />
-              </FormRow>
-
-              {/* 契約期間行 */}
-              <FormRow label="契約期間">
-                <div className="flex items-center gap-2">
-                  <input type="date" value={client.contractStart || ''} onChange={(e) => updateField('contractStart', e.target.value)} className={`${inputClass}`} />
-                  <span className="text-gray-500">〜</span>
-                  <input type="date" value={client.contractEnd || ''} onChange={(e) => updateField('contractEnd', e.target.value)} className={`${inputClass}`} />
-                </div>
-              </FormRow>
-
-              {/* 終了理由行 */}
-              <FormRow label="終了理由">
-                <input type="text" value={client.endReason || ''} onChange={(e) => updateField('endReason', e.target.value)} className={`${inputClass} w-full max-w-md`} placeholder="終了理由を入力" />
-              </FormRow>
-
-              {/* 備考行 */}
+              {/* 備考 */}
               <FormRow label="備考">
-                <textarea value={client.notes || ''} onChange={(e) => updateField('notes', e.target.value)} rows={4} className={`${inputClass} w-full resize-y`} placeholder="備考を入力..." />
+                <textarea value={client.notes || ''} onChange={(e) => updateField('notes', e.target.value)} rows={3} className={`${inputClass} w-full resize-y`} placeholder="備考を入力..." />
               </FormRow>
 
               {/* システム情報 */}
