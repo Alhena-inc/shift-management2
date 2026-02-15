@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { loadBillingRecordsForMonth, deleteBillingRecordsByBatch } from '../services/dataService';
-import type { BillingRecord } from '../types';
+import { loadBillingRecordsForMonth, deleteBillingRecordsByBatch, loadCareClients } from '../services/dataService';
+import type { BillingRecord, CareClient } from '../types';
 
 const BillingRecordsPage: React.FC = () => {
   const now = new Date();
@@ -11,6 +11,23 @@ const BillingRecordsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'helper' | 'client'>('all');
   const [filterValue, setFilterValue] = useState('');
+  const [careClients, setCareClients] = useState<CareClient[]>([]);
+
+  // 利用者データ読み込み（児童氏名取得用）
+  useEffect(() => {
+    loadCareClients().then(setCareClients).catch(() => setCareClients([]));
+  }, []);
+
+  // 利用者名 → 児童氏名 のルックアップ
+  const childNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of careClients) {
+      if (c.childName) {
+        map.set(c.name, c.childName);
+      }
+    }
+    return map;
+  }, [careClients]);
 
   // データ読み込み
   useEffect(() => {
@@ -45,6 +62,7 @@ const BillingRecordsPage: React.FC = () => {
       result = result.filter(r =>
         r.helperName.toLowerCase().includes(q) ||
         r.clientName.toLowerCase().includes(q) ||
+        (childNameMap.get(r.clientName) || '').toLowerCase().includes(q) ||
         r.serviceCode.toLowerCase().includes(q) ||
         r.serviceDate.includes(q)
       );
@@ -291,7 +309,12 @@ const BillingRecordsPage: React.FC = () => {
                           {r.startTime}～{r.endTime}
                         </td>
                         <td className="px-3 py-2 text-sm text-gray-900">{r.helperName}</td>
-                        <td className="px-3 py-2 text-sm text-gray-900">{r.clientName}</td>
+                        <td className="px-3 py-2 text-sm text-gray-900">
+                          {r.clientName}
+                          {childNameMap.get(r.clientName) && (
+                            <span className="ml-1 text-xs text-gray-500">({childNameMap.get(r.clientName)})</span>
+                          )}
+                        </td>
                         <td className="px-3 py-2">
                           {r.serviceCode && (
                             <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${getServiceBadge(r.serviceCode)}`}>
