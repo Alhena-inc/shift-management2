@@ -140,6 +140,9 @@ const CareClientManagementPage: React.FC = () => {
                         <h3 className="text-lg font-bold text-gray-800">
                           {client.name}
                         </h3>
+                        {client.childName && (
+                          <p className="text-sm text-gray-500 mt-0.5">児童：{client.childName}</p>
+                        )}
                       </div>
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${careLevelBadge.color}`}>
                         {careLevelBadge.label}
