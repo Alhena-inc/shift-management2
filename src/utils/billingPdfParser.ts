@@ -4,10 +4,11 @@
  */
 
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { ParsedBillingRecord, SkippedRow, ParseResult } from './billingCsvParser';
 
-// pdf.js ワーカー設定
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+// pdf.js ワーカー設定（ローカルバンドル）
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
 
 /**
  * 令和年号を西暦に変換
