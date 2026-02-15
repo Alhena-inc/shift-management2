@@ -305,12 +305,20 @@ const BillingImportPage: React.FC = () => {
                 <p className="text-sm text-gray-600">スキップ</p>
               </div>
             </div>
-            <button
-              onClick={handleReset}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              別のファイルを取り込む
-            </button>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={handleReset}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                別のファイルを取り込む
+              </button>
+              <button
+                onClick={() => window.location.href = '/billing/records'}
+                className="px-6 py-2 bg-white border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+              >
+                実績データを確認
+              </button>
+            </div>
           </div>
         )}
 

@@ -67,9 +67,18 @@ const HomePage: React.FC = () => {
       icon: 'upload_file',
       iconBgColor: '#E0F2F1',
       hoverColor: '#009688',
-      title: '実績CSV取込',
-      description: 'かんたん介護CSVから請求確定データをインポート',
+      title: '実績データ取込',
+      description: 'かんたん介護CSV・PDFから請求確定データをインポート',
       path: '/import/billing',
+      requiredRole: 'admin' as const
+    },
+    {
+      icon: 'fact_check',
+      iconBgColor: '#E8EAF6',
+      hoverColor: '#3F51B5',
+      title: '実績データ一覧',
+      description: '取り込んだ実績データの確認・検索・管理',
+      path: '/billing/records',
       requiredRole: 'admin' as const
     },
     {
