@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { parseBillingCsv, type ParsedBillingRecord, type SkippedRow } from '../utils/billingCsvParser';
+import { parseBillingPdf } from '../utils/billingPdfParser';
 import { saveBillingRecords } from '../services/dataService';
 
 type ImportState = 'idle' | 'previewing' | 'importing' | 'done' | 'error';
@@ -21,15 +22,31 @@ const BillingImportPage: React.FC = () => {
   const [isDragOver, setIsDragOver] = useState(false);
 
   const processFile = useCallback(async (file: File) => {
-    if (!file.name.toLowerCase().endsWith('.csv')) {
-      setErrorMessage('CSVファイルのみ対応しています');
+    const name = file.name.toLowerCase();
+    const isCsv = name.endsWith('.csv');
+    const isPdf = name.endsWith('.pdf');
+
+    if (!isCsv && !isPdf) {
+      setErrorMessage('CSVまたはPDFファイルのみ対応しています');
       setState('error');
       return;
     }
 
     try {
       const buffer = await file.arrayBuffer();
-      const { records: parsed, skippedRows: skipped } = parseBillingCsv(buffer);
+
+      let parsed: ParsedBillingRecord[];
+      let skipped: SkippedRow[];
+
+      if (isPdf) {
+        const result = await parseBillingPdf(buffer);
+        parsed = result.records;
+        skipped = result.skippedRows;
+      } else {
+        const result = parseBillingCsv(buffer);
+        parsed = result.records;
+        skipped = result.skippedRows;
+      }
 
       if (parsed.length === 0 && skipped.length > 0) {
         setErrorMessage(skipped[0].reason);
@@ -128,8 +145,8 @@ const BillingImportPage: React.FC = () => {
           >
             ← ホーム
           </button>
-          <h1 className="text-2xl font-bold text-gray-900">実績CSV取込</h1>
-          <span className="text-sm text-gray-500">かんたん介護からの請求確定データインポート</span>
+          <h1 className="text-2xl font-bold text-gray-900">実績データ取込</h1>
+          <span className="text-sm text-gray-500">かんたん介護からの請求確定データインポート（CSV・PDF対応）</span>
         </div>
 
         {/* idle: ドラッグ&ドロップゾーン */}
@@ -147,18 +164,18 @@ const BillingImportPage: React.FC = () => {
           >
             <div className="text-5xl mb-4">📄</div>
             <p className="text-lg font-medium text-gray-700 mb-2">
-              CSVファイルをドラッグ＆ドロップ
+              CSV・PDFファイルをドラッグ＆ドロップ
             </p>
             <p className="text-sm text-gray-500 mb-4">
               または、クリックしてファイルを選択
             </p>
             <p className="text-xs text-gray-400">
-              対応形式: かんたん介護エクスポートCSV（Shift-JIS）
+              対応形式: かんたん介護エクスポートCSV（Shift-JIS）/ 実績記録票PDF
             </p>
             <input
               ref={fileInputRef}
               type="file"
-              accept=".csv"
+              accept=".csv,.pdf"
               onChange={handleFileSelect}
               className="hidden"
             />
