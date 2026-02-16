@@ -375,7 +375,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
       {/* 支給日 (ヘッダーの下に配置) */}
       <div className="flex justify-start mb-1">
         <div className="border border-black px-4 py-1 bg-white text-xs">
-          支給日　令和 {payslip.year - 2018} 年 {payslip.month === 12 ? 1 : payslip.month + 1} 月 15 日 支給
+          支給日　令和 {payslip.month === 12 ? payslip.year - 2018 + 1 : payslip.year - 2018} 年 {payslip.month === 12 ? 1 : payslip.month + 1} 月 15 日 支給
         </div>
       </div>
 
@@ -516,7 +516,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
             <EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell />
             <EmptyCell />
             <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'yearEndAdjustment']} value={payslip.deductions.yearEndAdjustment} displayPlusForNegative={true} />
-            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'deductionTotal']} value={payslip.deductions.deductionTotal} displayPlusForNegative={true} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'deductionTotal']} value={payslip.deductions.deductionTotal} displayAsNegative={true} />
             <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'totalDeduction']} value={payslip.deductions.totalDeduction} displayAsNegative={true} />
           </tr>
         </tbody>
