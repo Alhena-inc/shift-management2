@@ -261,10 +261,18 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
 
   const { taxableOther, nonTaxableOther } = calculateOtherAllowancesValues(payslip);
 
-  // 事務・営業手当の右のスロットには課税手当のみ表示（非課税手当は「通勤非課税」欄に集約）
+  // 事務・営業手当の右のスロットには課税手当のみ表示（非課税手当は別欄に表示）
   const displayAllowances = (payslip.payments.otherAllowances || [])
     .map((a: any, i: number) => ({ ...a, _origIndex: i }))
     .filter((a: any) => !a.taxExempt);
+
+  // 非課税手当のリスト（名前をラベルに使用）
+  const nonTaxableAllowances = (payslip.payments.otherAllowances || [])
+    .filter((a: any) => a.taxExempt);
+  // 非課税手当の名前を結合してラベルにする（例: 「住宅手当」「通勤手当」等）
+  const nonTaxableLabel = nonTaxableAllowances.length > 0
+    ? nonTaxableAllowances.map((a: any) => a.name).join('・') + (nonTaxableAllowances.every((a: any) => a.name) ? '' : '非課税')
+    : '通勤非課税';
 
   return (
     <div
@@ -432,7 +440,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
           </tr>
           {/* Row 3 Header */}
           <tr>
-            <LabelCell>60h超残業</LabelCell><LabelCell>遅早控除</LabelCell><LabelCell>欠勤控除</LabelCell><LabelCell>通勤課税</LabelCell><LabelCell>通勤非課税</LabelCell>
+            <LabelCell>60h超残業</LabelCell><LabelCell>遅早控除</LabelCell><LabelCell>欠勤控除</LabelCell><LabelCell>通勤課税</LabelCell><LabelCell>{nonTaxableLabel}</LabelCell>
             <LabelCell>　</LabelCell><LabelCell>課税計</LabelCell><LabelCell>非課税計</LabelCell><LabelCell>総支給額</LabelCell>
           </tr>
           {/* Row 3 Value */}
