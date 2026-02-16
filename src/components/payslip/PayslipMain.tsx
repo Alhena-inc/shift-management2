@@ -114,7 +114,7 @@ const LabelCell = ({ children, colSpan = 1 }: any) => {
   );
 };
 
-const InputCell = ({ path, value, isNumber = true, colSpan = 1, absoluteNegative = false, showAbsValue = false, displayPlusForNegative = false, isPrintMode = false, onUpdate }: any) => {
+const InputCell = ({ path, value, isNumber = true, colSpan = 1, absoluteNegative = false, showAbsValue = false, displayPlusForNegative = false, displayAsNegative = false, isPrintMode = false, onUpdate }: any) => {
   // 数値として評価（文字列の場合も考慮）
   const numericValue = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
   const isValidNumber = !isNaN(numericValue) && value !== '' && value !== null && value !== undefined;
@@ -127,6 +127,9 @@ const InputCell = ({ path, value, isNumber = true, colSpan = 1, absoluteNegative
   if (isNumber && isValidNumber) {
     if (numericValue === 0) {
       formattedDisplayValue = '';
+    } else if (displayAsNegative && numericValue > 0) {
+      // 控除項目: 正の値を「-」付きで表示
+      formattedDisplayValue = '-' + formatCurrency(numericValue);
     } else if (isNegative && absoluteNegative) {
       formattedDisplayValue = '-' + formatCurrency(Math.abs(numericValue));
     } else if (isNegative && displayPlusForNegative) {
@@ -174,8 +177,8 @@ const InputCell = ({ path, value, isNumber = true, colSpan = 1, absoluteNegative
     const inputVal = e.target.value;
     setLocalValue(inputVal); // 入力値を即座に反映（+記号などを許可）
 
-    // 数値解析用のクリーンアップ
-    const cleanVal = inputVal.replace(/^\+/, '');
+    // 数値解析用のクリーンアップ（表示用プレフィックスを除去）
+    const cleanVal = inputVal.replace(/^[+\-]/, '');
 
     if (isNumber) {
       const parsed = parseNumber(cleanVal);
@@ -193,6 +196,11 @@ const InputCell = ({ path, value, isNumber = true, colSpan = 1, absoluteNegative
         // absoluteNegative（立替金など）の場合
         if (absoluteNegative && parsed > 0) {
           finalValue = -parsed;
+        }
+
+        // displayAsNegative（控除項目）の場合: 常に正の値で保存
+        if (displayAsNegative) {
+          finalValue = Math.abs(finalValue);
         }
 
         onUpdate(path, finalValue);
@@ -475,15 +483,15 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
           </tr>
           {/* Row 1 Value */}
           <tr>
-            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'healthInsurance']} value={payslip.deductions.healthInsurance} />
-            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'careInsurance']} value={payslip.deductions.careInsurance} />
-            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'pensionInsurance']} value={payslip.deductions.pensionInsurance} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'healthInsurance']} value={payslip.deductions.healthInsurance} displayAsNegative={true} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'careInsurance']} value={payslip.deductions.careInsurance} displayAsNegative={true} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'pensionInsurance']} value={payslip.deductions.pensionInsurance} displayAsNegative={true} />
             <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'pensionFund']} value={0} />
-            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'employmentInsurance']} value={payslip.deductions.employmentInsurance} />
-            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'socialInsuranceTotal']} value={payslip.deductions.socialInsuranceTotal} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'employmentInsurance']} value={payslip.deductions.employmentInsurance} displayAsNegative={true} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'socialInsuranceTotal']} value={payslip.deductions.socialInsuranceTotal} displayAsNegative={true} />
             <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'taxableAmount']} value={payslip.deductions.taxableAmount} />
-            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'incomeTax']} value={payslip.deductions.incomeTax} />
-            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'residentTax']} value={payslip.deductions.residentTax} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'incomeTax']} value={payslip.deductions.incomeTax} displayAsNegative={true} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'residentTax']} value={payslip.deductions.residentTax} displayAsNegative={true} />
           </tr>
           {/* Row 2 Prepaid Header/Value */}
           <tr>
@@ -495,7 +503,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
             <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['standardRemuneration']} value={payslip.standardRemuneration} />
             <EmptyCell /><EmptyCell /><EmptyCell />
             <EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell />
-            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'advancePayment']} value={payslip.deductions.advancePayment} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'advancePayment']} value={payslip.deductions.advancePayment} displayAsNegative={true} />
           </tr>
           {/* Row 3 Header */}
           <tr>
@@ -509,7 +517,7 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
             <EmptyCell />
             <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'yearEndAdjustment']} value={payslip.deductions.yearEndAdjustment} displayPlusForNegative={true} />
             <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'deductionTotal']} value={payslip.deductions.deductionTotal} displayPlusForNegative={true} />
-            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'totalDeduction']} value={payslip.deductions.totalDeduction} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'totalDeduction']} value={payslip.deductions.totalDeduction} displayAsNegative={true} />
           </tr>
         </tbody>
       </table>
