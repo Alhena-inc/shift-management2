@@ -82,6 +82,15 @@ const HomePage: React.FC = () => {
       requiredRole: 'admin' as const
     },
     {
+      icon: 'description',
+      iconBgColor: '#EDE7F6',
+      hoverColor: '#673AB7',
+      title: '運営指導書類',
+      description: '運営指導に必要な全18書類の生成・管理',
+      path: '/documents',
+      requiredRole: 'admin' as const
+    },
+    {
       icon: 'security',
       iconBgColor: '#FFF8E1',
       hoverColor: '#FFC107',
