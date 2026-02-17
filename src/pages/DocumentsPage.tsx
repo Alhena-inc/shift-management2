@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmounts, loadBillingRecordsForMonth } from '../services/dataService';
+import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmounts, loadBillingRecordsForMonth, loadShogaiDocuments, saveShogaiDocument, deleteShogaiDocument, uploadShogaiDocFile } from '../services/dataService';
 import { isGeminiAvailable } from '../services/geminiService';
-import type { Helper, CareClient, Shift, BillingRecord, ShogaiSupplyAmount } from '../types';
+import type { Helper, CareClient, Shift, BillingRecord, ShogaiSupplyAmount, ShogaiDocument } from '../types';
 
 // ========== 書類定義 ==========
 
@@ -36,7 +36,7 @@ const DOCUMENTS: DocumentDefinition[] = [
   { id: '1-7', number: '1-⑦', name: '給与支給簿', category: 'staff', group: 'A', unit: 'helper_month', description: '既存の給与明細ページへ遷移' },
   { id: 'manual', number: '他', name: '手動書類（資格証等）', category: 'staff', group: 'C', unit: 'none', description: '1-④⑤⑥ 資格証・研修修了証等' },
   { id: '2-4', number: '2-④', name: '市区町村報告', category: 'service', group: 'A', unit: 'client', description: '利用者ごとの支給量・利用実績報告' },
-  { id: '2-5', number: '2-⑤', name: 'アセスメント', category: 'service', group: 'B', unit: 'client', description: '利用者ごとのニーズ評価記録' },
+  { id: '2-5', number: '2-⑤', name: 'アセスメント', category: 'service', group: 'C', unit: 'client', description: '利用者ごとにアセスメントをアップロード' },
   { id: '2-7', number: '2-⑦', name: '担当者会議録', category: 'service', group: 'B', unit: 'client', description: '利用者ごとのサービス担当者会議要点' },
   { id: '3-3', number: '3-③', name: '法定代理受領通知', category: 'billing', group: 'A', unit: 'client_month', description: '利用者ごとの月次サービス提供証明' },
   { id: '4-1', number: '4-①', name: '研修記録', category: 'operation', group: 'B', unit: 'office', description: '事業所全体の年間研修実施記録' },
@@ -87,6 +87,12 @@ const DocumentsPage: React.FC = () => {
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, currentName: '' });
 
+  const [uploadModalDoc, setUploadModalDoc] = useState<string | null>(null);
+  const [assessmentDocs, setAssessmentDocs] = useState<Record<string, ShogaiDocument[]>>({});
+  const [assessmentLoading, setAssessmentLoading] = useState(false);
+  const [uploadingClient, setUploadingClient] = useState<string | null>(null);
+  const uploadFileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
   const hiddenDivRef = useRef<HTMLDivElement>(null);
 
   const loadData = useCallback(async () => {
@@ -119,6 +125,70 @@ const DocumentsPage: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const openUploadModal = useCallback(async (docId: string) => {
+    setUploadModalDoc(docId);
+    setAssessmentLoading(true);
+    try {
+      const docsMap: Record<string, ShogaiDocument[]> = {};
+      await Promise.all(
+        careClients.map(async (client) => {
+          try {
+            const docs = await loadShogaiDocuments(client.id, 'assessment');
+            docsMap[client.id] = docs;
+          } catch {
+            docsMap[client.id] = [];
+          }
+        })
+      );
+      setAssessmentDocs(docsMap);
+    } catch (err) {
+      console.error('アセスメント読み込みエラー:', err);
+    } finally {
+      setAssessmentLoading(false);
+    }
+  }, [careClients]);
+
+  const handleAssessmentUpload = useCallback(async (clientId: string, file: File) => {
+    setUploadingClient(clientId);
+    try {
+      const { url } = await uploadShogaiDocFile(clientId, 'assessment', file);
+      const newDoc: ShogaiDocument = {
+        id: '',
+        careClientId: clientId,
+        docType: 'assessment',
+        fileName: file.name,
+        fileUrl: url,
+        fileSize: file.size,
+        notes: '',
+        sortOrder: (assessmentDocs[clientId] || []).length,
+      };
+      const saved = await saveShogaiDocument(newDoc);
+      setAssessmentDocs(prev => ({
+        ...prev,
+        [clientId]: [...(prev[clientId] || []), saved],
+      }));
+    } catch (err) {
+      console.error('アップロードエラー:', err);
+      alert('ファイルのアップロードに失敗しました');
+    } finally {
+      setUploadingClient(null);
+    }
+  }, [assessmentDocs]);
+
+  const handleAssessmentDelete = useCallback(async (clientId: string, doc: ShogaiDocument) => {
+    if (!confirm(`「${doc.fileName}」を削除しますか？`)) return;
+    try {
+      await deleteShogaiDocument(doc.id);
+      setAssessmentDocs(prev => ({
+        ...prev,
+        [clientId]: (prev[clientId] || []).filter(d => d.id !== doc.id),
+      }));
+    } catch (err) {
+      console.error('削除エラー:', err);
+      alert('削除に失敗しました');
+    }
+  }, []);
 
   const handleGenerate = useCallback(async (doc: DocumentDefinition) => {
     if (doc.id === '1-7') {
@@ -221,7 +291,7 @@ const DocumentsPage: React.FC = () => {
         case '2-4': return (await import('../utils/documentGenerators/municipalityReportGenerator')).generate;
         case '3-3': return (await import('../utils/documentGenerators/legalProxyNoticeGenerator')).generate;
         case '1-1': return (await import('../utils/documentGenerators/workScheduleGenerator')).generate;
-        case '2-5': return (await import('../utils/documentGenerators/assessmentGenerator')).generate;
+
         case '2-7': return (await import('../utils/documentGenerators/meetingMinutesGenerator')).generate;
         case '4-1': return (await import('../utils/documentGenerators/trainingRecordsGenerator')).generate;
         case '6-4': return (await import('../utils/documentGenerators/committeeRecordGenerator')).generate;
@@ -408,7 +478,8 @@ const DocumentsPage: React.FC = () => {
                 const isGenerated = generatedDocs.has(doc.id);
                 const isGenerating = generatingDoc === doc.id;
                 const isAI = doc.group === 'B';
-                const isManual = doc.group === 'C';
+                const isManual = doc.id === 'manual';
+                const isUploadDoc = doc.group === 'C' && doc.id !== 'manual';
                 const isPayslipLink = doc.id === '1-7';
                 const groupConfig = GROUP_LABEL[doc.group];
 
@@ -458,6 +529,14 @@ const DocumentsPage: React.FC = () => {
                           <span className="material-symbols-outlined text-sm">upload_file</span>
                           手動アップロード対象
                         </div>
+                      ) : isUploadDoc ? (
+                        <button
+                          onClick={() => openUploadModal(doc.id)}
+                          className="w-full px-3 py-2 bg-teal-50 text-teal-700 rounded-lg hover:bg-teal-100 transition-colors text-xs font-medium flex items-center justify-center gap-1.5 border border-teal-200"
+                        >
+                          <span className="material-symbols-outlined text-sm">folder_open</span>
+                          アップロード管理
+                        </button>
                       ) : isPayslipLink ? (
                         <button
                           onClick={() => window.location.href = '/payslip'}
@@ -511,6 +590,126 @@ const DocumentsPage: React.FC = () => {
           </div>
         ))}
       </main>
+
+      {/* アセスメントアップロードモーダル */}
+      {uploadModalDoc && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setUploadModalDoc(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            {/* モーダルヘッダー */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 bg-teal-100 rounded-lg flex items-center justify-center">
+                  <span className="material-symbols-outlined text-teal-600 text-lg">folder_open</span>
+                </div>
+                <h2 className="text-base font-bold text-gray-900">アセスメント</h2>
+              </div>
+              <button
+                onClick={() => setUploadModalDoc(null)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <span className="material-symbols-outlined text-xl">close</span>
+              </button>
+            </div>
+
+            {/* モーダルボディ */}
+            <div className="flex-1 overflow-y-auto px-5 py-3">
+              {assessmentLoading ? (
+                <div className="flex items-center justify-center py-12 text-gray-400 gap-2">
+                  <span className="animate-spin material-symbols-outlined">progress_activity</span>
+                  読み込み中...
+                </div>
+              ) : careClients.length === 0 ? (
+                <div className="text-center py-12 text-gray-400 text-sm">利用者が登録されていません</div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {careClients.map(client => {
+                    const clientDocs = assessmentDocs[client.id] || [];
+                    const isUploading = uploadingClient === client.id;
+                    return (
+                      <div key={client.id} className="py-3">
+                        {/* 利用者行 */}
+                        <div className="flex items-center gap-3 mb-1">
+                          <div className="w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span className="material-symbols-outlined text-gray-500 text-base">person</span>
+                          </div>
+                          <span className="text-sm font-medium text-gray-800 flex-1 min-w-0 truncate">{client.name}</span>
+                          <span className="text-xs text-gray-400 flex-shrink-0">
+                            {clientDocs.length > 0 ? `${clientDocs.length}件` : '0件'}
+                          </span>
+                          <div className="flex-shrink-0">
+                            <input
+                              ref={el => { uploadFileRefs.current[client.id] = el; }}
+                              type="file"
+                              className="hidden"
+                              accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (file) await handleAssessmentUpload(client.id, file);
+                                if (uploadFileRefs.current[client.id]) uploadFileRefs.current[client.id]!.value = '';
+                              }}
+                            />
+                            <button
+                              onClick={() => uploadFileRefs.current[client.id]?.click()}
+                              disabled={isUploading}
+                              className="px-2.5 py-1 text-xs bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors font-medium disabled:opacity-50 flex items-center gap-1"
+                            >
+                              {isUploading ? (
+                                <>
+                                  <span className="animate-spin material-symbols-outlined text-xs">progress_activity</span>
+                                  アップロード中
+                                </>
+                              ) : (
+                                <>
+                                  <span className="material-symbols-outlined text-xs">add</span>
+                                  ファイルを追加
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* ファイル一覧 */}
+                        {clientDocs.length > 0 && (
+                          <div className="ml-10 mt-1 space-y-1">
+                            {clientDocs.map(doc => (
+                              <div key={doc.id} className="flex items-center gap-2 group px-2 py-1.5 rounded-lg hover:bg-gray-50">
+                                <span className="text-sm flex-shrink-0">
+                                  {doc.fileName.endsWith('.pdf') ? '📄' : doc.fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? '🖼️' : '📎'}
+                                </span>
+                                <button
+                                  onClick={() => doc.fileUrl && window.open(doc.fileUrl, '_blank')}
+                                  className="text-xs text-blue-600 hover:text-blue-800 hover:underline truncate text-left flex-1 min-w-0"
+                                  title={doc.fileName}
+                                >
+                                  {doc.fileName}
+                                </button>
+                                {doc.fileSize > 0 && (
+                                  <span className="text-[10px] text-gray-400 flex-shrink-0">
+                                    {doc.fileSize < 1024 * 1024
+                                      ? `${(doc.fileSize / 1024).toFixed(0)}KB`
+                                      : `${(doc.fileSize / (1024 * 1024)).toFixed(1)}MB`}
+                                  </span>
+                                )}
+                                <button
+                                  onClick={() => handleAssessmentDelete(client.id, doc)}
+                                  className="text-red-300 hover:text-red-500 p-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  title="削除"
+                                >
+                                  <span className="material-symbols-outlined text-sm">delete</span>
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* PDF生成用の隠しDiv */}
       <div
