@@ -28,7 +28,7 @@ export async function generateText(prompt: string, systemInstruction?: string): 
       ],
       generationConfig: {
         temperature: 0.3,
-        maxOutputTokens: 4096,
+        maxOutputTokens: 8192,
       },
     };
 

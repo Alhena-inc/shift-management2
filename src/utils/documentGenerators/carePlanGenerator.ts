@@ -254,20 +254,28 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
     service_steps: [],
   };
 
-  try {
-    const res = assessmentFileUrls.length > 0
-      ? await generateWithFiles(prompt, assessmentFileUrls, systemInstruction)
-      : await generateText(prompt, systemInstruction);
+  // AI生成
+  const res = assessmentFileUrls.length > 0
+    ? await generateWithFiles(prompt, assessmentFileUrls, systemInstruction)
+    : await generateText(prompt, systemInstruction);
 
-    if (res.error) {
-      console.warn(`${client.name}の計画書生成エラー:`, res.error);
-    }
-    const jsonMatch = res.text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      plan = { ...plan, ...JSON.parse(jsonMatch[0]) };
-    }
+  if (res.error) {
+    throw new Error(`AI生成エラー: ${res.error}`);
+  }
+
+  if (!res.text) {
+    throw new Error('AIからの応答が空です。プロンプトやAPIキーを確認してください。');
+  }
+
+  const jsonMatch = res.text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error(`AIの応答からJSONを抽出できませんでした。応答: ${res.text.substring(0, 200)}`);
+  }
+
+  try {
+    plan = { ...plan, ...JSON.parse(jsonMatch[0]) };
   } catch (e) {
-    console.warn(`${client.name}の計画書JSON解析エラー:`, e);
+    throw new Error(`AI応答のJSON解析に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
   }
 
   // シフト実績からスケジュールをフォールバック抽出
@@ -311,35 +319,32 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
     ws0.getCell('K4').value = `TEL：${client.phone}`;
   }
 
-  // E7〜E9: 本人(家族)の希望
-  if (plan.user_wish) {
-    ws0.getCell('E7').value = `【本人の希望】${plan.user_wish}`;
-  }
-  if (plan.family_wish) {
-    ws0.getCell('E8').value = `【家族の希望】${plan.family_wish}`;
-  }
+  // E7〜E9: 本人(家族)の希望（必ず書き込む）
+  ws0.getCell('E7').value = `【本人の希望】${plan.user_wish || '在宅での生活を続けたい'}`;
+  ws0.getCell('E8').value = `【家族の希望】${plan.family_wish || '安心して生活してほしい'}`;
 
-  // E11〜E13: 援助目標
-  if (plan.goal_long) {
-    ws0.getCell('E11').value = `【長期目標】${plan.goal_long}`;
-  }
-  if (plan.goal_short) {
-    ws0.getCell('E12').value = `【短期目標】${plan.goal_short}`;
-  }
-  if (plan.needs) {
-    ws0.getCell('E13').value = `【課題】${plan.needs}`;
-  }
+  // E11〜E13: 援助目標（必ず書き込む）
+  ws0.getCell('E11').value = `【長期目標】${plan.goal_long || '安定した在宅生活の継続'}`;
+  ws0.getCell('E12').value = `【短期目標】${plan.goal_short || '日常生活動作の維持・向上'}`;
+  ws0.getCell('E13').value = `【課題】${plan.needs || '日常生活の支援が必要'}`;
 
   // D15: サービス種別チェック
-  const serviceCheck = plan.service_type_check || serviceTypes.join(', ');
-  if (serviceCheck.includes('身体介護')) {
-    ws0.getCell('D15').value = `■　身体介護　　　　　　　　　　　${plan.service_hours || ''}`;
+  const serviceCheck = plan.service_type_check || serviceTypes.join(', ') || '身体介護';
+  const hoursText = plan.service_hours || '';
+  if (serviceCheck.includes('身体')) {
+    ws0.getCell('D15').value = `■　身体介護　　　　${hoursText}`;
+  } else {
+    ws0.getCell('D15').value = `□　身体介護`;
   }
-  if (serviceCheck.includes('家事援助') || serviceCheck.includes('生活援助')) {
-    ws0.getCell('G15').value = `■　家事援助　　　　　　　　　　　${plan.service_hours || ''}`;
+  if (serviceCheck.includes('家事') || serviceCheck.includes('生活')) {
+    ws0.getCell('G15').value = `■　家事援助　　　　${hoursText}`;
+  } else {
+    ws0.getCell('G15').value = `□　家事援助`;
   }
   if (serviceCheck.includes('通院')) {
-    ws0.getCell('J15').value = `■　通院等乗降介助　　　　　　　　${plan.service_hours || ''}`;
+    ws0.getCell('J15').value = `■　通院等乗降介助　　${hoursText}`;
+  } else {
+    ws0.getCell('J15').value = `□　通院等乗降介助`;
   }
 
   // 計画予定表（Row 19〜42）にスケジュールを入力
