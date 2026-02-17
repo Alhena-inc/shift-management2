@@ -84,6 +84,9 @@ const DocumentsPage: React.FC = () => {
   const [promptLoading, setPromptLoading] = useState(false);
   const [aiPromptCache, setAiPromptCache] = useState<Record<string, AiPrompt>>({});
 
+  // 利用者選択モーダル（居宅介護計画書用）
+  const [clientSelectModalDoc, setClientSelectModalDoc] = useState<DocumentDefinition | null>(null);
+
   const hiddenDivRef = useRef<HTMLDivElement>(null);
 
   const loadData = useCallback(async () => {
@@ -227,12 +230,18 @@ const DocumentsPage: React.FC = () => {
     }
   }, [promptModalDoc, editingPrompt, editingSystemInstruction]);
 
-  const handleGenerate = useCallback(async (doc: DocumentDefinition) => {
+  const handleGenerate = useCallback(async (doc: DocumentDefinition, selectedClient?: CareClient) => {
     if (doc.id === '1-7') {
       window.location.href = '/payslip';
       return;
     }
     if (doc.id === 'manual') return;
+
+    // 居宅介護計画書: 利用者選択モーダルを表示
+    if (doc.id === 'care-plan' && !selectedClient) {
+      setClientSelectModalDoc(doc);
+      return;
+    }
 
     setGeneratingDoc(doc.id);
     setError(null);
@@ -270,6 +279,7 @@ const DocumentsPage: React.FC = () => {
         hiddenDiv: hiddenDivRef.current!,
         customPrompt,
         customSystemInstruction,
+        selectedClient,
       });
       setGeneratedDocs(prev => new Set(prev).add(doc.id));
     } catch (err: any) {
@@ -279,6 +289,12 @@ const DocumentsPage: React.FC = () => {
       setGeneratingDoc(null);
     }
   }, [helpers, careClients, shifts, billingRecords, supplyAmounts, selectedYear, selectedMonth, aiPromptCache]);
+
+  const handleClientSelectGenerate = useCallback(async (client: CareClient) => {
+    if (!clientSelectModalDoc) return;
+    setClientSelectModalDoc(null);
+    await handleGenerate(clientSelectModalDoc, client);
+  }, [clientSelectModalDoc, handleGenerate]);
 
   const handleBulkGenerate = useCallback(async () => {
     const gemini = isGeminiAvailable();
@@ -793,6 +809,58 @@ const DocumentsPage: React.FC = () => {
                   </>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 利用者選択モーダル（居宅介護計画書用） */}
+      {clientSelectModalDoc && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setClientSelectModalDoc(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
+                  <span className="material-symbols-outlined text-indigo-600 text-lg">person_search</span>
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-900">利用者を選択</h2>
+                  <p className="text-xs text-gray-500">居宅介護計画書を作成する利用者を選んでください</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setClientSelectModalDoc(null)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <span className="material-symbols-outlined text-xl">close</span>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-3">
+              {careClients.length === 0 ? (
+                <div className="text-center py-12 text-gray-400 text-sm">利用者が登録されていません</div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {careClients.map(client => (
+                    <button
+                      key={client.id}
+                      onClick={() => handleClientSelectGenerate(client)}
+                      disabled={generatingDoc === clientSelectModalDoc.id}
+                      className="w-full flex items-center gap-3 py-3 px-2 hover:bg-indigo-50 rounded-lg transition-colors text-left disabled:opacity-50"
+                    >
+                      <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <span className="material-symbols-outlined text-gray-500 text-base">person</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium text-gray-800 block truncate">{client.name}</span>
+                        {client.careLevel && (
+                          <span className="text-xs text-gray-400">{client.careLevel}</span>
+                        )}
+                      </div>
+                      <span className="material-symbols-outlined text-gray-300 text-base">chevron_right</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

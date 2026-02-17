@@ -21,6 +21,7 @@ export interface GeneratorContext {
   hiddenDiv: HTMLDivElement;
   customPrompt?: string;
   customSystemInstruction?: string;
+  selectedClient?: CareClient;
 }
 
 export type GenerateFunction = (ctx: GeneratorContext) => Promise<void>;
