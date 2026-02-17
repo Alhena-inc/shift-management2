@@ -29,19 +29,7 @@ const CATEGORY_CONFIG: Record<DocumentCategory, { label: string; icon: string; c
 };
 
 const DOCUMENTS: DocumentDefinition[] = [
-  { id: 'service-hours', number: '従', name: '従業者サービス提供時間等一覧表', category: 'staff', group: 'A', unit: 'office', description: 'Excelひな形にシフトデータを自動入力' },
-  { id: '1-2', number: '1-②', name: '出勤簿', category: 'staff', group: 'A', unit: 'helper_month', description: 'ヘルパーごとの日別出退勤記録' },
-  { id: '1-3', number: '1-③', name: '雇用契約書', category: 'staff', group: 'A', unit: 'helper', description: 'ヘルパーごとの雇用条件' },
-  { id: '1-7', number: '1-⑦', name: '給与支給簿', category: 'staff', group: 'A', unit: 'helper_month', description: '既存の給与明細ページへ遷移' },
-  { id: 'manual', number: '他', name: '手動書類（資格証等）', category: 'staff', group: 'C', unit: 'none', description: '1-④⑤⑥ 資格証・研修修了証等' },
-  { id: '2-4', number: '2-④', name: '市区町村報告', category: 'service', group: 'A', unit: 'client', description: '利用者ごとの支給量・利用実績報告' },
   { id: '2-5', number: '2-⑤', name: 'アセスメント', category: 'service', group: 'C', unit: 'client', description: '利用者ごとにアセスメントをアップロード' },
-  { id: '3-3', number: '3-③', name: '法定代理受領通知', category: 'billing', group: 'A', unit: 'client_month', description: '利用者ごとの月次サービス提供証明' },
-  { id: '6-1', number: '6-①', name: '身体拘束委員会設置', category: 'restraint', group: 'A', unit: 'office', description: '身体拘束適正化検討委員会の設置要綱' },
-  { id: '6-2', number: '6-②', name: '身体拘束適正化指針', category: 'restraint', group: 'A', unit: 'office', description: '身体拘束等の適正化のための指針' },
-  { id: '6-3', number: '6-③', name: '身体拘束報告書', category: 'restraint', group: 'A', unit: 'office', description: '身体拘束等の報告書（空様式）' },
-  { id: '7-1', number: '7-①', name: 'ハラスメント防止方針', category: 'harassment', group: 'A', unit: 'office', description: 'ハラスメント防止に関する基本方針' },
-  { id: '7-2', number: '7-②', name: '苦情相談体制', category: 'harassment', group: 'A', unit: 'office', description: '苦情・相談窓口の体制図' },
 ];
 
 // ========== 事業所情報（固定値） ==========
@@ -290,13 +278,6 @@ const DocumentsPage: React.FC = () => {
     }
   };
 
-  const categories: DocumentCategory[] = ['staff', 'service', 'billing', 'operation', 'restraint', 'harassment'];
-  const docsByCategory = categories.map(cat => ({
-    category: cat,
-    config: CATEGORY_CONFIG[cat],
-    docs: DOCUMENTS.filter(d => d.category === cat),
-  }));
-
   const totalDocs = DOCUMENTS.length;
   const generatedCount = generatedDocs.size;
   const geminiAvailable = isGeminiAvailable();
@@ -441,143 +422,68 @@ const DocumentsPage: React.FC = () => {
           </div>
         )}
 
-        {/* カテゴリ別セクション */}
-        {docsByCategory.map(({ category, config, docs }) => {
-          if (docs.length === 0) return null;
-          return (
-            <div key={category} className="mb-6">
-              {/* カテゴリヘッダー */}
-              <div className="flex items-center gap-2 mb-3">
-                <div
-                  className="w-7 h-7 rounded-md flex items-center justify-center"
-                  style={{ backgroundColor: config.bgColor }}
-                >
-                  <span className="material-symbols-outlined text-base" style={{ color: config.color }}>
-                    {config.icon}
-                  </span>
-                </div>
-                <h2 className="text-base font-bold text-gray-800">{config.label}</h2>
-                <span className="text-xs text-gray-400 font-medium">({docs.length})</span>
-              </div>
+        {/* 書類カード */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {DOCUMENTS.map(doc => {
+            const config = CATEGORY_CONFIG[doc.category];
+            const isUploadDoc = doc.group === 'C' && doc.id !== 'manual';
+            const groupConfig = GROUP_LABEL[doc.group];
 
-              {/* カードグリッド */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {docs.map(doc => {
-                  const isGenerated = generatedDocs.has(doc.id);
-                  const isGenerating = generatingDoc === doc.id;
-                  const isAI = doc.group === 'B';
-                  const isManual = doc.id === 'manual';
-                  const isUploadDoc = doc.group === 'C' && doc.id !== 'manual';
-                  const isPayslipLink = doc.id === '1-7';
-                  const groupConfig = GROUP_LABEL[doc.group];
-
-                  return (
-                    <div
-                      key={doc.id}
-                      className={`rounded-xl border overflow-hidden transition-all duration-200 ${
-                        isGenerated
-                          ? 'border-green-300 bg-green-50/50 shadow-sm'
-                          : 'border-gray-200 bg-white hover:shadow-md hover:border-gray-300'
-                      }`}
-                    >
-                      {/* カードヘッダー: 番号 + 名前 + バッジ */}
-                      <div className="px-4 pt-3.5 pb-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-start gap-2.5 min-w-0">
-                            {/* 番号バッジ - コンパクト */}
-                            <span
-                              className="flex-shrink-0 inline-flex items-center justify-center min-w-[28px] h-7 px-1.5 rounded-md text-xs font-bold leading-none"
-                              style={{ backgroundColor: config.bgColor, color: config.color }}
-                            >
-                              {doc.number}
-                            </span>
-                            <div className="min-w-0">
-                              <h3 className="text-sm font-bold text-gray-900 leading-snug">{doc.name}</h3>
-                              <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{doc.description}</p>
-                            </div>
-                          </div>
-
-                          {/* グループバッジ */}
-                          <span
-                            className="flex-shrink-0 inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap"
-                            style={{ backgroundColor: isGenerated ? '#DCFCE7' : groupConfig.bgColor, color: isGenerated ? '#15803D' : groupConfig.color }}
-                          >
-                            <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>
-                              {isGenerated ? 'check_circle' : groupConfig.icon}
-                            </span>
-                            {isGenerated ? '生成済' : groupConfig.label}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* ボタンエリア */}
-                      <div className="px-4 pb-3 pt-1">
-                        {isManual ? (
-                          <div className="flex items-center gap-1.5 text-xs text-gray-400 py-1">
-                            <span className="material-symbols-outlined text-sm">upload_file</span>
-                            手動アップロード対象
-                          </div>
-                        ) : isUploadDoc ? (
-                          <button
-                            onClick={() => openUploadModal(doc.id)}
-                            className="w-full px-3 py-2 bg-teal-50 text-teal-700 rounded-lg hover:bg-teal-100 transition-colors text-xs font-medium flex items-center justify-center gap-1.5 border border-teal-200"
-                          >
-                            <span className="material-symbols-outlined text-sm">folder_open</span>
-                            アップロード管理
-                          </button>
-                        ) : isPayslipLink ? (
-                          <button
-                            onClick={() => window.location.href = '/payslip'}
-                            className="w-full px-3 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors text-xs font-medium flex items-center justify-center gap-1.5 border border-purple-200"
-                          >
-                            <span className="material-symbols-outlined text-sm">open_in_new</span>
-                            給与明細ページを開く
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleGenerate(doc)}
-                            disabled={isGenerating || isBulkGenerating}
-                            className={`w-full px-3 py-2 rounded-lg transition-all duration-200 text-xs font-medium flex items-center justify-center gap-1.5 ${
-                              isGenerating
-                                ? 'bg-indigo-50 text-indigo-600 border border-indigo-200 cursor-wait'
-                                : isGenerated
-                                ? 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
-                                : isAI
-                                ? 'bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 hover:shadow-sm'
-                                : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 hover:shadow-sm'
-                            } disabled:opacity-50 disabled:cursor-not-allowed`}
-                          >
-                            {isGenerating ? (
-                              <>
-                                <span className="animate-spin material-symbols-outlined text-sm">progress_activity</span>
-                                生成中...
-                              </>
-                            ) : isGenerated ? (
-                              <>
-                                <span className="material-symbols-outlined text-sm">download</span>
-                                再ダウンロード
-                              </>
-                            ) : isAI ? (
-                              <>
-                                <span className="material-symbols-outlined text-sm">auto_awesome</span>
-                                AI生成
-                              </>
-                            ) : (
-                              <>
-                                <span className="material-symbols-outlined text-sm">play_arrow</span>
-                                生成
-                              </>
-                            )}
-                          </button>
-                        )}
+            return (
+              <div
+                key={doc.id}
+                className="rounded-xl border overflow-hidden transition-all duration-200 border-gray-200 bg-white hover:shadow-md hover:border-gray-300"
+              >
+                <div className="px-4 pt-3.5 pb-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <span
+                        className="flex-shrink-0 inline-flex items-center justify-center min-w-[28px] h-7 px-1.5 rounded-md text-xs font-bold leading-none"
+                        style={{ backgroundColor: config.bgColor, color: config.color }}
+                      >
+                        {doc.number}
+                      </span>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-bold text-gray-900 leading-snug">{doc.name}</h3>
+                        <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{doc.description}</p>
                       </div>
                     </div>
-                  );
-                })}
+                    <span
+                      className="flex-shrink-0 inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap"
+                      style={{ backgroundColor: groupConfig.bgColor, color: groupConfig.color }}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>
+                        {groupConfig.icon}
+                      </span>
+                      {groupConfig.label}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="px-4 pb-3 pt-1">
+                  {isUploadDoc ? (
+                    <button
+                      onClick={() => openUploadModal(doc.id)}
+                      className="w-full px-3 py-2 bg-teal-50 text-teal-700 rounded-lg hover:bg-teal-100 transition-colors text-xs font-medium flex items-center justify-center gap-1.5 border border-teal-200"
+                    >
+                      <span className="material-symbols-outlined text-sm">folder_open</span>
+                      アップロード管理
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleGenerate(doc)}
+                      disabled={generatingDoc === doc.id || isBulkGenerating}
+                      className="w-full px-3 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 hover:shadow-sm rounded-lg transition-all duration-200 text-xs font-medium flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <span className="material-symbols-outlined text-sm">play_arrow</span>
+                      生成
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </main>
 
       {/* アセスメントアップロードモーダル */}
