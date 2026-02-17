@@ -29,6 +29,7 @@ const CATEGORY_CONFIG: Record<DocumentCategory, { label: string; icon: string; c
 };
 
 const DOCUMENTS: DocumentDefinition[] = [
+  { id: 'service-hours', number: '従', name: '従業者サービス提供時間等一覧表', category: 'staff', group: 'A', unit: 'office', description: 'Excelひな形にシフトデータを自動入力' },
   { id: '1-1', number: '1-①', name: '勤務予定・実績一覧表', category: 'staff', group: 'B', unit: 'helper_month', description: 'ヘルパーごとの月間勤務予定と実績' },
   { id: '1-2', number: '1-②', name: '出勤簿', category: 'staff', group: 'A', unit: 'helper_month', description: 'ヘルパーごとの日別出退勤記録' },
   { id: '1-3', number: '1-③', name: '雇用契約書', category: 'staff', group: 'A', unit: 'helper', description: 'ヘルパーごとの雇用条件' },
@@ -209,6 +210,7 @@ const DocumentsPage: React.FC = () => {
   const loadGenerator = async (docId: string): Promise<((ctx: any) => Promise<void>) | null> => {
     try {
       switch (docId) {
+        case 'service-hours': return (await import('../utils/documentGenerators/serviceHoursExcelGenerator')).generate;
         case '6-1': return (await import('../utils/documentGenerators/committeeCharterGenerator')).generate;
         case '6-2': return (await import('../utils/documentGenerators/preventionGuidelinesGenerator')).generate;
         case '6-3': return (await import('../utils/documentGenerators/incidentReportGenerator')).generate;
