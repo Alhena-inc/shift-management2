@@ -30,24 +30,23 @@ const CATEGORY_CONFIG: Record<DocumentCategory, { label: string; icon: string; c
 
 const DOCUMENTS: DocumentDefinition[] = [
   { id: 'service-hours', number: '従', name: '従業者サービス提供時間等一覧表', category: 'staff', group: 'A', unit: 'office', description: 'Excelひな形にシフトデータを自動入力' },
-  { id: '1-1', number: '1-①', name: '勤務予定・実績一覧表', category: 'staff', group: 'B', unit: 'helper_month', description: 'ヘルパーごとの月間勤務予定と実績' },
+
   { id: '1-2', number: '1-②', name: '出勤簿', category: 'staff', group: 'A', unit: 'helper_month', description: 'ヘルパーごとの日別出退勤記録' },
   { id: '1-3', number: '1-③', name: '雇用契約書', category: 'staff', group: 'A', unit: 'helper', description: 'ヘルパーごとの雇用条件' },
   { id: '1-7', number: '1-⑦', name: '給与支給簿', category: 'staff', group: 'A', unit: 'helper_month', description: '既存の給与明細ページへ遷移' },
   { id: 'manual', number: '他', name: '手動書類（資格証等）', category: 'staff', group: 'C', unit: 'none', description: '1-④⑤⑥ 資格証・研修修了証等' },
   { id: '2-4', number: '2-④', name: '市区町村報告', category: 'service', group: 'A', unit: 'client', description: '利用者ごとの支給量・利用実績報告' },
   { id: '2-5', number: '2-⑤', name: 'アセスメント', category: 'service', group: 'C', unit: 'client', description: '利用者ごとにアセスメントをアップロード' },
-  { id: '2-7', number: '2-⑦', name: '担当者会議録', category: 'service', group: 'B', unit: 'client', description: '利用者ごとのサービス担当者会議要点' },
+
   { id: '3-3', number: '3-③', name: '法定代理受領通知', category: 'billing', group: 'A', unit: 'client_month', description: '利用者ごとの月次サービス提供証明' },
-  { id: '4-1', number: '4-①', name: '研修記録', category: 'operation', group: 'B', unit: 'office', description: '事業所全体の年間研修実施記録' },
+
   { id: '6-1', number: '6-①', name: '身体拘束委員会設置', category: 'restraint', group: 'A', unit: 'office', description: '身体拘束適正化検討委員会の設置要綱' },
   { id: '6-2', number: '6-②', name: '身体拘束適正化指針', category: 'restraint', group: 'A', unit: 'office', description: '身体拘束等の適正化のための指針' },
   { id: '6-3', number: '6-③', name: '身体拘束報告書', category: 'restraint', group: 'A', unit: 'office', description: '身体拘束等の報告書（空様式）' },
-  { id: '6-4', number: '6-④', name: '身体拘束委員会記録', category: 'restraint', group: 'B', unit: 'office', description: '身体拘束適正化検討委員会の議事録' },
-  { id: '6-5', number: '6-⑤', name: '身体拘束研修記録', category: 'restraint', group: 'B', unit: 'office', description: '身体拘束に関する研修の記録' },
+
   { id: '7-1', number: '7-①', name: 'ハラスメント防止方針', category: 'harassment', group: 'A', unit: 'office', description: 'ハラスメント防止に関する基本方針' },
   { id: '7-2', number: '7-②', name: '苦情相談体制', category: 'harassment', group: 'A', unit: 'office', description: '苦情・相談窓口の体制図' },
-  { id: '7-3', number: '7-③', name: 'ハラスメント防止取組', category: 'harassment', group: 'B', unit: 'office', description: 'ハラスメント防止に向けた取組記録' },
+
 ];
 
 // ========== 事業所情報（固定値） ==========
@@ -290,13 +289,6 @@ const DocumentsPage: React.FC = () => {
         case '1-3': return (await import('../utils/documentGenerators/employmentContractGenerator')).generate;
         case '2-4': return (await import('../utils/documentGenerators/municipalityReportGenerator')).generate;
         case '3-3': return (await import('../utils/documentGenerators/legalProxyNoticeGenerator')).generate;
-        case '1-1': return (await import('../utils/documentGenerators/workScheduleGenerator')).generate;
-
-        case '2-7': return (await import('../utils/documentGenerators/meetingMinutesGenerator')).generate;
-        case '4-1': return (await import('../utils/documentGenerators/trainingRecordsGenerator')).generate;
-        case '6-4': return (await import('../utils/documentGenerators/committeeRecordGenerator')).generate;
-        case '6-5': return (await import('../utils/documentGenerators/restraintTrainingGenerator')).generate;
-        case '7-3': return (await import('../utils/documentGenerators/preventionActivitiesGenerator')).generate;
         default: return null;
       }
     } catch {
