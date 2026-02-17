@@ -2769,6 +2769,50 @@ export const loadBillingRecordsForMonth = async (year: number, month: number) =>
   }
 };
 
+// ========== AIプロンプト関連 ==========
+
+export interface AiPrompt {
+  id: string;
+  prompt: string;
+  system_instruction: string;
+  updated_at?: string;
+}
+
+export const loadAiPrompt = async (id: string): Promise<AiPrompt | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('ai_prompts')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (error) {
+      if (error.code === 'PGRST116') return null; // not found
+      throw error;
+    }
+    return data as AiPrompt;
+  } catch (error) {
+    console.error('AIプロンプト読み込みエラー:', error);
+    return null;
+  }
+};
+
+export const saveAiPrompt = async (promptData: AiPrompt): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('ai_prompts')
+      .upsert({
+        id: promptData.id,
+        prompt: promptData.prompt,
+        system_instruction: promptData.system_instruction,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
+    if (error) throw error;
+  } catch (error) {
+    console.error('AIプロンプト保存エラー:', error);
+    throw error;
+  }
+};
+
 export const deleteBillingRecordsByBatch = async (batchId: string): Promise<number> => {
   try {
     const { data, error } = await supabase

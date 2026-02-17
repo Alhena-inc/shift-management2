@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmounts, loadBillingRecordsForMonth, loadShogaiDocuments, saveShogaiDocument, deleteShogaiDocument, uploadShogaiDocFile } from '../services/dataService';
+import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmounts, loadBillingRecordsForMonth, loadShogaiDocuments, saveShogaiDocument, deleteShogaiDocument, uploadShogaiDocFile, loadAiPrompt, saveAiPrompt } from '../services/dataService';
 import { isGeminiAvailable } from '../services/geminiService';
 import type { Helper, CareClient, Shift, BillingRecord, ShogaiSupplyAmount, ShogaiDocument } from '../types';
+import type { AiPrompt } from '../services/supabaseService';
 
 // ========== 書類定義 ==========
 
@@ -75,6 +76,13 @@ const DocumentsPage: React.FC = () => {
   const [assessmentLoading, setAssessmentLoading] = useState(false);
   const [uploadingClient, setUploadingClient] = useState<string | null>(null);
   const uploadFileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const [promptModalDoc, setPromptModalDoc] = useState<string | null>(null);
+  const [editingPrompt, setEditingPrompt] = useState('');
+  const [editingSystemInstruction, setEditingSystemInstruction] = useState('');
+  const [promptSaving, setPromptSaving] = useState(false);
+  const [promptLoading, setPromptLoading] = useState(false);
+  const [aiPromptCache, setAiPromptCache] = useState<Record<string, AiPrompt>>({});
 
   const hiddenDivRef = useRef<HTMLDivElement>(null);
 
@@ -172,6 +180,53 @@ const DocumentsPage: React.FC = () => {
     }
   }, []);
 
+  const openPromptModal = useCallback(async (docId: string) => {
+    setPromptModalDoc(docId);
+    setPromptLoading(true);
+    try {
+      // キャッシュにあればそれを使う
+      if (aiPromptCache[docId]) {
+        setEditingPrompt(aiPromptCache[docId].prompt);
+        setEditingSystemInstruction(aiPromptCache[docId].system_instruction);
+      } else {
+        const data = await loadAiPrompt(docId);
+        if (data) {
+          setEditingPrompt(data.prompt);
+          setEditingSystemInstruction(data.system_instruction);
+          setAiPromptCache(prev => ({ ...prev, [docId]: data }));
+        } else {
+          setEditingPrompt('');
+          setEditingSystemInstruction('');
+        }
+      }
+    } catch {
+      setEditingPrompt('');
+      setEditingSystemInstruction('');
+    } finally {
+      setPromptLoading(false);
+    }
+  }, [aiPromptCache]);
+
+  const handleSavePrompt = useCallback(async () => {
+    if (!promptModalDoc) return;
+    setPromptSaving(true);
+    try {
+      const data: AiPrompt = {
+        id: promptModalDoc,
+        prompt: editingPrompt,
+        system_instruction: editingSystemInstruction,
+      };
+      await saveAiPrompt(data);
+      setAiPromptCache(prev => ({ ...prev, [promptModalDoc]: data }));
+      alert('プロンプトを保存しました');
+      setPromptModalDoc(null);
+    } catch {
+      alert('プロンプトの保存に失敗しました');
+    } finally {
+      setPromptSaving(false);
+    }
+  }, [promptModalDoc, editingPrompt, editingSystemInstruction]);
+
   const handleGenerate = useCallback(async (doc: DocumentDefinition) => {
     if (doc.id === '1-7') {
       window.location.href = '/payslip';
@@ -189,6 +244,20 @@ const DocumentsPage: React.FC = () => {
         setGeneratingDoc(null);
         return;
       }
+
+      // AI生成（group B）の場合、カスタムプロンプトを読み込む
+      let customPrompt: string | undefined;
+      let customSystemInstruction: string | undefined;
+      if (doc.group === 'B') {
+        const cached = aiPromptCache[doc.id];
+        const promptData = cached || await loadAiPrompt(doc.id);
+        if (promptData) {
+          if (!cached) setAiPromptCache(prev => ({ ...prev, [doc.id]: promptData }));
+          customPrompt = promptData.prompt;
+          customSystemInstruction = promptData.system_instruction;
+        }
+      }
+
       await generator({
         helpers,
         careClients,
@@ -199,6 +268,8 @@ const DocumentsPage: React.FC = () => {
         month: selectedMonth,
         officeInfo: OFFICE_INFO,
         hiddenDiv: hiddenDivRef.current!,
+        customPrompt,
+        customSystemInstruction,
       });
       setGeneratedDocs(prev => new Set(prev).add(doc.id));
     } catch (err: any) {
@@ -207,7 +278,7 @@ const DocumentsPage: React.FC = () => {
     } finally {
       setGeneratingDoc(null);
     }
-  }, [helpers, careClients, shifts, billingRecords, supplyAmounts, selectedYear, selectedMonth]);
+  }, [helpers, careClients, shifts, billingRecords, supplyAmounts, selectedYear, selectedMonth, aiPromptCache]);
 
   const handleBulkGenerate = useCallback(async () => {
     const gemini = isGeminiAvailable();
@@ -238,10 +309,21 @@ const DocumentsPage: React.FC = () => {
       try {
         const generator = await loadGenerator(doc.id);
         if (generator) {
+          let customPrompt: string | undefined;
+          let customSystemInstruction: string | undefined;
+          if (doc.group === 'B') {
+            const cached = aiPromptCache[doc.id];
+            const promptData = cached || await loadAiPrompt(doc.id);
+            if (promptData) {
+              customPrompt = promptData.prompt;
+              customSystemInstruction = promptData.system_instruction;
+            }
+          }
           await generator({
             helpers, careClients, shifts, billingRecords, supplyAmounts,
             year: selectedYear, month: selectedMonth,
             officeInfo: OFFICE_INFO, hiddenDiv: hiddenDivRef.current!,
+            customPrompt, customSystemInstruction,
           });
           setGeneratedDocs(prev => new Set(prev).add(doc.id));
           successCount++;
@@ -466,14 +548,25 @@ const DocumentsPage: React.FC = () => {
                       アップロード管理
                     </button>
                   ) : (
-                    <button
-                      onClick={() => handleGenerate(doc)}
-                      disabled={generatingDoc === doc.id || isBulkGenerating}
-                      className="w-full px-3 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 hover:shadow-sm rounded-lg transition-all duration-200 text-xs font-medium flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <span className="material-symbols-outlined text-sm">play_arrow</span>
-                      生成
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleGenerate(doc)}
+                        disabled={generatingDoc === doc.id || isBulkGenerating}
+                        className="flex-1 px-3 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 hover:shadow-sm rounded-lg transition-all duration-200 text-xs font-medium flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <span className="material-symbols-outlined text-sm">play_arrow</span>
+                        生成
+                      </button>
+                      {doc.group === 'B' && (
+                        <button
+                          onClick={() => openPromptModal(doc.id)}
+                          className="px-2.5 py-2 bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100 hover:text-gray-700 rounded-lg transition-colors"
+                          title="プロンプト設定"
+                        >
+                          <span className="material-symbols-outlined text-sm">tune</span>
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -597,6 +690,109 @@ const DocumentsPage: React.FC = () => {
                   })}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* プロンプト編集モーダル */}
+      {promptModalDoc && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setPromptModalDoc(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            {/* ヘッダー */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+                  <span className="material-symbols-outlined text-purple-600 text-lg">tune</span>
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-900">プロンプト設定</h2>
+                  <p className="text-xs text-gray-500">
+                    {DOCUMENTS.find(d => d.id === promptModalDoc)?.name || ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPromptModalDoc(null)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <span className="material-symbols-outlined text-xl">close</span>
+              </button>
+            </div>
+
+            {/* ボディ */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              {promptLoading ? (
+                <div className="flex items-center justify-center py-12 text-gray-400 gap-2">
+                  <span className="animate-spin material-symbols-outlined">progress_activity</span>
+                  読み込み中...
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">システム指示</label>
+                    <p className="text-xs text-gray-400 mb-1">AIの役割・振る舞いを指定します</p>
+                    <textarea
+                      value={editingSystemInstruction}
+                      onChange={e => setEditingSystemInstruction(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm font-mono leading-relaxed focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-y"
+                      rows={3}
+                      placeholder="例: 訪問介護事業所のサービス提供責任者として..."
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">プロンプト</label>
+                    <p className="text-xs text-gray-400 mb-1">
+                      利用可能な変数: {'{'}{'{'}<code className="bg-gray-100 px-1 rounded">client_name</code>{'}'}{'}'}、
+                      {'{'}{'{'}<code className="bg-gray-100 px-1 rounded">client_gender</code>{'}'}{'}'}、
+                      {'{'}{'{'}<code className="bg-gray-100 px-1 rounded">client_birthDate</code>{'}'}{'}'}、
+                      {'{'}{'{'}<code className="bg-gray-100 px-1 rounded">client_address</code>{'}'}{'}'}、
+                      {'{'}{'{'}<code className="bg-gray-100 px-1 rounded">client_careLevel</code>{'}'}{'}'}、
+                      {'{'}{'{'}<code className="bg-gray-100 px-1 rounded">service_types</code>{'}'}{'}'}、
+                      {'{'}{'{'}<code className="bg-gray-100 px-1 rounded">total_visits</code>{'}'}{'}'}、
+                      {'{'}{'{'}<code className="bg-gray-100 px-1 rounded">year</code>{'}'}{'}'}、
+                      {'{'}{'{'}<code className="bg-gray-100 px-1 rounded">month</code>{'}'}{'}'}、
+                      {'{'}{'{'}<code className="bg-gray-100 px-1 rounded">billing_details</code>{'}'}{'}'}、
+                      {'{'}{'{'}<code className="bg-gray-100 px-1 rounded">assessment_note</code>{'}'}{'}'}
+                    </p>
+                    <textarea
+                      value={editingPrompt}
+                      onChange={e => setEditingPrompt(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm font-mono leading-relaxed focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-y"
+                      rows={15}
+                      placeholder="AIへのプロンプトを入力してください..."
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* フッター */}
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-200">
+              <button
+                onClick={() => setPromptModalDoc(null)}
+                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleSavePrompt}
+                disabled={promptSaving || promptLoading}
+                className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium flex items-center gap-1.5"
+              >
+                {promptSaving ? (
+                  <>
+                    <span className="animate-spin material-symbols-outlined text-sm">progress_activity</span>
+                    保存中...
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-sm">save</span>
+                    保存
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

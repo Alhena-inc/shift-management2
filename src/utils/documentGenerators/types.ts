@@ -19,6 +19,8 @@ export interface GeneratorContext {
   month: number;
   officeInfo: OfficeInfo;
   hiddenDiv: HTMLDivElement;
+  customPrompt?: string;
+  customSystemInstruction?: string;
 }
 
 export type GenerateFunction = (ctx: GeneratorContext) => Promise<void>;

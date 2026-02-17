@@ -163,6 +163,11 @@ export const {
   deleteBillingRecordsByBatch,
 } = dataService;
 
+// AIプロンプト関連（Supabase専用）
+export const loadAiPrompt = supabaseService.loadAiPrompt;
+export const saveAiPrompt = supabaseService.saveAiPrompt;
+export type { AiPrompt } from './supabaseService';
+
 // 日付ごとのシフト削除機能を追加
 export const deleteShiftsByDate = async (year: number, month: number, day: number): Promise<number> => {
   const dateString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
