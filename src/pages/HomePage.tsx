@@ -64,31 +64,12 @@ const HomePage: React.FC = () => {
       requiredRole: null
     },
     {
-      icon: 'fact_check',
-      iconBgColor: '#E0F2F1',
-      hoverColor: '#009688',
-      title: '実績データ',
-      description: '実績データの取込・確認・検索・管理',
-      path: '/import/billing',
-      requiredRole: 'admin' as const
-    },
-    {
       icon: 'description',
       iconBgColor: '#EDE7F6',
       hoverColor: '#673AB7',
       title: '運営指導書類',
       description: '運営指導に必要な全18書類の生成・管理',
       path: '/documents',
-      requiredRole: 'admin' as const
-    },
-    {
-      icon: 'security',
-      iconBgColor: '#FFF8E1',
-      hoverColor: '#FFC107',
-      title: '権限管理',
-      description: '管理者設定とシステムアクセス権限の変更',
-      path: null,
-      onClick: () => setShowPermissionManager(true),
       requiredRole: 'admin' as const
     },
   ];
@@ -146,16 +127,27 @@ const HomePage: React.FC = () => {
                 訪問介護事業所のあ - 今日の業務を確認・管理しましょう
               </p>
             </div>
-            {helperName && (
-              <div className="sm:text-right">
-                <p className="text-xs sm:text-sm text-gray-500">
-                  {today}
-                </p>
-                <p className="text-sm sm:text-base font-medium text-gray-900 mt-0.5 sm:mt-1">
-                  こんにちは、{helperName}さん
-                </p>
-              </div>
-            )}
+            <div className="flex items-center gap-3">
+              {helperName && (
+                <div className="sm:text-right">
+                  <p className="text-xs sm:text-sm text-gray-500">
+                    {today}
+                  </p>
+                  <p className="text-sm sm:text-base font-medium text-gray-900 mt-0.5 sm:mt-1">
+                    こんにちは、{helperName}さん
+                  </p>
+                </div>
+              )}
+              {role === 'admin' && (
+                <button
+                  onClick={() => setShowPermissionManager(true)}
+                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="権限管理"
+                >
+                  <span className="material-symbols-outlined text-xl">settings</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>

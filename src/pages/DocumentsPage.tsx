@@ -299,6 +299,29 @@ const DocumentsPage: React.FC = () => {
       </div>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-5">
+        {/* 実績データセクション */}
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-7 h-7 rounded-md flex items-center justify-center" style={{ backgroundColor: '#E0F2F1' }}>
+              <span className="material-symbols-outlined text-base" style={{ color: '#009688' }}>fact_check</span>
+            </div>
+            <h2 className="text-base font-bold text-gray-800">実績データ</h2>
+          </div>
+          <div
+            onClick={() => window.location.href = '/import/billing'}
+            className="rounded-xl border border-gray-200 bg-white hover:shadow-md hover:border-gray-300 transition-all duration-200 cursor-pointer p-4 flex items-center gap-4"
+          >
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#E0F2F1' }}>
+              <span className="material-symbols-outlined" style={{ color: '#009688' }}>upload_file</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-bold text-gray-900">実績データ取込・一覧</h3>
+              <p className="text-xs text-gray-500 mt-0.5">かんたん介護CSV・PDFからの取込、取込済みデータの確認・検索・管理</p>
+            </div>
+            <span className="material-symbols-outlined text-gray-400">arrow_forward</span>
+          </div>
+        </div>
+
         {/* 集計バー + プログレス */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-5">
           <div className="flex flex-wrap items-center gap-5">
