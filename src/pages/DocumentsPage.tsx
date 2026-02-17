@@ -30,6 +30,7 @@ const CATEGORY_CONFIG: Record<DocumentCategory, { label: string; icon: string; c
 
 const DOCUMENTS: DocumentDefinition[] = [
   { id: '2-5', number: '2-⑤', name: 'アセスメント', category: 'service', group: 'C', unit: 'client', description: '利用者ごとにアセスメントをアップロード' },
+  { id: 'care-plan', number: '2-⑥', name: '居宅介護計画書', category: 'service', group: 'B', unit: 'client', description: '実績・アセスメントを元にAIが計画書を作成' },
 ];
 
 // ========== 事業所情報（固定値） ==========
@@ -271,6 +272,7 @@ const DocumentsPage: React.FC = () => {
         case '1-3': return (await import('../utils/documentGenerators/employmentContractGenerator')).generate;
         case '2-4': return (await import('../utils/documentGenerators/municipalityReportGenerator')).generate;
         case '3-3': return (await import('../utils/documentGenerators/legalProxyNoticeGenerator')).generate;
+        case 'care-plan': return (await import('../utils/documentGenerators/carePlanGenerator')).generate;
         default: return null;
       }
     } catch {
@@ -387,12 +389,6 @@ const DocumentsPage: React.FC = () => {
               </div>
             </div>
 
-            {!geminiAvailable && (
-              <div className="ml-auto flex items-center gap-1.5 text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg text-xs">
-                <span className="material-symbols-outlined text-base">warning</span>
-                <span>Gemini APIキー未設定 — AI書類はスキップされます</span>
-              </div>
-            )}
           </div>
 
           {isBulkGenerating && (
