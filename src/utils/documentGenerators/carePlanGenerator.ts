@@ -114,8 +114,17 @@ function serviceCodeToLabel(code: string): string {
   return code.substring(0, 4);
 }
 
+/** 列文字→列番号 */
+function colToNum(col: string): number {
+  return col.charCodeAt(0) - 64; // A=1, B=2, ..., K=11
+}
+
+/** 薄い罫線スタイル */
+const thinBorder: Partial<ExcelJS.Border> = { style: 'thin' };
+
 /**
  * 実績表から1週間のケアパターンを抽出して計画予定表に書き込む
+ * 見本のように、時間帯分のセルを結合→罫線ボックス→中央にラベル記入
  */
 function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]) {
   // 曜日×時間帯パターンをユニークに集約
@@ -141,15 +150,30 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
   for (const p of patterns) {
     const col = DAY_TO_COL[p.dayName];
     if (!col) continue;
-    for (let h = p.startH; h < p.endH; h++) {
-      const row = 21 + h * 2;
-      if (row > 68) break;
-      const cell = ws.getCell(`${col}${row}`);
-      const existing = cell.value ? String(cell.value) : '';
-      if (existing.includes(p.type)) continue;
-      cell.value = existing ? `${existing}\n${p.type}` : p.type;
-      setWrapText(cell);
+    const colNum = colToNum(col);
+
+    // 開始行・終了行を計算（各時間帯は2行: 21+h*2, 21+h*2+1）
+    const startRow = 21 + p.startH * 2;
+    const endRow = 21 + (p.endH - 1) * 2 + 1; // 最後の時間帯の2行目まで
+    if (startRow > 68 || endRow > 68) continue;
+
+    // セルを結合（開始行〜終了行、同じ列）
+    try {
+      ws.mergeCells(startRow, colNum, endRow, colNum);
+    } catch {
+      // 既に結合済みの場合はスキップ
     }
+
+    // 結合したセルにラベルを記入（中央揃え）
+    const cell = ws.getCell(`${col}${startRow}`);
+    cell.value = p.type;
+    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    cell.border = {
+      top: thinBorder,
+      bottom: thinBorder,
+      left: thinBorder,
+      right: thinBorder,
+    };
   }
 }
 
@@ -448,54 +472,143 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   ws0.getCell('D70').value = planDateText;
 
   // ==============================
-  // Sheet 1: 居宅介護計画書（裏）
+  // サービス内容セクション（Sheet0の下部に動的生成）
+  // Row72〜: 【サービス内容】
   // ==============================
-  const ws1 = workbook.worksheets[1];
-  if (ws1) {
-    const checkFlags = {
-      body: bodyCheck.checked, house: houseCheck.checked, heavy: heavyCheck.checked,
-      visitBody: visitWithBody.checked, visitNoBody: visitWithoutBody.checked,
-      ride: rideCheck.checked, behavior: behaviorCheck.checked, accompany: accompanyCheck.checked,
-    };
+  const checkFlags = {
+    body: bodyCheck.checked, house: houseCheck.checked, heavy: heavyCheck.checked,
+    visitBody: visitWithBody.checked, visitNoBody: visitWithoutBody.checked,
+    ride: rideCheck.checked, behavior: behaviorCheck.checked, accompany: accompanyCheck.checked,
+  };
 
-    // サービス1: Row 4-11（身体介護系）
-    const s1 = plan.service1_steps || [];
-    console.log(`[CarePlan] 裏面サービス1: ${s1.length}件`);
-    for (let i = 0; i < Math.min(s1.length, 8); i++) {
-      const row = 4 + i;
-      const bCell = ws1.getCell(`B${row}`);
-      bCell.value = s1[i].item || '';
-      setWrapText(bCell);
-      const fCell = ws1.getCell(`F${row}`);
-      fCell.value = s1[i].content || '';
-      setWrapText(fCell);
-      const jCell = ws1.getCell(`J${row}`);
-      jCell.value = s1[i].note || '';
-      setWrapText(jCell);
+  let curRow = 72;
+
+  // タイトル
+  const titleCell = ws0.getCell(`A${curRow}`);
+  titleCell.value = '【サービス内容】';
+  titleCell.font = { bold: true, size: 12 };
+  curRow++;
+
+  // サービスブロック書き込み関数
+  const writeServiceBlock = (
+    blockLabel: string,
+    steps: ServiceStepBack[],
+    maxRows: number,
+  ) => {
+    // ヘッダー行
+    const hdrRow = curRow;
+    ws0.getCell(`B${hdrRow}`).value = '援助項目';
+    ws0.getCell(`F${hdrRow}`).value = 'サービスの内容';
+    ws0.getCell(`J${hdrRow}`).value = '留意事項';
+    // ヘッダースタイル
+    for (const col of ['B', 'F', 'J']) {
+      const c = ws0.getCell(`${col}${hdrRow}`);
+      c.font = { bold: true };
+      c.alignment = { horizontal: 'center', vertical: 'middle' };
+      c.border = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
     }
-    writeBackCheckboxes(ws1, 12, checkFlags);
+    // ヘッダー結合
+    ws0.mergeCells(`B${hdrRow}:E${hdrRow}`);
+    ws0.mergeCells(`F${hdrRow}:I${hdrRow}`);
+    ws0.mergeCells(`J${hdrRow}:L${hdrRow}`);
 
-    // サービス2: Row 17-24（家事援助系）
-    const s2 = plan.service2_steps || [];
-    console.log(`[CarePlan] 裏面サービス2: ${s2.length}件`);
-    for (let i = 0; i < Math.min(s2.length, 8); i++) {
-      const row = 17 + i;
-      const bCell = ws1.getCell(`B${row}`);
-      bCell.value = s2[i].item || '';
-      setWrapText(bCell);
-      const fCell = ws1.getCell(`F${row}`);
-      fCell.value = s2[i].content || '';
-      setWrapText(fCell);
-      const jCell = ws1.getCell(`J${row}`);
-      jCell.value = s2[i].note || '';
-      setWrapText(jCell);
+    // ブロックラベル（A列を縦結合）
+    const labelStartRow = hdrRow;
+    curRow++;
+
+    // データ行
+    const dataStartRow = curRow;
+    for (let i = 0; i < maxRows; i++) {
+      const r = curRow;
+      // 結合
+      ws0.mergeCells(`B${r}:E${r}`);
+      ws0.mergeCells(`F${r}:I${r}`);
+      ws0.mergeCells(`J${r}:L${r}`);
+      // 罫線
+      for (const col of ['B', 'F', 'J']) {
+        ws0.getCell(`${col}${r}`).border = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
+      }
+      // データ入力
+      if (i < steps.length) {
+        const bCell = ws0.getCell(`B${r}`);
+        bCell.value = steps[i].item || '';
+        setWrapText(bCell);
+        const fCell = ws0.getCell(`F${r}`);
+        fCell.value = steps[i].content || '';
+        setWrapText(fCell);
+        const jCell = ws0.getCell(`J${r}`);
+        jCell.value = steps[i].note || '';
+        setWrapText(jCell);
+      }
+      curRow++;
     }
-    writeBackCheckboxes(ws1, 25, checkFlags);
 
-    // サービス3,4: チェックボックスのみ
-    writeBackCheckboxes(ws1, 38, checkFlags);
-    writeBackCheckboxes(ws1, 51, checkFlags);
-  }
+    // A列ラベル（サービスブロック名）縦結合
+    const labelEndRow = curRow - 1;
+    if (labelEndRow > labelStartRow) {
+      ws0.mergeCells(`A${labelStartRow}:A${labelEndRow}`);
+    }
+    const labelCell = ws0.getCell(`A${labelStartRow}`);
+    labelCell.value = blockLabel;
+    labelCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true, textRotation: 0 };
+    labelCell.font = { bold: true };
+    labelCell.border = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
+
+    // チェックボックス行（3行）
+    const chkStart = curRow;
+    // Row 1: 身体介護, 家事援助, 重度訪問介護, 介護者種別
+    ws0.mergeCells(`B${chkStart}:E${chkStart}`);
+    ws0.mergeCells(`F${chkStart}:G${chkStart}`);
+    ws0.mergeCells(`H${chkStart}:I${chkStart}`);
+    ws0.getCell(`B${chkStart}`).value = checkboxTextBack('身体介護', checkFlags.body);
+    ws0.getCell(`F${chkStart}`).value = checkboxTextBack('家事援助', checkFlags.house);
+    ws0.getCell(`H${chkStart}`).value = checkboxTextBack('重度訪問介護', checkFlags.heavy);
+    for (const col of ['B', 'F', 'H']) {
+      ws0.getCell(`${col}${chkStart}`).border = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
+    }
+    curRow++;
+
+    // Row 2: 通院等介助×2
+    ws0.mergeCells(`B${curRow}:E${curRow}`);
+    ws0.mergeCells(`F${curRow}:I${curRow}`);
+    ws0.getCell(`B${curRow}`).value = checkboxTextBack('通院等介助(身体介護を伴う)', checkFlags.visitBody);
+    ws0.getCell(`F${curRow}`).value = checkboxTextBack('通院等介助(身体介護を伴わない)', checkFlags.visitNoBody);
+    for (const col of ['B', 'F']) {
+      ws0.getCell(`${col}${curRow}`).border = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
+    }
+    curRow++;
+
+    // Row 3: 乗降, 行動, 同行
+    ws0.mergeCells(`B${curRow}:E${curRow}`);
+    ws0.mergeCells(`F${curRow}:G${curRow}`);
+    ws0.mergeCells(`H${curRow}:I${curRow}`);
+    ws0.getCell(`B${curRow}`).value = checkboxTextBack('通院等乗降介助', checkFlags.ride);
+    ws0.getCell(`F${curRow}`).value = checkboxTextBack('行動援護', checkFlags.behavior);
+    ws0.getCell(`H${curRow}`).value = checkboxTextBack('同行援護', checkFlags.accompany);
+    for (const col of ['B', 'F', 'H']) {
+      ws0.getCell(`${col}${curRow}`).border = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
+    }
+
+    // 種類ラベル
+    ws0.mergeCells(`A${chkStart}:A${curRow}`);
+    const typeLabel = ws0.getCell(`A${chkStart}`);
+    typeLabel.value = '種類';
+    typeLabel.alignment = { horizontal: 'center', vertical: 'middle' };
+    typeLabel.font = { bold: true };
+    typeLabel.border = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
+
+    curRow += 2; // 空行
+  };
+
+  // サービス1（身体介護系）
+  const s1 = plan.service1_steps || [];
+  console.log(`[CarePlan] サービス1: ${s1.length}件`);
+  writeServiceBlock('サービス\n　１', s1, Math.max(s1.length, 8));
+
+  // サービス2（家事援助系）
+  const s2 = plan.service2_steps || [];
+  console.log(`[CarePlan] サービス2: ${s2.length}件`);
+  writeServiceBlock('サービス\n　２', s2, Math.max(s2.length, 6));
 
   // ダウンロード
   const outputBuffer = await workbook.xlsx.writeBuffer();
