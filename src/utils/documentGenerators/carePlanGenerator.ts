@@ -100,8 +100,8 @@ const DEFAULT_PROMPT = `あなたは障害福祉サービスの居宅介護事�
 {
   "user_wish": "本人の希望（60〜120文字。2〜3行。主体的表現で具体的な生活場面を含む）",
   "family_wish": "家族の希望（60〜120文字。2〜3行。具体的な不安や要望を含む）",
-  "goal_long": "長期目標（60〜100文字。達成期間と具体的到達点を記載）",
-  "goal_short": "短期目標（60〜100文字。達成期間と具体的到達点を記載）",
+  "goal_long": "長期目標（60〜100文字。具体的な到達点を記載。期間は書かない）",
+  "goal_short": "短期目標（60〜100文字。具体的な到達点を記載。期間は書かない）",
   "needs": "解決すべき課題（60〜100文字。アセスメントに基づく具体的課題）",
   "schedule_remarks": "備考欄（100〜200文字。他サービス利用状況・緊急連絡先・特記事項）",
   "service1": {
@@ -281,7 +281,8 @@ function serviceCodeToLabel(code: string): string {
   if (c.includes('通院')) return '通院';
   if (c.includes('同行') || /^15/.test(c)) return '同行援護';
   if (c.includes('行動') || /^16/.test(c)) return '行動援護';
-  return '';  // 不明なコードは空（計画予定表には描画しない）
+  // 不明なコードでもサービスとして描画する（コードの先頭4文字をラベルに使用）
+  return c.length > 4 ? c.substring(0, 4) : c;
 }
 
 /** 列文字→列番号 */
@@ -353,9 +354,6 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
   }
 
   // ========== パターン集約 ==========
-  // 既知のサービス種別のみ描画対象（不明なコードの枠描画を防止）
-  const KNOWN_SERVICE_LABELS = new Set(['身体介護', '家事援助', '重度訪問', '通院', '同行援護', '行動援護']);
-
   const seen = new Set<string>();
   const patterns: { dayName: string; type: string; startRow: number; endRow: number }[] = [];
 
@@ -365,9 +363,9 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     const dayName = WEEKDAY_NAMES[d.getDay()];
     const label = serviceCodeToLabel(r.serviceCode);
 
-    // 既知のサービス種別でなければスキップ（不明コードの空枠描画を防止）
-    if (!KNOWN_SERVICE_LABELS.has(label)) {
-      console.log(`[CarePlan] スキップ: ${dayName} ${r.startTime}-${r.endTime} ラベル="${label}" コード="${r.serviceCode}"`);
+    // ラベルが完全に空（コードが空の場合のみ）はスキップ
+    if (!label) {
+      console.log(`[CarePlan] スキップ（コード空）: ${dayName} ${r.startTime}-${r.endTime} コード="${r.serviceCode}"`);
       continue;
     }
 
@@ -392,9 +390,7 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     const clampedEnd = Math.min(eRow, maxRow);
     if (clampedStart >= clampedEnd) continue;
 
-    // 結合行数が2行未満（30分以下）はスキップ（枠が小さすぎて見た目が悪い）
-    if (clampedEnd - clampedStart < 2) continue;
-
+    // 最低1行あれば描画する（30分未満でも反映）
     const key = `${dayName}_${clampedStart}_${clampedEnd}_${label}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -417,10 +413,12 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     if (!col) continue;
     const colNum = colToNum(col);
 
-    // セル結合
-    ws.mergeCells(p.startRow, colNum, p.endRow, colNum);
+    // セル結合（2行以上の場合のみ結合、1行の場合は単一セルに書き込み）
+    if (p.endRow > p.startRow) {
+      ws.mergeCells(p.startRow, colNum, p.endRow, colNum);
+    }
 
-    // マスターセル（結合の先頭）にラベル・スタイル・罫線を設定
+    // マスターセル（結合の先頭 or 単一セル）にラベル・スタイル・罫線を設定
     const cell = ws.getCell(`${col}${p.startRow}`);
     cell.value = p.type;
     cell.font = planFont;
@@ -795,15 +793,23 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   setWrapText(wishCell9);
 
   // 援助目標 — 同様にAIが短い場合は補足
-  const DEFAULT_GOAL_LONG = '必要な介護サービスを利用しながら、住み慣れた自宅での安定した日常生活を継続する（1年間）';
-  const DEFAULT_GOAL_SHORT = '定期的な支援を受けながら、日常生活動作の維持・向上を図り、安全に生活できる環境を整える（6ヶ月）';
+  // 期間テキスト（「（1年間）」「（6ヶ月）」「（○月まで）」「（○日まで）」等）を除去する関数
+  function stripPeriodText(text: string): string {
+    // 括弧で囲まれた期間表現を除去
+    return text
+      .replace(/[（(][^）)]*(?:年間|ヶ月|か月|カ月|月まで|日まで|年まで|年|月|期間)[^）)]*[）)]/g, '')
+      .replace(/\s+$/, '');
+  }
+
+  const DEFAULT_GOAL_LONG = '必要な介護サービスを利用しながら、住み慣れた自宅での安定した日常生活を継続する';
+  const DEFAULT_GOAL_SHORT = '定期的な支援を受けながら、日常生活動作の維持・向上を図り、安全に生活できる環境を整える';
   const MIN_GOAL_LENGTH = 30;
 
-  let goalLongText = plan.goal_long || DEFAULT_GOAL_LONG;
+  let goalLongText = stripPeriodText(plan.goal_long || DEFAULT_GOAL_LONG);
   if (goalLongText.length < MIN_GOAL_LENGTH) {
     goalLongText = `${goalLongText}（介護サービスを活用しながら在宅生活を継続する）`;
   }
-  let goalShortText = plan.goal_short || DEFAULT_GOAL_SHORT;
+  let goalShortText = stripPeriodText(plan.goal_short || DEFAULT_GOAL_SHORT);
   if (goalShortText.length < MIN_GOAL_LENGTH) {
     goalShortText = `${goalShortText}（安全な生活環境を整え、日常動作の維持を図る）`;
   }
