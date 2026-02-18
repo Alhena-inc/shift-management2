@@ -63,10 +63,14 @@ const DEFAULT_PROMPT = `以下は訪問介護の利用者「{{client_name}}」�
 8. goal_long, goal_shortは40文字以内厳守。
 9. 必ずservice1_steps, service2_stepsに具体的な項目を含めること。空配列は絶対に不可。`;
 
-const DEFAULT_SYSTEM_INSTRUCTION = `訪問介護事業所のサービス提供責任者として居宅介護計画書を作成してください。
-運営指導（実地指導）に通る正式な計画書を作成してください。
-アセスメント資料・実績データ・契約支給量に基づいた具体的で実践的な内容にしてください。
-必ず有効なJSON形式のみ出力してください。余計な説明文は不要です。`;
+const DEFAULT_SYSTEM_INSTRUCTION = `あなたは訪問介護事業所のサービス提供責任者です。居宅介護計画書を作成してください。
+運営指導（実地指導）に通る正式な計画書を作成します。
+
+【最重要】
+- アセスメント資料が添付されている場合は、その内容を必ず読み取り、利用者の状態・ニーズに基づいてサービス内容を作成すること。
+- 実績データから利用しているサービス種別（身体介護・家事援助・重度訪問等）を把握し、それに合ったサービス内容を記載すること。
+- service1_stepsとservice2_stepsは必ず具体的な援助項目を5件以上含めること。空配列は不可。
+- 必ず有効なJSON形式のみ出力すること。\`\`\`jsonなどのマークダウン記法は使わないこと。余計な説明文は不要。`;
 
 // ==================== ユーティリティ ====================
 function applyTemplate(template: string, vars: Record<string, string>): string {
@@ -111,17 +115,17 @@ const DAY_TO_COL: Record<string, string> = {
 };
 const WEEKDAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
 
-/** サービスコードからサービス種別名に変換 */
+/** サービスコードからサービス種別名に変換（空白を除去して判定） */
 function serviceCodeToLabel(code: string): string {
   if (!code) return '訪問介護';
-  // サービスコード体系に応じて判定
-  if (code.includes('身体') || /^11[12]/.test(code)) return '身体介護';
-  if (code.includes('生活') || code.includes('家事') || /^12[12]/.test(code)) return '家事援助';
-  if (code.includes('重度') || /^14/.test(code)) return '重度訪問';
-  if (code.includes('通院')) return '通院';
-  if (code.includes('同行') || /^15/.test(code)) return '同行援護';
-  if (code.includes('行動') || /^16/.test(code)) return '行動援護';
-  return code.substring(0, 4);
+  const c = code.replace(/\s+/g, ''); // 空白除去（"身 体" → "身体"）
+  if (c.includes('身体') || /^11[12]/.test(c)) return '身体介護';
+  if (c.includes('生活') || c.includes('家事') || /^12[12]/.test(c)) return '家事援助';
+  if (c.includes('重度') || /^14/.test(c)) return '重度訪問';
+  if (c.includes('通院')) return '通院';
+  if (c.includes('同行') || /^15/.test(c)) return '同行援護';
+  if (c.includes('行動') || /^16/.test(c)) return '行動援護';
+  return c.substring(0, 4);
 }
 
 /** 列文字→列番号 */
@@ -132,50 +136,79 @@ function colToNum(col: string): number {
 /** 薄い罫線スタイル */
 const thinBorder: Partial<ExcelJS.Border> = { style: 'thin' };
 
+/** 時刻文字列(HH:MM)をExcelの行番号に変換。30分以降は次の行 */
+function timeToRow(time: string): number {
+  const parts = time.split(':');
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1] || '0', 10);
+  // Row21=0:00(上半分), Row22=0:00(下半分=0:30), Row23=1:00, ...
+  return 21 + h * 2 + (m >= 30 ? 1 : 0);
+}
+
 /**
- * 実績表から1週間のケアパターンを抽出して計画予定表に書き込む
+ * 実績表から週間ケアパターンを抽出して計画予定表に書き込む
  * 見本のように、時間帯分のセルを結合→罫線ボックス→中央にラベル記入
  */
 function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]) {
   // 曜日×時間帯パターンをユニークに集約
   const seen = new Set<string>();
-  const patterns: { dayName: string; type: string; startH: number; endH: number }[] = [];
+  const patterns: { dayName: string; type: string; startRow: number; endRow: number }[] = [];
 
   for (const r of records) {
     if (!r.startTime || !r.endTime || !r.serviceDate) continue;
     const d = new Date(r.serviceDate);
     const dayName = WEEKDAY_NAMES[d.getDay()];
-    const startH = parseInt(r.startTime.split(':')[0], 10);
-    const endH = parseInt(r.endTime.split(':')[0], 10);
-    if (isNaN(startH) || isNaN(endH) || endH <= startH) continue;
     const label = serviceCodeToLabel(r.serviceCode);
-    const key = `${dayName}_${startH}_${endH}_${label}`;
+
+    const startH = parseInt(r.startTime.split(':')[0], 10);
+    let endH = parseInt(r.endTime.split(':')[0], 10);
+    const endM = parseInt(r.endTime.split(':')[1] || '0', 10);
+    if (isNaN(startH) || isNaN(endH)) continue;
+
+    // 日をまたぐ場合（18:00→02:00 等）は23時までに切る
+    if (endH < startH || (endH === 0 && endM === 0)) {
+      endH = 24; // 0:00 = 24時として扱い、23時台の最終行まで
+    }
+
+    const sRow = timeToRow(r.startTime);
+    // 終了行: 終了時刻の1行前（終了時刻のちょうどの行は含まない）
+    let eRow: number;
+    if (endM > 0) {
+      eRow = 21 + endH * 2 + (endM >= 30 ? 1 : 0);
+    } else {
+      eRow = 21 + endH * 2 - 1; // ちょうどの時刻なら前の行まで
+    }
+
+    // 範囲制限（Row21=0:00 〜 Row68=23:30）
+    const clampedStart = Math.max(sRow, 21);
+    const clampedEnd = Math.min(eRow, 68);
+    if (clampedStart >= clampedEnd) continue;
+
+    const key = `${dayName}_${clampedStart}_${clampedEnd}_${label}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    patterns.push({ dayName, type: label, startH, endH });
+    patterns.push({ dayName, type: label, startRow: clampedStart, endRow: clampedEnd });
   }
 
   console.log(`[CarePlan] 計画予定表パターン: ${patterns.length}件`);
+  for (const p of patterns) {
+    console.log(`  ${p.dayName} Row${p.startRow}-${p.endRow} ${p.type}`);
+  }
 
   for (const p of patterns) {
     const col = DAY_TO_COL[p.dayName];
     if (!col) continue;
     const colNum = colToNum(col);
 
-    // 開始行・終了行を計算（各時間帯は2行: 21+h*2, 21+h*2+1）
-    const startRow = 21 + p.startH * 2;
-    const endRow = 21 + (p.endH - 1) * 2 + 1; // 最後の時間帯の2行目まで
-    if (startRow > 68 || endRow > 68) continue;
-
     // セルを結合（開始行〜終了行、同じ列）
     try {
-      ws.mergeCells(startRow, colNum, endRow, colNum);
+      ws.mergeCells(p.startRow, colNum, p.endRow, colNum);
     } catch {
       // 既に結合済みの場合はスキップ
     }
 
     // 結合したセルにラベルを記入（中央揃え）
-    const cell = ws.getCell(`${col}${startRow}`);
+    const cell = ws.getCell(`${col}${p.startRow}`);
     cell.value = p.type;
     cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
     cell.border = {
@@ -349,8 +382,8 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
     billing_summary: billingSummary,
     supply_amounts: supplyText,
     assessment_note: assessmentFileUrls.length > 0
-      ? '【添付アセスメント資料あり】内容を読み取り計画に反映してください。'
-      : '',
+      ? '【添付アセスメント資料あり】添付のアセスメント資料の内容（利用者の心身状態・ADL・IADL・生活環境・介護者の状況等）を必ず読み取り、それに基づいて援助目標・サービス内容・留意事項を具体的に作成してください。'
+      : '【アセスメント資料なし】利用者情報・実績データ・契約支給量から推測して、一般的な訪問介護計画を作成してください。',
   };
 
   const prompt = applyTemplate(promptTemplate, templateVars);
@@ -379,8 +412,35 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   }
 
   console.log(`[CarePlan] AI応答 - service1_steps: ${plan.service1_steps?.length || 0}件, service2_steps: ${plan.service2_steps?.length || 0}件`);
+  console.log(`[CarePlan] AI応答全文（先頭500文字）:`, res.text.substring(0, 500));
   if (plan.service1_steps?.length) console.log(`[CarePlan] service1例:`, plan.service1_steps[0]);
   if (plan.service2_steps?.length) console.log(`[CarePlan] service2例:`, plan.service2_steps[0]);
+
+  // AIが空配列を返した場合のフォールバック（デフォルト項目を生成）
+  if (!plan.service1_steps || plan.service1_steps.length === 0) {
+    console.warn(`[CarePlan] service1_stepsが空 → フォールバック生成`);
+    plan.service1_steps = [
+      { item: '健康チェック', content: 'バイタルサイン測定・体調確認', note: '異変時は事業所に連絡' },
+      { item: '移乗介助', content: 'ベッド⇔車椅子の移乗', note: '転倒に注意' },
+      { item: '排泄介助', content: 'トイレ誘導・おむつ交換', note: '皮膚状態を確認' },
+      { item: '食事介助', content: '食事の準備・摂食の見守り', note: '誤嚥に注意' },
+      { item: '更衣介助', content: '着替えの介助', note: '関節可動域に注意' },
+      { item: '清拭・入浴', content: '全身清拭または入浴介助', note: '皮膚の状態観察' },
+      { item: '身体整容', content: '整髪・歯磨き・爪切り', note: '自立部分は見守り' },
+      { item: '服薬確認', content: '服薬の声かけ・確認', note: '飲み忘れ防止' },
+    ];
+  }
+  if (!plan.service2_steps || plan.service2_steps.length === 0) {
+    console.warn(`[CarePlan] service2_stepsが空 → フォールバック生成`);
+    plan.service2_steps = [
+      { item: '掃除', content: '居室・トイレ・浴室の清掃', note: '利用者の希望箇所を優先' },
+      { item: '洗濯', content: '洗濯・干す・取り込み・整理', note: '素材に応じた洗い方' },
+      { item: '調理', content: '食事の調理・配膳・後片付け', note: 'アレルギー・制限食確認' },
+      { item: '買い物', content: '日用品・食料品の購入代行', note: '買い物リスト確認' },
+      { item: 'ゴミ出し', content: 'ゴミの分別・集積所への搬出', note: '収集日を確認' },
+      { item: '整理整頓', content: '室内の整理・衣類の整頓', note: '利用者と相談しながら' },
+    ];
+  }
 
   // ==============================
   // Sheet 0: 居宅介護計画書（表）
