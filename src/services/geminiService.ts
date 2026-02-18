@@ -1,10 +1,9 @@
 /**
- * Gemini API サービス
- * Google Gemini を使った文章生成機能を提供
+ * AI API サービス
+ * Supabase Edge Function経由でClaude APIを使った文章生成機能を提供
  */
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+import { supabase } from '../lib/supabase';
 
 export interface GeminiResponse {
   text: string;
@@ -12,54 +11,50 @@ export interface GeminiResponse {
 }
 
 /**
- * Gemini APIにテキスト生成リクエストを送信
+ * Edge Function経由でClaude APIにテキスト生成リクエストを送信
  */
 export async function generateText(prompt: string, systemInstruction?: string): Promise<GeminiResponse> {
-  if (!GEMINI_API_KEY) {
-    return { text: '', error: 'Gemini APIキーが設定されていません（VITE_GEMINI_API_KEY）' };
-  }
-
   try {
-    const body: Record<string, unknown> = {
-      contents: [
-        {
-          parts: [{ text: prompt }],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 8192,
-      },
-    };
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
 
-    if (systemInstruction) {
-      body.systemInstruction = {
-        parts: [{ text: systemInstruction }],
-      };
+    if (!token) {
+      return { text: '', error: 'ログインが必要です' };
     }
 
-    const res = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+    const projectUrl = import.meta.env.VITE_SUPABASE_URL;
+    const res = await fetch(`${projectUrl}/functions/v1/claude-proxy`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ prompt, systemInstruction }),
     });
 
     if (!res.ok) {
       const errBody = await res.text();
-      return { text: '', error: `Gemini API エラー (${res.status}): ${errBody}` };
+      try {
+        const errJson = JSON.parse(errBody);
+        return { text: '', error: errJson.error || `API エラー (${res.status})` };
+      } catch {
+        return { text: '', error: `API エラー (${res.status}): ${errBody}` };
+      }
     }
 
     const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    return { text };
+    if (data.error) {
+      return { text: '', error: data.error };
+    }
+    return { text: data.text || '' };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { text: '', error: `Gemini API 通信エラー: ${msg}` };
+    return { text: '', error: `AI API 通信エラー: ${msg}` };
   }
 }
 
 /**
- * ファイル（画像・PDF等）付きでGemini APIにリクエストを送信
+ * ファイル（画像・PDF等）付きでClaude APIにリクエストを送信
  * URLからfetchしてbase64に変換して送る
  */
 export async function generateWithFiles(
@@ -67,12 +62,15 @@ export async function generateWithFiles(
   fileUrls: string[],
   systemInstruction?: string
 ): Promise<GeminiResponse> {
-  if (!GEMINI_API_KEY) {
-    return { text: '', error: 'Gemini APIキーが設定されていません（VITE_GEMINI_API_KEY）' };
-  }
-
   try {
-    const parts: Record<string, unknown>[] = [];
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+
+    if (!token) {
+      return { text: '', error: 'ログインが必要です' };
+    }
+
+    const files: Array<{ type: string; mimeType: string; data: string }> = [];
 
     for (const url of fileUrls) {
       try {
@@ -86,56 +84,53 @@ export async function generateWithFiles(
           };
           reader.readAsDataURL(blob);
         });
-        parts.push({
-          inlineData: {
-            mimeType: blob.type || 'application/pdf',
-            data: base64,
-          },
+
+        const mimeType = blob.type || 'application/pdf';
+        const isImage = mimeType.startsWith('image/');
+        files.push({
+          type: isImage ? 'image' : 'document',
+          mimeType,
+          data: base64,
         });
       } catch {
         // ファイル取得失敗はスキップ
       }
     }
 
-    parts.push({ text: prompt });
-
-    const body: Record<string, unknown> = {
-      contents: [{ parts }],
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 8192,
-      },
-    };
-
-    if (systemInstruction) {
-      body.systemInstruction = {
-        parts: [{ text: systemInstruction }],
-      };
-    }
-
-    const res = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+    const projectUrl = import.meta.env.VITE_SUPABASE_URL;
+    const res = await fetch(`${projectUrl}/functions/v1/claude-proxy`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ prompt, systemInstruction, files }),
     });
 
     if (!res.ok) {
       const errBody = await res.text();
-      return { text: '', error: `Gemini API エラー (${res.status}): ${errBody}` };
+      try {
+        const errJson = JSON.parse(errBody);
+        return { text: '', error: errJson.error || `API エラー (${res.status})` };
+      } catch {
+        return { text: '', error: `API エラー (${res.status}): ${errBody}` };
+      }
     }
 
     const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    return { text };
+    if (data.error) {
+      return { text: '', error: data.error };
+    }
+    return { text: data.text || '' };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { text: '', error: `Gemini API 通信エラー: ${msg}` };
+    return { text: '', error: `AI API 通信エラー: ${msg}` };
   }
 }
 
 /**
- * Gemini APIキーが設定されているか確認
+ * AI機能が利用可能か確認（常にtrue — Edge Function経由のため）
  */
 export function isGeminiAvailable(): boolean {
-  return !!GEMINI_API_KEY;
+  return true;
 }
