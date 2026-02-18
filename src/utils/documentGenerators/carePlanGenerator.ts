@@ -71,13 +71,16 @@ const DEFAULT_PROMPT = `あなたは障害福祉サービスの居宅介護事�
 重度訪問介護の場合: 身体介護と家事援助が一体的に提供されるため、1つの枠に混在可。
 
 ═══════════════════════════════════════════════════
-■ セクション①：利用者・家族の希望
+■ セクション①：利用者・家族の希望（重要：2〜3行で具体的に記述）
 ═══════════════════════════════════════════════════
+- 必ず2〜3行（60〜120文字）の具体的な文章にすること。1行の短文は不可。
 - アセスメントの意向をもとに、計画書にふさわしい主体的表現で自然にまとめ直す
 - アセスメントの文面をそのままコピーしない（言い回しを変えて再構成）
 - 本人の希望は「〜したい」「〜を続けたい」等の主体的表現で記載
 - 家族の希望は「〜してほしい」「〜を望んでいる」等の表現で記載
 - 具体的な生活場面や行動を含め、抽象的すぎない文章にする
+- NG例：「自宅で安心して暮らしたい」（短すぎ・抽象的すぎ）
+- OK例：「身体機能の低下はあるが、住み慣れた自宅で生活を続けたい。日常の家事や身の回りのことは手伝ってもらいながら、できることは自分でやっていきたい。」
 
 ═══════════════════════════════════════════════════
 ■ セクション②：サービス内容
@@ -95,8 +98,8 @@ const DEFAULT_PROMPT = `あなたは障害福祉サービスの居宅介護事�
 以下をJSON形式のみで出力（JSON以外不要、マークダウン記法不要）。
 
 {
-  "user_wish": "本人の希望（50〜80文字。主体的表現で具体的に）",
-  "family_wish": "家族の希望（50〜80文字。具体的な生活場面を含めて）",
+  "user_wish": "本人の希望（60〜120文字。2〜3行。主体的表現で具体的な生活場面を含む）",
+  "family_wish": "家族の希望（60〜120文字。2〜3行。具体的な不安や要望を含む）",
   "goal_long": "長期目標（60〜100文字。達成期間と具体的到達点を記載）",
   "goal_short": "短期目標（60〜100文字。達成期間と具体的到達点を記載）",
   "needs": "解決すべき課題（60〜100文字。アセスメントに基づく具体的課題）",
@@ -288,6 +291,8 @@ function colToNum(col: string): number {
 
 /** 薄い罫線スタイル */
 const thinBorder: Partial<ExcelJS.Border> = { style: 'thin' };
+/** テンプレート元の極細罫線（計画予定表のグリッド線） */
+const hairBorder: Partial<ExcelJS.Border> = { style: 'hair' };
 
 /** 時刻文字列(HH:MM)をExcelの行番号に変換。30分以降は次の行 */
 function timeToRow(time: string): number {
@@ -325,11 +330,17 @@ function clearScheduleArea(ws: ExcelJS.Worksheet) {
     }
   }
 
-  // 値をクリア
+  // 値をクリアし、罫線をテンプレート元のhair線にリセット
   for (let row = minRow; row <= maxRow; row++) {
     for (let col = minCol; col <= maxCol; col++) {
       const cell = ws.getCell(row, col);
       cell.value = null;
+      cell.border = {
+        top: hairBorder,
+        bottom: hairBorder,
+        left: hairBorder,
+        right: hairBorder,
+      };
     }
   }
 }
@@ -406,12 +417,13 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     cell.font = planFont;
     cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
 
-    // 結合範囲の各行に罫線を設定（外枠: 上下は端のみ、左右は全行）
+    // 結合範囲の各行に罫線を設定
+    // 外枠（上端・下端）はthin、中間行の上下はhair（テンプレートのグリッド線を維持）、左右は全行thin
     for (let row = p.startRow; row <= p.endRow; row++) {
       const c = ws.getCell(row, colNum);
       c.border = {
-        top: row === p.startRow ? thinBorder : undefined,
-        bottom: row === p.endRow ? thinBorder : undefined,
+        top: row === p.startRow ? thinBorder : hairBorder,
+        bottom: row === p.endRow ? thinBorder : hairBorder,
         left: thinBorder,
         right: thinBorder,
       };
@@ -757,18 +769,18 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
 
   // 本人(家族)の希望
   const wishCell8 = ws0.getCell('E8');
-  wishCell8.value = plan.user_wish || '自宅で安心して暮らしたい';
+  wishCell8.value = plan.user_wish || '身体機能の低下はあるが、住み慣れた自宅での生活を続けたい。日常の家事や身の回りのことは手伝ってもらいながら、できることは自分でやっていきたい。';
   setWrapText(wishCell8);
   const wishCell9 = ws0.getCell('E9');
-  wishCell9.value = plan.family_wish || '安全に生活してほしい';
+  wishCell9.value = plan.family_wish || '本人が安全に自宅で生活できるよう、日常生活の支援をお願いしたい。転倒や体調変化が心配なので、定期的な見守りと適切な介助をしていただきたい。';
   setWrapText(wishCell9);
 
   // 援助目標
   const goalCell12 = ws0.getCell('E12');
-  goalCell12.value = `長期: ${plan.goal_long || '安定した在宅生活の継続'}`;
+  goalCell12.value = `長期: ${plan.goal_long || '必要な介護サービスを利用しながら、住み慣れた自宅での安定した日常生活を継続する（1年間）'}`;
   setWrapText(goalCell12);
   const goalCell13 = ws0.getCell('E13');
-  goalCell13.value = `短期: ${plan.goal_short || '日常生活動作の維持・向上'}`;
+  goalCell13.value = `短期: ${plan.goal_short || '定期的な支援を受けながら、日常生活動作の維持・向上を図り、安全に生活できる環境を整える（6ヶ月）'}`;
   setWrapText(goalCell13);
   const goalCell14 = ws0.getCell('E14');
   goalCell14.value = plan.needs ? `課題: ${plan.needs}` : '';
