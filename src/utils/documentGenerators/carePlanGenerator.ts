@@ -1,8 +1,8 @@
 import ExcelJS from 'exceljs';
 import { generateWithFiles, generateText } from '../../services/geminiService';
-import { loadShogaiDocuments } from '../../services/dataService';
+import { loadShogaiDocuments, loadBillingRecordsForMonth } from '../../services/dataService';
 import type { GeneratorContext } from './types';
-import type { CareClient, Shift, ShogaiSupplyAmount } from '../../types';
+import type { CareClient, BillingRecord, ShogaiSupplyAmount } from '../../types';
 
 // ==================== プロンプト ====================
 const DEFAULT_PROMPT = `以下は訪問介護の利用者「{{client_name}}」の情報です。
@@ -22,7 +22,7 @@ const DEFAULT_PROMPT = `以下は訪問介護の利用者「{{client_name}}」�
 {{supply_amounts}}
 
 【実績データ（{{year}}年{{month}}月）- 曜日別パターン】
-{{shift_summary}}
+{{billing_summary}}
 
 {{assessment_note}}
 
@@ -44,11 +44,16 @@ const DEFAULT_PROMPT = `以下は訪問介護の利用者「{{client_name}}」�
   ]
 }
 
-service1_stepsは身体介護の援助項目を5〜8項目。
-service2_stepsは家事援助の援助項目を3〜6項目。
-実績データの種別に合わせてください。身体介護のみなら service2_steps は空配列。
-家事援助のみなら service1_steps は空配列。
-重度訪問介護の場合はservice1_stepsに身体系、service2_stepsに生活系の項目を入れてください。`;
+【重要ルール】
+1. service1_stepsは身体介護系の援助項目を必ず5〜8項目出力すること。空配列は不可。
+   例: 移乗, 更衣介助, 身体整容, トイレ介助, 食事介助, 全身清拭, 体位変換, 服薬確認
+2. service2_stepsは家事援助系の援助項目を必ず3〜6項目出力すること。
+   例: 買い物, 調理, 洗濯, 掃除, ゴミ出し, 整理整頓
+3. 重度訪問介護の場合: service1_stepsに身体系5〜8項目, service2_stepsに生活系3〜6項目。
+4. 身体介護のみの利用者でもservice2_stepsは最低3項目（生活援助的内容）を入れること。
+5. user_wish, family_wishは30文字以内厳守。長い文は禁止。
+6. goal_long, goal_shortは40文字以内厳守。
+7. 必ずservice1_steps, service2_stepsに具体的な項目を含めること。空配列は絶対に不可。`;
 
 const DEFAULT_SYSTEM_INSTRUCTION = `訪問介護事業所のサービス提供責任者として居宅介護計画書を作成してください。
 運営指導（実地指導）に通る正式な計画書を作成してください。
@@ -68,7 +73,6 @@ function toReiwa(year: number): number {
   return year - 2018;
 }
 
-/** セルにテキスト折り返し設定を適用 */
 function setWrapText(cell: ExcelJS.Cell) {
   cell.alignment = { ...cell.alignment, wrapText: true, vertical: 'top' };
 }
@@ -91,70 +95,57 @@ interface CarePlan {
   service2_steps: ServiceStepBack[];
 }
 
-// ==================== スケジュール ====================
-// 曜日 → 列 (D=月, E=火, ..., J=日)
+// ==================== スケジュール（実績表ベース） ====================
 const DAY_TO_COL: Record<string, string> = {
   '月': 'D', '火': 'E', '水': 'F', '木': 'G', '金': 'H', '土': 'I', '日': 'J',
 };
 const WEEKDAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
 
-/**
- * テンプレートの計画予定表:
- * Row 20: ヘッダー（時間, 月,火,水,木,金,土,日, 備考）
- * Row 21: 0:00 (2行=Row21-22)
- * Row 23: 1:00 (2行=Row23-24)
- * ...
- * Row 67: 23:00 (2行=Row67-68)
- */
-function timeToRow(timeStr: string): number {
-  const [h] = timeStr.split(':').map(Number);
-  return 21 + h * 2;
-}
-
-/** サービス種別を短縮名に変換 */
-function shortenServiceType(type: string): string {
-  if (type.includes('身体')) return '身体介護';
-  if (type.includes('生活') || type.includes('家事')) return '家事援助';
-  if (type.includes('重度')) return '重度訪問';
-  if (type.includes('通院')) return '通院';
-  if (type.includes('同行')) return '同行援護';
-  if (type.includes('行動')) return '行動援護';
-  return type.substring(0, 4);
+/** サービスコードからサービス種別名に変換 */
+function serviceCodeToLabel(code: string): string {
+  if (!code) return '訪問介護';
+  // サービスコード体系に応じて判定
+  if (code.includes('身体') || /^11[12]/.test(code)) return '身体介護';
+  if (code.includes('生活') || code.includes('家事') || /^12[12]/.test(code)) return '家事援助';
+  if (code.includes('重度') || /^14/.test(code)) return '重度訪問';
+  if (code.includes('通院')) return '通院';
+  if (code.includes('同行') || /^15/.test(code)) return '同行援護';
+  if (code.includes('行動') || /^16/.test(code)) return '行動援護';
+  return code.substring(0, 4);
 }
 
 /**
- * シフト実績から1週間のケアパターンを抽出して計画予定表に書き込む
- * 見本のように、該当時間帯のセルにサービス種別名を記入
+ * 実績表から1週間のケアパターンを抽出して計画予定表に書き込む
  */
-function fillScheduleGrid(ws: ExcelJS.Worksheet, clientShifts: Shift[]) {
-  // 曜日×時間帯パターンを集約（ユニークなパターンのみ）
-  const patterns: { dayName: string; type: string; startH: number; endH: number }[] = [];
+function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]) {
+  // 曜日×時間帯パターンをユニークに集約
   const seen = new Set<string>();
+  const patterns: { dayName: string; type: string; startH: number; endH: number }[] = [];
 
-  for (const s of clientShifts) {
-    if (s.deleted || s.cancelStatus === 'remove_time' || s.cancelStatus === 'canceled_without_time') continue;
-    if (!s.startTime || !s.endTime) continue;
-    const d = new Date(s.date);
+  for (const r of records) {
+    if (!r.startTime || !r.endTime || !r.serviceDate) continue;
+    const d = new Date(r.serviceDate);
     const dayName = WEEKDAY_NAMES[d.getDay()];
-    const startH = parseInt(s.startTime.split(':')[0], 10);
-    const endH = parseInt(s.endTime.split(':')[0], 10);
-    const label = shortenServiceType(s.serviceType || '訪問介護');
+    const startH = parseInt(r.startTime.split(':')[0], 10);
+    const endH = parseInt(r.endTime.split(':')[0], 10);
+    if (isNaN(startH) || isNaN(endH) || endH <= startH) continue;
+    const label = serviceCodeToLabel(r.serviceCode);
     const key = `${dayName}_${startH}_${endH}_${label}`;
     if (seen.has(key)) continue;
     seen.add(key);
     patterns.push({ dayName, type: label, startH, endH });
   }
 
-  // 各パターンについて、該当する時間帯すべてにサービス種別名を記入
+  console.log(`[CarePlan] 計画予定表パターン: ${patterns.length}件`);
+
   for (const p of patterns) {
     const col = DAY_TO_COL[p.dayName];
     if (!col) continue;
-
     for (let h = p.startH; h < p.endH; h++) {
-      const row = 21 + h * 2; // 各時間帯の1行目
+      const row = 21 + h * 2;
+      if (row > 68) break;
       const cell = ws.getCell(`${col}${row}`);
       const existing = cell.value ? String(cell.value) : '';
-      // 同じセルに既に同じラベルがあればスキップ
       if (existing.includes(p.type)) continue;
       cell.value = existing ? `${existing}\n${p.type}` : p.type;
       setWrapText(cell);
@@ -163,17 +154,17 @@ function fillScheduleGrid(ws: ExcelJS.Worksheet, clientShifts: Shift[]) {
 }
 
 /**
- * シフト実績から曜日別サマリーテキスト生成（AIプロンプト用）
+ * 実績表から曜日別サマリーテキスト生成（AIプロンプト用）
  */
-function buildShiftSummary(clientShifts: Shift[]): string {
+function buildBillingSummary(records: BillingRecord[]): string {
   const byDay = new Map<string, string[]>();
-  for (const s of clientShifts) {
-    if (s.deleted || s.cancelStatus === 'remove_time' || s.cancelStatus === 'canceled_without_time') continue;
-    if (!s.startTime || !s.endTime) continue;
-    const d = new Date(s.date);
+  for (const r of records) {
+    if (!r.startTime || !r.endTime || !r.serviceDate) continue;
+    const d = new Date(r.serviceDate);
     const dayName = WEEKDAY_NAMES[d.getDay()];
     if (!byDay.has(dayName)) byDay.set(dayName, []);
-    byDay.get(dayName)!.push(`${s.startTime}~${s.endTime} ${s.serviceType || ''}`);
+    const label = serviceCodeToLabel(r.serviceCode);
+    byDay.get(dayName)!.push(`${r.startTime}~${r.endTime} ${label}`);
   }
   const dayOrder = ['月', '火', '水', '木', '金', '土', '日'];
   const lines: string[] = [];
@@ -185,12 +176,19 @@ function buildShiftSummary(clientShifts: Shift[]): string {
     const details = [...countMap.entries()].map(([e, c]) => `${e}(${c}回)`).join(', ');
     lines.push(`${day}曜: ${details}`);
   }
-  return lines.length > 0 ? lines.join('\n') : 'シフト実績なし';
+  return lines.length > 0 ? lines.join('\n') : '実績データなし';
 }
 
-/**
- * 契約支給量テキスト生成（AIプロンプト用）
- */
+/** 実績表からサービス種別一覧を取得 */
+function getServiceTypesFromBilling(records: BillingRecord[]): string[] {
+  const types = new Set<string>();
+  for (const r of records) {
+    types.add(serviceCodeToLabel(r.serviceCode));
+  }
+  return [...types];
+}
+
+// ==================== 契約支給量 ====================
 function buildSupplyAmountsText(supplyAmounts: ShogaiSupplyAmount[], clientId: string): string {
   const clientSupply = supplyAmounts.filter(s => s.careClientId === clientId);
   if (clientSupply.length === 0) return 'なし';
@@ -199,9 +197,6 @@ function buildSupplyAmountsText(supplyAmounts: ShogaiSupplyAmount[], clientId: s
   ).join('\n');
 }
 
-/**
- * 契約支給量からサービス種別ごとの時間数を抽出
- */
 function getSupplyHours(supplyAmounts: ShogaiSupplyAmount[], clientId: string): Record<string, string> {
   const result: Record<string, string> = {};
   const clientSupply = supplyAmounts.filter(s => s.careClientId === clientId);
@@ -212,7 +207,7 @@ function getSupplyHours(supplyAmounts: ShogaiSupplyAmount[], clientId: string): 
   return result;
 }
 
-/** チェックボックスの状態を判定 */
+// ==================== チェックボックス ====================
 function checkService(
   keys: string[],
   supplyH: Record<string, string>,
@@ -231,7 +226,6 @@ function checkService(
   return { checked: false, hours: '' };
 }
 
-/** チェックボックス文字列を生成（元テンプレートの書式を維持）*/
 function checkboxText(label: string, check: { checked: boolean; hours: string }): string {
   if (check.checked) {
     return check.hours ? `■${label}　${check.hours}時間` : `■${label}　　時間`;
@@ -239,12 +233,10 @@ function checkboxText(label: string, check: { checked: boolean; hours: string })
   return `□${label}　　時間`;
 }
 
-/** 裏面チェックボックス文字列（時間なし） */
 function checkboxTextBack(label: string, checked: boolean): string {
   return checked ? `■${label}` : `□${label}`;
 }
 
-/** 裏面のサービスブロックにチェックボックスを書き込む */
 function writeBackCheckboxes(
   ws: ExcelJS.Worksheet,
   startRow: number,
@@ -254,14 +246,11 @@ function writeBackCheckboxes(
     ride: boolean; behavior: boolean; accompany: boolean;
   },
 ) {
-  // Row startRow: 身体介護, 家事援助, 重度訪問介護
   ws.getCell(`B${startRow}`).value = checkboxTextBack('身体介護', checks.body);
   ws.getCell(`F${startRow}`).value = checkboxTextBack('家事援助', checks.house);
   ws.getCell(`H${startRow}`).value = checkboxTextBack('重度訪問介護', checks.heavy);
-  // Row startRow+1: 通院等介助×2
   ws.getCell(`B${startRow + 1}`).value = checkboxTextBack('通院等介助(身体介護を伴う)', checks.visitBody);
   ws.getCell(`F${startRow + 1}`).value = checkboxTextBack('通院等介助(身体介護を伴わない)', checks.visitNoBody);
-  // Row startRow+2: 乗降, 行動, 同行
   ws.getCell(`B${startRow + 2}`).value = checkboxTextBack('通院等乗降介助', checks.ride);
   ws.getCell(`F${startRow + 2}`).value = checkboxTextBack('行動援護', checks.behavior);
   ws.getCell(`H${startRow + 2}`).value = checkboxTextBack('同行援護', checks.accompany);
@@ -269,7 +258,7 @@ function writeBackCheckboxes(
 
 // ==================== メイン生成関数 ====================
 export async function generate(ctx: GeneratorContext): Promise<void> {
-  const { careClients, shifts, supplyAmounts, year, month, officeInfo, customPrompt, customSystemInstruction, selectedClient } = ctx;
+  const { careClients, billingRecords, supplyAmounts, year, month, officeInfo, customPrompt, customSystemInstruction, selectedClient } = ctx;
 
   const client: CareClient = selectedClient || careClients[0];
   if (!client) throw new Error('利用者が選択されていません');
@@ -284,15 +273,41 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   const promptTemplate = customPrompt || DEFAULT_PROMPT;
   const systemInstruction = customSystemInstruction || DEFAULT_SYSTEM_INSTRUCTION;
 
-  // 実績データ集計
-  const clientShifts = shifts.filter(s => s.clientName === client.name && !s.deleted);
-  console.log(`[CarePlan] 利用者: ${client.name}, シフト件数: ${clientShifts.length}/${shifts.length}`);
-  if (clientShifts.length > 0) {
-    console.log(`[CarePlan] シフト例:`, clientShifts.slice(0, 3).map(s => `${s.date} ${s.startTime}-${s.endTime} ${s.serviceType}`));
+  // === 実績表データ取得 ===
+  let clientRecords = billingRecords.filter(r => r.clientName === client.name);
+  console.log(`[CarePlan] 利用者: ${client.name}, 実績件数: ${clientRecords.length}/${billingRecords.length}`);
+
+  // billingRecordsが空またはこの利用者の実績がない場合、直接ロード
+  if (clientRecords.length === 0) {
+    console.log(`[CarePlan] 実績なし → 直接ロード (${year}年${month}月)`);
+    try {
+      const loaded = await loadBillingRecordsForMonth(year, month);
+      clientRecords = loaded.filter(r => r.clientName === client.name);
+      console.log(`[CarePlan] 直接ロード結果: ${clientRecords.length}/${loaded.length}件`);
+    } catch (e) {
+      console.warn(`[CarePlan] 実績ロード失敗:`, e);
+    }
   }
-  const serviceTypes = [...new Set(clientShifts.map(s => s.serviceType).filter(Boolean))];
-  const totalVisits = clientShifts.length;
-  const shiftSummary = buildShiftSummary(clientShifts);
+
+  // 当月になければ前月も探す
+  if (clientRecords.length === 0) {
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    console.log(`[CarePlan] 当月実績なし → 前月(${prevYear}年${prevMonth}月)を検索`);
+    try {
+      const prevRecords = await loadBillingRecordsForMonth(prevYear, prevMonth);
+      clientRecords = prevRecords.filter(r => r.clientName === client.name);
+      console.log(`[CarePlan] 前月実績: ${clientRecords.length}件`);
+    } catch { /* skip */ }
+  }
+
+  if (clientRecords.length > 0) {
+    console.log(`[CarePlan] 実績例:`, clientRecords.slice(0, 3).map(r => `${r.serviceDate} ${r.startTime}-${r.endTime} ${r.serviceCode}`));
+  }
+
+  const serviceTypes = getServiceTypesFromBilling(clientRecords);
+  const totalVisits = clientRecords.length;
+  const billingSummary = buildBillingSummary(clientRecords);
   const supplyText = buildSupplyAmountsText(supplyAmounts, client.id);
   const supplyHours = getSupplyHours(supplyAmounts, client.id);
   console.log(`[CarePlan] サービス種別: ${serviceTypes.join(', ')}, 契約支給量: ${JSON.stringify(supplyHours)}`);
@@ -316,7 +331,7 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
     contract_start: client.contractStart || '不明',
     year: String(year),
     month: String(month),
-    shift_summary: shiftSummary,
+    billing_summary: billingSummary,
     supply_amounts: supplyText,
     assessment_note: assessmentFileUrls.length > 0
       ? '【添付アセスメント資料あり】内容を読み取り計画に反映してください。'
@@ -349,7 +364,6 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   }
 
   console.log(`[CarePlan] AI応答 - service1_steps: ${plan.service1_steps?.length || 0}件, service2_steps: ${plan.service2_steps?.length || 0}件`);
-  console.log(`[CarePlan] AI応答 - user_wish: "${plan.user_wish}", goal_long: "${plan.goal_long}"`);
   if (plan.service1_steps?.length) console.log(`[CarePlan] service1例:`, plan.service1_steps[0]);
   if (plan.service2_steps?.length) console.log(`[CarePlan] service2例:`, plan.service2_steps[0]);
 
@@ -372,29 +386,16 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
     planDateText = `令和${toReiwa(year)}年${month}月1日`;
   }
 
-  // H3: 作成日
   ws0.getCell('H3').value = planDateText;
-
-  // K3: 作成者（サ責名）
   ws0.getCell('K3').value = officeInfo.serviceManager || '未設定';
-
-  // A5: 利用者氏名
   ws0.getCell('A5').value = `${client.name}　様`;
-
-  // E5: 生年月日
   ws0.getCell('E5').value = client.birthDate || '';
-
-  // G5-G6: 住所
-  if (client.postalCode) {
-    ws0.getCell('G5').value = `〒${client.postalCode}`;
-  }
+  if (client.postalCode) ws0.getCell('G5').value = `〒${client.postalCode}`;
   ws0.getCell('G6').value = client.address || '';
-
-  // K5-K6: TEL
   ws0.getCell('K5').value = client.phone ? `TEL ${client.phone}` : '';
   ws0.getCell('K6').value = client.mobilePhone ? `携帯 ${client.mobilePhone}` : '';
 
-  // E8〜E10: 本人(家族)の希望（折り返し設定）
+  // 本人(家族)の希望
   const wishCell8 = ws0.getCell('E8');
   wishCell8.value = plan.user_wish || '自宅で安心して暮らしたい';
   setWrapText(wishCell8);
@@ -402,7 +403,7 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   wishCell9.value = plan.family_wish || '安全に生活してほしい';
   setWrapText(wishCell9);
 
-  // E12〜E14: 援助目標（折り返し設定）
+  // 援助目標
   const goalCell12 = ws0.getCell('E12');
   goalCell12.value = `長期: ${plan.goal_long || '安定した在宅生活の継続'}`;
   setWrapText(goalCell12);
@@ -413,7 +414,7 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   goalCell14.value = plan.needs ? `課題: ${plan.needs}` : '';
   setWrapText(goalCell14);
 
-  // ===== サービス内容チェックボックス（Row 16-18）=====
+  // サービス内容チェックボックス
   const bodyCheck = checkService(['身体介護', '身体'], supplyHours, serviceTypes);
   const houseCheck = checkService(['家事援助', '家事'], supplyHours, serviceTypes);
   const heavyCheck = checkService(['重度訪問', '重度'], supplyHours, serviceTypes);
@@ -423,42 +424,31 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   const accompanyCheck = checkService(['同行援護', '同行'], supplyHours, serviceTypes);
   const behaviorCheck = checkService(['行動援護', '行動'], supplyHours, serviceTypes);
 
-  // Row 16: 身体介護, 家事援助, 重度訪問介護
   ws0.getCell('D16').value = checkboxText('身体介護', bodyCheck);
   ws0.getCell('G16').value = checkboxText('家事援助', houseCheck);
   ws0.getCell('J16').value = checkboxText('重度訪問介護', heavyCheck);
-  // Row 17: 通院等介助×2, 通院等乗降介助
   ws0.getCell('D17').value = checkboxText('通院等介助(身体介護を伴う)', visitWithBody);
   ws0.getCell('G17').value = checkboxText('通院等介助(身体介護を伴わない)', visitWithoutBody);
   ws0.getCell('J17').value = checkboxText('通院等乗降介助', rideCheck);
-  // Row 18: 同行援護, 行動援護
   ws0.getCell('D18').value = checkboxText('同行援護', accompanyCheck);
   ws0.getCell('G18').value = checkboxText('行動援護', behaviorCheck);
 
-  // ===== 計画予定表（Row 21〜68, Col D〜J）=====
-  console.log(`[CarePlan] 計画予定表書き込み開始 - シフト件数: ${clientShifts.length}`);
-  fillScheduleGrid(ws0, clientShifts);
-  // 書き込み確認ログ
-  const testCell = ws0.getCell('D21');
-  console.log(`[CarePlan] 計画予定表 D21の値: ${JSON.stringify(testCell.value)}`);
+  // 計画予定表（実績表ベース）
+  console.log(`[CarePlan] 計画予定表書き込み - 実績件数: ${clientRecords.length}`);
+  fillScheduleFromBilling(ws0, clientRecords);
 
-  // 備考欄（K列）に補足事項
+  // 備考欄
   if (plan.schedule_remarks) {
     const remarkCell = ws0.getCell('K21');
     remarkCell.value = plan.schedule_remarks;
     setWrapText(remarkCell);
   }
 
-  // Row 70: 交付日
+  // 交付日
   ws0.getCell('D70').value = planDateText;
 
   // ==============================
-  // Sheet 1: 居宅介護計画書（裏）— サービス内容詳細
-  // ブロック構造:
-  //   サービス1: ヘッダーRow3, データRow4-11, チェックRow12-14
-  //   サービス2: ヘッダーRow16, データRow17-24, チェックRow25-27
-  //   サービス3: ヘッダーRow29, データRow30-37, チェックRow38-40
-  //   サービス4: ヘッダーRow42, データRow43-50, チェックRow51-53
+  // Sheet 1: 居宅介護計画書（裏）
   // ==============================
   const ws1 = workbook.worksheets[1];
   if (ws1) {
@@ -468,12 +458,11 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
       ride: rideCheck.checked, behavior: behaviorCheck.checked, accompany: accompanyCheck.checked,
     };
 
-    // --- サービス1: Row 4-11（身体介護系）---
+    // サービス1: Row 4-11（身体介護系）
     const s1 = plan.service1_steps || [];
-    console.log(`[CarePlan] 裏面サービス1書き込み: ${s1.length}件`);
+    console.log(`[CarePlan] 裏面サービス1: ${s1.length}件`);
     for (let i = 0; i < Math.min(s1.length, 8); i++) {
       const row = 4 + i;
-      console.log(`[CarePlan]   Row${row}: item="${s1[i].item}", content="${s1[i].content}", note="${s1[i].note}"`);
       const bCell = ws1.getCell(`B${row}`);
       bCell.value = s1[i].item || '';
       setWrapText(bCell);
@@ -486,12 +475,11 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
     }
     writeBackCheckboxes(ws1, 12, checkFlags);
 
-    // --- サービス2: Row 17-24（家事援助系）---
+    // サービス2: Row 17-24（家事援助系）
     const s2 = plan.service2_steps || [];
-    console.log(`[CarePlan] 裏面サービス2書き込み: ${s2.length}件`);
+    console.log(`[CarePlan] 裏面サービス2: ${s2.length}件`);
     for (let i = 0; i < Math.min(s2.length, 8); i++) {
       const row = 17 + i;
-      console.log(`[CarePlan]   Row${row}: item="${s2[i].item}", content="${s2[i].content}", note="${s2[i].note}"`);
       const bCell = ws1.getCell(`B${row}`);
       bCell.value = s2[i].item || '';
       setWrapText(bCell);
@@ -504,7 +492,7 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
     }
     writeBackCheckboxes(ws1, 25, checkFlags);
 
-    // --- サービス3,4: チェックボックスのみ（データが多い場合に拡張可能）---
+    // サービス3,4: チェックボックスのみ
     writeBackCheckboxes(ws1, 38, checkFlags);
     writeBackCheckboxes(ws1, 51, checkFlags);
   }
