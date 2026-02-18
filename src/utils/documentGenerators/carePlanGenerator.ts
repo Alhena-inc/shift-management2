@@ -6,7 +6,7 @@ import type { CareClient, BillingRecord, ShogaiSupplyAmount } from '../../types'
 
 // ==================== プロンプト ====================
 const DEFAULT_PROMPT = `あなたは障害福祉サービスの居宅介護事業所に勤務するベテランのサービス提供責任者です。
-以下の情報をもとに、居宅介護計画書の各セクションを作成してください。
+運営指導（実地指導）に耐える正式な居宅介護計画書を作成してください。
 
 【利用者情報】
 - 氏名: {{client_name}}
@@ -26,9 +26,9 @@ const DEFAULT_PROMPT = `あなたは障害福祉サービスの居宅介護事�
 
 {{assessment_note}}
 
-═══════════════════════════════════════
+═══════════════════════════════════════════════════
 ■ 絶対遵守ルール
-═══════════════════════════════════════
+═══════════════════════════════════════════════════
 
 ### 1. アセスメントに記載のない援助項目は絶対に生成しない
 - アセスメント資料がある場合、「身体状況」「援助内容」「生活援助」欄に記載がある項目のみ対象
@@ -38,79 +38,131 @@ const DEFAULT_PROMPT = `あなたは障害福祉サービスの居宅介護事�
 ### 2. 他サービス事業所が担当しているケア内容は含めない
 - 「訪問看護が担当」「デイサービスで実施」等の援助は含めない
 
-### 3. 用語はアセスメントと一致させる
-- 福祉用具名、移動手段、排泄用品名等はアセスメントの記載通り
+### 3. 用語完全一致ルール
+- 福祉用具名、移動手段、排泄用品名等はアセスメントの記載通りに使用
+- 勝手に言い換えない（例: リハビリパンツ→おむつに変えない、ロフストランドクラッチ→杖に変えない）
+- ADL/IADL項目名もアセスメントの表記に合わせる
 
-### 4. アセスメントがない場合
+### 4. アセスメント読み取りルール（資料がある場合）
+- ADL項目（移動・移乗・排泄・食事・入浴・更衣・整容）の自立度を確認
+- IADL項目（調理・洗濯・掃除・買い物・金銭管理・服薬管理）の自立度を確認
+- 使用している福祉用具・自助具の正式名称を抽出
+- 排泄用品の種類・サイズがあればそのまま記載
+- 「一部介助」「全介助」「見守り」等の介助レベルを反映
+- 疾患名・障害名は正式名称を使用
+
+### 5. 留意事項の根拠チェック
+- 留意事項は必ずアセスメントの記載内容に基づくこと
+- アセスメントに記載のない一般的な注意（「転倒に注意」等）は、根拠なく使わない
+- 具体的な状態像（麻痺の部位、関節拘縮の程度、嚥下機能等）を反映させる
+
+### 6. アセスメントがない場合
 - 実績データ・契約支給量から利用サービス種別に合った計画を作成
+- この場合は一般的な注意事項の使用を許可
 
-═══════════════════════════════════════
+═══════════════════════════════════════════════════
+■ サービス種別の自動判定ルール
+═══════════════════════════════════════════════════
+以下の優先順位で各サービス枠のservice_typeを判定する:
+1. 契約支給量の種別名（「居宅介護 身体介護」→「身体介護」）
+2. 実績のサービスコード（身体=11xxxx、生活=12xxxx、重度=14xxxx）
+3. 訪問時間帯と援助内容から推測（排泄・入浴・食事介助→身体介護、掃除・洗濯・調理→家事援助）
+
+重度訪問介護の場合: 身体介護と家事援助が一体的に提供されるため、1つの枠に混在可。
+
+═══════════════════════════════════════════════════
 ■ セクション①：利用者・家族の希望
-═══════════════════════════════════════
-- アセスメントの意向をもとに計画書にふさわしい文体で自然にまとめ直す
-- アセスメントの文面をそのままコピーしない
-- 本人と家族は分けて記載
+═══════════════════════════════════════════════════
+- アセスメントの意向をもとに、計画書にふさわしい主体的表現で自然にまとめ直す
+- アセスメントの文面をそのままコピーしない（言い回しを変えて再構成）
+- 本人の希望は「〜したい」「〜を続けたい」等の主体的表現で記載
+- 家族の希望は「〜してほしい」「〜を望んでいる」等の表現で記載
+- 具体的な生活場面や行動を含め、抽象的すぎない文章にする
 
-═══════════════════════════════════════
+═══════════════════════════════════════════════════
 ■ セクション②：サービス内容
-═══════════════════════════════════════
-- 1日の訪問パターン（時間帯）ごとにサービス枠を分ける
-- 1つのサービス枠に身体介護と家事援助を混在させない
+═══════════════════════════════════════════════════
+- 1日の訪問パターン（時間帯×サービス種別）ごとにサービス枠を分ける
+- 1つのサービス枠に身体介護と家事援助を混在させない（重度訪問介護を除く）
 - 1回の訪問で実施するケアの流れ（手順）を時系列で記載する
-- 例：午前に身体介護、午後に家事援助 → サービス1とサービス2に分ける
+- 例：午前に身体介護、午後に家事援助 → service1とservice2に分ける
 - 同じ種別でも時間帯が異なれば別のサービス枠にする
+- 各ステップの「content」は具体的な介助方法・手順を記述する（「〜の介助」だけでなく「〜の状態を確認し、〜を介助する」等）
+- 各ステップの「note」はその利用者固有の留意点を記述する（一般論ではなく個別性のある内容）
 
-═══════════════════════════════════════
+═══════════════════════════════════════════════════
 
 以下をJSON形式のみで出力（JSON以外不要、マークダウン記法不要）。
-文字数制限を厳守。
 
 {
-  "user_wish": "本人の希望（30文字以内）",
-  "family_wish": "家族の希望（30文字以内）",
-  "goal_long": "長期目標（40文字以内。期間も記載）",
-  "goal_short": "短期目標（40文字以内。期間も記載）",
-  "needs": "解決すべき課題（40文字以内）",
-  "schedule_remarks": "備考欄（100文字以内。他サービス利用や補足事項）",
-  "service1_steps": [
-    {"item": "援助項目名（8文字以内）", "content": "具体的内容（20文字以内）", "note": "留意事項（25文字以内）"}
-  ],
-  "service2_steps": [...],
-  "service3_steps": [...],
-  "service4_steps": [...]
+  "user_wish": "本人の希望（50〜80文字。主体的表現で具体的に）",
+  "family_wish": "家族の希望（50〜80文字。具体的な生活場面を含めて）",
+  "goal_long": "長期目標（60〜100文字。達成期間と具体的到達点を記載）",
+  "goal_short": "短期目標（60〜100文字。達成期間と具体的到達点を記載）",
+  "needs": "解決すべき課題（60〜100文字。アセスメントに基づく具体的課題）",
+  "schedule_remarks": "備考欄（100〜200文字。他サービス利用状況・緊急連絡先・特記事項）",
+  "service1": {
+    "service_type": "身体介護 or 家事援助 or 重度訪問介護 等",
+    "visit_label": "月〜金 午前の身体介護 等（訪問パターンの説明）",
+    "steps": [
+      {"item": "援助項目名（15文字以内）", "content": "具体的な援助内容・手順（40〜60文字）", "note": "この利用者固有の留意事項（40〜60文字）"}
+    ]
+  },
+  "service2": {
+    "service_type": "...",
+    "visit_label": "...",
+    "steps": [...]
+  },
+  "service3": null,
+  "service4": null
 }
 
 【出力ルール】
-1. service1_stepsは1回目の訪問パターンの援助項目を5〜9項目。空配列は絶対に不可。
-2. service2_stepsは2回目の訪問パターンまたは別種別の援助項目を5〜8項目。空配列は絶対に不可。
-3. service3_stepsは3番目の訪問パターンがある場合のみ。ない場合は空配列[]。
-4. service4_stepsは4番目の訪問パターンがある場合のみ。ない場合は空配列[]。
-5. 各サービス枠の援助項目は、その訪問で実施するケアの流れ（手順）を時系列順に並べる。
-6. user_wish, family_wishは30文字以内厳守。
-7. goal_long, goal_shortは40文字以内厳守。
-8. 重度訪問介護の場合でも、訪問パターンごとにサービス枠を分ける。`;
+1. service1は1回目の訪問パターン。stepsは5〜8項目。必須（nullは不可）。
+2. service2は2回目の訪問パターンまたは別種別。stepsは5〜8項目。必須（nullは不可）。
+3. service3は3番目の訪問パターンがある場合のみ。ない場合はnull。
+4. service4は4番目の訪問パターンがある場合のみ。ない場合はnull。
+5. 各サービス枠のstepsは、その訪問で実施するケアの流れ（手順）を時系列順に並べる。
+6. service_typeは必ず判定ルールに従って正確に設定する。
+7. visit_labelは「月〜金 午前の身体介護」「火・木 午後の家事援助」等、曜日と時間帯を含める。
+8. 重度訪問介護の場合、service_typeは「重度訪問介護」とし、身体・家事の混在を許可する。
+9. contentは具体的な手順を40文字以上で記述する。「〜の介助」だけの短い記述は不可。
+10. noteはその利用者の個別状況に基づく留意点を40文字以上で記述する。`;
 
 const DEFAULT_SYSTEM_INSTRUCTION = `あなたは障害福祉サービスの居宅介護事業所に勤務するベテランのサービス提供責任者です。
-運営指導（実地指導）に通る正式な居宅介護計画書を作成します。
+運営指導（実地指導）に耐える正式な居宅介護計画書を作成します。
 
 ## 最重要ルール
-- アセスメント資料がある場合: 内容を必ず読み取り、記載されている援助内容のみを計画に反映。記載のない項目は生成しない。
+- アセスメント資料がある場合: 内容を必ず読み取り、記載されている援助内容のみを計画に反映。記載のない項目は絶対に生成しない。
 - アセスメント資料がない場合: 実績データ・契約支給量から利用者に合ったサービス内容を作成。
 - 他サービス事業所の担当内容は居宅介護計画に含めない。
-- service1_stepsとservice2_stepsは必ず5件以上。空配列は不可。
+- service1とservice2は必ず5件以上のstepsを持つこと。nullは不可。
 - 必ず有効なJSON形式のみ出力。余計な説明文・マークダウン記法は不要。
 
 ## サービス枠の分け方
 - 1日の訪問パターン（時間帯×サービス種別）ごとにサービス枠を分ける
-- 同一枠に身体介護と家事援助を混在させない
+- 同一枠に身体介護と家事援助を混在させない（重度訪問介護を除く）
 - 各枠内は1回の訪問の流れを時系列で記載
+- 各枠のservice_typeを正確に判定する（契約支給量→実績コード→内容から推測の優先順）
+
+## 文章品質の基準
+- 「content」（援助内容）は40〜60文字で具体的な手順・方法を記述
+- 「note」（留意事項）は40〜60文字でその利用者固有の注意点を記述
+- 一般的・テンプレート的な短い表現は不可（「転倒に注意」「異変時は連絡」等の定型文だけでは不十分）
+- アセスメントの記載をもとに、個別性のある内容にすること
+
+## 用語の正確性
+- 福祉用具名は正式名称を使用（リハビリパンツ、ロフストランドクラッチ等）
+- 排泄用品名はアセスメント記載通り（勝手に「おむつ」に統一しない）
+- 疾患名・障害名は正式名称を使用
 
 ## 運営指導チェックポイント
-- アセスメント→計画の整合性
-- 計画→実績の整合性
-- 他サービスとの役割分担
-- 予定表とサービス内容の連動
-- 用語の正確性`;
+- アセスメント→計画の整合性（計画の各項目がアセスメントのどこに根拠があるか）
+- 計画→実績の整合性（計画のサービス種別が実績と一致するか）
+- 他サービスとの役割分担（居宅介護の範囲を逸脱していないか）
+- 予定表とサービス内容の連動（曜日・時間帯が実績と一致するか）
+- 用語の正確性（アセスメントと計画で用語が統一されているか）
+- 個別性の確保（テンプレートの使い回しではなく利用者固有の計画か）`;
 
 // ==================== ユーティリティ ====================
 function applyTemplate(template: string, vars: Record<string, string>): string {
@@ -130,12 +182,27 @@ function setWrapText(cell: ExcelJS.Cell) {
 }
 
 // ==================== 型定義 ====================
+interface ServiceStep {
+  item: string;
+  content: string;
+  note: string;
+}
+
+/** 新フォーマット: サービス枠ごとに種別・ラベル・ステップを持つ */
+interface ServiceBlock {
+  service_type: string;
+  visit_label: string;
+  steps: ServiceStep[];
+}
+
+/** 旧フォーマット互換用 */
 interface ServiceStepBack {
   item: string;
   content: string;
   note: string;
 }
 
+/** 正規化後の計画データ */
 interface CarePlan {
   user_wish: string;
   family_wish: string;
@@ -143,10 +210,56 @@ interface CarePlan {
   goal_short: string;
   needs: string;
   schedule_remarks: string;
-  service1_steps: ServiceStepBack[];
-  service2_steps: ServiceStepBack[];
-  service3_steps: ServiceStepBack[];
-  service4_steps: ServiceStepBack[];
+  service1: ServiceBlock | null;
+  service2: ServiceBlock | null;
+  service3: ServiceBlock | null;
+  service4: ServiceBlock | null;
+}
+
+/** AI出力の生JSONを正規化（旧フォーマット・新フォーマット両対応） */
+function normalizeCarePlan(raw: Record<string, unknown>): CarePlan {
+  const plan: CarePlan = {
+    user_wish: (raw.user_wish as string) || '',
+    family_wish: (raw.family_wish as string) || '',
+    goal_long: (raw.goal_long as string) || '',
+    goal_short: (raw.goal_short as string) || '',
+    needs: (raw.needs as string) || '',
+    schedule_remarks: (raw.schedule_remarks as string) || '',
+    service1: null,
+    service2: null,
+    service3: null,
+    service4: null,
+  };
+
+  const serviceKeys = ['service1', 'service2', 'service3', 'service4'] as const;
+  for (const key of serviceKeys) {
+    const oldKey = `${key}_steps`;
+
+    if (raw[key] && typeof raw[key] === 'object' && !Array.isArray(raw[key])) {
+      // 新フォーマット: { service_type, visit_label, steps }
+      const block = raw[key] as Record<string, unknown>;
+      const steps = Array.isArray(block.steps) ? block.steps as ServiceStep[] : [];
+      if (steps.length > 0) {
+        plan[key] = {
+          service_type: (block.service_type as string) || '',
+          visit_label: (block.visit_label as string) || '',
+          steps,
+        };
+      }
+    } else if (Array.isArray(raw[oldKey])) {
+      // 旧フォーマット: service1_steps: [...]
+      const steps = raw[oldKey] as ServiceStep[];
+      if (steps.length > 0) {
+        plan[key] = {
+          service_type: '',
+          visit_label: '',
+          steps,
+        };
+      }
+    }
+  }
+
+  return plan;
 }
 
 // ==================== スケジュール（実績表ベース） ====================
@@ -344,6 +457,97 @@ function checkboxTextBack(label: string, checked: boolean): string {
   return checked ? `■${label}` : `□${label}`;
 }
 
+// ==================== サービス枠ごとのチェックフラグ ====================
+interface CheckFlags {
+  body: boolean;
+  house: boolean;
+  heavy: boolean;
+  visitBody: boolean;
+  visitNoBody: boolean;
+  ride: boolean;
+  behavior: boolean;
+  accompany: boolean;
+}
+
+/** サービス種別文字列からチェックフラグを生成（該当する種別のみ■） */
+function serviceTypeToCheckFlags(serviceType: string): CheckFlags {
+  const flags: CheckFlags = {
+    body: false, house: false, heavy: false,
+    visitBody: false, visitNoBody: false,
+    ride: false, behavior: false, accompany: false,
+  };
+  if (!serviceType) return flags;
+
+  const st = serviceType.replace(/\s+/g, '');
+  if (st.includes('身体介護') || st.includes('身体')) flags.body = true;
+  if (st.includes('家事援助') || st.includes('家事') || st.includes('生活援助') || st.includes('生活')) flags.house = true;
+  if (st.includes('重度訪問') || st.includes('重度')) flags.heavy = true;
+  if (st.includes('通院') && st.includes('伴う')) flags.visitBody = true;
+  if (st.includes('通院') && st.includes('伴わない')) flags.visitNoBody = true;
+  if (st.includes('通院') && !st.includes('伴う') && !st.includes('伴わない')) flags.visitBody = true; // 通院等介助はデフォルト身体あり
+  if (st.includes('乗降')) flags.ride = true;
+  if (st.includes('同行')) flags.accompany = true;
+  if (st.includes('行動')) flags.behavior = true;
+
+  return flags;
+}
+
+// ==================== バリデーション ====================
+interface ValidationResult {
+  valid: boolean;
+  warnings: string[];
+  errors: string[];
+}
+
+/** AI出力のバリデーション */
+function validateCarePlan(plan: CarePlan): ValidationResult {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
+  // 必須フィールドチェック
+  if (!plan.user_wish) errors.push('本人の希望が空です');
+  if (!plan.family_wish) errors.push('家族の希望が空です');
+  if (!plan.goal_long) errors.push('長期目標が空です');
+  if (!plan.goal_short) errors.push('短期目標が空です');
+
+  // 文字数チェック（最低文字数）
+  if (plan.user_wish && plan.user_wish.length < 10) warnings.push(`本人の希望が短すぎます（${plan.user_wish.length}文字）`);
+  if (plan.family_wish && plan.family_wish.length < 10) warnings.push(`家族の希望が短すぎます（${plan.family_wish.length}文字）`);
+  if (plan.goal_long && plan.goal_long.length < 15) warnings.push(`長期目標が短すぎます（${plan.goal_long.length}文字）`);
+  if (plan.goal_short && plan.goal_short.length < 15) warnings.push(`短期目標が短すぎます（${plan.goal_short.length}文字）`);
+
+  // service1, service2は必須
+  if (!plan.service1 || plan.service1.steps.length === 0) {
+    errors.push('サービス1の援助項目がありません。AIの出力を確認してください。');
+  }
+  if (!plan.service2 || plan.service2.steps.length === 0) {
+    errors.push('サービス2の援助項目がありません。AIの出力を確認してください。');
+  }
+
+  // 各サービス枠のステップ数チェック
+  for (let i = 1; i <= 4; i++) {
+    const service = plan[`service${i}` as keyof CarePlan] as ServiceBlock | null;
+    if (service && service.steps.length > 0) {
+      if (service.steps.length < 5) {
+        warnings.push(`サービス${i}の援助項目が少なすぎます（${service.steps.length}件、推奨5〜8件）`);
+      }
+      // 各ステップの内容チェック
+      for (let j = 0; j < service.steps.length; j++) {
+        const step = service.steps[j];
+        if (!step.item) warnings.push(`サービス${i}のステップ${j + 1}: 援助項目名が空です`);
+        if (!step.content) warnings.push(`サービス${i}のステップ${j + 1}: 援助内容が空です`);
+        if (step.content && step.content.length < 10) warnings.push(`サービス${i}のステップ${j + 1}: 援助内容が短すぎます（${step.content.length}文字）`);
+      }
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    warnings,
+    errors,
+  };
+}
+
 // ==================== メイン生成関数 ====================
 export async function generate(ctx: GeneratorContext): Promise<void> {
   const { careClients, billingRecords, supplyAmounts, year, month, officeInfo, customPrompt, customSystemInstruction, selectedClient } = ctx;
@@ -438,12 +642,6 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   const prompt = applyTemplate(promptTemplate, templateVars);
 
   // AI生成
-  let plan: CarePlan = {
-    user_wish: '', family_wish: '', goal_long: '', goal_short: '', needs: '',
-    schedule_remarks: '',
-    service1_steps: [], service2_steps: [], service3_steps: [], service4_steps: [],
-  };
-
   const res = assessmentFileUrls.length > 0
     ? await generateWithFiles(prompt, assessmentFileUrls, systemInstruction)
     : await generateText(prompt, systemInstruction);
@@ -454,41 +652,30 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   const jsonMatch = res.text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error(`JSON抽出失敗: ${res.text.substring(0, 200)}`);
 
+  let rawJson: Record<string, unknown>;
   try {
-    plan = { ...plan, ...JSON.parse(jsonMatch[0]) };
+    rawJson = JSON.parse(jsonMatch[0]);
   } catch (e) {
     throw new Error(`JSON解析失敗: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  console.log(`[CarePlan] AI応答 - service1_steps: ${plan.service1_steps?.length || 0}件, service2_steps: ${plan.service2_steps?.length || 0}件`);
-  console.log(`[CarePlan] AI応答全文（先頭500文字）:`, res.text.substring(0, 500));
-  if (plan.service1_steps?.length) console.log(`[CarePlan] service1例:`, plan.service1_steps[0]);
-  if (plan.service2_steps?.length) console.log(`[CarePlan] service2例:`, plan.service2_steps[0]);
+  // 新旧フォーマット両対応で正規化
+  const plan = normalizeCarePlan(rawJson);
 
-  // AIが空配列を返した場合のフォールバック（デフォルト項目を生成）
-  if (!plan.service1_steps || plan.service1_steps.length === 0) {
-    console.warn(`[CarePlan] service1_stepsが空 → フォールバック生成`);
-    plan.service1_steps = [
-      { item: '健康チェック', content: 'バイタルサイン測定・体調確認', note: '異変時は事業所に連絡' },
-      { item: '移乗介助', content: 'ベッド⇔車椅子の移乗', note: '転倒に注意' },
-      { item: '排泄介助', content: 'トイレ誘導・おむつ交換', note: '皮膚状態を確認' },
-      { item: '食事介助', content: '食事の準備・摂食の見守り', note: '誤嚥に注意' },
-      { item: '更衣介助', content: '着替えの介助', note: '関節可動域に注意' },
-      { item: '清拭・入浴', content: '全身清拭または入浴介助', note: '皮膚の状態観察' },
-      { item: '身体整容', content: '整髪・歯磨き・爪切り', note: '自立部分は見守り' },
-      { item: '服薬確認', content: '服薬の声かけ・確認', note: '飲み忘れ防止' },
-    ];
+  console.log(`[CarePlan] AI応答 - service1: ${plan.service1?.steps.length || 0}件 (${plan.service1?.service_type || '未判定'}), service2: ${plan.service2?.steps.length || 0}件 (${plan.service2?.service_type || '未判定'})`);
+  console.log(`[CarePlan] AI応答全文（先頭500文字）:`, res.text.substring(0, 500));
+  if (plan.service1?.steps.length) console.log(`[CarePlan] service1例:`, plan.service1.steps[0]);
+  if (plan.service2?.steps.length) console.log(`[CarePlan] service2例:`, plan.service2.steps[0]);
+
+  // バリデーション（フォールバック廃止 → エラー通知）
+  const validation = validateCarePlan(plan);
+  if (validation.warnings.length > 0) {
+    console.warn(`[CarePlan] バリデーション警告:`, validation.warnings);
   }
-  if (!plan.service2_steps || plan.service2_steps.length === 0) {
-    console.warn(`[CarePlan] service2_stepsが空 → フォールバック生成`);
-    plan.service2_steps = [
-      { item: '掃除', content: '居室・トイレ・浴室の清掃', note: '利用者の希望箇所を優先' },
-      { item: '洗濯', content: '洗濯・干す・取り込み・整理', note: '素材に応じた洗い方' },
-      { item: '調理', content: '食事の調理・配膳・後片付け', note: 'アレルギー・制限食確認' },
-      { item: '買い物', content: '日用品・食料品の購入代行', note: '買い物リスト確認' },
-      { item: 'ゴミ出し', content: 'ゴミの分別・集積所への搬出', note: '収集日を確認' },
-      { item: '整理整頓', content: '室内の整理・衣類の整頓', note: '利用者と相談しながら' },
-    ];
+  if (!validation.valid) {
+    const errorMsg = validation.errors.join('\n');
+    console.error(`[CarePlan] バリデーションエラー:`, validation.errors);
+    throw new Error(`居宅介護計画書の生成内容に不備があります。アセスメントデータや実績データを確認してください。\n\n${errorMsg}`);
   }
 
   // ==============================
@@ -587,15 +774,15 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
     { dataStartRow: 115, dataEndRow: 122, chkStartRow: 123 }, // サービス4
   ];
 
-  const allSteps = [
-    plan.service1_steps || [],
-    plan.service2_steps || [],
-    plan.service3_steps || [],
-    plan.service4_steps || [],
+  const allServices: (ServiceBlock | null)[] = [
+    plan.service1,
+    plan.service2,
+    plan.service3,
+    plan.service4,
   ];
 
-  // チェックボックスフラグ
-  const checkFlags = {
+  // 表面チェックボックス用のグローバルフラグ（従来と同じ: 契約支給量・実績から判定）
+  const globalCheckFlags: CheckFlags = {
     body: bodyCheck.checked, house: houseCheck.checked, heavy: heavyCheck.checked,
     visitBody: visitWithBody.checked, visitNoBody: visitWithoutBody.checked,
     ride: rideCheck.checked, behavior: behaviorCheck.checked, accompany: accompanyCheck.checked,
@@ -603,10 +790,11 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
 
   for (let blockIdx = 0; blockIdx < serviceBlocks.length; blockIdx++) {
     const block = serviceBlocks[blockIdx];
-    const steps = allSteps[blockIdx];
-    const maxRows = block.dataEndRow - block.dataStartRow + 1; // 8 or 9 rows
+    const service = allServices[blockIdx];
+    const steps = service?.steps || [];
+    const maxRows = block.dataEndRow - block.dataStartRow + 1; // 8 rows
 
-    console.log(`[CarePlan] サービス${blockIdx + 1}: ${steps.length}件 → Row${block.dataStartRow}-${block.dataEndRow}`);
+    console.log(`[CarePlan] サービス${blockIdx + 1}: ${steps.length}件 (${service?.service_type || '未使用'}) → Row${block.dataStartRow}-${block.dataEndRow}`);
 
     // データ行に書き込み（テンプレートのセル結合済み: B:E, F:I, J:L）
     for (let i = 0; i < maxRows; i++) {
@@ -624,18 +812,23 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
       }
     }
 
-    // チェックボックス行（テンプレートに既存のセルに値を上書き）
+    // チェックボックス行: サービス枠ごとに個別判定
+    // service_typeがある場合はそれに基づく、なければグローバルフラグを使用
+    const blockFlags = (service?.service_type)
+      ? serviceTypeToCheckFlags(service.service_type)
+      : globalCheckFlags;
+
     const chk = block.chkStartRow;
-    ws0.getCell(`B${chk}`).value = checkboxTextBack('身体介護', checkFlags.body);
-    ws0.getCell(`F${chk}`).value = checkboxTextBack('家事援助', checkFlags.house);
-    ws0.getCell(`H${chk}`).value = checkboxTextBack('重度訪問介護', checkFlags.heavy);
+    ws0.getCell(`B${chk}`).value = checkboxTextBack('身体介護', blockFlags.body);
+    ws0.getCell(`F${chk}`).value = checkboxTextBack('家事援助', blockFlags.house);
+    ws0.getCell(`H${chk}`).value = checkboxTextBack('重度訪問介護', blockFlags.heavy);
 
-    ws0.getCell(`B${chk + 1}`).value = checkboxTextBack('通院等介助(身体介護を伴う)', checkFlags.visitBody);
-    ws0.getCell(`F${chk + 1}`).value = checkboxTextBack('通院等介助(身体介護を伴わない)', checkFlags.visitNoBody);
+    ws0.getCell(`B${chk + 1}`).value = checkboxTextBack('通院等介助(身体介護を伴う)', blockFlags.visitBody);
+    ws0.getCell(`F${chk + 1}`).value = checkboxTextBack('通院等介助(身体介護を伴わない)', blockFlags.visitNoBody);
 
-    ws0.getCell(`B${chk + 2}`).value = checkboxTextBack('通院等乗降介助', checkFlags.ride);
-    ws0.getCell(`F${chk + 2}`).value = checkboxTextBack('行動援護', checkFlags.behavior);
-    ws0.getCell(`H${chk + 2}`).value = checkboxTextBack('同行援護', checkFlags.accompany);
+    ws0.getCell(`B${chk + 2}`).value = checkboxTextBack('通院等乗降介助', blockFlags.ride);
+    ws0.getCell(`F${chk + 2}`).value = checkboxTextBack('行動援護', blockFlags.behavior);
+    ws0.getCell(`H${chk + 2}`).value = checkboxTextBack('同行援護', blockFlags.accompany);
   }
 
   // ダウンロード
