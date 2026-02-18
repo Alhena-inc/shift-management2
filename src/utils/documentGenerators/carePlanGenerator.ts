@@ -417,17 +417,13 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     cell.font = planFont;
     cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
 
-    // 結合範囲の各行に罫線を設定
-    // 外枠（上端・下端）はthin、中間行の上下はhair（テンプレートのグリッド線を維持）、左右は全行thin
-    for (let row = p.startRow; row <= p.endRow; row++) {
-      const c = ws.getCell(row, colNum);
-      c.border = {
-        top: row === p.startRow ? thinBorder : hairBorder,
-        bottom: row === p.endRow ? thinBorder : hairBorder,
-        left: thinBorder,
-        right: thinBorder,
-      };
-    }
+    // 結合セルの外枠罫線は先頭セルにのみ設定（ExcelJSはマージセルの先頭セルのborderを外枠として使う）
+    cell.border = {
+      top: thinBorder,
+      bottom: thinBorder,
+      left: thinBorder,
+      right: thinBorder,
+    };
   }
 }
 
@@ -767,20 +763,48 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   ws0.getCell('K5').value = client.phone ? `TEL：${client.phone}` : '';
   ws0.getCell('K6').value = client.mobilePhone ? `FAX：${client.mobilePhone}` : '';
 
-  // 本人(家族)の希望
+  // 本人(家族)の希望 — AIが短い文を返した場合は補足文を追加して2〜3行にする
+  const DEFAULT_USER_WISH = '身体機能の低下はあるが、住み慣れた自宅での生活を続けたい。日常の家事や身の回りのことは手伝ってもらいながら、できることは自分でやっていきたい。';
+  const DEFAULT_FAMILY_WISH = '本人が安全に自宅で生活できるよう、日常生活の支援をお願いしたい。転倒や体調変化が心配なので、定期的な見守りと適切な介助をしていただきたい。';
+  const USER_WISH_SUPPLEMENT = 'できる限り自分の力で日常生活を送りながら、必要な支援を受けて安心して暮らしていきたい。';
+  const FAMILY_WISH_SUPPLEMENT = '日常生活の中での安全確保と、本人の意思を尊重した適切な支援をお願いしたい。';
+  const MIN_WISH_LENGTH = 40;
+
+  let userWishText = plan.user_wish || DEFAULT_USER_WISH;
+  if (userWishText.length < MIN_WISH_LENGTH) {
+    userWishText = `${userWishText}${USER_WISH_SUPPLEMENT}`;
+  }
+  let familyWishText = plan.family_wish || DEFAULT_FAMILY_WISH;
+  if (familyWishText.length < MIN_WISH_LENGTH) {
+    familyWishText = `${familyWishText}${FAMILY_WISH_SUPPLEMENT}`;
+  }
+
   const wishCell8 = ws0.getCell('E8');
-  wishCell8.value = plan.user_wish || '身体機能の低下はあるが、住み慣れた自宅での生活を続けたい。日常の家事や身の回りのことは手伝ってもらいながら、できることは自分でやっていきたい。';
+  wishCell8.value = userWishText;
   setWrapText(wishCell8);
   const wishCell9 = ws0.getCell('E9');
-  wishCell9.value = plan.family_wish || '本人が安全に自宅で生活できるよう、日常生活の支援をお願いしたい。転倒や体調変化が心配なので、定期的な見守りと適切な介助をしていただきたい。';
+  wishCell9.value = familyWishText;
   setWrapText(wishCell9);
 
-  // 援助目標
+  // 援助目標 — 同様にAIが短い場合は補足
+  const DEFAULT_GOAL_LONG = '必要な介護サービスを利用しながら、住み慣れた自宅での安定した日常生活を継続する（1年間）';
+  const DEFAULT_GOAL_SHORT = '定期的な支援を受けながら、日常生活動作の維持・向上を図り、安全に生活できる環境を整える（6ヶ月）';
+  const MIN_GOAL_LENGTH = 30;
+
+  let goalLongText = plan.goal_long || DEFAULT_GOAL_LONG;
+  if (goalLongText.length < MIN_GOAL_LENGTH) {
+    goalLongText = `${goalLongText}（介護サービスを活用しながら在宅生活を継続する）`;
+  }
+  let goalShortText = plan.goal_short || DEFAULT_GOAL_SHORT;
+  if (goalShortText.length < MIN_GOAL_LENGTH) {
+    goalShortText = `${goalShortText}（安全な生活環境を整え、日常動作の維持を図る）`;
+  }
+
   const goalCell12 = ws0.getCell('E12');
-  goalCell12.value = `長期: ${plan.goal_long || '必要な介護サービスを利用しながら、住み慣れた自宅での安定した日常生活を継続する（1年間）'}`;
+  goalCell12.value = `長期: ${goalLongText}`;
   setWrapText(goalCell12);
   const goalCell13 = ws0.getCell('E13');
-  goalCell13.value = `短期: ${plan.goal_short || '定期的な支援を受けながら、日常生活動作の維持・向上を図り、安全に生活できる環境を整える（6ヶ月）'}`;
+  goalCell13.value = `短期: ${goalShortText}`;
   setWrapText(goalCell13);
   const goalCell14 = ws0.getCell('E14');
   goalCell14.value = plan.needs ? `課題: ${plan.needs}` : '';
