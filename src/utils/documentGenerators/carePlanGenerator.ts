@@ -291,8 +291,6 @@ function colToNum(col: string): number {
 
 /** 薄い罫線スタイル */
 const thinBorder: Partial<ExcelJS.Border> = { style: 'thin' };
-/** テンプレート元の極細罫線（計画予定表のグリッド線） */
-const hairBorder: Partial<ExcelJS.Border> = { style: 'hair' };
 
 /** 時刻文字列(HH:MM)をExcelの行番号に変換。30分以降は次の行 */
 function timeToRow(time: string): number {
@@ -304,56 +302,30 @@ function timeToRow(time: string): number {
 }
 
 /**
- * 計画予定表エリア（行21〜68, D〜J列）の既存マージセルを解除し値をクリア
+ * 計画予定表エリア（行21〜68, D〜J列）の値だけクリアする
+ * テンプレートの罫線は一切触らない（テンプレートを毎回新規ロードするため罫線は元のまま）
  */
-function clearScheduleArea(ws: ExcelJS.Worksheet) {
+function clearScheduleValues(ws: ExcelJS.Worksheet) {
   const minCol = colToNum('D'); // 4
   const maxCol = colToNum('J'); // 10
-  const minRow = 21;
-  const maxRow = 68;
-
-  // 既存マージセルのうち予定表エリアに重なるものを解除
-  const merges = Object.keys(ws.model.merges || {});
-  for (const range of merges) {
-    // range例: "D37:D40"
-    const match = range.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/);
-    if (!match) continue;
-    const c1 = colToNum(match[1]);
-    const r1 = parseInt(match[2], 10);
-    const c2 = colToNum(match[3]);
-    const r2 = parseInt(match[4], 10);
-    // 予定表エリアと重なるか判定
-    if (c1 >= minCol && c2 <= maxCol && r1 >= minRow && r2 <= maxRow) {
-      try {
-        ws.unMergeCells(range);
-      } catch { /* already unmerged */ }
-    }
-  }
-
-  // 値をクリアし、罫線をテンプレート元のhair線にリセット
-  for (let row = minRow; row <= maxRow; row++) {
+  for (let row = 21; row <= 68; row++) {
     for (let col = minCol; col <= maxCol; col++) {
-      const cell = ws.getCell(row, col);
-      cell.value = null;
-      cell.border = {
-        top: hairBorder,
-        bottom: hairBorder,
-        left: hairBorder,
-        right: hairBorder,
-      };
+      ws.getCell(row, col).value = null;
     }
   }
 }
 
 /**
  * 実績表から週間ケアパターンを抽出して計画予定表に書き込む
- * 1. 予定表エリアの既存マージを解除しクリア
+ * テンプレートの罫線を壊さないよう、以下の手順で処理する:
+ * 1. 値だけクリア（罫線は触らない）
  * 2. 曜日×時間帯パターンをユニークに集約
- * 3. 該当セルを結合→罫線ボックス→中央にサービス名記入
+ * 3. マージ前にテンプレートの元のborderを保存
+ * 4. セル結合→保存したborderベースでthin外枠を設定→ラベル記入
  */
 function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]) {
-  // ステップ1: 既存の計画予定表をクリア
-  clearScheduleArea(ws);
+  // ステップ1: 値だけクリア（テンプレートの罫線はそのまま保持）
+  clearScheduleValues(ws);
 
   // ステップ2: 曜日×時間帯パターンをユニークに集約
   const seen = new Set<string>();
@@ -372,19 +344,17 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
 
     // 日をまたぐ場合（18:00→02:00 等）は23時までに切る
     if (endH < startH || (endH === 0 && endM === 0)) {
-      endH = 24; // 0:00 = 24時として扱い、23時台の最終行まで
+      endH = 24;
     }
 
     const sRow = timeToRow(r.startTime);
-    // 終了行: 終了時刻の1行前（終了時刻のちょうどの行は含まない）
     let eRow: number;
     if (endM > 0) {
       eRow = 21 + endH * 2 + (endM >= 30 ? 1 : 0);
     } else {
-      eRow = 21 + endH * 2 - 1; // ちょうどの時刻なら前の行まで
+      eRow = 21 + endH * 2 - 1;
     }
 
-    // 範囲制限（Row21=0:00 〜 Row68=23:30）
     const clampedStart = Math.max(sRow, 21);
     const clampedEnd = Math.min(eRow, 68);
     if (clampedStart >= clampedEnd) continue;
@@ -400,7 +370,7 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     console.log(`  ${p.dayName} Row${p.startRow}-${p.endRow} ${p.type}`);
   }
 
-  // ステップ3: セル結合→罫線→ラベル記入
+  // ステップ3: テンプレートの元のborderを保存してからマージ
   const planFont: Partial<ExcelJS.Font> = { name: 'HG正楷書体-PRO', size: 12 };
 
   for (const p of patterns) {
@@ -408,17 +378,22 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     if (!col) continue;
     const colNum = colToNum(col);
 
-    // セルを結合（開始行〜終了行、同じ列）
+    // マージ前にテンプレートの先頭セルの元のborderを保存
+    const origCell = ws.getCell(p.startRow, colNum);
+    const origBorder = origCell.border ? { ...origCell.border } : {};
+
+    // セルを結合
     ws.mergeCells(p.startRow, colNum, p.endRow, colNum);
 
-    // 結合セルの先頭にラベルを記入（中央揃え）
+    // 先頭セルにラベルを記入
     const cell = ws.getCell(`${col}${p.startRow}`);
     cell.value = p.type;
     cell.font = planFont;
     cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
 
-    // 結合セルの外枠罫線は先頭セルにのみ設定（ExcelJSはマージセルの先頭セルのborderを外枠として使う）
+    // 罫線: テンプレートの元のborderを復元しつつ、四辺をthinに上書き
     cell.border = {
+      ...origBorder,
       top: thinBorder,
       bottom: thinBorder,
       left: thinBorder,
