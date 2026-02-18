@@ -354,6 +354,15 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
   }
 
   // ========== パターン集約 ==========
+  // 実績レコードを「曜日 × 時間帯 × サービス種別」のユニークパターンに集約する。
+  //
+  // 重要な処理:
+  // 1. endTime が startTime より小さい場合（日またぎ）→ endTime を 24:00 として扱う
+  //    例: 18:00→00:00 は 18:00→24:00、18:00→02:00 は 18:00→24:00（予定表は23:30まで）
+  // 2. startTime=00:00 のレコード（前日からの続き）→ そのレコードの曜日の0:00から描画
+  //    例: 月曜 00:00→08:30 は月曜の0:00-8:30に表示
+  // 3. 同一曜日・同一種別・同一時間帯は1つに集約（重複排除）
+
   const seen = new Set<string>();
   const patterns: { dayName: string; type: string; startRow: number; endRow: number }[] = [];
 
@@ -369,37 +378,81 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
       continue;
     }
 
-    const startH = parseInt(r.startTime.split(':')[0], 10);
-    let endH = parseInt(r.endTime.split(':')[0], 10);
-    const endM = parseInt(r.endTime.split(':')[1] || '0', 10);
+    const startParts = r.startTime.split(':');
+    const endParts = r.endTime.split(':');
+    const startH = parseInt(startParts[0], 10);
+    const startM = parseInt(startParts[1] || '0', 10);
+    let endH = parseInt(endParts[0], 10);
+    const endM = parseInt(endParts[1] || '0', 10);
     if (isNaN(startH) || isNaN(endH)) continue;
 
-    if (endH < startH || (endH === 0 && endM === 0)) {
-      endH = 24;
+    // 日またぎ判定: endTime <= startTime の場合は翌日にまたがるため、24時として扱う
+    // 例: 18:00→00:00 → endH=24, 23:00→00:00 → endH=24, 18:00→02:00 → endH=24+2=26(ただし予定表は24hまで)
+    if (endH < startH || (endH === startH && endM <= startM) || (endH === 0 && endM === 0)) {
+      // 日またぎ: endを24時以降に補正（予定表は最大24:00=row68まで）
+      endH = endH === 0 && endM === 0 ? 24 : 24 + endH;
     }
 
-    const sRow = timeToRow(r.startTime);
+    // 開始行: 30分刻み (Row21=0:00, Row22=0:30, Row23=1:00, ...)
+    const sRow = 21 + startH * 2 + (startM >= 30 ? 1 : 0);
+    // 終了行: endTimeの直前の30分枠
     let eRow: number;
-    if (endM > 0) {
-      eRow = 21 + endH * 2 + (endM >= 30 ? 1 : 0);
+    if (endH >= 24) {
+      // 24時以降 → 予定表の最終行(68=23:30)まで
+      eRow = maxRow;
+    } else if (endM > 0) {
+      eRow = 21 + endH * 2 + (endM >= 30 ? 1 : 0) - 1;
     } else {
       eRow = 21 + endH * 2 - 1;
     }
 
     const clampedStart = Math.max(sRow, minRow);
     const clampedEnd = Math.min(eRow, maxRow);
-    if (clampedStart >= clampedEnd) continue;
+    if (clampedStart > clampedEnd) continue;
 
-    // 最低1行あれば描画する（30分未満でも反映）
+    // 重複排除（同一曜日・同一行範囲・同一ラベル）
     const key = `${dayName}_${clampedStart}_${clampedEnd}_${label}`;
     if (seen.has(key)) continue;
     seen.add(key);
     patterns.push({ dayName, type: label, startRow: clampedStart, endRow: clampedEnd });
   }
 
-  console.log(`[CarePlan] 計画予定表パターン: ${patterns.length}件`);
+  // ========== 隣接・重複パターンのマージ ==========
+  // 同じ曜日・同じサービス種別で、連続する時間帯（endRow+1 === 次のstartRow）を結合
+  // 例: 火曜 重度 Row67-68 + 水曜 重度 Row21-37 → これは別曜日なので結合しない
+  // 例: 月曜 家事 Row53-55 + 月曜 家事 Row55-57 → Row53-57に結合
+  patterns.sort((a, b) => {
+    if (a.dayName !== b.dayName) return WEEKDAY_NAMES.indexOf(a.dayName) - WEEKDAY_NAMES.indexOf(b.dayName);
+    if (a.type !== b.type) return a.type.localeCompare(b.type);
+    return a.startRow - b.startRow;
+  });
+
+  const merged: typeof patterns = [];
   for (const p of patterns) {
-    console.log(`  ${p.dayName} Row${p.startRow}-${p.endRow} ${p.type}`);
+    const last = merged[merged.length - 1];
+    if (last && last.dayName === p.dayName && last.type === p.type && last.endRow + 1 >= p.startRow) {
+      // 隣接 or 重複 → マージ（endRowを大きい方に拡張）
+      last.endRow = Math.max(last.endRow, p.endRow);
+    } else {
+      merged.push({ ...p });
+    }
+  }
+
+  console.log(`[CarePlan] 計画予定表パターン: ${patterns.length}件 → マージ後: ${merged.length}件`);
+  for (const p of merged) {
+    const startTime = `${Math.floor((p.startRow - 21) / 2)}:${(p.startRow - 21) % 2 === 0 ? '00' : '30'}`;
+    const endTime = `${Math.floor((p.endRow - 21 + 1) / 2)}:${(p.endRow - 21 + 1) % 2 === 0 ? '00' : '30'}`;
+    console.log(`  ${p.dayName} ${startTime}-${endTime} ${p.type} (Row${p.startRow}-${p.endRow})`);
+  }
+
+  // 同じ曜日列で異なるサービスが重なる場合の警告（重なりがあっても描画はする）
+  for (let i = 0; i < merged.length; i++) {
+    for (let j = i + 1; j < merged.length; j++) {
+      const a = merged[i], b = merged[j];
+      if (a.dayName === b.dayName && a.startRow <= b.endRow && b.startRow <= a.endRow) {
+        console.warn(`[CarePlan] ⚠ 重なり検出: ${a.dayName} ${a.type}(Row${a.startRow}-${a.endRow}) と ${b.type}(Row${b.startRow}-${b.endRow})`);
+      }
+    }
   }
 
   // ========== STEP 3: サービスブロック再描画 ==========
@@ -408,7 +461,7 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
   // 中間行への個別設定は不要（やると全セルにthinが伝播して太線だらけになる）。
   const planFont: Partial<ExcelJS.Font> = { name: 'HG正楷書体-PRO', size: 12 };
 
-  for (const p of patterns) {
+  for (const p of merged) {
     const col = DAY_TO_COL[p.dayName];
     if (!col) continue;
     const colNum = colToNum(col);
