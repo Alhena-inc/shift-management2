@@ -301,33 +301,58 @@ function timeToRow(time: string): number {
   return 21 + h * 2 + (m >= 30 ? 1 : 0);
 }
 
-/**
- * 計画予定表エリア（行21〜68, D〜J列）の値だけクリアする
- * テンプレートの罫線は一切触らない（テンプレートを毎回新規ロードするため罫線は元のまま）
- */
-function clearScheduleValues(ws: ExcelJS.Worksheet) {
-  const minCol = colToNum('D'); // 4
-  const maxCol = colToNum('J'); // 10
-  for (let row = 21; row <= 68; row++) {
-    for (let col = minCol; col <= maxCol; col++) {
-      ws.getCell(row, col).value = null;
-    }
-  }
-}
+/** 罫線なし（明示的にstyleなしを設定） */
+const noBorder: Partial<ExcelJS.Border> = {};
 
 /**
  * 実績表から週間ケアパターンを抽出して計画予定表に書き込む
- * テンプレートの罫線を壊さないよう、以下の手順で処理する:
- * 1. 値だけクリア（罫線は触らない）
- * 2. 曜日×時間帯パターンをユニークに集約
- * 3. マージ前にテンプレートの元のborderを保存
- * 4. セル結合→保存したborderベースでthin外枠を設定→ラベル記入
+ *
+ * 仕様書に従い以下の順番で必ず実行:
+ * STEP 1: 予定表エリアの全マージセルを解除
+ * STEP 2: 全セルの値・罫線を完全リセット（罫線を空に）
+ * STEP 3: サービスブロックだけ再描画（結合→罫線→ラベル）
  */
 function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]) {
-  // ステップ1: 値だけクリア（テンプレートの罫線はそのまま保持）
-  clearScheduleValues(ws);
+  const minCol = colToNum('D'); // 4
+  const maxCol = colToNum('J'); // 10
+  const minRow = 21;
+  const maxRow = 68;
 
-  // ステップ2: 曜日×時間帯パターンをユニークに集約
+  // ========== STEP 1: 既存マージセルを解除 ==========
+  // ExcelJSの_mergesはキー=セル参照(例:"D37")、値=mergeオブジェクト(model.top/left/bottom/right, range)
+  const mergesObj = (ws as unknown as { _merges: Record<string, { model: { top: number; left: number; bottom: number; right: number }; range: string }> })._merges || {};
+  const rangesToRemove: string[] = [];
+  for (const key of Object.keys(mergesObj)) {
+    const merge = mergesObj[key];
+    if (!merge?.model) continue;
+    const { top, left, bottom, right } = merge.model;
+    // 予定表エリア（行21〜68, 列D=4〜J=10）に完全に含まれるマージのみ対象
+    if (top >= minRow && bottom <= maxRow && left >= minCol && right <= maxCol) {
+      rangesToRemove.push(merge.range); // 例: "D37:D40"
+    }
+  }
+  console.log(`[CarePlan] STEP1: 予定表エリアのマージ解除 ${rangesToRemove.length}件`);
+  for (const range of rangesToRemove) {
+    try { ws.unMergeCells(range); } catch { /* skip */ }
+  }
+
+  // ========== STEP 2: 全セルの値・罫線を完全リセット ==========
+  for (let row = minRow; row <= maxRow; row++) {
+    for (let col = minCol; col <= maxCol; col++) {
+      const cell = ws.getCell(row, col);
+      cell.value = null;
+      cell.border = {
+        top: noBorder,
+        bottom: noBorder,
+        left: noBorder,
+        right: noBorder,
+      };
+      cell.font = {};
+      cell.alignment = {};
+    }
+  }
+
+  // ========== パターン集約 ==========
   const seen = new Set<string>();
   const patterns: { dayName: string; type: string; startRow: number; endRow: number }[] = [];
 
@@ -342,7 +367,6 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     const endM = parseInt(r.endTime.split(':')[1] || '0', 10);
     if (isNaN(startH) || isNaN(endH)) continue;
 
-    // 日をまたぐ場合（18:00→02:00 等）は23時までに切る
     if (endH < startH || (endH === 0 && endM === 0)) {
       endH = 24;
     }
@@ -355,8 +379,8 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
       eRow = 21 + endH * 2 - 1;
     }
 
-    const clampedStart = Math.max(sRow, 21);
-    const clampedEnd = Math.min(eRow, 68);
+    const clampedStart = Math.max(sRow, minRow);
+    const clampedEnd = Math.min(eRow, maxRow);
     if (clampedStart >= clampedEnd) continue;
 
     const key = `${dayName}_${clampedStart}_${clampedEnd}_${label}`;
@@ -370,7 +394,7 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     console.log(`  ${p.dayName} Row${p.startRow}-${p.endRow} ${p.type}`);
   }
 
-  // ステップ3: テンプレートの元のborderを保存してからマージ
+  // ========== STEP 3: サービスブロック再描画 ==========
   const planFont: Partial<ExcelJS.Font> = { name: 'HG正楷書体-PRO', size: 12 };
 
   for (const p of patterns) {
@@ -378,27 +402,27 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     if (!col) continue;
     const colNum = colToNum(col);
 
-    // マージ前にテンプレートの先頭セルの元のborderを保存
-    const origCell = ws.getCell(p.startRow, colNum);
-    const origBorder = origCell.border ? { ...origCell.border } : {};
-
-    // セルを結合
+    // セル結合
     ws.mergeCells(p.startRow, colNum, p.endRow, colNum);
 
-    // 先頭セルにラベルを記入
+    // サービス名記入
     const cell = ws.getCell(`${col}${p.startRow}`);
     cell.value = p.type;
     cell.font = planFont;
     cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
 
-    // 罫線: テンプレートの元のborderを復元しつつ、四辺をthinに上書き
-    cell.border = {
-      ...origBorder,
-      top: thinBorder,
-      bottom: thinBorder,
-      left: thinBorder,
-      right: thinBorder,
-    };
+    // 罫線: 結合範囲の全行に個別設定
+    for (let row = p.startRow; row <= p.endRow; row++) {
+      const c = ws.getCell(row, colNum);
+      const isTop = row === p.startRow;
+      const isBottom = row === p.endRow;
+      c.border = {
+        top: isTop ? thinBorder : noBorder,
+        bottom: isBottom ? thinBorder : noBorder,
+        left: thinBorder,
+        right: thinBorder,
+      };
+    }
   }
 }
 
