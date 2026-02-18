@@ -4,7 +4,7 @@ import { loadShogaiDocuments } from '../../services/dataService';
 import type { GeneratorContext } from './types';
 import type { CareClient, Shift } from '../../types';
 
-// デフォルトプロンプト（DBに未設定の場合に使用）
+// デフォルトプロンプト
 const DEFAULT_PROMPT = `以下は訪問介護の利用者「{{client_name}}」の情報です。
 この利用者の「居宅介護計画書」を作成してください。
 
@@ -16,37 +16,43 @@ const DEFAULT_PROMPT = `以下は訪問介護の利用者「{{client_name}}」�
 - 介護度: {{client_careLevel}}
 - 利用サービス種別: {{service_types}}
 - 月間サービス回数: 約{{total_visits}}回
+- 契約開始日: {{contract_start}}
 
 【実績データ（{{year}}年{{month}}月）】
-{{billing_details}}
+{{shift_summary}}
 
 {{assessment_note}}
 
-以下の項目をJSON形式で出力してください:
+以下の項目をJSON形式で出力してください。
+【重要】各テキストは簡潔に。Excelセルに収まるよう短く。
+
 {
-  "goal_long": "長期目標（6ヶ月程度の目標）",
-  "goal_short": "短期目標（3ヶ月程度の目標）",
-  "needs": "解決すべき課題（ニーズ）",
-  "frequency": "サービス提供頻度（例: 週3回、1回60分）",
-  "caution": "留意事項（サービス提供時の注意点）",
-  "user_wish": "利用者の意向・希望",
-  "family_wish": "家族の意向・希望",
-  "service_type_check": "身体介護 または 家事援助 または 通院等乗降介助（該当するもの）",
-  "service_hours": "サービス時間数（例: 10時間）",
-  "schedule": [
-    { "day": "月", "start": "10:00", "end": "11:00", "type": "身体介護" }
-  ],
+  "user_wish": "本人の希望（25文字以内、例: 自宅で安心して暮らしたい）",
+  "family_wish": "家族の希望（25文字以内、例: 安全に生活してほしい）",
+  "goal_long": "長期目標（25文字以内）",
+  "goal_short": "短期目標（25文字以内）",
+  "needs": "解決すべき課題（25文字以内）",
+  "service_type_check": "身体介護/家事援助/通院等乗降介助（該当するものをカンマ区切り）",
+  "service_hours_body": "身体介護の月間時間数（例: 8時間）",
+  "service_hours_house": "家事援助の月間時間数（例: 4時間）",
   "service_steps": [
-    { "time": "所要時間（例: 10分）", "content": "サービスの内容（例: 体調確認）", "procedure": "手順・留意事項・観察ポイント", "family_task": "本人・家族にやっていただくこと" }
+    {
+      "time": "所要時間（例: 5分）",
+      "content": "内容（10文字以内）",
+      "procedure": "手順（25文字以内）",
+      "family_task": "本人の役割（15文字以内）"
+    }
   ]
 }
 
-scheduleは実績データの曜日パターンを分析し、この利用者の「定期的な」週間スケジュールを推定して記載してください。
-dayは「月」「火」「水」「木」「金」「土」「日」のいずれかです。
-service_stepsは具体的なサービス手順を時系列で5〜15項目程度記載してください。
-各項目のprocedureは具体的な手順と注意点を記載してください。`;
+service_stepsは1回の訪問の流れを時系列で5〜10項目。
+サービス種別ごと（身体介護・家事援助）に分けて出力してください。
+身体介護のstepsを先に、家事援助のstepsを後に記載してください。
+JSONのみ出力し、他のテキストは出力しないでください。`;
 
-const DEFAULT_SYSTEM_INSTRUCTION = '訪問介護事業所のサービス提供責任者として、居宅介護計画書を作成してください。実績データとアセスメント資料を元に、具体的で実践的な計画を立案してください。必ず有効なJSON形式で出力してください。';
+const DEFAULT_SYSTEM_INSTRUCTION = `訪問介護事業所のサービス提供責任者として居宅介護計画書を作成してください。
+運営指導（実地指導）に通る正式な計画書として、実績データとアセスメント資料に基づいた具体的で実践的な内容にしてください。
+必ず有効なJSON形式のみ出力してください。`;
 
 function applyTemplate(template: string, vars: Record<string, string>): string {
   let result = template;
@@ -61,13 +67,6 @@ function toReiwa(year: number): number {
   return year - 2018;
 }
 
-interface ScheduleEntry {
-  day: string;
-  start: string;
-  end: string;
-  type: string;
-}
-
 interface ServiceStep {
   time: string;
   content: string;
@@ -79,13 +78,11 @@ interface CarePlan {
   goal_long: string;
   goal_short: string;
   needs: string;
-  frequency: string;
-  caution: string;
   user_wish: string;
   family_wish: string;
   service_type_check: string;
-  service_hours: string;
-  schedule: ScheduleEntry[];
+  service_hours_body: string;
+  service_hours_house: string;
   service_steps: ServiceStep[];
 }
 
@@ -98,30 +95,36 @@ const DAY_TO_COL: Record<string, string> = {
 const WEEKDAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
 
 /**
- * 時刻文字列("HH:mm")から計画予定表の行番号を返す
- * テンプレート: Row19=0:00, Row21=2:00, Row23=4:00, ... Row41=22:00 (2時間刻み)
- * 各時刻の行 = 19 + (hour / 2) * 2 = 19 + hour (hourが偶数の場合)
- * サブ行（奇数時間）はその次の行
+ * 時刻("HH:mm")から計画予定表の行番号を返す
+ * テンプレート: B19=0:00, B21=2:00, ..., B41=22:00 (2時間刻み、各2行)
+ * Row19-20=0:00-1:59, Row21-22=2:00-3:59, ...
  */
 function timeToRow(timeStr: string): number {
   const [h] = timeStr.split(':').map(Number);
-  // 時刻帯: 0-1→Row19, 2-3→Row21, 4-5→Row23, ...
   const slotIndex = Math.floor(h / 2);
   return 19 + slotIndex * 2;
 }
 
+interface ScheduleSlot {
+  day: string;
+  startRow: number;
+  endRow: number;
+  label: string;
+}
+
 /**
- * シフト実績から週間スケジュールパターンを抽出する
- * 同じ曜日・同じ時間帯の出現回数をカウントし、2回以上あれば「定期」とみなす
+ * シフト実績から1週間のケアパターンを抽出し、計画予定表用データを生成
  */
-function extractScheduleFromShifts(shifts: Shift[]): ScheduleEntry[] {
+function buildScheduleFromShifts(clientShifts: Shift[]): ScheduleSlot[] {
+  // 曜日×時間帯のパターンを集約
   const patternMap = new Map<string, { count: number; type: string; start: string; end: string }>();
 
-  for (const s of shifts) {
+  for (const s of clientShifts) {
     if (s.deleted || s.cancelStatus === 'remove_time' || s.cancelStatus === 'canceled_without_time') continue;
+    if (!s.startTime || !s.endTime) continue;
     const d = new Date(s.date);
     const dayName = WEEKDAY_NAMES[d.getDay()];
-    const key = `${dayName}_${s.startTime}_${s.endTime}`;
+    const key = `${dayName}_${s.startTime}_${s.endTime}_${s.serviceType || ''}`;
     const existing = patternMap.get(key);
     if (existing) {
       existing.count++;
@@ -130,56 +133,84 @@ function extractScheduleFromShifts(shifts: Shift[]): ScheduleEntry[] {
     }
   }
 
-  const result: ScheduleEntry[] = [];
-  for (const [key, val] of patternMap.entries()) {
-    // 1回でもあればスケジュールに含める（月次データなので）
-    const dayName = key.split('_')[0];
-    result.push({ day: dayName, start: val.start, end: val.end, type: val.type });
+  const slots: ScheduleSlot[] = [];
+  for (const [, val] of patternMap.entries()) {
+    const dayName = [...patternMap.entries()].find(([, v]) => v === val)![0].split('_')[0];
+    // サービス種別の短縮名
+    let label = val.type;
+    if (label.includes('身体')) label = '身体';
+    else if (label.includes('生活') || label.includes('家事')) label = '家事';
+    else if (label.includes('通院')) label = '通院';
+    else if (label.includes('重度')) label = '重度';
+    else label = label.substring(0, 4);
+
+    // 時間帯を追加
+    label += `\n${val.start}~${val.end}`;
+
+    const startRow = timeToRow(val.start);
+    const endRow = timeToRow(val.end);
+
+    slots.push({ day: dayName, startRow, endRow, label });
   }
 
-  // 曜日順でソート
-  const dayOrder = ['月', '火', '水', '木', '金', '土', '日'];
-  result.sort((a, b) => {
-    const da = dayOrder.indexOf(a.day);
-    const db = dayOrder.indexOf(b.day);
-    if (da !== db) return da - db;
-    return a.start.localeCompare(b.start);
-  });
-
-  return result;
+  return slots;
 }
 
 /**
- * 計画予定表にスケジュールを書き込む
- * 該当する曜日列 × 時間帯行にサービス種別のラベルを入力
+ * 計画予定表にスケジュールを書き込む（Sheet0 Row19-43, Col D-J）
  */
-function fillScheduleGrid(ws: ExcelJS.Worksheet, scheduleEntries: ScheduleEntry[]) {
-  for (const entry of scheduleEntries) {
-    const col = DAY_TO_COL[entry.day];
+function fillScheduleGrid(ws: ExcelJS.Worksheet, clientShifts: Shift[]) {
+  const slots = buildScheduleFromShifts(clientShifts);
+
+  for (const slot of slots) {
+    const col = DAY_TO_COL[slot.day];
     if (!col) continue;
 
-    const startRow = timeToRow(entry.start);
-    const endRow = timeToRow(entry.end);
-
-    // サービス種別の短縮名
-    let label = entry.type;
-    if (label.includes('身体')) label = '身体介護';
-    else if (label.includes('生活') || label.includes('家事')) label = '家事援助';
-    else if (label.includes('通院')) label = '通院介助';
-
-    // 開始行にラベルを入力
-    const cell = ws.getCell(`${col}${startRow}`);
+    // 開始行にラベルを書く
+    const cell = ws.getCell(`${col}${slot.startRow}`);
     const existing = cell.value ? String(cell.value) : '';
-    cell.value = existing ? `${existing}\n${label}` : label;
+    cell.value = existing ? `${existing}\n${slot.label}` : slot.label;
 
-    // 開始〜終了の間の行にも色付け or テキストを入れる（連続感を出す）
-    for (let r = startRow + 1; r < endRow && r <= 42; r++) {
+    // 開始行〜終了行の間を「│」で埋める
+    for (let r = slot.startRow + 1; r < slot.endRow && r <= 43; r++) {
       const midCell = ws.getCell(`${col}${r}`);
       if (!midCell.value) {
-        midCell.value = '↓';
+        midCell.value = '│';
       }
     }
   }
+}
+
+/**
+ * シフト実績から曜日別サービスの要約テキストを生成（AIプロンプト用）
+ */
+function buildShiftSummary(clientShifts: Shift[]): string {
+  const byDay = new Map<string, string[]>();
+
+  for (const s of clientShifts) {
+    if (s.deleted || s.cancelStatus === 'remove_time' || s.cancelStatus === 'canceled_without_time') continue;
+    if (!s.startTime || !s.endTime) continue;
+    const d = new Date(s.date);
+    const dayName = WEEKDAY_NAMES[d.getDay()];
+    if (!byDay.has(dayName)) byDay.set(dayName, []);
+    byDay.get(dayName)!.push(`${s.startTime}~${s.endTime} ${s.serviceType || ''}`);
+  }
+
+  const dayOrder = ['月', '火', '水', '木', '金', '土', '日'];
+  const lines: string[] = [];
+  for (const day of dayOrder) {
+    const entries = byDay.get(day);
+    if (!entries) continue;
+    // 重複排除して頻度を表示
+    const countMap = new Map<string, number>();
+    for (const e of entries) {
+      countMap.set(e, (countMap.get(e) || 0) + 1);
+    }
+    const details = [...countMap.entries()].map(([e, c]) => `${e}(${c}回)`).join(', ');
+    lines.push(`${day}曜: ${details}`);
+  }
+
+  return lines.length > 0 ? lines.join('\n') : 'シフト実績なし';
 }
 
 export async function generate(ctx: GeneratorContext): Promise<void> {
@@ -204,18 +235,12 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   const systemInstruction = customSystemInstruction || DEFAULT_SYSTEM_INSTRUCTION;
 
   // 実績データ集計
-  const clientBilling = billingRecords.filter(b => b.clientName === client.name);
   const clientShifts = shifts.filter(s => s.clientName === client.name && !s.deleted);
-  const serviceTypes = [...new Set(clientShifts.map(s => s.serviceType))];
-  const totalVisits = clientBilling.length || clientShifts.length;
+  const serviceTypes = [...new Set(clientShifts.map(s => s.serviceType).filter(Boolean))];
+  const totalVisits = clientShifts.length;
 
-  const billingDetails = clientBilling.slice(0, 20).map(b =>
-    `${b.serviceDate} ${b.startTime}〜${b.endTime} (コード:${b.serviceCode})`
-  ).join('\n');
-
-  const shiftDetails = clientShifts.slice(0, 20).map(s =>
-    `${s.date} ${s.startTime}〜${s.endTime} ${s.serviceType}`
-  ).join('\n');
+  // シフト実績サマリー（曜日別）
+  const shiftSummary = buildShiftSummary(clientShifts);
 
   // アセスメントファイルを取得
   let assessmentFileUrls: string[] = [];
@@ -236,11 +261,12 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
     client_careLevel: client.careLevel || '不明',
     service_types: serviceTypes.join(', ') || '不明',
     total_visits: String(totalVisits),
+    contract_start: client.contractStart || '不明',
     year: String(year),
     month: String(month),
-    billing_details: billingDetails || shiftDetails || 'データなし',
+    shift_summary: shiftSummary,
     assessment_note: assessmentFileUrls.length > 0
-      ? '【添付アセスメント資料】\n上記に添付した画像/PDFファイルはこの利用者のアセスメント記録です。内容を読み取って計画に反映してください。'
+      ? '【添付アセスメント資料】\n添付ファイルはこの利用者のアセスメント記録です。内容を読み取り計画に反映してください。'
       : '',
   };
 
@@ -248,9 +274,8 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
 
   let plan: CarePlan = {
     goal_long: '', goal_short: '', needs: '',
-    frequency: '', caution: '', user_wish: '', family_wish: '',
-    service_type_check: '', service_hours: '',
-    schedule: [],
+    user_wish: '', family_wish: '',
+    service_type_check: '', service_hours_body: '', service_hours_house: '',
     service_steps: [],
   };
 
@@ -264,7 +289,7 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   }
 
   if (!res.text) {
-    throw new Error('AIからの応答が空です。プロンプトやAPIキーを確認してください。');
+    throw new Error('AIからの応答が空です。APIキーを確認してください。');
   }
 
   const jsonMatch = res.text.match(/\{[\s\S]*\}/);
@@ -275,13 +300,8 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   try {
     plan = { ...plan, ...JSON.parse(jsonMatch[0]) };
   } catch (e) {
-    throw new Error(`AI応答のJSON解析に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+    throw new Error(`AI応答のJSON解析に失敗: ${e instanceof Error ? e.message : String(e)}`);
   }
-
-  // シフト実績からスケジュールをフォールバック抽出
-  const scheduleEntries: ScheduleEntry[] = (plan.schedule && plan.schedule.length > 0)
-    ? plan.schedule
-    : extractScheduleFromShifts(clientShifts);
 
   // ==============================
   // Sheet 0: 居宅介護計画書（表）
@@ -289,99 +309,121 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   const ws0 = workbook.worksheets[0];
   if (!ws0) throw new Error('テンプレートのSheet0が見つかりません');
 
-  const reiwaYear = toReiwa(year);
-  const today = new Date();
-  const todayDay = today.getDate();
+  // 作成日 = 契約開始日（サービス開始前に作成する必要がある）
+  let planDateText: string;
+  if (client.contractStart) {
+    const parts = client.contractStart.split('-');
+    if (parts.length === 3) {
+      const cy = Number(parts[0]);
+      const cm = Number(parts[1]);
+      const cd = Number(parts[2]);
+      planDateText = `令和${toReiwa(cy)}年${cm}月${cd}日`;
+    } else {
+      planDateText = `令和${toReiwa(year)}年${month}月1日`;
+    }
+  } else {
+    planDateText = `令和${toReiwa(year)}年${month}月1日`;
+  }
 
   // H2: 作成日
-  ws0.getCell('H2').value = `令和${reiwaYear}年${month}月${todayDay}日`;
+  ws0.getCell('H2').value = planDateText;
 
-  // K2: 作成者（サ責名）
-  if (officeInfo.serviceManager) {
-    ws0.getCell('K2').value = officeInfo.serviceManager;
-  }
+  // K2: 作成者（サービス提供責任者名）
+  ws0.getCell('K2').value = officeInfo.serviceManager || '未設定';
 
   // A4: 利用者氏名
   ws0.getCell('A4').value = `${client.name}　様`;
 
   // E4: 生年月日
-  if (client.birthDate) {
-    ws0.getCell('E4').value = client.birthDate;
-  }
+  ws0.getCell('E4').value = client.birthDate || '';
 
   // G4: 住所
-  if (client.address) {
-    ws0.getCell('G4').value = client.address;
-  }
+  ws0.getCell('G4').value = client.address || '';
 
-  // K4: TEL
-  if (client.phone) {
-    ws0.getCell('K4').value = `TEL：${client.phone}`;
-  }
+  // K4-K5: TEL/連絡先
+  ws0.getCell('K4').value = client.phone ? `TEL: ${client.phone}` : '';
+  ws0.getCell('K5').value = client.mobilePhone ? `携帯: ${client.mobilePhone}` : '';
 
-  // E7〜E9: 本人(家族)の希望（必ず書き込む）
-  ws0.getCell('E7').value = `【本人の希望】${plan.user_wish || '在宅での生活を続けたい'}`;
-  ws0.getCell('E8').value = `【家族の希望】${plan.family_wish || '安心して生活してほしい'}`;
+  // E7〜E9: 本人(家族)の希望
+  ws0.getCell('E7').value = plan.user_wish || '自宅で安心して暮らしたい';
+  ws0.getCell('E8').value = plan.family_wish || '安全に生活してほしい';
+  ws0.getCell('E9').value = plan.needs ? `課題: ${plan.needs}` : '';
 
-  // E11〜E13: 援助目標（必ず書き込む）
-  ws0.getCell('E11').value = `【長期目標】${plan.goal_long || '安定した在宅生活の継続'}`;
-  ws0.getCell('E12').value = `【短期目標】${plan.goal_short || '日常生活動作の維持・向上'}`;
-  ws0.getCell('E13').value = `【課題】${plan.needs || '日常生活の支援が必要'}`;
+  // E11〜E13: 援助目標
+  ws0.getCell('E11').value = `長期: ${plan.goal_long || '安定した在宅生活の継続'}`;
+  ws0.getCell('E12').value = `短期: ${plan.goal_short || '日常生活動作の維持・向上'}`;
+  ws0.getCell('E13').value = plan.needs ? `課題: ${plan.needs}` : '';
 
-  // D15: サービス種別チェック
-  const serviceCheck = plan.service_type_check || serviceTypes.join(', ') || '身体介護';
-  const hoursText = plan.service_hours || '';
+  // D15-D16, G15, J15: サービス種別チェック
+  const serviceCheck = plan.service_type_check || serviceTypes.join(',') || '';
+  const bodyHours = plan.service_hours_body || '';
+  const houseHours = plan.service_hours_house || '';
+
   if (serviceCheck.includes('身体')) {
-    ws0.getCell('D15').value = `■　身体介護　　　　${hoursText}`;
+    ws0.getCell('D15').value = `■ 身体介護　${bodyHours}`;
   } else {
-    ws0.getCell('D15').value = `□　身体介護`;
+    ws0.getCell('D15').value = '□ 身体介護　　　時間';
   }
   if (serviceCheck.includes('家事') || serviceCheck.includes('生活')) {
-    ws0.getCell('G15').value = `■　家事援助　　　　${hoursText}`;
+    ws0.getCell('G15').value = `■ 家事援助　${houseHours}`;
   } else {
-    ws0.getCell('G15').value = `□　家事援助`;
+    ws0.getCell('G15').value = '□ 家事援助　　　時間';
   }
   if (serviceCheck.includes('通院')) {
-    ws0.getCell('J15').value = `■　通院等乗降介助　　${hoursText}`;
+    ws0.getCell('J15').value = '■ 通院等乗降介助';
   } else {
-    ws0.getCell('J15').value = `□　通院等乗降介助`;
+    ws0.getCell('J15').value = '□ 通院等乗降介助';
   }
 
-  // 計画予定表（Row 19〜42）にスケジュールを入力
-  fillScheduleGrid(ws0, scheduleEntries);
+  // ===== 計画予定表（Row 19〜43, Col D〜J）=====
+  // 実績シフトデータから1週間のケアパターンを計画予定表に記入
+  fillScheduleGrid(ws0, clientShifts);
 
   // D45: 交付日
-  ws0.getCell('D45').value = `令和${reiwaYear}年${month}月${todayDay}日`;
+  ws0.getCell('D45').value = planDateText;
 
   // ==============================
   // Sheet 1: 居宅介護計画(裏）— サービス内容詳細
   // ==============================
   const ws1 = workbook.worksheets[1];
-  if (!ws1) throw new Error('テンプレートのSheet1が見つかりません');
+  if (ws1) {
+    const steps = plan.service_steps || [];
 
-  // サービス1: Row 3-19
-  const steps = plan.service_steps || [];
-  const service1Steps = steps.slice(0, 17);
+    // サービス1: Row 3-19（最大17行）
+    const service1Steps = steps.slice(0, 17);
+    for (let i = 0; i < service1Steps.length; i++) {
+      const row = 3 + i;
+      const step = service1Steps[i];
+      ws1.getCell(`B${row}`).value = step.time || '';
+      ws1.getCell(`C${row}`).value = step.content || '';
+      ws1.getCell(`E${row}`).value = step.procedure || '';
+      ws1.getCell(`K${row}`).value = step.family_task || '';
+    }
 
-  for (let i = 0; i < service1Steps.length; i++) {
-    const row = 3 + i;
-    const step = service1Steps[i];
-    ws1.getCell(`B${row}`).value = step.time || '';
-    ws1.getCell(`C${row}`).value = step.content || '';
-    ws1.getCell(`E${row}`).value = step.procedure || '';
-    ws1.getCell(`K${row}`).value = step.family_task || '';
-  }
+    // サービス1の種類等（Row 20-21）
+    if (serviceCheck.includes('身体')) {
+      ws1.getCell('B20').value = `■身体介護（${bodyHours}）　□家事援助（　時間分）　□通院等乗降介助（　時間分）`;
+    } else if (serviceCheck.includes('家事') || serviceCheck.includes('生活')) {
+      ws1.getCell('B20').value = `□身体介護（　時間分）　■家事援助（${houseHours}）　□通院等乗降介助（　時間分）`;
+    }
 
-  // サービス2: Row 23-39
-  const service2Steps = steps.slice(17, 34);
+    // サービス2: Row 23-39（最大17行）
+    const service2Steps = steps.slice(17, 34);
+    for (let i = 0; i < service2Steps.length; i++) {
+      const row = 23 + i;
+      const step = service2Steps[i];
+      ws1.getCell(`B${row}`).value = step.time || '';
+      ws1.getCell(`C${row}`).value = step.content || '';
+      ws1.getCell(`E${row}`).value = step.procedure || '';
+      ws1.getCell(`K${row}`).value = step.family_task || '';
+    }
 
-  for (let i = 0; i < service2Steps.length; i++) {
-    const row = 23 + i;
-    const step = service2Steps[i];
-    ws1.getCell(`B${row}`).value = step.time || '';
-    ws1.getCell(`C${row}`).value = step.content || '';
-    ws1.getCell(`E${row}`).value = step.procedure || '';
-    ws1.getCell(`K${row}`).value = step.family_task || '';
+    // サービス2の種類等（Row 40-41）— 2種類目がある場合
+    if (service2Steps.length > 0) {
+      if (serviceCheck.includes('家事') || serviceCheck.includes('生活')) {
+        ws1.getCell('B40').value = `□身体介護（　時間分）　■家事援助（${houseHours}）　□通院等乗降介助（　時間分）`;
+      }
+    }
   }
 
   // Excelファイルとしてダウンロード

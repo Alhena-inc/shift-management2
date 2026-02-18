@@ -34,8 +34,8 @@ const DOCUMENTS: DocumentDefinition[] = [
   { id: 'care-plan', number: '2-⑥', name: '居宅介護計画書', category: 'service', group: 'B', unit: 'client', description: '実績・アセスメントを元にAIが計画書を作成' },
 ];
 
-// ========== 事業所情報（固定値） ==========
-const OFFICE_INFO = {
+// ========== 事業所情報（デフォルト値） ==========
+const DEFAULT_OFFICE_INFO = {
   name: '訪問介護事業所のあ',
   address: '東京都渋谷区',
   tel: '',
@@ -86,6 +86,12 @@ const DocumentsPage: React.FC = () => {
 
   // 利用者選択モーダル（居宅介護計画書用）
   const [clientSelectModalDoc, setClientSelectModalDoc] = useState<DocumentDefinition | null>(null);
+
+  // 設定メニュー
+  const [showSettings, setShowSettings] = useState(false);
+  const [serviceManagerName, setServiceManagerName] = useState(() => {
+    return localStorage.getItem('care_plan_service_manager') || '';
+  });
 
   const hiddenDivRef = useRef<HTMLDivElement>(null);
 
@@ -275,7 +281,7 @@ const DocumentsPage: React.FC = () => {
         supplyAmounts,
         year: selectedYear,
         month: selectedMonth,
-        officeInfo: OFFICE_INFO,
+        officeInfo: { ...DEFAULT_OFFICE_INFO, serviceManager: serviceManagerName },
         hiddenDiv: hiddenDivRef.current!,
         customPrompt,
         customSystemInstruction,
@@ -338,7 +344,7 @@ const DocumentsPage: React.FC = () => {
           await generator({
             helpers, careClients, shifts, billingRecords, supplyAmounts,
             year: selectedYear, month: selectedMonth,
-            officeInfo: OFFICE_INFO, hiddenDiv: hiddenDivRef.current!,
+            officeInfo: { ...DEFAULT_OFFICE_INFO, serviceManager: serviceManagerName }, hiddenDiv: hiddenDivRef.current!,
             customPrompt, customSystemInstruction,
           });
           setGeneratedDocs(prev => new Set(prev).add(doc.id));
@@ -432,6 +438,39 @@ const DocumentsPage: React.FC = () => {
                 <span className="material-symbols-outlined text-base">bolt</span>
                 一括生成
               </button>
+              <div className="relative">
+                <button
+                  onClick={() => setShowSettings(!showSettings)}
+                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="設定"
+                >
+                  <span className="material-symbols-outlined text-xl">settings</span>
+                </button>
+                {showSettings && (
+                  <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-bold text-gray-900">書類設定</h3>
+                      <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-gray-600">
+                        <span className="material-symbols-outlined text-lg">close</span>
+                      </button>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">サービス提供責任者名</label>
+                      <input
+                        type="text"
+                        value={serviceManagerName}
+                        onChange={(e) => {
+                          setServiceManagerName(e.target.value);
+                          localStorage.setItem('care_plan_service_manager', e.target.value);
+                        }}
+                        placeholder="例: 山田 太郎"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">居宅介護計画書の作成者欄に記載されます</p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
