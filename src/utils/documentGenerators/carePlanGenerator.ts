@@ -27,30 +27,33 @@ const DEFAULT_PROMPT = `以下は訪問介護の利用者「{{client_name}}」�
 {{assessment_note}}
 
 以下の項目をJSON形式のみで出力してください（JSON以外のテキスト不要）。
-各テキストは簡潔に（セルに収まるよう25文字以内目安）。
+重要: 各テキストは簡潔に。Excelセルに収まるよう以下の文字数を厳守。
 
 {
-  "user_wish": "本人の希望（例: 自宅で安心して暮らしたい）",
-  "family_wish": "家族の希望（例: 安全に生活してほしい）",
-  "goal_long": "長期目標",
-  "goal_short": "短期目標",
-  "needs": "解決すべき課題",
+  "user_wish": "本人の希望（30文字以内。例: 自宅で安心して暮らしたい）",
+  "family_wish": "家族の希望（30文字以内。例: 安全に生活を続けてほしい）",
+  "goal_long": "長期目標（40文字以内。期間も記載。例: 安全な在宅生活の継続(6ヶ月)）",
+  "goal_short": "短期目標（40文字以内。期間も記載。例: 転倒予防と生活環境の改善(3ヶ月)）",
+  "needs": "解決すべき課題（40文字以内）",
+  "schedule_remarks": "計画予定表の備考欄（100文字以内。サービス提供上の補足事項を箇条書き。例: ※買い物は火・金にまとめて行う\\n※入浴は自宅で清拭）",
   "service1_steps": [
-    {"item": "援助項目（例: 移乗介助）", "content": "サービスの内容", "note": "留意事項"}
+    {"item": "援助項目名（8文字以内。例: 移乗介助）", "content": "サービスの具体的内容（20文字以内）", "note": "留意事項（25文字以内）"}
   ],
   "service2_steps": [
-    {"item": "援助項目（例: 調理）", "content": "サービスの内容", "note": "留意事項"}
+    {"item": "援助項目名（8文字以内。例: 調理）", "content": "サービスの具体的内容（20文字以内）", "note": "留意事項（25文字以内）"}
   ]
 }
 
 service1_stepsは身体介護の援助項目を5〜8項目。
 service2_stepsは家事援助の援助項目を3〜6項目。
-実績データの種別に合わせてください。身体介護のみなら service2_steps は空配列。`;
+実績データの種別に合わせてください。身体介護のみなら service2_steps は空配列。
+家事援助のみなら service1_steps は空配列。
+重度訪問介護の場合はservice1_stepsに身体系、service2_stepsに生活系の項目を入れてください。`;
 
 const DEFAULT_SYSTEM_INSTRUCTION = `訪問介護事業所のサービス提供責任者として居宅介護計画書を作成してください。
 運営指導（実地指導）に通る正式な計画書を作成してください。
 アセスメント資料・実績データ・契約支給量に基づいた具体的で実践的な内容にしてください。
-必ず有効なJSON形式のみ出力してください。`;
+必ず有効なJSON形式のみ出力してください。余計な説明文は不要です。`;
 
 // ==================== ユーティリティ ====================
 function applyTemplate(template: string, vars: Record<string, string>): string {
@@ -63,6 +66,11 @@ function applyTemplate(template: string, vars: Record<string, string>): string {
 
 function toReiwa(year: number): number {
   return year - 2018;
+}
+
+/** セルにテキスト折り返し設定を適用 */
+function setWrapText(cell: ExcelJS.Cell) {
+  cell.alignment = { ...cell.alignment, wrapText: true, vertical: 'top' };
 }
 
 // ==================== 型定義 ====================
@@ -78,6 +86,7 @@ interface CarePlan {
   goal_long: string;
   goal_short: string;
   needs: string;
+  schedule_remarks: string;
   service1_steps: ServiceStepBack[];
   service2_steps: ServiceStepBack[];
 }
@@ -90,71 +99,65 @@ const DAY_TO_COL: Record<string, string> = {
 const WEEKDAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
 
 /**
- * 新テンプレートの計画予定表:
+ * テンプレートの計画予定表:
  * Row 20: ヘッダー（時間, 月,火,水,木,金,土,日, 備考）
- * Row 21-22: 0:00
- * Row 23-24: 1:00
- * Row 25-26: 2:00
+ * Row 21: 0:00 (2行=Row21-22)
+ * Row 23: 1:00 (2行=Row23-24)
  * ...
- * Row 65-66: 22:00
- * Row 67-68: 23:00
- * 時刻ラベルはB列の奇数行(21,23,25,...,67)に入っている
- * 各時間帯は2行（例: 1:00 = Row23-24）
+ * Row 67: 23:00 (2行=Row67-68)
  */
 function timeToRow(timeStr: string): number {
   const [h] = timeStr.split(':').map(Number);
-  // 0:00→Row21, 1:00→Row23, 2:00→Row25, ..., 23:00→Row67
   return 21 + h * 2;
+}
+
+/** サービス種別を短縮名に変換 */
+function shortenServiceType(type: string): string {
+  if (type.includes('身体')) return '身体介護';
+  if (type.includes('生活') || type.includes('家事')) return '家事援助';
+  if (type.includes('重度')) return '重度訪問';
+  if (type.includes('通院')) return '通院';
+  if (type.includes('同行')) return '同行援護';
+  if (type.includes('行動')) return '行動援護';
+  return type.substring(0, 4);
 }
 
 /**
  * シフト実績から1週間のケアパターンを抽出して計画予定表に書き込む
+ * 見本のように、該当時間帯のセルにサービス種別名を記入
  */
 function fillScheduleGrid(ws: ExcelJS.Worksheet, clientShifts: Shift[]) {
-  // 曜日×時間帯パターンを集約
-  const patternMap = new Map<string, { type: string; start: string; end: string }>();
+  // 曜日×時間帯パターンを集約（ユニークなパターンのみ）
+  const patterns: { dayName: string; type: string; startH: number; endH: number }[] = [];
+  const seen = new Set<string>();
 
   for (const s of clientShifts) {
     if (s.deleted || s.cancelStatus === 'remove_time' || s.cancelStatus === 'canceled_without_time') continue;
     if (!s.startTime || !s.endTime) continue;
     const d = new Date(s.date);
     const dayName = WEEKDAY_NAMES[d.getDay()];
-    const key = `${dayName}_${s.startTime}_${s.endTime}_${s.serviceType || ''}`;
-    if (!patternMap.has(key)) {
-      patternMap.set(key, { type: s.serviceType || '訪問介護', start: s.startTime, end: s.endTime });
-    }
+    const startH = parseInt(s.startTime.split(':')[0], 10);
+    const endH = parseInt(s.endTime.split(':')[0], 10);
+    const label = shortenServiceType(s.serviceType || '訪問介護');
+    const key = `${dayName}_${startH}_${endH}_${label}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    patterns.push({ dayName, type: label, startH, endH });
   }
 
-  for (const [key, val] of patternMap.entries()) {
-    const dayName = key.split('_')[0];
-    const col = DAY_TO_COL[dayName];
+  // 各パターンについて、該当する時間帯すべてにサービス種別名を記入
+  for (const p of patterns) {
+    const col = DAY_TO_COL[p.dayName];
     if (!col) continue;
 
-    // サービス種別短縮名
-    let label = val.type;
-    if (label.includes('身体')) label = '身体';
-    else if (label.includes('生活') || label.includes('家事')) label = '家事';
-    else if (label.includes('通院')) label = '通院';
-    else if (label.includes('重度')) label = '重度';
-    else if (label.includes('同行')) label = '同行';
-    else if (label.includes('行動')) label = '行動';
-    else label = label.substring(0, 3);
-
-    const startRow = timeToRow(val.start);
-    const endRow = timeToRow(val.end);
-
-    // 開始行にラベル+時間を記入
-    const cell = ws.getCell(`${col}${startRow}`);
-    const existing = cell.value ? String(cell.value) : '';
-    const entry = `${label} ${val.start}-${val.end}`;
-    cell.value = existing ? `${existing}\n${entry}` : entry;
-
-    // 中間行に「│」を記入
-    for (let r = startRow + 1; r < endRow && r <= 68; r++) {
-      const midCell = ws.getCell(`${col}${r}`);
-      if (!midCell.value) {
-        midCell.value = '│';
-      }
+    for (let h = p.startH; h < p.endH; h++) {
+      const row = 21 + h * 2; // 各時間帯の1行目
+      const cell = ws.getCell(`${col}${row}`);
+      const existing = cell.value ? String(cell.value) : '';
+      // 同じセルに既に同じラベルがあればスキップ
+      if (existing.includes(p.type)) continue;
+      cell.value = existing ? `${existing}\n${p.type}` : p.type;
+      setWrapText(cell);
     }
   }
 }
@@ -207,6 +210,61 @@ function getSupplyHours(supplyAmounts: ShogaiSupplyAmount[], clientId: string): 
     result[cat] = s.supplyAmount || '';
   }
   return result;
+}
+
+/** チェックボックスの状態を判定 */
+function checkService(
+  keys: string[],
+  supplyH: Record<string, string>,
+  serviceTypes: string[],
+): { checked: boolean; hours: string } {
+  for (const k of keys) {
+    for (const [cat, amt] of Object.entries(supplyH)) {
+      if (cat.includes(k)) return { checked: true, hours: amt };
+    }
+  }
+  for (const k of keys) {
+    for (const st of serviceTypes) {
+      if (st.includes(k)) return { checked: true, hours: '' };
+    }
+  }
+  return { checked: false, hours: '' };
+}
+
+/** チェックボックス文字列を生成（元テンプレートの書式を維持）*/
+function checkboxText(label: string, check: { checked: boolean; hours: string }): string {
+  if (check.checked) {
+    return check.hours ? `■${label}　${check.hours}時間` : `■${label}　　時間`;
+  }
+  return `□${label}　　時間`;
+}
+
+/** 裏面チェックボックス文字列（時間なし） */
+function checkboxTextBack(label: string, checked: boolean): string {
+  return checked ? `■${label}` : `□${label}`;
+}
+
+/** 裏面のサービスブロックにチェックボックスを書き込む */
+function writeBackCheckboxes(
+  ws: ExcelJS.Worksheet,
+  startRow: number,
+  checks: {
+    body: boolean; house: boolean; heavy: boolean;
+    visitBody: boolean; visitNoBody: boolean;
+    ride: boolean; behavior: boolean; accompany: boolean;
+  },
+) {
+  // Row startRow: 身体介護, 家事援助, 重度訪問介護
+  ws.getCell(`B${startRow}`).value = checkboxTextBack('身体介護', checks.body);
+  ws.getCell(`F${startRow}`).value = checkboxTextBack('家事援助', checks.house);
+  ws.getCell(`H${startRow}`).value = checkboxTextBack('重度訪問介護', checks.heavy);
+  // Row startRow+1: 通院等介助×2
+  ws.getCell(`B${startRow + 1}`).value = checkboxTextBack('通院等介助(身体介護を伴う)', checks.visitBody);
+  ws.getCell(`F${startRow + 1}`).value = checkboxTextBack('通院等介助(身体介護を伴わない)', checks.visitNoBody);
+  // Row startRow+2: 乗降, 行動, 同行
+  ws.getCell(`B${startRow + 2}`).value = checkboxTextBack('通院等乗降介助', checks.ride);
+  ws.getCell(`F${startRow + 2}`).value = checkboxTextBack('行動援護', checks.behavior);
+  ws.getCell(`H${startRow + 2}`).value = checkboxTextBack('同行援護', checks.accompany);
 }
 
 // ==================== メイン生成関数 ====================
@@ -265,6 +323,7 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   // AI生成
   let plan: CarePlan = {
     user_wish: '', family_wish: '', goal_long: '', goal_short: '', needs: '',
+    schedule_remarks: '',
     service1_steps: [], service2_steps: [],
   };
 
@@ -309,10 +368,10 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   // K3: 作成者（サ責名）
   ws0.getCell('K3').value = officeInfo.serviceManager || '未設定';
 
-  // A5-A6: 利用者氏名
+  // A5: 利用者氏名
   ws0.getCell('A5').value = `${client.name}　様`;
 
-  // E5-E6: 生年月日
+  // E5: 生年月日
   ws0.getCell('E5').value = client.birthDate || '';
 
   // G5-G6: 住所
@@ -321,119 +380,115 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   }
   ws0.getCell('G6').value = client.address || '';
 
-  // K5-K6: TEL/FAX
+  // K5-K6: TEL
   ws0.getCell('K5').value = client.phone ? `TEL ${client.phone}` : '';
   ws0.getCell('K6').value = client.mobilePhone ? `携帯 ${client.mobilePhone}` : '';
 
-  // E8〜E10: 本人(家族)の希望
-  ws0.getCell('E8').value = plan.user_wish || '自宅で安心して暮らしたい';
-  ws0.getCell('E9').value = plan.family_wish || '安全に生活してほしい';
-  ws0.getCell('E10').value = '';
+  // E8〜E10: 本人(家族)の希望（折り返し設定）
+  const wishCell8 = ws0.getCell('E8');
+  wishCell8.value = plan.user_wish || '自宅で安心して暮らしたい';
+  setWrapText(wishCell8);
+  const wishCell9 = ws0.getCell('E9');
+  wishCell9.value = plan.family_wish || '安全に生活してほしい';
+  setWrapText(wishCell9);
 
-  // E12〜E14: 援助目標
-  ws0.getCell('E12').value = `長期: ${plan.goal_long || '安定した在宅生活の継続'}`;
-  ws0.getCell('E13').value = `短期: ${plan.goal_short || '日常生活動作の維持・向上'}`;
-  ws0.getCell('E14').value = plan.needs ? `課題: ${plan.needs}` : '';
+  // E12〜E14: 援助目標（折り返し設定）
+  const goalCell12 = ws0.getCell('E12');
+  goalCell12.value = `長期: ${plan.goal_long || '安定した在宅生活の継続'}`;
+  setWrapText(goalCell12);
+  const goalCell13 = ws0.getCell('E13');
+  goalCell13.value = `短期: ${plan.goal_short || '日常生活動作の維持・向上'}`;
+  setWrapText(goalCell13);
+  const goalCell14 = ws0.getCell('E14');
+  goalCell14.value = plan.needs ? `課題: ${plan.needs}` : '';
+  setWrapText(goalCell14);
 
   // ===== サービス内容チェックボックス（Row 16-18）=====
-  // 契約支給量からチェックと時間を自動反映
-  const checkService = (keys: string[], supplyH: Record<string, string>): { checked: boolean; hours: string } => {
-    for (const k of keys) {
-      for (const [cat, amt] of Object.entries(supplyH)) {
-        if (cat.includes(k)) return { checked: true, hours: amt };
-      }
-    }
-    // シフト実績からフォールバック
-    for (const k of keys) {
-      for (const st of serviceTypes) {
-        if (st.includes(k)) return { checked: true, hours: '' };
-      }
-    }
-    return { checked: false, hours: '' };
-  };
+  const bodyCheck = checkService(['身体介護', '身体'], supplyHours, serviceTypes);
+  const houseCheck = checkService(['家事援助', '家事'], supplyHours, serviceTypes);
+  const heavyCheck = checkService(['重度訪問', '重度'], supplyHours, serviceTypes);
+  const visitWithBody = checkService(['通院等介助(身体介護を伴う)', '通院介助（身体あり）'], supplyHours, serviceTypes);
+  const visitWithoutBody = checkService(['通院等介助(身体介護を伴わない)', '通院介助（身体なし）'], supplyHours, serviceTypes);
+  const rideCheck = checkService(['通院等乗降', '乗降'], supplyHours, serviceTypes);
+  const accompanyCheck = checkService(['同行援護', '同行'], supplyHours, serviceTypes);
+  const behaviorCheck = checkService(['行動援護', '行動'], supplyHours, serviceTypes);
 
-  const bodyCheck = checkService(['身体介護', '身体'], supplyHours);
-  const houseCheck = checkService(['家事援助', '家事'], supplyHours);
-  const heavyCheck = checkService(['重度訪問', '重度'], supplyHours);
-  const visitWithBody = checkService(['通院等介助(身体介護を伴う)', '通院介助（身体あり）'], supplyHours);
-  const visitWithoutBody = checkService(['通院等介助(身体介護を伴わない)', '通院介助（身体なし）'], supplyHours);
-  const rideCheck = checkService(['通院等乗降', '乗降'], supplyHours);
-  const accompanyCheck = checkService(['同行援護', '同行'], supplyHours);
-  const behaviorCheck = checkService(['行動援護', '行動'], supplyHours);
-
-  // D16: 身体介護
-  ws0.getCell('D16').value = bodyCheck.checked
-    ? `■身体介護　${bodyCheck.hours}` : '□身体介護　　時間';
-  // G16: 家事援助
-  ws0.getCell('G16').value = houseCheck.checked
-    ? `■家事援助　${houseCheck.hours}` : '□家事援助　　時間';
-  // J16: 重度訪問介護
-  ws0.getCell('J16').value = heavyCheck.checked
-    ? `■重度訪問介護　${heavyCheck.hours}` : '□重度訪問介護　　時間';
-  // D17: 通院等介助(身体あり)
-  ws0.getCell('D17').value = visitWithBody.checked
-    ? `■通院等介助(身体介護を伴う)　${visitWithBody.hours}` : '□通院等介助(身体介護を伴う)　時間';
-  // G17: 通院等介助(身体なし)
-  ws0.getCell('G17').value = visitWithoutBody.checked
-    ? `■通院等介助(身体介護を伴わない)　${visitWithoutBody.hours}` : '□通院等介助(身体介護を伴わない)　時間';
-  // J17: 通院等乗降介助
-  ws0.getCell('J17').value = rideCheck.checked
-    ? `■通院等乗降介助　${rideCheck.hours}` : '□通院等乗降介助　　時間';
-  // D18: 同行援護
-  ws0.getCell('D18').value = accompanyCheck.checked
-    ? `■同行援護　${accompanyCheck.hours}` : '□同行援護　　時間';
-  // G18: 行動援護
-  ws0.getCell('G18').value = behaviorCheck.checked
-    ? `■行動援護　${behaviorCheck.hours}` : '□行動援護　　時間';
+  // Row 16: 身体介護, 家事援助, 重度訪問介護
+  ws0.getCell('D16').value = checkboxText('身体介護', bodyCheck);
+  ws0.getCell('G16').value = checkboxText('家事援助', houseCheck);
+  ws0.getCell('J16').value = checkboxText('重度訪問介護', heavyCheck);
+  // Row 17: 通院等介助×2, 通院等乗降介助
+  ws0.getCell('D17').value = checkboxText('通院等介助(身体介護を伴う)', visitWithBody);
+  ws0.getCell('G17').value = checkboxText('通院等介助(身体介護を伴わない)', visitWithoutBody);
+  ws0.getCell('J17').value = checkboxText('通院等乗降介助', rideCheck);
+  // Row 18: 同行援護, 行動援護
+  ws0.getCell('D18').value = checkboxText('同行援護', accompanyCheck);
+  ws0.getCell('G18').value = checkboxText('行動援護', behaviorCheck);
 
   // ===== 計画予定表（Row 21〜68, Col D〜J）=====
   fillScheduleGrid(ws0, clientShifts);
+
+  // 備考欄（K列）に補足事項
+  if (plan.schedule_remarks) {
+    const remarkCell = ws0.getCell('K21');
+    remarkCell.value = plan.schedule_remarks;
+    setWrapText(remarkCell);
+  }
 
   // Row 70: 交付日
   ws0.getCell('D70').value = planDateText;
 
   // ==============================
   // Sheet 1: 居宅介護計画書（裏）— サービス内容詳細
+  // ブロック構造:
+  //   サービス1: ヘッダーRow3, データRow4-11, チェックRow12-14
+  //   サービス2: ヘッダーRow16, データRow17-24, チェックRow25-27
+  //   サービス3: ヘッダーRow29, データRow30-37, チェックRow38-40
+  //   サービス4: ヘッダーRow42, データRow43-50, チェックRow51-53
   // ==============================
   const ws1 = workbook.worksheets[1];
   if (ws1) {
-    // サービス1: Row 4-11（8行）— 身体介護
+    const checkFlags = {
+      body: bodyCheck.checked, house: houseCheck.checked, heavy: heavyCheck.checked,
+      visitBody: visitWithBody.checked, visitNoBody: visitWithoutBody.checked,
+      ride: rideCheck.checked, behavior: behaviorCheck.checked, accompany: accompanyCheck.checked,
+    };
+
+    // --- サービス1: Row 4-11（身体介護系）---
     const s1 = plan.service1_steps || [];
     for (let i = 0; i < Math.min(s1.length, 8); i++) {
       const row = 4 + i;
-      ws1.getCell(`B${row}`).value = s1[i].item || '';
-      ws1.getCell(`F${row}`).value = s1[i].content || '';
-      ws1.getCell(`J${row}`).value = s1[i].note || '';
+      const bCell = ws1.getCell(`B${row}`);
+      bCell.value = s1[i].item || '';
+      setWrapText(bCell);
+      const fCell = ws1.getCell(`F${row}`);
+      fCell.value = s1[i].content || '';
+      setWrapText(fCell);
+      const jCell = ws1.getCell(`J${row}`);
+      jCell.value = s1[i].note || '';
+      setWrapText(jCell);
     }
+    writeBackCheckboxes(ws1, 12, checkFlags);
 
-    // サービス1 種類チェック (Row 12-14)
-    ws1.getCell('B12').value = bodyCheck.checked ? '■身体介護' : '□身体介護';
-    ws1.getCell('F12').value = houseCheck.checked ? '■家事援助' : '□家事援助';
-    ws1.getCell('H12').value = heavyCheck.checked ? '■重度訪問介護' : '□重度訪問介護';
-    ws1.getCell('B13').value = visitWithBody.checked ? '■通院等介助(身体介護を伴う)' : '□通院等介助(身体介護を伴う)';
-    ws1.getCell('F13').value = visitWithoutBody.checked ? '■通院等介助(身体介護を伴わない)' : '□通院等介助(身体介護を伴わない)';
-    ws1.getCell('B14').value = rideCheck.checked ? '■通院等乗降介助' : '□通院等乗降介助';
-    ws1.getCell('F14').value = behaviorCheck.checked ? '■行動援護' : '□行動援護';
-    ws1.getCell('H14').value = accompanyCheck.checked ? '■同行援護' : '□同行援護';
-
-    // サービス2: Row 17-24（8行）— 家事援助
+    // --- サービス2: Row 17-24（家事援助系）---
     const s2 = plan.service2_steps || [];
     for (let i = 0; i < Math.min(s2.length, 8); i++) {
       const row = 17 + i;
-      ws1.getCell(`B${row}`).value = s2[i].item || '';
-      ws1.getCell(`F${row}`).value = s2[i].content || '';
-      ws1.getCell(`J${row}`).value = s2[i].note || '';
+      const bCell = ws1.getCell(`B${row}`);
+      bCell.value = s2[i].item || '';
+      setWrapText(bCell);
+      const fCell = ws1.getCell(`F${row}`);
+      fCell.value = s2[i].content || '';
+      setWrapText(fCell);
+      const jCell = ws1.getCell(`J${row}`);
+      jCell.value = s2[i].note || '';
+      setWrapText(jCell);
     }
+    writeBackCheckboxes(ws1, 25, checkFlags);
 
-    // サービス2 種類チェック (Row 25-27)
-    ws1.getCell('B25').value = bodyCheck.checked ? '■身体介護' : '□身体介護';
-    ws1.getCell('F25').value = houseCheck.checked ? '■家事援助' : '□家事援助';
-    ws1.getCell('H25').value = heavyCheck.checked ? '■重度訪問介護' : '□重度訪問介護';
-    ws1.getCell('B26').value = visitWithBody.checked ? '■通院等介助(身体介護を伴う)' : '□通院等介助(身体介護を伴う)';
-    ws1.getCell('F26').value = visitWithoutBody.checked ? '■通院等介助(身体介護を伴わない)' : '□通院等介助(身体介護を伴わない)';
-    ws1.getCell('B27').value = rideCheck.checked ? '■通院等乗降介助' : '□通院等乗降介助';
-    ws1.getCell('F27').value = behaviorCheck.checked ? '■行動援護' : '□行動援護';
-    ws1.getCell('H27').value = accompanyCheck.checked ? '■同行援護' : '□同行援護';
+    // --- サービス3,4: チェックボックスのみ（データが多い場合に拡張可能）---
+    writeBackCheckboxes(ws1, 38, checkFlags);
+    writeBackCheckboxes(ws1, 51, checkFlags);
   }
 
   // ダウンロード

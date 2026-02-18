@@ -455,17 +455,20 @@ const DocumentsPage: React.FC = () => {
                       </button>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">サービス提供責任者名</label>
-                      <input
-                        type="text"
+                      <label className="block text-xs font-medium text-gray-700 mb-1">サービス提供責任者</label>
+                      <select
                         value={serviceManagerName}
                         onChange={(e) => {
                           setServiceManagerName(e.target.value);
                           localStorage.setItem('care_plan_service_manager', e.target.value);
                         }}
-                        placeholder="例: 山田 太郎"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                      />
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                      >
+                        <option value="">-- 選択してください --</option>
+                        {helpers.map(h => (
+                          <option key={h.id} value={h.name}>{h.name}</option>
+                        ))}
+                      </select>
                       <p className="mt-1 text-xs text-gray-500">居宅介護計画書の作成者欄に記載されます</p>
                     </div>
                   </div>
