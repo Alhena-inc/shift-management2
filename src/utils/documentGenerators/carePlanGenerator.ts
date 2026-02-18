@@ -407,6 +407,9 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
   }
 
   // ========== STEP 3: サービスブロック再描画 ==========
+  // ExcelJSではマスターセル(結合の左上)のborderが結合範囲全体に自動伝播する。
+  // マスターセルだけにborderを設定すればExcelが外枠として描画する。
+  // 中間行への個別設定は不要（やると全セルにthinが伝播して太線だらけになる）。
   const planFont: Partial<ExcelJS.Font> = { name: 'HG正楷書体-PRO', size: 12 };
 
   for (const p of patterns) {
@@ -417,24 +420,17 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     // セル結合
     ws.mergeCells(p.startRow, colNum, p.endRow, colNum);
 
-    // サービス名記入
+    // マスターセル（結合の先頭）にラベル・スタイル・罫線を設定
     const cell = ws.getCell(`${col}${p.startRow}`);
     cell.value = p.type;
     cell.font = planFont;
     cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-
-    // 罫線: 結合範囲の全行に個別設定
-    for (let row = p.startRow; row <= p.endRow; row++) {
-      const c = ws.getCell(row, colNum);
-      const isTop = row === p.startRow;
-      const isBottom = row === p.endRow;
-      c.border = {
-        top: isTop ? thinBorder : noBorder,
-        bottom: isBottom ? thinBorder : noBorder,
-        left: thinBorder,
-        right: thinBorder,
-      };
-    }
+    cell.border = {
+      top: thinBorder,
+      bottom: thinBorder,
+      left: thinBorder,
+      right: thinBorder,
+    };
   }
 }
 
