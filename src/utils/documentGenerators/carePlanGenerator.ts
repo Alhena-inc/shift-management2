@@ -273,7 +273,7 @@ const WEEKDAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
 
 /** サービスコードからサービス種別名に変換（空白を除去して判定） */
 function serviceCodeToLabel(code: string): string {
-  if (!code) return '訪問介護';
+  if (!code) return '';
   const c = code.replace(/\s+/g, ''); // 空白除去（"身 体" → "身体"）
   if (c.includes('身体') || /^11[12]/.test(c)) return '身体介護';
   if (c.includes('生活') || c.includes('家事') || /^12[12]/.test(c)) return '家事援助';
@@ -281,7 +281,7 @@ function serviceCodeToLabel(code: string): string {
   if (c.includes('通院')) return '通院';
   if (c.includes('同行') || /^15/.test(c)) return '同行援護';
   if (c.includes('行動') || /^16/.test(c)) return '行動援護';
-  return c.substring(0, 4);
+  return '';  // 不明なコードは空（計画予定表には描画しない）
 }
 
 /** 列文字→列番号 */
@@ -353,6 +353,9 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
   }
 
   // ========== パターン集約 ==========
+  // 既知のサービス種別のみ描画対象（不明なコードの枠描画を防止）
+  const KNOWN_SERVICE_LABELS = new Set(['身体介護', '家事援助', '重度訪問', '通院', '同行援護', '行動援護']);
+
   const seen = new Set<string>();
   const patterns: { dayName: string; type: string; startRow: number; endRow: number }[] = [];
 
@@ -361,6 +364,12 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     const d = new Date(r.serviceDate);
     const dayName = WEEKDAY_NAMES[d.getDay()];
     const label = serviceCodeToLabel(r.serviceCode);
+
+    // 既知のサービス種別でなければスキップ（不明コードの空枠描画を防止）
+    if (!KNOWN_SERVICE_LABELS.has(label)) {
+      console.log(`[CarePlan] スキップ: ${dayName} ${r.startTime}-${r.endTime} ラベル="${label}" コード="${r.serviceCode}"`);
+      continue;
+    }
 
     const startH = parseInt(r.startTime.split(':')[0], 10);
     let endH = parseInt(r.endTime.split(':')[0], 10);
@@ -382,6 +391,9 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     const clampedStart = Math.max(sRow, minRow);
     const clampedEnd = Math.min(eRow, maxRow);
     if (clampedStart >= clampedEnd) continue;
+
+    // 結合行数が2行未満（30分以下）はスキップ（枠が小さすぎて見た目が悪い）
+    if (clampedEnd - clampedStart < 2) continue;
 
     const key = `${dayName}_${clampedStart}_${clampedEnd}_${label}`;
     if (seen.has(key)) continue;
@@ -436,7 +448,7 @@ function buildBillingSummary(records: BillingRecord[]): string {
     const d = new Date(r.serviceDate);
     const dayName = WEEKDAY_NAMES[d.getDay()];
     if (!byDay.has(dayName)) byDay.set(dayName, []);
-    const label = serviceCodeToLabel(r.serviceCode);
+    const label = serviceCodeToLabel(r.serviceCode) || r.serviceCode || '不明';
     byDay.get(dayName)!.push(`${r.startTime}~${r.endTime} ${label}`);
   }
   const dayOrder = ['月', '火', '水', '木', '金', '土', '日'];
@@ -456,7 +468,8 @@ function buildBillingSummary(records: BillingRecord[]): string {
 function getServiceTypesFromBilling(records: BillingRecord[]): string[] {
   const types = new Set<string>();
   for (const r of records) {
-    types.add(serviceCodeToLabel(r.serviceCode));
+    const label = serviceCodeToLabel(r.serviceCode);
+    if (label) types.add(label);
   }
   return [...types];
 }
