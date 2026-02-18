@@ -299,11 +299,52 @@ function timeToRow(time: string): number {
 }
 
 /**
+ * 計画予定表エリア（行21〜68, D〜J列）の既存マージセルを解除し値をクリア
+ */
+function clearScheduleArea(ws: ExcelJS.Worksheet) {
+  const minCol = colToNum('D'); // 4
+  const maxCol = colToNum('J'); // 10
+  const minRow = 21;
+  const maxRow = 68;
+
+  // 既存マージセルのうち予定表エリアに重なるものを解除
+  const merges = Object.keys(ws.model.merges || {});
+  for (const range of merges) {
+    // range例: "D37:D40"
+    const match = range.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/);
+    if (!match) continue;
+    const c1 = colToNum(match[1]);
+    const r1 = parseInt(match[2], 10);
+    const c2 = colToNum(match[3]);
+    const r2 = parseInt(match[4], 10);
+    // 予定表エリアと重なるか判定
+    if (c1 >= minCol && c2 <= maxCol && r1 >= minRow && r2 <= maxRow) {
+      try {
+        ws.unMergeCells(range);
+      } catch { /* already unmerged */ }
+    }
+  }
+
+  // 値をクリア
+  for (let row = minRow; row <= maxRow; row++) {
+    for (let col = minCol; col <= maxCol; col++) {
+      const cell = ws.getCell(row, col);
+      cell.value = null;
+    }
+  }
+}
+
+/**
  * 実績表から週間ケアパターンを抽出して計画予定表に書き込む
- * 見本のように、時間帯分のセルを結合→罫線ボックス→中央にラベル記入
+ * 1. 予定表エリアの既存マージを解除しクリア
+ * 2. 曜日×時間帯パターンをユニークに集約
+ * 3. 該当セルを結合→罫線ボックス→中央にサービス名記入
  */
 function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]) {
-  // 曜日×時間帯パターンをユニークに集約
+  // ステップ1: 既存の計画予定表をクリア
+  clearScheduleArea(ws);
+
+  // ステップ2: 曜日×時間帯パターンをユニークに集約
   const seen = new Set<string>();
   const patterns: { dayName: string; type: string; startRow: number; endRow: number }[] = [];
 
@@ -348,28 +389,33 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     console.log(`  ${p.dayName} Row${p.startRow}-${p.endRow} ${p.type}`);
   }
 
+  // ステップ3: セル結合→罫線→ラベル記入
+  const planFont: Partial<ExcelJS.Font> = { name: 'HG正楷書体-PRO', size: 12 };
+
   for (const p of patterns) {
     const col = DAY_TO_COL[p.dayName];
     if (!col) continue;
     const colNum = colToNum(col);
 
     // セルを結合（開始行〜終了行、同じ列）
-    try {
-      ws.mergeCells(p.startRow, colNum, p.endRow, colNum);
-    } catch {
-      // 既に結合済みの場合はスキップ
-    }
+    ws.mergeCells(p.startRow, colNum, p.endRow, colNum);
 
-    // 結合したセルにラベルを記入（中央揃え）
+    // 結合セルの先頭にラベルを記入（中央揃え）
     const cell = ws.getCell(`${col}${p.startRow}`);
     cell.value = p.type;
+    cell.font = planFont;
     cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-    cell.border = {
-      top: thinBorder,
-      bottom: thinBorder,
-      left: thinBorder,
-      right: thinBorder,
-    };
+
+    // 結合範囲の各行に罫線を設定（外枠: 上下は端のみ、左右は全行）
+    for (let row = p.startRow; row <= p.endRow; row++) {
+      const c = ws.getCell(row, colNum);
+      c.border = {
+        top: row === p.startRow ? thinBorder : undefined,
+        bottom: row === p.endRow ? thinBorder : undefined,
+        left: thinBorder,
+        right: thinBorder,
+      };
+    }
   }
 }
 
