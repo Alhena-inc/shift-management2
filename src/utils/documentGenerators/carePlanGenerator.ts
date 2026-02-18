@@ -302,8 +302,8 @@ function timeToRow(time: string): number {
   return 21 + h * 2 + (m >= 30 ? 1 : 0);
 }
 
-/** 罫線なし（明示的にstyleなしを設定） */
-const noBorder: Partial<ExcelJS.Border> = {};
+/** 罫線を明示的に消すための hair スタイル（テンプレートの元の細線に戻す） */
+const hairBorder: Partial<ExcelJS.Border> = { style: 'hair' };
 
 /**
  * 実績表から週間ケアパターンを抽出して計画予定表に書き込む
@@ -337,19 +337,28 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     try { ws.unMergeCells(range); } catch { /* skip */ }
   }
 
-  // ========== STEP 2: 全セルの値・罫線を完全リセット ==========
+  // ========== STEP 2: 全セルの値をクリアし、罫線をテンプレートの元のhairに復元 ==========
+  // テンプレートの予定表エリアは全セルがhair罫線で構成されている。
+  // STEP1でunMergeCellsするとスレーブセルの罫線がundefinedに消えるため、
+  // 全セルをhair罫線で統一的にリセットする必要がある。
+  // テンプレートのパターン:
+  //   Row21: top=thin (エリア上端), bottom=hair, left/right=hair (端は省略)
+  //   Row22-65: top=hair, bottom=hair, left/right=hair (端は省略)
+  //   Row66-68: top=hair, bottomなし (エリア下端)
+  //   D列(col4): leftなし (エリア左端)
+  //   J列(col10): rightなし (エリア右端)
   for (let row = minRow; row <= maxRow; row++) {
     for (let col = minCol; col <= maxCol; col++) {
       const cell = ws.getCell(row, col);
       cell.value = null;
-      cell.border = {
-        top: noBorder,
-        bottom: noBorder,
-        left: noBorder,
-        right: noBorder,
-      };
       cell.font = {};
       cell.alignment = {};
+      cell.border = {
+        top: row === minRow ? thinBorder : hairBorder,
+        bottom: row >= 66 ? undefined : hairBorder,
+        left: col === minCol ? undefined : hairBorder,
+        right: col === maxCol ? undefined : hairBorder,
+      };
     }
   }
 
@@ -456,9 +465,9 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
   }
 
   // ========== STEP 3: サービスブロック再描画 ==========
-  // ExcelJSではマスターセル(結合の左上)のborderが結合範囲全体に自動伝播する。
-  // マスターセルだけにborderを設定すればExcelが外枠として描画する。
-  // 中間行への個別設定は不要（やると全セルにthinが伝播して太線だらけになる）。
+  // 重要: ExcelJSではthin罫線を使うと隣接セルにも伝播して太い黒線が出る。
+  // サービスブロックの罫線はhairのまま（テンプレートと同じ細さ）にして、
+  // 結合セルの値とフォントでブロックを視覚的に区別する。
   const planFont: Partial<ExcelJS.Font> = { name: 'HG正楷書体-PRO', size: 12 };
 
   for (const p of merged) {
@@ -472,15 +481,18 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     }
 
     // マスターセル（結合の先頭 or 単一セル）にラベル・スタイル・罫線を設定
+    // 罫線はhair（テンプレートの元の細線と同じ）→ 太い黒線は出ない
     const cell = ws.getCell(`${col}${p.startRow}`);
     cell.value = p.type;
     cell.font = planFont;
     cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    const isLeftEdge = (colNum === minCol);
+    const isRightEdge = (colNum === maxCol);
     cell.border = {
-      top: thinBorder,
-      bottom: thinBorder,
-      left: thinBorder,
-      right: thinBorder,
+      top: hairBorder,
+      bottom: hairBorder,
+      left: isLeftEdge ? undefined : hairBorder,
+      right: isRightEdge ? undefined : hairBorder,
     };
   }
 }
