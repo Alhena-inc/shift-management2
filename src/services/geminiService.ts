@@ -3,7 +3,8 @@
  * Supabase Edge Function経由でClaude APIを使った文章生成機能を提供
  */
 
-import { supabase } from '../lib/supabase';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 export interface GeminiResponse {
   text: string;
@@ -15,19 +16,11 @@ export interface GeminiResponse {
  */
 export async function generateText(prompt: string, systemInstruction?: string): Promise<GeminiResponse> {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-
-    if (!token) {
-      return { text: '', error: 'ログインが必要です' };
-    }
-
-    const projectUrl = import.meta.env.VITE_SUPABASE_URL;
-    const res = await fetch(`${projectUrl}/functions/v1/claude-proxy`, {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/claude-proxy`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
       },
       body: JSON.stringify({ prompt, systemInstruction }),
     });
@@ -63,13 +56,6 @@ export async function generateWithFiles(
   systemInstruction?: string
 ): Promise<GeminiResponse> {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-
-    if (!token) {
-      return { text: '', error: 'ログインが必要です' };
-    }
-
     const files: Array<{ type: string; mimeType: string; data: string }> = [];
 
     for (const url of fileUrls) {
@@ -97,12 +83,11 @@ export async function generateWithFiles(
       }
     }
 
-    const projectUrl = import.meta.env.VITE_SUPABASE_URL;
-    const res = await fetch(`${projectUrl}/functions/v1/claude-proxy`, {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/claude-proxy`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
       },
       body: JSON.stringify({ prompt, systemInstruction, files }),
     });
