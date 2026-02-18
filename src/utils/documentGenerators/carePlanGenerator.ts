@@ -286,11 +286,16 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
 
   // 実績データ集計
   const clientShifts = shifts.filter(s => s.clientName === client.name && !s.deleted);
+  console.log(`[CarePlan] 利用者: ${client.name}, シフト件数: ${clientShifts.length}/${shifts.length}`);
+  if (clientShifts.length > 0) {
+    console.log(`[CarePlan] シフト例:`, clientShifts.slice(0, 3).map(s => `${s.date} ${s.startTime}-${s.endTime} ${s.serviceType}`));
+  }
   const serviceTypes = [...new Set(clientShifts.map(s => s.serviceType).filter(Boolean))];
   const totalVisits = clientShifts.length;
   const shiftSummary = buildShiftSummary(clientShifts);
   const supplyText = buildSupplyAmountsText(supplyAmounts, client.id);
   const supplyHours = getSupplyHours(supplyAmounts, client.id);
+  console.log(`[CarePlan] サービス種別: ${serviceTypes.join(', ')}, 契約支給量: ${JSON.stringify(supplyHours)}`);
 
   // アセスメントファイル取得
   let assessmentFileUrls: string[] = [];
@@ -342,6 +347,11 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   } catch (e) {
     throw new Error(`JSON解析失敗: ${e instanceof Error ? e.message : String(e)}`);
   }
+
+  console.log(`[CarePlan] AI応答 - service1_steps: ${plan.service1_steps?.length || 0}件, service2_steps: ${plan.service2_steps?.length || 0}件`);
+  console.log(`[CarePlan] AI応答 - user_wish: "${plan.user_wish}", goal_long: "${plan.goal_long}"`);
+  if (plan.service1_steps?.length) console.log(`[CarePlan] service1例:`, plan.service1_steps[0]);
+  if (plan.service2_steps?.length) console.log(`[CarePlan] service2例:`, plan.service2_steps[0]);
 
   // ==============================
   // Sheet 0: 居宅介護計画書（表）
@@ -426,7 +436,11 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   ws0.getCell('G18').value = checkboxText('行動援護', behaviorCheck);
 
   // ===== 計画予定表（Row 21〜68, Col D〜J）=====
+  console.log(`[CarePlan] 計画予定表書き込み開始 - シフト件数: ${clientShifts.length}`);
   fillScheduleGrid(ws0, clientShifts);
+  // 書き込み確認ログ
+  const testCell = ws0.getCell('D21');
+  console.log(`[CarePlan] 計画予定表 D21の値: ${JSON.stringify(testCell.value)}`);
 
   // 備考欄（K列）に補足事項
   if (plan.schedule_remarks) {
@@ -456,8 +470,10 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
 
     // --- サービス1: Row 4-11（身体介護系）---
     const s1 = plan.service1_steps || [];
+    console.log(`[CarePlan] 裏面サービス1書き込み: ${s1.length}件`);
     for (let i = 0; i < Math.min(s1.length, 8); i++) {
       const row = 4 + i;
+      console.log(`[CarePlan]   Row${row}: item="${s1[i].item}", content="${s1[i].content}", note="${s1[i].note}"`);
       const bCell = ws1.getCell(`B${row}`);
       bCell.value = s1[i].item || '';
       setWrapText(bCell);
@@ -472,8 +488,10 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
 
     // --- サービス2: Row 17-24（家事援助系）---
     const s2 = plan.service2_steps || [];
+    console.log(`[CarePlan] 裏面サービス2書き込み: ${s2.length}件`);
     for (let i = 0; i < Math.min(s2.length, 8); i++) {
       const row = 17 + i;
+      console.log(`[CarePlan]   Row${row}: item="${s2[i].item}", content="${s2[i].content}", note="${s2[i].note}"`);
       const bCell = ws1.getCell(`B${row}`);
       bCell.value = s2[i].item || '';
       setWrapText(bCell);
