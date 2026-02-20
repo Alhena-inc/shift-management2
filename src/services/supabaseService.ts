@@ -2960,3 +2960,178 @@ export const deleteDocumentSchedule = async (id: string): Promise<void> => {
     throw error;
   }
 };
+
+// ========== 目標期間管理（v2） ==========
+
+export const loadGoalPeriods = async (careClientId?: string): Promise<any[]> => {
+  try {
+    let query = supabase.from('goal_periods').select('*');
+    if (careClientId) {
+      query = query.eq('care_client_id', careClientId);
+    }
+    const { data, error } = await query.order('goal_type').order('goal_index');
+    if (error) throw error;
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      careClientId: row.care_client_id,
+      goalType: row.goal_type,
+      goalIndex: row.goal_index,
+      goalText: row.goal_text,
+      startDate: row.start_date,
+      endDate: row.end_date,
+      linkedPlanId: row.linked_plan_id,
+      isActive: row.is_active,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  } catch (error) {
+    console.error('目標期間読み込みエラー:', error);
+    throw error;
+  }
+};
+
+export const saveGoalPeriod = async (item: any): Promise<any> => {
+  try {
+    const saveData: any = {
+      care_client_id: item.careClientId,
+      goal_type: item.goalType,
+      goal_index: item.goalIndex ?? 0,
+      goal_text: item.goalText || null,
+      start_date: item.startDate,
+      end_date: item.endDate,
+      linked_plan_id: item.linkedPlanId || null,
+      is_active: item.isActive ?? true,
+      updated_at: new Date().toISOString(),
+    };
+    if (item.id) {
+      saveData.id = item.id;
+    }
+    const { data, error } = await supabase
+      .from('goal_periods')
+      .upsert(saveData)
+      .select()
+      .single();
+    if (error) throw error;
+    return {
+      id: data.id,
+      careClientId: data.care_client_id,
+      goalType: data.goal_type,
+      goalIndex: data.goal_index,
+      goalText: data.goal_text,
+      startDate: data.start_date,
+      endDate: data.end_date,
+      linkedPlanId: data.linked_plan_id,
+      isActive: data.is_active,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
+  } catch (error) {
+    console.error('目標期間保存エラー:', error);
+    throw error;
+  }
+};
+
+export const deleteGoalPeriod = async (id: string): Promise<void> => {
+  try {
+    const { error } = await supabase.from('goal_periods').delete().eq('id', id);
+    if (error) throw error;
+  } catch (error) {
+    console.error('目標期間削除エラー:', error);
+    throw error;
+  }
+};
+
+// ========== モニタリングスケジュール管理（v2） ==========
+
+export const loadMonitoringSchedules = async (careClientId?: string): Promise<any[]> => {
+  try {
+    let query = supabase.from('monitoring_schedules').select('*');
+    if (careClientId) {
+      query = query.eq('care_client_id', careClientId);
+    }
+    const { data, error } = await query.order('due_date', { ascending: true, nullsFirst: false });
+    if (error) throw error;
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      careClientId: row.care_client_id,
+      goalPeriodId: row.goal_period_id,
+      monitoringType: row.monitoring_type,
+      status: row.status,
+      dueDate: row.due_date,
+      alertDate: row.alert_date,
+      completedAt: row.completed_at,
+      planRevisionNeeded: row.plan_revision_needed,
+      planRevisionReason: row.plan_revision_reason,
+      triggerEvent: row.trigger_event,
+      triggerNotes: row.trigger_notes,
+      autoGenerate: row.auto_generate,
+      notes: row.notes,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  } catch (error) {
+    console.error('モニタリングスケジュール読み込みエラー:', error);
+    throw error;
+  }
+};
+
+export const saveMonitoringSchedule = async (item: any): Promise<any> => {
+  try {
+    const saveData: any = {
+      care_client_id: item.careClientId,
+      goal_period_id: item.goalPeriodId || null,
+      monitoring_type: item.monitoringType,
+      status: item.status || 'pending',
+      due_date: item.dueDate || null,
+      alert_date: item.alertDate || null,
+      completed_at: item.completedAt || null,
+      plan_revision_needed: item.planRevisionNeeded || null,
+      plan_revision_reason: item.planRevisionReason || null,
+      trigger_event: item.triggerEvent || null,
+      trigger_notes: item.triggerNotes || null,
+      auto_generate: item.autoGenerate ?? false,
+      notes: item.notes || null,
+      updated_at: new Date().toISOString(),
+    };
+    if (item.id) {
+      saveData.id = item.id;
+    }
+    const { data, error } = await supabase
+      .from('monitoring_schedules')
+      .upsert(saveData)
+      .select()
+      .single();
+    if (error) throw error;
+    return {
+      id: data.id,
+      careClientId: data.care_client_id,
+      goalPeriodId: data.goal_period_id,
+      monitoringType: data.monitoring_type,
+      status: data.status,
+      dueDate: data.due_date,
+      alertDate: data.alert_date,
+      completedAt: data.completed_at,
+      planRevisionNeeded: data.plan_revision_needed,
+      planRevisionReason: data.plan_revision_reason,
+      triggerEvent: data.trigger_event,
+      triggerNotes: data.trigger_notes,
+      autoGenerate: data.auto_generate,
+      notes: data.notes,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
+  } catch (error) {
+    console.error('モニタリングスケジュール保存エラー:', error);
+    throw error;
+  }
+};
+
+export const deleteMonitoringSchedule = async (id: string): Promise<void> => {
+  try {
+    const { error } = await supabase.from('monitoring_schedules').delete().eq('id', id);
+    if (error) throw error;
+  } catch (error) {
+    console.error('モニタリングスケジュール削除エラー:', error);
+    throw error;
+  }
+};

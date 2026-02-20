@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmounts, loadBillingRecordsForMonth, loadShogaiDocuments, saveShogaiDocument, deleteShogaiDocument, uploadShogaiDocFile, loadAiPrompt, saveAiPrompt, saveDocumentSchedule } from '../services/dataService';
+import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmounts, loadBillingRecordsForMonth, loadShogaiDocuments, saveShogaiDocument, deleteShogaiDocument, uploadShogaiDocFile, loadAiPrompt, saveAiPrompt, saveDocumentSchedule, loadMonitoringSchedules, saveMonitoringSchedule, loadGoalPeriods } from '../services/dataService';
 import { computeNextDates } from '../utils/documentScheduleChecker';
 import { isGeminiAvailable } from '../services/geminiService';
 import type { Helper, CareClient, Shift, BillingRecord, ShogaiSupplyAmount, ShogaiDocument } from '../types';
@@ -308,6 +308,16 @@ const DocumentsPage: React.FC = () => {
               lastGeneratedAt: generatedAt, nextDueDate, alertDate, expiryDate,
               cycleMonths: 6, alertDaysBefore: 30,
             });
+            // v2: 目標期間が未設定ならアラート
+            try {
+              const existingGoals = await loadGoalPeriods(selectedClient.id);
+              const activeGoals = existingGoals.filter((g: any) => g.isActive);
+              if (activeGoals.length === 0) {
+                setTimeout(() => {
+                  alert(`${selectedClient.name}の目標期間が未設定です。\n書類スケジュール画面で長期・短期目標の期間を設定してください。`);
+                }, 500);
+              }
+            } catch { /* 目標期間チェック失敗は無視 */ }
           } else if (doc.id === 'monitoring') {
             const planRevisionNeeded = (generatorResult as any)?.planRevisionNeeded || 'なし';
             await saveDocumentSchedule({
@@ -321,6 +331,19 @@ const DocumentsPage: React.FC = () => {
                 planRevisionNeeded: 'あり', planRevisionReason: 'モニタリングにより計画変更が必要と判定',
               });
             }
+            // v2: 未完了のモニタリングスケジュールがあれば完了に更新
+            try {
+              const v2Schedules = await loadMonitoringSchedules(selectedClient.id);
+              const pendingV2 = v2Schedules.find((s: any) => s.status !== 'completed' && s.status !== 'generating');
+              if (pendingV2) {
+                await saveMonitoringSchedule({
+                  ...pendingV2,
+                  status: 'completed',
+                  completedAt: generatedAt,
+                  planRevisionNeeded,
+                });
+              }
+            } catch { /* v2更新失敗は無視 */ }
           } else if (doc.id === 'care-procedure') {
             await saveDocumentSchedule({
               careClientId: selectedClient.id, docType: 'tejunsho', status: 'active',

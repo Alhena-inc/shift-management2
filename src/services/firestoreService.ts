@@ -1390,3 +1390,33 @@ export const updateDocumentScheduleStatus = async (_id: string, _status: string,
 export const deleteDocumentSchedule = async (_id: string) => {
   throw new Error('書類スケジュールはSupabaseモードでのみ利用可能です');
 };
+
+// ========== 目標期間管理（Firebaseスタブ） ==========
+
+export const loadGoalPeriods = async (_careClientId?: string) => {
+  console.warn('目標期間はSupabaseモードでのみ利用可能です');
+  return [];
+};
+
+export const saveGoalPeriod = async (_item: any) => {
+  throw new Error('目標期間はSupabaseモードでのみ利用可能です');
+};
+
+export const deleteGoalPeriod = async (_id: string) => {
+  throw new Error('目標期間はSupabaseモードでのみ利用可能です');
+};
+
+// ========== モニタリングスケジュール管理（Firebaseスタブ） ==========
+
+export const loadMonitoringSchedules = async (_careClientId?: string) => {
+  console.warn('モニタリングスケジュールはSupabaseモードでのみ利用可能です');
+  return [];
+};
+
+export const saveMonitoringSchedule = async (_item: any) => {
+  throw new Error('モニタリングスケジュールはSupabaseモードでのみ利用可能です');
+};
+
+export const deleteMonitoringSchedule = async (_id: string) => {
+  throw new Error('モニタリングスケジュールはSupabaseモードでのみ利用可能です');
+};

@@ -1,4 +1,4 @@
-import type { DocumentSchedule, ScheduleDocType, ScheduleAction } from '../types/documentSchedule';
+import type { DocumentSchedule, ScheduleDocType, ScheduleAction, GoalPeriod, MonitoringScheduleItem, MonitoringAction } from '../types/documentSchedule';
 import type { CareClient } from '../types';
 
 // ========== 日付ユーティリティ ==========
@@ -169,4 +169,146 @@ export const checkDocumentSchedules = (
   alerts.sort((a, b) => (a.daysUntilDue ?? 0) - (b.daysUntilDue ?? 0));
 
   return { actions, alerts };
+};
+
+// ========== v2: 目標期間からモニタリングスケジュール自動生成 ==========
+
+export const generateMonitoringSchedulesFromGoals = (
+  goalPeriods: GoalPeriod[],
+  existingSchedules: MonitoringScheduleItem[],
+  _today: string
+): Omit<MonitoringScheduleItem, 'id' | 'createdAt' | 'updatedAt'>[] => {
+  const newSchedules: Omit<MonitoringScheduleItem, 'id' | 'createdAt' | 'updatedAt'>[] = [];
+
+  for (const goal of goalPeriods) {
+    if (!goal.isActive) continue;
+
+    // 同じgoal_period_idで未完了のスケジュールがあればスキップ
+    const existing = existingSchedules.find(
+      s => s.goalPeriodId === goal.id && s.status !== 'completed'
+    );
+    if (existing) continue;
+
+    const monitoringType = goal.goalType === 'long_term' ? 'long_term' : 'short_term';
+    const dueDate = goal.endDate;
+    const alertDate = addDays(dueDate, -14); // 2週間前
+
+    newSchedules.push({
+      careClientId: goal.careClientId,
+      goalPeriodId: goal.id,
+      monitoringType,
+      status: 'pending',
+      dueDate,
+      alertDate,
+      completedAt: null,
+      planRevisionNeeded: null,
+      planRevisionReason: null,
+      triggerEvent: null,
+      triggerNotes: null,
+      autoGenerate: false,
+      notes: null,
+    });
+  }
+
+  return newSchedules;
+};
+
+// ========== v2: モニタリングスケジュールチェック ==========
+
+export const checkMonitoringSchedules = (
+  schedules: MonitoringScheduleItem[],
+  clients: CareClient[],
+  today: string,
+  alertDaysBefore: number = 14
+): { actions: MonitoringAction[]; alerts: MonitoringAction[] } => {
+  const actions: MonitoringAction[] = [];
+  const alerts: MonitoringAction[] = [];
+
+  const clientMap = new Map(clients.map(c => [c.id, c]));
+
+  for (const schedule of schedules) {
+    if (schedule.status === 'completed' || schedule.status === 'generating') continue;
+
+    const client = clientMap.get(schedule.careClientId);
+    if (!client || client.deleted) continue;
+
+    if (!schedule.dueDate) continue;
+
+    const daysUntil = daysDiff(today, schedule.dueDate);
+
+    if (daysUntil <= 0) {
+      // 期限切れ
+      actions.push({
+        type: 'monitoring_overdue',
+        clientId: schedule.careClientId,
+        clientName: client.name || '不明',
+        monitoringSchedule: schedule,
+        daysUntilDue: daysUntil,
+      });
+    } else if (daysUntil <= alertDaysBefore) {
+      // 期限間近
+      alerts.push({
+        type: 'monitoring_upcoming',
+        clientId: schedule.careClientId,
+        clientName: client.name || '不明',
+        monitoringSchedule: schedule,
+        daysUntilDue: daysUntil,
+      });
+    }
+  }
+
+  actions.sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+  alerts.sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+
+  return { actions, alerts };
+};
+
+// ========== v2: 契約日チェック ==========
+
+export const checkContractDateAlerts = (
+  schedules: DocumentSchedule[],
+  clients: CareClient[],
+  today: string
+): MonitoringAction[] => {
+  const contractAlerts: MonitoringAction[] = [];
+  const clientMap = new Map(clients.map(c => [c.id, c]));
+
+  for (const schedule of schedules) {
+    if (schedule.docType !== 'care_plan') continue;
+    if (schedule.status !== 'pending') continue;
+
+    const client = clientMap.get(schedule.careClientId);
+    if (!client || client.deleted) continue;
+    if (!client.contractStart) continue;
+
+    const daysUntilContract = daysDiff(today, client.contractStart);
+    if (daysUntilContract > 0 && daysUntilContract <= 3) {
+      contractAlerts.push({
+        type: 'plan_before_contract',
+        clientId: schedule.careClientId,
+        clientName: client.name || '不明',
+        monitoringSchedule: {
+          id: '',
+          careClientId: schedule.careClientId,
+          goalPeriodId: null,
+          monitoringType: 'short_term',
+          status: 'pending',
+          dueDate: client.contractStart,
+          alertDate: null,
+          completedAt: null,
+          planRevisionNeeded: null,
+          planRevisionReason: null,
+          triggerEvent: null,
+          triggerNotes: null,
+          autoGenerate: false,
+          notes: null,
+          createdAt: '',
+          updatedAt: '',
+        },
+        daysUntilDue: daysUntilContract,
+      });
+    }
+  }
+
+  return contractAlerts;
 };

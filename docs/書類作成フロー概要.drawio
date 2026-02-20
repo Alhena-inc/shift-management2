@@ -1,0 +1,277 @@
+<mxfile host="app.diagrams.net" modified="2026-02-20T00:00:00.000Z" agent="Claude" version="24.0.0" type="device">
+  <diagram id="doc-flow-overview" name="書類作成フロー全体像">
+    <mxGraphModel dx="2074" dy="1166" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="2400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="&lt;b style=&quot;font-size:22px&quot;&gt;書類作成・スケジュール管理 システム概要図&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;fontSize=22;fontColor=#1a1a2e;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry x="300" y="20" width="700" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="v1（固定6ヶ月サイクル）+ v2（目標期間駆動）モニタリング管理" style="text;html=1;align=center;verticalAlign=middle;fontSize=14;fontColor=#666666;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="350" y="65" width="600" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="docs-group" value="&lt;b&gt;書類の種類（4種）&lt;/b&gt;" style="swimlane;startSize=30;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;rounded=1;arcSize=8;fontSize=14;swimlaneLine=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="120" width="620" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="doc-assessment" value="&lt;b&gt;2-⑤ アセスメント&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#666&quot; style=&quot;font-size:10px&quot;&gt;【手動アップロード】&lt;br&gt;利用者の状態評価&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;shadow=1;fontSize=12;verticalAlign=middle;" vertex="1" parent="docs-group">
+          <mxGeometry x="15" y="45" width="135" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="doc-careplan" value="&lt;b&gt;2-⑥ 居宅介護計画書&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#666&quot; style=&quot;font-size:10px&quot;&gt;【AI生成】&lt;br&gt;介護の方針・目標&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;shadow=1;fontSize=12;verticalAlign=middle;" vertex="1" parent="docs-group">
+          <mxGeometry x="165" y="45" width="135" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="doc-procedure" value="&lt;b&gt;2-⑦ 訪問介護手順書&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#666&quot; style=&quot;font-size:10px&quot;&gt;【AI生成・自動連動】&lt;br&gt;訪問ごとの具体的手順&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;shadow=1;fontSize=12;verticalAlign=middle;" vertex="1" parent="docs-group">
+          <mxGeometry x="315" y="45" width="145" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="doc-monitoring" value="&lt;b&gt;2-⑧ モニタリング&lt;br&gt;報告書&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#666&quot; style=&quot;font-size:10px&quot;&gt;【AI生成】&lt;br&gt;計画の評価・見直し&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;shadow=1;fontSize=12;verticalAlign=middle;" vertex="1" parent="docs-group">
+          <mxGeometry x="475" y="45" width="130" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-assess-plan" value="入力" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#d6b656;strokeWidth=2;fontSize=10;fontColor=#888888;" edge="1" parent="docs-group" source="doc-assessment" target="doc-careplan">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-plan-proc" value="自動" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6c8ebf;strokeWidth=2;fontSize=10;fontColor=#888888;" edge="1" parent="docs-group" source="doc-careplan" target="doc-procedure">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-proc-mon" value="評価" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#82b366;strokeWidth=2;fontSize=10;fontColor=#888888;" edge="1" parent="docs-group" source="doc-procedure" target="doc-monitoring">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="gen-note" value="計画書を生成 → 手順書も&lt;b&gt;自動生成&lt;/b&gt; → モニタリング次回日も&lt;b&gt;自動セット&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#FF9800;shadow=0;fontSize=11;verticalAlign=middle;spacingLeft=8;spacingRight=8;" vertex="1" parent="docs-group">
+          <mxGeometry x="80" y="150" width="460" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="ai-group" value="&lt;b&gt;AI生成フロー（Gemini API）&lt;/b&gt;" style="swimlane;startSize=30;fillColor=#E8EAF6;strokeColor=#5C6BC0;fontColor=#283593;rounded=1;arcSize=8;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="700" y="120" width="560" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="ai-step1" value="&lt;b&gt;① 利用者を選択&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5C6BC0;fontSize=12;shadow=1;" vertex="1" parent="ai-group">
+          <mxGeometry x="20" y="50" width="110" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="ai-step2" value="&lt;b&gt;② コンテキスト構築&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot; color=&quot;#888&quot;&gt;ヘルパー/シフト&lt;br&gt;実績/アセスメント&lt;br&gt;供給量&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5C6BC0;fontSize=12;shadow=1;" vertex="1" parent="ai-group">
+          <mxGeometry x="155" y="42" width="120" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="ai-step3" value="&lt;b&gt;③ Gemini API&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot; color=&quot;#888&quot;&gt;カスタムプロンプト&lt;br&gt;+システム指示&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#4CAF50;fontSize=12;shadow=1;" vertex="1" parent="ai-group">
+          <mxGeometry x="300" y="42" width="110" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="ai-step4" value="&lt;b&gt;④ PDF生成&lt;br&gt;&amp;amp; ダウンロード&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5C6BC0;fontSize=12;shadow=1;" vertex="1" parent="ai-group">
+          <mxGeometry x="435" y="50" width="105" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="ai-arrow1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#5C6BC0;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="ai-group" source="ai-step1" target="ai-step2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ai-arrow2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#5C6BC0;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="ai-group" source="ai-step2" target="ai-step3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ai-arrow3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#5C6BC0;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="ai-group" source="ai-step3" target="ai-step4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ai-prompt-note" value="各書類のプロンプトは管理画面から&lt;b&gt;カスタマイズ可能&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#FF9800;fontSize=11;spacingLeft=8;spacingRight=8;" vertex="1" parent="ai-group">
+          <mxGeometry x="100" y="140" width="340" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="v1-group" value="&lt;b&gt;v1: 固定6ヶ月サイクル（document_schedules テーブル）&lt;/b&gt;" style="swimlane;startSize=30;fillColor=#E3F2FD;strokeColor=#1976D2;fontColor=#0D47A1;rounded=1;arcSize=8;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="40" y="380" width="620" height="380" as="geometry" />
+        </mxCell>
+        <mxCell id="v1-pending" value="&lt;b&gt;未設定&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;pending&lt;/font&gt;" style="ellipse;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#9E9E9E;fontSize=12;shadow=1;" vertex="1" parent="v1-group">
+          <mxGeometry x="40" y="55" width="100" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="v1-active" value="&lt;font color=&quot;#2E7D32&quot;&gt;&lt;b&gt;有効&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;active&lt;/font&gt;" style="ellipse;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#4CAF50;fontSize=12;shadow=1;" vertex="1" parent="v1-group">
+          <mxGeometry x="250" y="55" width="100" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="v1-duesoon" value="&lt;font color=&quot;#F57F17&quot;&gt;&lt;b&gt;期限間近&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;due_soon&lt;/font&gt;" style="ellipse;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#FBC02D;fontSize=12;shadow=1;" vertex="1" parent="v1-group">
+          <mxGeometry x="460" y="55" width="110" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="v1-overdue" value="&lt;font color=&quot;#C62828&quot;&gt;&lt;b&gt;期限超過&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;overdue&lt;/font&gt;" style="ellipse;whiteSpace=wrap;html=1;fillColor=#FFCDD2;strokeColor=#E53935;fontSize=12;shadow=1;" vertex="1" parent="v1-group">
+          <mxGeometry x="460" y="155" width="110" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="v1-generating" value="&lt;font color=&quot;#1565C0&quot;&gt;&lt;b&gt;生成中&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;generating&lt;/font&gt;" style="ellipse;whiteSpace=wrap;html=1;fillColor=#BBDEFB;strokeColor=#1976D2;fontSize=12;shadow=1;" vertex="1" parent="v1-group">
+          <mxGeometry x="250" y="155" width="100" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="v1-a1" value="生成" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4CAF50;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;fontSize=10;fontColor=#4CAF50;fontStyle=1;" edge="1" parent="v1-group" source="v1-pending" target="v1-active">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v1-a2" value="30日前" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#FBC02D;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;fontSize=10;fontColor=#F57F17;fontStyle=1;" edge="1" parent="v1-group" source="v1-active" target="v1-duesoon">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v1-a3" value="期限到達" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#E53935;strokeWidth=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;fontSize=10;fontColor=#C62828;fontStyle=1;" edge="1" parent="v1-group" source="v1-duesoon" target="v1-overdue">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v1-a4" value="実行" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#1976D2;strokeWidth=2;exitX=0;exitY=0.5;entryX=1;entryY=0.5;fontSize=10;fontColor=#1565C0;fontStyle=1;" edge="1" parent="v1-group" source="v1-overdue" target="v1-generating">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v1-a5" value="完了→次の6ヶ月へ" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4CAF50;strokeWidth=2;exitX=0.5;exitY=0;entryX=0.5;entryY=1;fontSize=10;fontColor=#2E7D32;fontStyle=1;" edge="1" parent="v1-group" source="v1-generating" target="v1-active">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v1-info" value="&lt;div style=&quot;text-align:left;font-size:12px;line-height:2&quot;&gt;📌 計画書・手順書・モニタリング 全て&lt;b&gt;6ヶ月&lt;/b&gt;サイクル&lt;br&gt;📌 アラートは期限の&lt;b&gt;30日前&lt;/b&gt;に発動&lt;br&gt;📌 計画書生成時に手順書も&lt;b&gt;同時生成&lt;/b&gt;&lt;br&gt;📌 モニタリングで「計画変更要」→ 計画書が &lt;b style=&quot;color:#C62828&quot;&gt;overdue&lt;/b&gt; に&lt;br&gt;📌 &lt;b&gt;一括生成ボタン&lt;/b&gt;で全overdue一気に実行可能&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#90CAF9;shadow=0;align=left;spacingLeft=15;spacingRight=10;" vertex="1" parent="v1-group">
+          <mxGeometry x="20" y="235" width="580" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-group" value="&lt;b&gt;v2: 目標期間駆動モニタリング（goal_periods + monitoring_schedules テーブル）&lt;/b&gt;" style="swimlane;startSize=30;fillColor=#F3E5F5;strokeColor=#7B1FA2;fontColor=#4A148C;rounded=1;arcSize=8;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="700" y="380" width="560" height="580" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-step1" value="&lt;font style=&quot;font-size:16px&quot;&gt;①&lt;/font&gt; &lt;b&gt;管理者が目標期間を手動入力&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#666&quot;&gt;AI応答に期間情報がないため、専門判断で設定&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#CE93D8;strokeColor=#7B1FA2;fontColor=#FFFFFF;fontSize=12;shadow=1;fontStyle=1;" vertex="1" parent="v2-group">
+          <mxGeometry x="100" y="45" width="360" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-long" value="&lt;b&gt;長期目標&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;例: 6ヶ月&lt;br&gt;2026/03〜2026/08&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1BEE7;strokeColor=#7B1FA2;fontSize=12;shadow=1;" vertex="1" parent="v2-group">
+          <mxGeometry x="20" y="130" width="155" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-short1" value="&lt;b&gt;短期目標 ①&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;例: 3ヶ月&lt;br&gt;2026/03〜2026/05&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1BEE7;strokeColor=#7B1FA2;fontSize=12;shadow=1;" vertex="1" parent="v2-group">
+          <mxGeometry x="200" y="130" width="155" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-short2" value="&lt;b&gt;短期目標 ②&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;例: 3ヶ月&lt;br&gt;2026/06〜2026/08&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1BEE7;strokeColor=#7B1FA2;fontSize=12;shadow=1;" vertex="1" parent="v2-group">
+          <mxGeometry x="380" y="130" width="155" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-arr1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7B1FA2;strokeWidth=2;exitX=0.2;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="v2-group" source="v2-step1" target="v2-long">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-arr2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7B1FA2;strokeWidth=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="v2-group" source="v2-step1" target="v2-short1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-arr3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7B1FA2;strokeWidth=2;exitX=0.8;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="v2-group" source="v2-step1" target="v2-short2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-auto" value="&lt;font style=&quot;font-size:16px&quot;&gt;②&lt;/font&gt; &lt;b&gt;モニタリングスケジュール自動生成&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#666&quot;&gt;各目標の&lt;b&gt;終了日 = モニタリング期日&lt;/b&gt;、アラートは&lt;b&gt;14日前&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#7B1FA2;fontSize=12;shadow=1;" vertex="1" parent="v2-group">
+          <mxGeometry x="80" y="215" width="400" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-arr4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7B1FA2;strokeWidth=2;dashed=1;exitX=0.5;exitY=1;entryX=0.2;entryY=0;" edge="1" parent="v2-group" source="v2-long" target="v2-auto">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-arr5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7B1FA2;strokeWidth=2;dashed=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="v2-group" source="v2-short1" target="v2-auto">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-arr6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7B1FA2;strokeWidth=2;dashed=1;exitX=0.5;exitY=1;entryX=0.8;entryY=0;" edge="1" parent="v2-group" source="v2-short2" target="v2-auto">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-timeline-label" value="&lt;font style=&quot;font-size:16px&quot;&gt;③&lt;/font&gt; &lt;b&gt;モニタリングタイムライン&lt;/b&gt;" style="text;html=1;align=left;fontSize=13;fontColor=#4A148C;" vertex="1" parent="v2-group">
+          <mxGeometry x="20" y="285" width="300" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-tl1" value="&lt;b&gt;短期①評価&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;2026-05-31&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1BEE7;strokeColor=#7B1FA2;fontSize=11;shadow=1;" vertex="1" parent="v2-group">
+          <mxGeometry x="20" y="315" width="120" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-tl2" value="&lt;b&gt;短期②評価&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;2026-08-31&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1BEE7;strokeColor=#7B1FA2;fontSize=11;shadow=1;" vertex="1" parent="v2-group">
+          <mxGeometry x="170" y="315" width="120" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-tl3" value="&lt;b&gt;長期目標評価&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;2026-08-31&lt;br&gt;(計画更新含む)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#CE93D8;strokeColor=#7B1FA2;fontSize=11;fontColor=#FFFFFF;shadow=1;" vertex="1" parent="v2-group">
+          <mxGeometry x="320" y="310" width="130" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-execute" value="&lt;b&gt;実行&lt;/b&gt;ボタン&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;各行に配置&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4CAF50;strokeColor=#388E3C;fontColor=#FFFFFF;fontSize=11;shadow=1;" vertex="1" parent="v2-group">
+          <mxGeometry x="475" y="320" width="70" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-tl-arr1" style="rounded=1;strokeColor=#7B1FA2;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="v2-group" source="v2-tl1" target="v2-tl2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-tl-arr2" style="rounded=1;strokeColor=#7B1FA2;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="v2-group" source="v2-tl2" target="v2-tl3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-tl-arr3" style="rounded=1;strokeColor=#388E3C;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="v2-group" source="v2-tl3" target="v2-execute">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-emergency-label" value="&lt;font style=&quot;font-size:16px&quot;&gt;④&lt;/font&gt; &lt;b&gt;臨時モニタリング（状態変化トリガー）&lt;/b&gt;" style="text;html=1;align=left;fontSize=13;fontColor=#E65100;" vertex="1" parent="v2-group">
+          <mxGeometry x="20" y="385" width="350" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-trigger-events" value="&lt;div style=&quot;text-align:left;font-size:11px;line-height:1.6&quot;&gt;&lt;b&gt;トリガーイベント:&lt;/b&gt;&lt;br&gt;状態悪化 / 状態改善 / 入院 / 退院&lt;br&gt;生活環境変化 / サービス計画変更&lt;br&gt;受給者証更新 / 利用者要望 / その他&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#FF9800;fontSize=11;shadow=1;align=left;spacingLeft=10;" vertex="1" parent="v2-group">
+          <mxGeometry x="20" y="415" width="270" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-emergency-create" value="&lt;b&gt;即座にスケジュール作成&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;due_date = 本日&lt;br&gt;すぐに実行可能&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF9800;strokeColor=#E65100;fontColor=#FFFFFF;fontSize=12;shadow=1;" vertex="1" parent="v2-group">
+          <mxGeometry x="340" y="425" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-em-arr" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#FF9800;strokeWidth=3;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="v2-group" source="v2-trigger-events" target="v2-emergency-create">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v2-info" value="&lt;b&gt;v2のメリット:&lt;/b&gt; 目標期間に合わせた柔軟なモニタリング管理。v1未設定の利用者はv1表示のまま&lt;b&gt;段階的に移行可能&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#CE93D8;shadow=0;align=left;spacingLeft=10;spacingRight=10;fontSize=11;" vertex="1" parent="v2-group">
+          <mxGeometry x="20" y="520" width="520" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="revision-group" value="&lt;b&gt;モニタリング結果 → 計画変更判定（v1/v2共通）&lt;/b&gt;" style="swimlane;startSize=30;fillColor=#FFEBEE;strokeColor=#C62828;fontColor=#B71C1C;rounded=1;arcSize=8;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="40" y="800" width="620" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="rev-mon" value="&lt;b&gt;モニタリング&lt;br&gt;報告書生成&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1BEE7;strokeColor=#7B1FA2;fontSize=12;shadow=1;" vertex="1" parent="revision-group">
+          <mxGeometry x="20" y="50" width="130" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="rev-check" value="&lt;b&gt;AI判定&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;計画変更の要否&lt;/font&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#F9A825;fontSize=12;shadow=1;" vertex="1" parent="revision-group">
+          <mxGeometry x="200" y="40" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="rev-no" value="&lt;font color=&quot;#2E7D32&quot;&gt;&lt;b&gt;なし&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;次回まで継続&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#4CAF50;fontSize=12;shadow=1;" vertex="1" parent="revision-group">
+          <mxGeometry x="420" y="40" width="130" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="rev-yes" value="&lt;font color=&quot;#C62828&quot;&gt;&lt;b&gt;あり&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;計画書を &lt;b&gt;overdue&lt;/b&gt; に&lt;br&gt;→ 再生成が必要！&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFCDD2;strokeColor=#E53935;fontSize=12;shadow=1;" vertex="1" parent="revision-group">
+          <mxGeometry x="410" y="105" width="170" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="rev-arr1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7B1FA2;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="revision-group" source="rev-mon" target="rev-check">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rev-arr2" value="なし" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4CAF50;strokeWidth=2;exitX=1;exitY=0.25;entryX=0;entryY=0.5;fontSize=11;fontColor=#2E7D32;fontStyle=1;" edge="1" parent="revision-group" source="rev-check" target="rev-no">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rev-arr3" value="あり" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#E53935;strokeWidth=2;exitX=1;exitY=0.75;entryX=0;entryY=0.5;fontSize=11;fontColor=#C62828;fontStyle=1;" edge="1" parent="revision-group" source="rev-check" target="rev-yes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="contract-group" value="&lt;b&gt;契約日チェック&lt;/b&gt;" style="swimlane;startSize=30;fillColor=#FFF3E0;strokeColor=#FF9800;fontColor=#E65100;rounded=1;arcSize=8;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="700" y="1000" width="560" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="contract-check" value="契約開始日が &lt;b&gt;3日以内&lt;/b&gt;&lt;br&gt;かつ計画書が &lt;b&gt;未作成（pending）&lt;/b&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#F9A825;fontSize=12;shadow=1;" vertex="1" parent="contract-group">
+          <mxGeometry x="20" y="35" width="220" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="contract-alert" value="⚠ &lt;b&gt;アラート表示&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;「契約開始まで○日&lt;br&gt;計画書を作成してください」&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF9800;strokeColor=#E65100;fontColor=#FFFFFF;fontSize=13;shadow=1;" vertex="1" parent="contract-group">
+          <mxGeometry x="310" y="35" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="contract-arr" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#FF9800;strokeWidth=3;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="contract-group" source="contract-check" target="contract-alert">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="dash-group" value="&lt;b&gt;ダッシュボード画面構成（/document-schedules）&lt;/b&gt;" style="swimlane;startSize=30;fillColor=#E0F7FA;strokeColor=#00838F;fontColor=#004D40;rounded=1;arcSize=8;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1020" width="620" height="340" as="geometry" />
+        </mxCell>
+        <mxCell id="dash-1" value="&lt;font style=&quot;font-size:18px&quot;&gt;🔔&lt;/font&gt; &lt;b&gt;アラートバナー&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#666&quot;&gt;契約日前アラート（橙）/ v1期限超過（赤）/ v2モニタリング超過（赤）/ 期限間近（黄）&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#00838F;fontSize=12;shadow=1;" vertex="1" parent="dash-group">
+          <mxGeometry x="15" y="40" width="590" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="dash-2" value="&lt;font style=&quot;font-size:18px&quot;&gt;📋&lt;/font&gt; &lt;b&gt;利用者テーブル&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#666&quot;&gt;▶ 展開ボタン | 利用者名 [v2バッジ] | 計画書ステータス | 手順書ステータス | モニタリング | 操作&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#00838F;fontSize=12;shadow=1;" vertex="1" parent="dash-group">
+          <mxGeometry x="15" y="100" width="590" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="dash-3" value="&lt;div style=&quot;text-align:left;font-size:12px;line-height:2&quot;&gt;&lt;b&gt;▼ 展開パネル&lt;/b&gt;（利用者行クリックで開閉）&lt;br&gt;　├ 📌 &lt;b&gt;目標期間入力フォーム&lt;/b&gt;（長期1つ + 短期最大3つ）&lt;br&gt;　├ 📅 &lt;b&gt;モニタリングタイムライン&lt;/b&gt;（各目標の評価日一覧 + 実行ボタン）&lt;br&gt;　└ 🚨 &lt;b&gt;臨時モニタリングボタン&lt;/b&gt;（状態変化トリガー + メモ）&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0F2F1;strokeColor=#00838F;fontSize=11;shadow=1;align=left;spacingLeft=15;" vertex="1" parent="dash-group">
+          <mxGeometry x="15" y="165" width="590" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="dash-4" value="&lt;font style=&quot;font-size:18px&quot;&gt;📊&lt;/font&gt; &lt;b&gt;統計カード&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#666&quot;&gt;利用者数 | 有効 | 期限間近 | 期限超過 | v2モニタリング完了率&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#00838F;fontSize=12;shadow=1;" vertex="1" parent="dash-group">
+          <mxGeometry x="15" y="285" width="590" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="coexist-group" value="&lt;b&gt;v1 / v2 共存戦略&lt;/b&gt;" style="swimlane;startSize=30;fillColor=#ECEFF1;strokeColor=#455A64;fontColor=#263238;rounded=1;arcSize=8;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1400" width="1220" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="coexist-v1" value="&lt;font style=&quot;font-size:14px&quot;&gt;&lt;b&gt;v1 利用者&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;目標期間 &lt;b&gt;未設定&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#BBDEFB;strokeColor=#1976D2;fontSize=12;shadow=1;" vertex="1" parent="coexist-group">
+          <mxGeometry x="30" y="50" width="180" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="coexist-v1-desc" value="&lt;div style=&quot;text-align:left;font-size:11px;line-height:1.8&quot;&gt;- document_schedules テーブルで管理&lt;br&gt;- 6ヶ月固定サイクル&lt;br&gt;- 従来通りの表示（変更なし）&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#90CAF9;fontSize=11;shadow=0;align=left;spacingLeft=10;" vertex="1" parent="coexist-group">
+          <mxGeometry x="30" y="120" width="250" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="coexist-arrow" value="" style="shape=flexArrow;endArrow=classic;html=1;fillColor=#CFD8DC;strokeColor=#455A64;width=25;endSize=8;startSize=8;" edge="1" parent="coexist-group">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="340" y="100" as="sourcePoint" />
+            <mxPoint x="510" y="100" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="coexist-arrow-label" value="&lt;b&gt;段階的に移行&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;目標期間を設定した&lt;br&gt;利用者からv2へ&lt;/font&gt;" style="text;html=1;align=center;fontSize=11;fontColor=#455A64;" vertex="1" parent="coexist-group">
+          <mxGeometry x="355" y="50" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="coexist-v2" value="&lt;font style=&quot;font-size:14px&quot;&gt;&lt;b&gt;v2 利用者&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;目標期間 &lt;b&gt;設定済み&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1BEE7;strokeColor=#7B1FA2;fontSize=12;shadow=1;" vertex="1" parent="coexist-group">
+          <mxGeometry x="540" y="50" width="180" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="coexist-v2-desc" value="&lt;div style=&quot;text-align:left;font-size:11px;line-height:1.8&quot;&gt;- monitoring_schedules テーブルで管理&lt;br&gt;- 目標期間に連動した柔軟なスケジュール&lt;br&gt;- タイムライン表示 + [v2] バッジ&lt;br&gt;- 臨時モニタリング対応&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#CE93D8;fontSize=11;shadow=0;align=left;spacingLeft=10;" vertex="1" parent="coexist-group">
+          <mxGeometry x="490" y="120" width="280" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="coexist-note" value="&lt;div style=&quot;text-align:left;font-size:12px;line-height:1.8&quot;&gt;&lt;b&gt;重要:&lt;/b&gt;&lt;br&gt;- document_schedules テーブルは&lt;b&gt;一切変更しない&lt;/b&gt;&lt;br&gt;- 既存のv1チェック・表示は&lt;b&gt;そのまま動作&lt;/b&gt;&lt;br&gt;- v2管理は別テーブル（monitoring_schedules）で完全独立&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#F9A825;shadow=0;align=left;spacingLeft=12;spacingRight=10;" vertex="1" parent="coexist-group">
+          <mxGeometry x="810" y="50" width="380" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="db-group" value="&lt;b&gt;データベーステーブル構成&lt;/b&gt;" style="swimlane;startSize=30;fillColor=#FFF8E1;strokeColor=#F9A825;fontColor=#E65100;rounded=1;arcSize=8;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1640" width="1220" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="db-doc-sched" value="&lt;div style=&quot;text-align:left;padding:8px;font-size:11px;line-height:1.6&quot;&gt;&lt;b style=&quot;font-size:13px&quot;&gt;document_schedules&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#1976D2&quot;&gt;&lt;b&gt;v1: 固定サイクル管理&lt;/b&gt;&lt;/font&gt;&lt;hr size=&quot;1&quot; color=&quot;#ddd&quot;&gt;care_client_id&lt;br&gt;doc_type (care_plan / tejunsho / monitoring)&lt;br&gt;status / next_due_date / cycle_months&lt;br&gt;plan_revision_needed / auto_generate&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1976D2;shadow=1;verticalAlign=top;" vertex="1" parent="db-group">
+          <mxGeometry x="20" y="40" width="300" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="db-goal" value="&lt;div style=&quot;text-align:left;padding:8px;font-size:11px;line-height:1.6&quot;&gt;&lt;b style=&quot;font-size:13px&quot;&gt;goal_periods&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#7B1FA2&quot;&gt;&lt;b&gt;v2: 目標期間&lt;/b&gt;&lt;/font&gt;&lt;hr size=&quot;1&quot; color=&quot;#ddd&quot;&gt;care_client_id&lt;br&gt;goal_type (long_term / short_term)&lt;br&gt;goal_index / goal_text&lt;br&gt;start_date / end_date / is_active&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7B1FA2;shadow=1;verticalAlign=top;" vertex="1" parent="db-group">
+          <mxGeometry x="420" y="40" width="300" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="db-mon-sched" value="&lt;div style=&quot;text-align:left;padding:8px;font-size:11px;line-height:1.6&quot;&gt;&lt;b style=&quot;font-size:13px&quot;&gt;monitoring_schedules&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#7B1FA2&quot;&gt;&lt;b&gt;v2: モニタリングスケジュール&lt;/b&gt;&lt;/font&gt;&lt;hr size=&quot;1&quot; color=&quot;#ddd&quot;&gt;care_client_id&lt;br&gt;goal_period_id → goal_periods.id (FK)&lt;br&gt;monitoring_type (short / long / emergency)&lt;br&gt;status / due_date / alert_date&lt;br&gt;trigger_event / plan_revision_needed&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7B1FA2;shadow=1;verticalAlign=top;" vertex="1" parent="db-group">
+          <mxGeometry x="820" y="40" width="300" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="db-arr1" value="FK: goal_period_id" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7B1FA2;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;fontSize=10;fontColor=#7B1FA2;" edge="1" parent="db-group" source="db-goal" target="db-mon-sched">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="db-arr2" value="共通: care_client_id" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#F9A825;strokeWidth=1;dashed=1;exitX=1;exitY=0.3;entryX=0;entryY=0.3;fontSize=10;fontColor=#F9A825;" edge="1" parent="db-group" source="db-doc-sched" target="db-goal">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

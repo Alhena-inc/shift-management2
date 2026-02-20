@@ -1,6 +1,6 @@
-import type { ScheduleAction } from '../types/documentSchedule';
+import type { ScheduleAction, MonitoringScheduleItem } from '../types/documentSchedule';
 import type { CareClient } from '../types';
-import { saveDocumentSchedule, loadBillingRecordsForMonth, loadShiftsForMonth, loadHelpers, loadCareClients, loadAiPrompt } from '../services/dataService';
+import { saveDocumentSchedule, saveMonitoringSchedule, loadBillingRecordsForMonth, loadShiftsForMonth, loadHelpers, loadCareClients, loadAiPrompt } from '../services/dataService';
 import { computeNextDates } from './documentScheduleChecker';
 
 interface ExecutionResult {
@@ -198,6 +198,80 @@ export async function executeScheduleAction(
       await saveDocumentSchedule({
         ...action.schedule,
         status: action.schedule.status === 'generating' ? 'overdue' : action.schedule.status,
+      });
+    } catch {
+      // 復元失敗は無視
+    }
+
+    return { success: false, error: error.message || String(error) };
+  }
+}
+
+// ========== v2: MonitoringScheduleItemベースの実行 ==========
+
+export async function executeMonitoringScheduleAction(
+  schedule: MonitoringScheduleItem,
+  client: CareClient,
+  hiddenDiv: HTMLDivElement,
+  onProgress?: (message: string) => void
+): Promise<ExecutionResult> {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+
+  try {
+    onProgress?.('モニタリング報告書を生成中...');
+
+    // ステータスを generating に更新
+    await saveMonitoringSchedule({
+      ...schedule,
+      status: 'generating',
+    });
+
+    const ctx = await buildContext(client, year, month, hiddenDiv);
+
+    const promptData = await loadAiPrompt('monitoring').catch(() => null);
+    if (promptData) {
+      ctx.customPrompt = promptData.prompt;
+      ctx.customSystemInstruction = promptData.system_instruction;
+    }
+
+    const { generate: generateMonitoring } = await import('./documentGenerators/monitoringReportGenerator');
+    const result = await generateMonitoring(ctx);
+
+    const completedAt = new Date().toISOString();
+    const planRevisionNeeded = result.planRevisionNeeded || 'なし';
+
+    // モニタリングスケジュール更新
+    await saveMonitoringSchedule({
+      ...schedule,
+      status: 'completed',
+      completedAt,
+      planRevisionNeeded,
+    });
+
+    // 計画変更要の場合、計画書スケジュールを overdue に
+    if (planRevisionNeeded === 'あり') {
+      onProgress?.('計画変更要 - 計画書の再生成が必要です');
+      await saveDocumentSchedule({
+        careClientId: client.id,
+        docType: 'care_plan',
+        status: 'overdue',
+        planRevisionNeeded: 'あり',
+        planRevisionReason: 'モニタリングにより計画変更が必要と判定',
+      });
+    }
+
+    onProgress?.('モニタリング報告書の生成完了');
+    return { success: true, planRevisionNeeded };
+  } catch (error: any) {
+    console.error('v2モニタリング実行エラー:', error);
+
+    // ステータスを元に戻す
+    try {
+      await saveMonitoringSchedule({
+        ...schedule,
+        status: schedule.status === 'generating' ? 'overdue' : schedule.status,
       });
     } catch {
       // 復元失敗は無視

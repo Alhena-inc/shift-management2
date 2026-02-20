@@ -167,6 +167,16 @@ export const {
   saveDocumentSchedule,
   updateDocumentScheduleStatus,
   deleteDocumentSchedule,
+
+  // 目標期間管理（v2）
+  loadGoalPeriods,
+  saveGoalPeriod,
+  deleteGoalPeriod,
+
+  // モニタリングスケジュール管理（v2）
+  loadMonitoringSchedules,
+  saveMonitoringSchedule,
+  deleteMonitoringSchedule,
 } = dataService;
 
 // AIプロンプト関連（Supabase専用）
