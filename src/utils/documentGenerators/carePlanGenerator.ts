@@ -190,8 +190,19 @@ const DEFAULT_PROMPT = `あなたは障害福祉サービスの居宅介護事�
     "steps": [...]
   },
   "service3": null,
-  "service4": null
+  "service4": null,
+  "short_term_goal_months": 3,
+  "long_term_goal_months": 6,
+  "period_reasoning": "障害支援区分○、状態安定のため標準的な期間設定",
+  "severity_level": "standard"
 }
+
+【目標期間の判定基準】
+short_term_goal_months / long_term_goal_months は以下の基準で設定すること:
+- 標準ケース（severity_level: "standard"）: 障害支援区分3以下、状態安定 → 短期3ヶ月/長期6ヶ月
+- 中間ケース（severity_level: "moderate"）: 障害支援区分4、重度要素が一部該当 → 短期2-3ヶ月/長期4-6ヶ月
+- 重度・変動ケース（severity_level: "severe"）: 障害支援区分5-6、行動障害・医療的ケア・状態変動大・新規利用 → 短期1-2ヶ月/長期3-4ヶ月
+period_reasoning には期間設定の根拠を具体的に記述すること（運営指導時の説明根拠として使用）。
 
 【出力ルール】
 1. ブロック数は【シフト・実績情報】の時間帯パターン数と厳密に一致させる。パターンが1つならservice1のみ（service2〜4はnull）、2つならservice1とservice2のみ（service3・4はnull）。
@@ -204,8 +215,13 @@ const DEFAULT_PROMPT = `あなたは障害福祉サービスの居宅介護事�
 8. noteはその利用者の個別状況に基づく留意点を40文字以上で記述する。
 9. 不要なサービス枠は必ずnullにする。パターン数以上のブロックを生成しない。`;
 
-const DEFAULT_SYSTEM_INSTRUCTION = `あなたは障害福祉サービスの居宅介護事業所に勤務するベテランのサービス提供責任者です。
-運営指導（実地指導）に耐える正式な居宅介護計画書を作成します。
+const DEFAULT_SYSTEM_INSTRUCTION = `あなたは日本の障害福祉サービス（居宅介護・重度訪問介護）における居宅介護計画書作成の専門家です。
+運営指導（実地指導）で行政から指摘を受けない品質の計画書を作成してください。
+
+## 基本姿勢
+- 利用者のアセスメントデータを根拠とした計画を立てる
+- データがない項目については推測で記載せず、「要確認」と明示する
+- アセスメントデータなしでの計画書生成は本来認められない（システム側でブロック済み）
 
 ## 最重要ルール
 - アセスメント資料がある場合: 内容を網羅的に読み取り、記載されている援助内容をすべて漏れなく計画に反映する。記載のない項目は生成しない。
@@ -214,6 +230,20 @@ const DEFAULT_SYSTEM_INSTRUCTION = `あなたは障害福祉サービスの居�
 - 他サービス事業所の担当内容は居宅介護計画に含めない。
 - 使用するサービスブロック（service1〜）は必ず5件以上のstepsを持つこと。ブロック数は計画予定表の時間帯パターン数と一致させる。
 - 必ず有効なJSON形式のみ出力。余計な説明文・マークダウン記法は不要。
+
+## 書類作成ルール
+- ニーズ・課題はアセスメントの内容から抽出すること
+- 目標は具体的かつ測定可能な表現にすること（「安定した生活を送る」等の抽象的すぎる目標設定は不可、必ず具体化する）
+- サービス内容は受給者証の支給決定内容と整合させること
+- 受給者証の支給量を超えるサービス内容は記載しないこと
+
+## 目標期間の設定ルール
+アセスメントデータから利用者の障害支援区分、ADL状況、行動障害の程度、医療的ケアの有無、状態の安定性を総合的に判断し、目標期間を設定してください。
+
+- 重度の利用者（区分5-6、行動障害が顕著、医療的ケア必要）は短期目標1-2ヶ月、長期目標3-4ヶ月に短縮
+- 中間レベル（区分4、重度要素が一部該当）は短期目標2-3ヶ月、長期目標4-6ヶ月
+- 標準ケース（区分3以下、状態安定）は短期目標3ヶ月、長期目標6ヶ月
+- 新規利用者の初回計画は、状態把握のため短期目標を短め（1-2ヶ月）に設定
 
 ## サービス枠の分け方（最重要）
 - 【シフト・実績情報】の末尾に【時間帯パターン判定結果】が記載されている。そのパターン数がブロック数の正解である
@@ -233,6 +263,12 @@ const DEFAULT_SYSTEM_INSTRUCTION = `あなたは障害福祉サービスの居�
 - 福祉用具名は正式名称を使用（リハビリパンツ、ロフストランドクラッチ等）
 - 排泄用品名はアセスメント記載通り（勝手に「おむつ」に統一しない）
 - 疾患名・障害名は正式名称を使用
+
+## 禁止事項
+- アセスメントデータなしでの根拠のない計画書生成
+- 受給者証の支給量を超えるサービス内容の記載
+- 抽象的すぎる目標設定（必ず具体化すること）
+- テンプレートの使い回し（個別性のある計画を作成すること）
 
 ## 運営指導チェックポイント
 - アセスメント→計画の整合性（計画の各項目がアセスメントのどこに根拠があるか）
@@ -292,10 +328,22 @@ interface CarePlan {
   service2: ServiceBlock | null;
   service3: ServiceBlock | null;
   service4: ServiceBlock | null;
+  // 目標期間メタデータ（AI判定）
+  short_term_goal_months: number;
+  long_term_goal_months: number;
+  period_reasoning: string;
+  severity_level: 'standard' | 'moderate' | 'severe';
 }
 
 /** AI出力の生JSONを正規化（旧フォーマット・新フォーマット両対応） */
 function normalizeCarePlan(raw: Record<string, unknown>): CarePlan {
+  // 目標期間メタデータの解析（デフォルト: 標準ケース）
+  const shortTermMonths = typeof raw.short_term_goal_months === 'number' ? raw.short_term_goal_months : 3;
+  const longTermMonths = typeof raw.long_term_goal_months === 'number' ? raw.long_term_goal_months : 6;
+  const severityLevel = (['standard', 'moderate', 'severe'].includes(raw.severity_level as string))
+    ? raw.severity_level as 'standard' | 'moderate' | 'severe'
+    : 'standard';
+
   const plan: CarePlan = {
     user_wish: (raw.user_wish as string) || '',
     family_wish: (raw.family_wish as string) || '',
@@ -307,6 +355,10 @@ function normalizeCarePlan(raw: Record<string, unknown>): CarePlan {
     service2: null,
     service3: null,
     service4: null,
+    short_term_goal_months: shortTermMonths,
+    long_term_goal_months: longTermMonths,
+    period_reasoning: (raw.period_reasoning as string) || '',
+    severity_level: severityLevel,
   };
 
   const serviceKeys = ['service1', 'service2', 'service3', 'service4'] as const;
@@ -760,7 +812,14 @@ function validateCarePlan(plan: CarePlan): ValidationResult {
 }
 
 // ==================== メイン生成関数 ====================
-export async function generate(ctx: GeneratorContext): Promise<void> {
+export interface CarePlanGenerationResult {
+  short_term_goal_months: number;
+  long_term_goal_months: number;
+  period_reasoning: string;
+  severity_level: 'standard' | 'moderate' | 'severe';
+}
+
+export async function generate(ctx: GeneratorContext): Promise<CarePlanGenerationResult> {
   const { careClients, billingRecords, supplyAmounts, year, month, officeInfo, customPrompt, customSystemInstruction, selectedClient } = ctx;
 
   const client: CareClient = selectedClient || careClients[0];
@@ -874,6 +933,8 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   const plan = normalizeCarePlan(rawJson);
 
   console.log(`[CarePlan] AI応答 - service1: ${plan.service1?.steps.length || 0}件 (${plan.service1?.service_type || '未判定'}), service2: ${plan.service2?.steps.length || 0}件 (${plan.service2?.service_type || '未判定'})`);
+  console.log(`[CarePlan] 目標期間判定 - 重度度: ${plan.severity_level}, 短期: ${plan.short_term_goal_months}ヶ月, 長期: ${plan.long_term_goal_months}ヶ月`);
+  console.log(`[CarePlan] 期間設定根拠: ${plan.period_reasoning}`);
   console.log(`[CarePlan] AI応答全文（先頭500文字）:`, res.text.substring(0, 500));
   if (plan.service1?.steps.length) console.log(`[CarePlan] service1例:`, plan.service1.steps[0]);
   if (plan.service2?.steps.length) console.log(`[CarePlan] service2例:`, plan.service2.steps[0]);
@@ -1111,4 +1172,11 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   } catch (err) {
     console.warn('[CarePlan] 利用者情報への自動保存に失敗（ダウンロードは成功）:', err);
   }
+
+  return {
+    short_term_goal_months: plan.short_term_goal_months,
+    long_term_goal_months: plan.long_term_goal_months,
+    period_reasoning: plan.period_reasoning,
+    severity_level: plan.severity_level,
+  };
 }

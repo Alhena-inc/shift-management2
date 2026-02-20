@@ -1,6 +1,6 @@
-import type { ScheduleAction, MonitoringScheduleItem } from '../types/documentSchedule';
+import type { ScheduleAction, MonitoringScheduleItem, DocumentSchedule } from '../types/documentSchedule';
 import type { CareClient } from '../types';
-import { saveDocumentSchedule, saveMonitoringSchedule, saveDocumentValidation, loadBillingRecordsForMonth, loadShiftsForMonth, loadHelpers, loadCareClients, loadAiPrompt, loadDocumentSchedules } from '../services/dataService';
+import { saveDocumentSchedule, saveMonitoringSchedule, saveDocumentValidation, loadBillingRecordsForMonth, loadShiftsForMonth, loadHelpers, loadCareClients, loadAiPrompt, loadDocumentSchedules, loadShogaiDocuments, loadShogaiCarePlanDocuments } from '../services/dataService';
 import { computeNextDates, toDateString } from './documentScheduleChecker';
 import { validateClientDocuments } from './documentValidation';
 
@@ -8,6 +8,90 @@ interface ExecutionResult {
   success: boolean;
   error?: string;
   planRevisionNeeded?: string;
+}
+
+// ========== 生成前バリデーション（安全装置） ==========
+
+interface PrecheckResult {
+  canGenerate: boolean;
+  errors: string[];
+}
+
+/**
+ * 書類生成前に必須データの存在をチェック。
+ * 不備がある場合は生成をブロックしエラーメッセージを返す。
+ */
+async function precheckForGeneration(
+  docType: 'care_plan' | 'monitoring',
+  client: CareClient,
+  year: number,
+  month: number,
+): Promise<PrecheckResult> {
+  const errors: string[] = [];
+
+  // 全書類共通: アセスメント必須
+  try {
+    const assessmentDocs = await loadShogaiDocuments(client.id, 'assessment');
+    const hasAssessment = assessmentDocs.some((d: any) => d.fileUrl);
+    if (!hasAssessment) {
+      errors.push('アセスメントが未作成です。先にアセスメントを作成・アップロードしてください。');
+    }
+  } catch {
+    errors.push('アセスメントの確認に失敗しました。アセスメントが登録されているか確認してください。');
+  }
+
+  // 居宅介護計画書: 初回以外は実績記録が必要
+  if (docType === 'care_plan') {
+    // 初回かどうかは schedule の lastGeneratedAt で判定（executor内ではscheduleにアクセスできるため呼び出し側で判定）
+    // ここでは実績の存在自体をチェック（初回でも実績があればより良い計画が作れる）
+    // ※初回利用者は実績がなくても生成可能にする（新規の場合はアセスメントのみで作成）
+  }
+
+  // モニタリング報告書: 計画書＋実績記録が必要
+  if (docType === 'monitoring') {
+    // 計画書が作成済みか確認
+    try {
+      const carePlanDocs = await loadShogaiCarePlanDocuments(client.id);
+      if (!carePlanDocs || carePlanDocs.length === 0) {
+        errors.push('居宅介護計画書が未作成です。モニタリングの前に計画書を作成してください。');
+      }
+    } catch {
+      // 計画書確認失敗は警告のみ（スケジュール側でも確認できるため）
+    }
+
+    // 実績記録が存在するか確認
+    let hasRecords = false;
+    try {
+      const records = await loadBillingRecordsForMonth(year, month);
+      const clientRecords = records.filter(r => r.clientName === client.name);
+      if (clientRecords.length > 0) {
+        hasRecords = true;
+      } else {
+        // 過去3ヶ月を遡って確認
+        let sy = year, sm = month;
+        for (let i = 0; i < 3; i++) {
+          sm--;
+          if (sm === 0) { sm = 12; sy--; }
+          try {
+            const prev = await loadBillingRecordsForMonth(sy, sm);
+            if (prev.filter(r => r.clientName === client.name).length > 0) {
+              hasRecords = true;
+              break;
+            }
+          } catch { /* skip */ }
+        }
+      }
+    } catch { /* skip */ }
+
+    if (!hasRecords) {
+      errors.push('実績記録がありません。モニタリングには実績データが必要です。');
+    }
+  }
+
+  return {
+    canGenerate: errors.length === 0,
+    errors,
+  };
 }
 
 const DEFAULT_OFFICE_INFO = {
@@ -77,6 +161,13 @@ export async function executeScheduleAction(
     const schedule = action.schedule;
 
     if (action.type === 'generate_plan' || action.type === 'plan_revision') {
+      // 生成前バリデーション（安全装置）
+      onProgress?.('生成前チェック中...');
+      const precheck = await precheckForGeneration('care_plan', client, year, month);
+      if (!precheck.canGenerate) {
+        return { success: false, error: `生成をブロックしました:\n${precheck.errors.join('\n')}` };
+      }
+
       onProgress?.('計画書を生成中...');
 
       // ステータスを generating に更新
@@ -144,16 +235,16 @@ export async function executeScheduleAction(
       const { generate: generateProcedure } = await import('./documentGenerators/careProcedureGenerator');
       await generateProcedure(ctx);
 
-      // 手順書スケジュール更新
+      // 手順書スケジュール更新（定期周期なし: nextDueDate = null）
       await saveDocumentSchedule({
         careClientId: client.id,
         docType: 'tejunsho',
         status: 'active',
         lastGeneratedAt: generatedAt,
-        nextDueDate,
-        alertDate,
-        expiryDate,
-        cycleMonths: schedule.cycleMonths,
+        nextDueDate: null,
+        alertDate: null,
+        expiryDate: null,
+        cycleMonths: 0,
         alertDaysBefore: schedule.alertDaysBefore,
         generationBatchId: batchId,
         linkedPlanScheduleId: savedPlan.id,
@@ -161,8 +252,8 @@ export async function executeScheduleAction(
         periodEnd: nextDueDate,
       });
 
-      // モニタリング次回日設定
-      const monitoringDates = computeNextDates(generatedAt, schedule.cycleMonths, schedule.alertDaysBefore);
+      // モニタリング次回日設定（3ヶ月周期）
+      const monitoringDates = computeNextDates(generatedAt, 3, schedule.alertDaysBefore);
       await saveDocumentSchedule({
         careClientId: client.id,
         docType: 'monitoring',
@@ -170,7 +261,7 @@ export async function executeScheduleAction(
         nextDueDate: monitoringDates.nextDueDate,
         alertDate: monitoringDates.alertDate,
         expiryDate: monitoringDates.expiryDate,
-        cycleMonths: schedule.cycleMonths,
+        cycleMonths: 3,
         alertDaysBefore: schedule.alertDaysBefore,
         linkedPlanScheduleId: savedPlan.id,
       });
@@ -183,6 +274,13 @@ export async function executeScheduleAction(
       return { success: true };
 
     } else if (action.type === 'generate_monitoring') {
+      // 生成前バリデーション（安全装置）
+      onProgress?.('生成前チェック中...');
+      const precheck = await precheckForGeneration('monitoring', client, year, month);
+      if (!precheck.canGenerate) {
+        return { success: false, error: `生成をブロックしました:\n${precheck.errors.join('\n')}` };
+      }
+
       onProgress?.('モニタリング報告書を生成中...');
 
       await saveDocumentSchedule({
@@ -202,7 +300,8 @@ export async function executeScheduleAction(
       const result = await generateMonitoring(ctx);
 
       const generatedAt = new Date().toISOString();
-      const { nextDueDate, alertDate, expiryDate } = computeNextDates(generatedAt, schedule.cycleMonths, schedule.alertDaysBefore);
+      // モニタリングは3ヶ月周期固定
+      const { nextDueDate, alertDate, expiryDate } = computeNextDates(generatedAt, 3, schedule.alertDaysBefore);
 
       // モニタリングスケジュール更新
       await saveDocumentSchedule({
@@ -212,6 +311,7 @@ export async function executeScheduleAction(
         nextDueDate,
         alertDate,
         expiryDate,
+        cycleMonths: 3,
         planRevisionNeeded: result.planRevisionNeeded,
       });
 
@@ -266,6 +366,13 @@ export async function executeMonitoringScheduleAction(
   const month = now.getMonth() + 1;
 
   try {
+    // 生成前バリデーション（安全装置）
+    onProgress?.('生成前チェック中...');
+    const precheck = await precheckForGeneration('monitoring', client, year, month);
+    if (!precheck.canGenerate) {
+      return { success: false, error: `生成をブロックしました:\n${precheck.errors.join('\n')}` };
+    }
+
     onProgress?.('モニタリング報告書を生成中...');
 
     // ステータスを generating に更新

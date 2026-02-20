@@ -51,15 +51,21 @@ export const createInitialSchedules = (
   const now = new Date().toISOString();
   const docTypes: ScheduleDocType[] = ['care_plan', 'tejunsho', 'monitoring'];
 
+  const cycleMonthsMap: Record<ScheduleDocType, number> = {
+    care_plan: 6,    // 長期目標周期
+    monitoring: 3,   // 短期目標に合わせて3ヶ月
+    tejunsho: 0,     // 定期周期なし（パターン変更時のみ）
+  };
+
   return docTypes.map(docType => ({
     careClientId,
     docType,
     status: 'pending' as const,
     lastGeneratedAt: null,
-    nextDueDate: contractStart || null,
+    nextDueDate: docType === 'tejunsho' ? null : (contractStart || null),
     alertDate: null,
     expiryDate: null,
-    cycleMonths: docType === 'monitoring' ? 6 : 6,
+    cycleMonths: cycleMonthsMap[docType],
     alertDaysBefore: 30,
     planRevisionNeeded: null,
     planRevisionReason: null,
@@ -109,6 +115,9 @@ export const checkDocumentSchedules = (
     }
 
     if (!schedule.nextDueDate) continue;
+
+    // 手順書は定期周期なし（パターン変更時のみ更新）→ 期限チェックをスキップ
+    if (schedule.docType === 'tejunsho') continue;
 
     const daysUntilDue = daysDiff(today, schedule.nextDueDate);
 

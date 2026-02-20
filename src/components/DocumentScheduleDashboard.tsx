@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { DocumentSchedule, ScheduleAction, ScheduleDocType, GoalPeriod, MonitoringScheduleItem, MonitoringAction, StatusChangeType, ValidationResult } from '../types/documentSchedule';
 import { STATUS_CHANGE_LABELS } from '../types/documentSchedule';
-import type { CareClient } from '../types';
+import type { CareClient, BillingRecord } from '../types';
 import { loadDocumentSchedules, saveDocumentSchedule, loadCareClients, loadGoalPeriods, saveGoalPeriod, deleteGoalPeriod, loadMonitoringSchedules, saveMonitoringSchedule, loadDocumentValidations, saveDocumentValidation, loadHelpers, loadBillingRecordsForMonth } from '../services/dataService';
 import { checkDocumentSchedules, createInitialSchedules, toDateString, generateMonitoringSchedulesFromGoals, checkMonitoringSchedules, checkContractDateAlerts } from '../utils/documentScheduleChecker';
 import { executeScheduleAction } from '../utils/documentScheduleExecutor';
@@ -12,6 +12,41 @@ const DOC_TYPE_LABELS: Record<ScheduleDocType, string> = {
   care_plan: '計画書',
   tejunsho: '手順書',
   monitoring: 'モニタリング',
+};
+
+// ケアパターン変更検知
+const getCarePattern = (records: BillingRecord[]): Set<string> => {
+  const patterns = new Set<string>();
+  for (const r of records) {
+    if (!r.serviceDate || !r.serviceCode) continue;
+    const dayOfWeek = new Date(r.serviceDate + 'T00:00:00').getDay();
+    patterns.add(`${dayOfWeek}_${r.startTime}-${r.endTime}_${r.serviceCode}`);
+  }
+  return patterns;
+};
+
+const detectCarePatternChanges = (
+  clientName: string,
+  prevRecords: BillingRecord[],
+  currRecords: BillingRecord[]
+): boolean => {
+  const prevClientRecords = prevRecords.filter(r => r.clientName === clientName);
+  const currClientRecords = currRecords.filter(r => r.clientName === clientName);
+
+  // 両方実績がない場合は変更なし
+  if (prevClientRecords.length === 0 && currClientRecords.length === 0) return false;
+  // 片方だけ実績がある場合は変更あり（新規・終了）
+  if (prevClientRecords.length === 0 || currClientRecords.length === 0) return true;
+
+  const prevPattern = getCarePattern(prevClientRecords);
+  const currPattern = getCarePattern(currClientRecords);
+
+  // 差分があれば変更あり
+  if (prevPattern.size !== currPattern.size) return true;
+  for (const p of prevPattern) {
+    if (!currPattern.has(p)) return true;
+  }
+  return false;
 };
 
 const MONITORING_TYPE_LABELS: Record<string, string> = {
@@ -69,6 +104,9 @@ const DocumentScheduleDashboard: React.FC = () => {
   // 目標期間入力フォーム
   const [editingGoals, setEditingGoals] = useState<Record<string, Partial<GoalPeriod>[]>>({});
   const [savingGoals, setSavingGoals] = useState(false);
+
+  // パターン変更検知
+  const [patternChangedClientIds, setPatternChangedClientIds] = useState<Set<string>>(new Set());
 
   // 臨時モニタリング
   const [emergencyClientId, setEmergencyClientId] = useState<string | null>(null);
@@ -145,6 +183,38 @@ const DocumentScheduleDashboard: React.FC = () => {
       const { actions: monActions, alerts: monAlerts } = checkMonitoringSchedules(loadedMonSchedules, activeClients, today);
       setV2Actions(monActions);
       setV2Alerts(monAlerts);
+
+      // ケアパターン変更検知（前月 vs 今月の実績比較）
+      try {
+        const now = new Date();
+        const currYear = now.getFullYear();
+        const currMonth = now.getMonth() + 1;
+        const prevDate = new Date(currYear, currMonth - 2, 1); // 前月
+        const prevYear = prevDate.getFullYear();
+        const prevMonth = prevDate.getMonth() + 1;
+
+        const [prevRecords, currRecords] = await Promise.all([
+          loadBillingRecordsForMonth(prevYear, prevMonth),
+          loadBillingRecordsForMonth(currYear, currMonth),
+        ]);
+
+        const changedIds = new Set<string>();
+        for (const client of activeClients) {
+          const clientName = client.name || '';
+          if (!clientName) continue;
+          if (detectCarePatternChanges(clientName, prevRecords, currRecords)) {
+            changedIds.add(client.id);
+            // 手順書のステータスをdue_soonに更新
+            const tejunshoSched = allSchedules.find(s => s.careClientId === client.id && s.docType === 'tejunsho');
+            if (tejunshoSched && tejunshoSched.status !== 'overdue' && tejunshoSched.status !== 'generating') {
+              await saveDocumentSchedule({ ...tejunshoSched, status: 'due_soon' }).catch(() => {});
+            }
+          }
+        }
+        setPatternChangedClientIds(changedIds);
+      } catch {
+        // パターン検知失敗は無視
+      }
 
       // 契約日チェック
       const cAlerts = checkContractDateAlerts(allSchedules, activeClients, today);
@@ -434,22 +504,23 @@ const DocumentScheduleDashboard: React.FC = () => {
     // critical → 赤
     if (valStatus === 'critical') return 'red';
 
-    // いずれかがoverdue → 赤
-    if ([planSched, tejunshoSched, monSched].some(s => s?.status === 'overdue')) return 'red';
+    // いずれかがoverdue → 赤（手順書はnextDueDate=nullの場合overdue対象外）
+    if ([planSched, monSched].some(s => s?.status === 'overdue')) return 'red';
 
     // warning → 黄
     if (valStatus === 'warning') return 'yellow';
 
-    // いずれかがdue_soon → 黄
-    if ([planSched, tejunshoSched, monSched].some(s => s?.status === 'due_soon')) return 'yellow';
+    // いずれかがdue_soon → 黄（手順書のパターン変更検知も含む）
+    if ([planSched, monSched].some(s => s?.status === 'due_soon')) return 'yellow';
+    if (patternChangedClientIds.has(clientId)) return 'yellow';
 
     return 'green';
   };
 
-  // 利用者の次回期限情報を取得
+  // 利用者の次回期限情報を取得（手順書は定期周期なしのため除外）
   const getClientNextDueInfo = (clientId: string): { docType: ScheduleDocType; daysUntil: number; dueDate: string } | null => {
     const today = toDateString(new Date());
-    const clientSchedules = schedules.filter(s => s.careClientId === clientId && s.nextDueDate);
+    const clientSchedules = schedules.filter(s => s.careClientId === clientId && s.nextDueDate && s.docType !== 'tejunsho');
     if (clientSchedules.length === 0) return null;
 
     let earliest: DocumentSchedule | null = null;
@@ -520,12 +591,16 @@ const DocumentScheduleDashboard: React.FC = () => {
   };
 
   // 直近の予定一覧（期限超過〜30日以内）
+  // 手順書の定期周期アイテムは除外（パターン変更検知分は別途表示）
   const getUpcomingSchedules = () => {
     const today = toDateString(new Date());
-    const items: { clientId: string; clientName: string; docType: ScheduleDocType; dueDate: string; daysUntil: number }[] = [];
+    const items: { clientId: string; clientName: string; docType: ScheduleDocType; dueDate: string; daysUntil: number; isPatternChange?: boolean }[] = [];
 
     for (const client of clients) {
       for (const sched of schedules.filter(s => s.careClientId === client.id && s.nextDueDate)) {
+        // 手順書は定期周期なし → 直近の予定から除外
+        if (sched.docType === 'tejunsho') continue;
+
         const days = Math.round(
           (new Date(sched.nextDueDate! + 'T00:00:00').getTime() - new Date(today + 'T00:00:00').getTime()) /
           (1000 * 60 * 60 * 24)
@@ -540,6 +615,18 @@ const DocumentScheduleDashboard: React.FC = () => {
           });
         }
       }
+
+      // パターン変更検知された手順書はアラートとして追加
+      if (patternChangedClientIds.has(client.id)) {
+        items.push({
+          clientId: client.id,
+          clientName: client.name || '',
+          docType: 'tejunsho',
+          dueDate: today,
+          daysUntil: 0,
+          isPatternChange: true,
+        });
+      }
     }
 
     items.sort((a, b) => a.daysUntil - b.daysUntil);
@@ -552,6 +639,35 @@ const DocumentScheduleDashboard: React.FC = () => {
 
     const hasGenerated = !!schedule.lastGeneratedAt;
     const today = toDateString(new Date());
+
+    // 手順書で nextDueDate が null の場合（パターン変更ベース）
+    if (schedule.docType === 'tejunsho' && !schedule.nextDueDate && hasGenerated) {
+      const hasPatternChange = patternChangedClientIds.has(schedule.careClientId);
+      if (hasPatternChange || schedule.status === 'due_soon') {
+        return (
+          <div className="flex flex-col items-center gap-0.5">
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+              style={{ backgroundColor: '#FEF2F2', color: '#EF4444' }}
+            >
+              ! 要更新
+            </span>
+            <span className="text-[10px] text-gray-400">パターン変更あり</span>
+          </div>
+        );
+      }
+      return (
+        <div className="flex flex-col items-center gap-0.5">
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+            style={{ backgroundColor: '#F0FDF4', color: '#22C55E' }}
+          >
+            ✓ 作成済
+          </span>
+          <span className="text-[10px] text-gray-400">パターン変更なし</span>
+        </div>
+      );
+    }
 
     let icon = '✓';
     let label = '作成済';
