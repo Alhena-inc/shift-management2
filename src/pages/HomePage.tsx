@@ -72,6 +72,15 @@ const HomePage: React.FC = () => {
       path: '/documents',
       requiredRole: 'admin' as const
     },
+    {
+      icon: 'event_note',
+      iconBgColor: '#E8EAF6',
+      hoverColor: '#3F51B5',
+      title: '書類スケジュール',
+      description: '計画書・手順書・モニタリングの期限管理',
+      path: '/document-schedules',
+      requiredRole: 'admin' as const
+    },
   ];
 
   // 権限に基づいてメニューをフィルタリング

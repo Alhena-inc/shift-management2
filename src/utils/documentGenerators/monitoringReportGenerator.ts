@@ -580,7 +580,7 @@ function createMonitoringSheet(
 }
 
 // ==================== メイン生成関数 ====================
-export async function generate(ctx: GeneratorContext): Promise<void> {
+export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNeeded: string }> {
   const { careClients, billingRecords, supplyAmounts, year, month, officeInfo, customPrompt, customSystemInstruction, selectedClient } = ctx;
 
   const client: CareClient = selectedClient || careClients[0];
@@ -739,4 +739,6 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   } catch (err) {
     console.warn('[Monitoring] 利用者情報への自動保存に失敗（ダウンロードは成功）:', err);
   }
+
+  return { planRevisionNeeded: report.plan_revision_needed };
 }

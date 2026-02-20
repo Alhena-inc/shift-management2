@@ -1371,3 +1371,22 @@ export const loadBillingRecordsForMonth = async (_year: number, _month: number) 
 export const deleteBillingRecordsByBatch = async (_batchId: string) => {
   throw new Error('請求確定実績はSupabaseモードでのみ利用可能です');
 };
+
+// ========== 書類スケジュール管理（Firebaseスタブ） ==========
+
+export const loadDocumentSchedules = async (_careClientId?: string) => {
+  console.warn('書類スケジュールはSupabaseモードでのみ利用可能です');
+  return [];
+};
+
+export const saveDocumentSchedule = async (_item: any) => {
+  throw new Error('書類スケジュールはSupabaseモードでのみ利用可能です');
+};
+
+export const updateDocumentScheduleStatus = async (_id: string, _status: string, _extraFields?: any) => {
+  throw new Error('書類スケジュールはSupabaseモードでのみ利用可能です');
+};
+
+export const deleteDocumentSchedule = async (_id: string) => {
+  throw new Error('書類スケジュールはSupabaseモードでのみ利用可能です');
+};

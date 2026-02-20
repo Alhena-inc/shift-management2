@@ -161,6 +161,12 @@ export const {
   saveBillingRecords,
   loadBillingRecordsForMonth,
   deleteBillingRecordsByBatch,
+
+  // 書類スケジュール管理
+  loadDocumentSchedules,
+  saveDocumentSchedule,
+  updateDocumentScheduleStatus,
+  deleteDocumentSchedule,
 } = dataService;
 
 // AIプロンプト関連（Supabase専用）

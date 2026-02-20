@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmounts, loadBillingRecordsForMonth, loadShogaiDocuments, saveShogaiDocument, deleteShogaiDocument, uploadShogaiDocFile, loadAiPrompt, saveAiPrompt } from '../services/dataService';
+import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmounts, loadBillingRecordsForMonth, loadShogaiDocuments, saveShogaiDocument, deleteShogaiDocument, uploadShogaiDocFile, loadAiPrompt, saveAiPrompt, saveDocumentSchedule } from '../services/dataService';
+import { computeNextDates } from '../utils/documentScheduleChecker';
 import { isGeminiAvailable } from '../services/geminiService';
 import type { Helper, CareClient, Shift, BillingRecord, ShogaiSupplyAmount, ShogaiDocument } from '../types';
 import type { AiPrompt } from '../services/supabaseService';
@@ -275,7 +276,7 @@ const DocumentsPage: React.FC = () => {
         }
       }
 
-      await generator({
+      const generatorResult = await generator({
         helpers,
         careClients,
         shifts,
@@ -290,6 +291,47 @@ const DocumentsPage: React.FC = () => {
         selectedClient,
       });
       setGeneratedDocs(prev => new Set(prev).add(doc.id));
+
+      // スケジュール更新（選択された利用者がいる場合）
+      if (selectedClient) {
+        const generatedAt = new Date().toISOString();
+        const { nextDueDate, alertDate, expiryDate } = computeNextDates(generatedAt, 6, 30);
+        try {
+          if (doc.id === 'care-plan') {
+            await saveDocumentSchedule({
+              careClientId: selectedClient.id, docType: 'care_plan', status: 'active',
+              lastGeneratedAt: generatedAt, nextDueDate, alertDate, expiryDate,
+              cycleMonths: 6, alertDaysBefore: 30,
+            });
+            await saveDocumentSchedule({
+              careClientId: selectedClient.id, docType: 'tejunsho', status: 'active',
+              lastGeneratedAt: generatedAt, nextDueDate, alertDate, expiryDate,
+              cycleMonths: 6, alertDaysBefore: 30,
+            });
+          } else if (doc.id === 'monitoring') {
+            const planRevisionNeeded = (generatorResult as any)?.planRevisionNeeded || 'なし';
+            await saveDocumentSchedule({
+              careClientId: selectedClient.id, docType: 'monitoring', status: 'active',
+              lastGeneratedAt: generatedAt, nextDueDate, alertDate, expiryDate,
+              cycleMonths: 6, alertDaysBefore: 30, planRevisionNeeded,
+            });
+            if (planRevisionNeeded === 'あり') {
+              await saveDocumentSchedule({
+                careClientId: selectedClient.id, docType: 'care_plan', status: 'overdue',
+                planRevisionNeeded: 'あり', planRevisionReason: 'モニタリングにより計画変更が必要と判定',
+              });
+            }
+          } else if (doc.id === 'care-procedure') {
+            await saveDocumentSchedule({
+              careClientId: selectedClient.id, docType: 'tejunsho', status: 'active',
+              lastGeneratedAt: generatedAt, nextDueDate, alertDate, expiryDate,
+              cycleMonths: 6, alertDaysBefore: 30,
+            });
+          }
+        } catch (schedErr) {
+          console.warn('スケジュール更新失敗（書類生成は成功）:', schedErr);
+        }
+      }
     } catch (err: any) {
       console.error(`${doc.name}生成エラー:`, err);
       setError(`${doc.name}の生成に失敗しました: ${err.message || err}`);
@@ -365,7 +407,7 @@ const DocumentsPage: React.FC = () => {
     alert(`一括生成が完了しました。\n成功: ${successCount} / ${total}件`);
   }, [helpers, careClients, shifts, billingRecords, supplyAmounts, selectedYear, selectedMonth]);
 
-  const loadGenerator = async (docId: string): Promise<((ctx: any) => Promise<void>) | null> => {
+  const loadGenerator = async (docId: string): Promise<((ctx: any) => Promise<any>) | null> => {
     try {
       switch (docId) {
         case 'service-hours': return (await import('../utils/documentGenerators/serviceHoursExcelGenerator')).generate;

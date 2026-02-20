@@ -2828,3 +2828,135 @@ export const deleteBillingRecordsByBatch = async (batchId: string): Promise<numb
     throw error;
   }
 };
+
+// ========== 書類スケジュール管理 ==========
+
+export const loadDocumentSchedules = async (careClientId?: string): Promise<any[]> => {
+  try {
+    let query = supabase.from('document_schedules').select('*');
+    if (careClientId) {
+      query = query.eq('care_client_id', careClientId);
+    }
+    const { data, error } = await query.order('care_client_id');
+    if (error) throw error;
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      careClientId: row.care_client_id,
+      docType: row.doc_type,
+      status: row.status,
+      lastGeneratedAt: row.last_generated_at,
+      nextDueDate: row.next_due_date,
+      alertDate: row.alert_date,
+      expiryDate: row.expiry_date,
+      cycleMonths: row.cycle_months,
+      alertDaysBefore: row.alert_days_before,
+      planRevisionNeeded: row.plan_revision_needed,
+      planRevisionReason: row.plan_revision_reason,
+      lastDocumentId: row.last_document_id,
+      lastFileUrl: row.last_file_url,
+      autoGenerate: row.auto_generate,
+      notes: row.notes,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  } catch (error) {
+    console.error('書類スケジュール読み込みエラー:', error);
+    throw error;
+  }
+};
+
+export const saveDocumentSchedule = async (item: any): Promise<any> => {
+  try {
+    const saveData: any = {
+      care_client_id: item.careClientId,
+      doc_type: item.docType,
+      status: item.status || 'pending',
+      last_generated_at: item.lastGeneratedAt || null,
+      next_due_date: item.nextDueDate || null,
+      alert_date: item.alertDate || null,
+      expiry_date: item.expiryDate || null,
+      cycle_months: item.cycleMonths ?? 6,
+      alert_days_before: item.alertDaysBefore ?? 30,
+      plan_revision_needed: item.planRevisionNeeded || null,
+      plan_revision_reason: item.planRevisionReason || null,
+      last_document_id: item.lastDocumentId || null,
+      last_file_url: item.lastFileUrl || null,
+      auto_generate: item.autoGenerate ?? false,
+      notes: item.notes || null,
+      updated_at: new Date().toISOString(),
+    };
+    if (item.id) {
+      saveData.id = item.id;
+    }
+    const { data, error } = await supabase
+      .from('document_schedules')
+      .upsert(saveData, { onConflict: 'care_client_id,doc_type' })
+      .select()
+      .single();
+    if (error) throw error;
+    return {
+      id: data.id,
+      careClientId: data.care_client_id,
+      docType: data.doc_type,
+      status: data.status,
+      lastGeneratedAt: data.last_generated_at,
+      nextDueDate: data.next_due_date,
+      alertDate: data.alert_date,
+      expiryDate: data.expiry_date,
+      cycleMonths: data.cycle_months,
+      alertDaysBefore: data.alert_days_before,
+      planRevisionNeeded: data.plan_revision_needed,
+      planRevisionReason: data.plan_revision_reason,
+      lastDocumentId: data.last_document_id,
+      lastFileUrl: data.last_file_url,
+      autoGenerate: data.auto_generate,
+      notes: data.notes,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
+  } catch (error) {
+    console.error('書類スケジュール保存エラー:', error);
+    throw error;
+  }
+};
+
+export const updateDocumentScheduleStatus = async (
+  id: string,
+  status: string,
+  extraFields?: Record<string, any>
+): Promise<void> => {
+  try {
+    const updateData: any = {
+      status,
+      updated_at: new Date().toISOString(),
+    };
+    if (extraFields) {
+      if (extraFields.lastGeneratedAt !== undefined) updateData.last_generated_at = extraFields.lastGeneratedAt;
+      if (extraFields.nextDueDate !== undefined) updateData.next_due_date = extraFields.nextDueDate;
+      if (extraFields.alertDate !== undefined) updateData.alert_date = extraFields.alertDate;
+      if (extraFields.expiryDate !== undefined) updateData.expiry_date = extraFields.expiryDate;
+      if (extraFields.planRevisionNeeded !== undefined) updateData.plan_revision_needed = extraFields.planRevisionNeeded;
+      if (extraFields.planRevisionReason !== undefined) updateData.plan_revision_reason = extraFields.planRevisionReason;
+      if (extraFields.lastDocumentId !== undefined) updateData.last_document_id = extraFields.lastDocumentId;
+      if (extraFields.lastFileUrl !== undefined) updateData.last_file_url = extraFields.lastFileUrl;
+    }
+    const { error } = await supabase
+      .from('document_schedules')
+      .update(updateData)
+      .eq('id', id);
+    if (error) throw error;
+  } catch (error) {
+    console.error('書類スケジュールステータス更新エラー:', error);
+    throw error;
+  }
+};
+
+export const deleteDocumentSchedule = async (id: string): Promise<void> => {
+  try {
+    const { error } = await supabase.from('document_schedules').delete().eq('id', id);
+    if (error) throw error;
+  } catch (error) {
+    console.error('書類スケジュール削除エラー:', error);
+    throw error;
+  }
+};

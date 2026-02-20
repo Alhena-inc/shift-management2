@@ -1,0 +1,208 @@
+import type { ScheduleAction } from '../types/documentSchedule';
+import type { CareClient } from '../types';
+import { saveDocumentSchedule, loadBillingRecordsForMonth, loadShiftsForMonth, loadHelpers, loadCareClients, loadAiPrompt } from '../services/dataService';
+import { computeNextDates } from './documentScheduleChecker';
+
+interface ExecutionResult {
+  success: boolean;
+  error?: string;
+  planRevisionNeeded?: string;
+}
+
+const DEFAULT_OFFICE_INFO = {
+  name: '訪問介護事業所のあ',
+  address: '東京都渋谷区',
+  tel: '',
+  administrator: '',
+  serviceManager: '',
+  establishedDate: '',
+};
+
+async function buildContext(
+  client: CareClient,
+  year: number,
+  month: number,
+  hiddenDiv: HTMLDivElement
+) {
+  const [helpers, careClients, shifts, billingRecords] = await Promise.all([
+    loadHelpers(),
+    loadCareClients(),
+    loadShiftsForMonth(year, month),
+    loadBillingRecordsForMonth(year, month),
+  ]);
+
+  return {
+    helpers,
+    careClients,
+    shifts,
+    billingRecords,
+    supplyAmounts: [] as any[],
+    year,
+    month,
+    officeInfo: DEFAULT_OFFICE_INFO,
+    hiddenDiv,
+    selectedClient: client,
+    customPrompt: undefined as string | undefined,
+    customSystemInstruction: undefined as string | undefined,
+  };
+}
+
+export async function executeScheduleAction(
+  action: ScheduleAction,
+  client: CareClient,
+  hiddenDiv: HTMLDivElement,
+  onProgress?: (message: string) => void
+): Promise<ExecutionResult> {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+
+  try {
+    const schedule = action.schedule;
+
+    if (action.type === 'generate_plan' || action.type === 'plan_revision') {
+      onProgress?.('計画書を生成中...');
+
+      // ステータスを generating に更新
+      await saveDocumentSchedule({
+        ...schedule,
+        status: 'generating',
+      });
+
+      const ctx = await buildContext(client, year, month, hiddenDiv);
+
+      // カスタムプロンプトの読み込み
+      const promptData = await loadAiPrompt('care-plan').catch(() => null);
+      if (promptData) {
+        ctx.customPrompt = promptData.prompt;
+        ctx.customSystemInstruction = promptData.system_instruction;
+      }
+
+      // 計画書生成
+      const { generate: generatePlan } = await import('./documentGenerators/carePlanGenerator');
+      await generatePlan(ctx);
+
+      const generatedAt = new Date().toISOString();
+      const { nextDueDate, alertDate, expiryDate } = computeNextDates(generatedAt, schedule.cycleMonths, schedule.alertDaysBefore);
+
+      // 計画書スケジュール更新
+      await saveDocumentSchedule({
+        ...schedule,
+        status: 'active',
+        lastGeneratedAt: generatedAt,
+        nextDueDate,
+        alertDate,
+        expiryDate,
+        planRevisionNeeded: null,
+        planRevisionReason: null,
+      });
+
+      // 手順書も生成
+      onProgress?.('手順書を生成中...');
+      const procedurePromptData = await loadAiPrompt('care-procedure').catch(() => null);
+      if (procedurePromptData) {
+        ctx.customPrompt = procedurePromptData.prompt;
+        ctx.customSystemInstruction = procedurePromptData.system_instruction;
+      } else {
+        delete ctx.customPrompt;
+        delete ctx.customSystemInstruction;
+      }
+
+      const { generate: generateProcedure } = await import('./documentGenerators/careProcedureGenerator');
+      await generateProcedure(ctx);
+
+      // 手順書スケジュール更新
+      await saveDocumentSchedule({
+        careClientId: client.id,
+        docType: 'tejunsho',
+        status: 'active',
+        lastGeneratedAt: generatedAt,
+        nextDueDate,
+        alertDate,
+        expiryDate,
+        cycleMonths: schedule.cycleMonths,
+        alertDaysBefore: schedule.alertDaysBefore,
+      });
+
+      // モニタリング次回日設定
+      const monitoringDates = computeNextDates(generatedAt, schedule.cycleMonths, schedule.alertDaysBefore);
+      await saveDocumentSchedule({
+        careClientId: client.id,
+        docType: 'monitoring',
+        status: 'active',
+        nextDueDate: monitoringDates.nextDueDate,
+        alertDate: monitoringDates.alertDate,
+        expiryDate: monitoringDates.expiryDate,
+        cycleMonths: schedule.cycleMonths,
+        alertDaysBefore: schedule.alertDaysBefore,
+      });
+
+      onProgress?.('計画書・手順書の生成完了');
+      return { success: true };
+
+    } else if (action.type === 'generate_monitoring') {
+      onProgress?.('モニタリング報告書を生成中...');
+
+      await saveDocumentSchedule({
+        ...schedule,
+        status: 'generating',
+      });
+
+      const ctx = await buildContext(client, year, month, hiddenDiv);
+
+      const promptData = await loadAiPrompt('monitoring').catch(() => null);
+      if (promptData) {
+        ctx.customPrompt = promptData.prompt;
+        ctx.customSystemInstruction = promptData.system_instruction;
+      }
+
+      const { generate: generateMonitoring } = await import('./documentGenerators/monitoringReportGenerator');
+      const result = await generateMonitoring(ctx);
+
+      const generatedAt = new Date().toISOString();
+      const { nextDueDate, alertDate, expiryDate } = computeNextDates(generatedAt, schedule.cycleMonths, schedule.alertDaysBefore);
+
+      // モニタリングスケジュール更新
+      await saveDocumentSchedule({
+        ...schedule,
+        status: 'active',
+        lastGeneratedAt: generatedAt,
+        nextDueDate,
+        alertDate,
+        expiryDate,
+        planRevisionNeeded: result.planRevisionNeeded,
+      });
+
+      // 計画変更要の場合、計画書スケジュールを overdue に
+      if (result.planRevisionNeeded === 'あり') {
+        onProgress?.('計画変更要 - 計画書の再生成が必要です');
+        await saveDocumentSchedule({
+          careClientId: client.id,
+          docType: 'care_plan',
+          status: 'overdue',
+          planRevisionNeeded: 'あり',
+          planRevisionReason: 'モニタリングにより計画変更が必要と判定',
+        });
+      }
+
+      onProgress?.('モニタリング報告書の生成完了');
+      return { success: true, planRevisionNeeded: result.planRevisionNeeded };
+    }
+
+    return { success: false, error: '未対応のアクションタイプです' };
+  } catch (error: any) {
+    console.error('スケジュールアクション実行エラー:', error);
+
+    // ステータスを元に戻す
+    try {
+      await saveDocumentSchedule({
+        ...action.schedule,
+        status: action.schedule.status === 'generating' ? 'overdue' : action.schedule.status,
+      });
+    } catch {
+      // 復元失敗は無視
+    }
+
+    return { success: false, error: error.message || String(error) };
+  }
+}
