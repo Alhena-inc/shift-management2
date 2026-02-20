@@ -67,6 +67,11 @@ export const createInitialSchedules = (
     lastFileUrl: null,
     autoGenerate: false,
     notes: null,
+    linkedPlanScheduleId: null,
+    generationBatchId: null,
+    planCreationDate: null,
+    periodStart: null,
+    periodEnd: null,
   }));
 };
 
@@ -282,7 +287,7 @@ export const checkContractDateAlerts = (
     if (!client.contractStart) continue;
 
     const daysUntilContract = daysDiff(today, client.contractStart);
-    if (daysUntilContract > 0 && daysUntilContract <= 3) {
+    if (daysUntilContract > 0 && daysUntilContract <= 7) {
       contractAlerts.push({
         type: 'plan_before_contract',
         clientId: schedule.careClientId,

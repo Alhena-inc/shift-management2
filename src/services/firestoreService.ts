@@ -1420,3 +1420,14 @@ export const saveMonitoringSchedule = async (_item: any) => {
 export const deleteMonitoringSchedule = async (_id: string) => {
   throw new Error('モニタリングスケジュールはSupabaseモードでのみ利用可能です');
 };
+
+// ========== 書類検証結果管理（Firebaseスタブ） ==========
+
+export const saveDocumentValidation = async (_result: any) => {
+  console.warn('書類検証はSupabaseモードでのみ利用可能です');
+};
+
+export const loadDocumentValidations = async () => {
+  console.warn('書類検証はSupabaseモードでのみ利用可能です');
+  return [];
+};

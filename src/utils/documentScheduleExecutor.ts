@@ -1,7 +1,8 @@
 import type { ScheduleAction, MonitoringScheduleItem } from '../types/documentSchedule';
 import type { CareClient } from '../types';
-import { saveDocumentSchedule, saveMonitoringSchedule, loadBillingRecordsForMonth, loadShiftsForMonth, loadHelpers, loadCareClients, loadAiPrompt } from '../services/dataService';
-import { computeNextDates } from './documentScheduleChecker';
+import { saveDocumentSchedule, saveMonitoringSchedule, saveDocumentValidation, loadBillingRecordsForMonth, loadShiftsForMonth, loadHelpers, loadCareClients, loadAiPrompt, loadDocumentSchedules } from '../services/dataService';
+import { computeNextDates, toDateString } from './documentScheduleChecker';
+import { validateClientDocuments } from './documentValidation';
 
 interface ExecutionResult {
   success: boolean;
@@ -47,6 +48,21 @@ async function buildContext(
   };
 }
 
+/** 生成後の検証実行（サイレント） */
+async function runPostGenerationValidation(client: CareClient) {
+  try {
+    const [schedules, helpers, billingRecords] = await Promise.all([
+      loadDocumentSchedules(client.id),
+      loadHelpers(),
+      loadBillingRecordsForMonth(new Date().getFullYear(), new Date().getMonth() + 1),
+    ]);
+    const result = validateClientDocuments(client, schedules, helpers, billingRecords);
+    await saveDocumentValidation(result);
+  } catch {
+    // 検証失敗は無視（書類生成自体は成功している）
+  }
+}
+
 export async function executeScheduleAction(
   action: ScheduleAction,
   client: CareClient,
@@ -85,8 +101,21 @@ export async function executeScheduleAction(
       const generatedAt = new Date().toISOString();
       const { nextDueDate, alertDate, expiryDate } = computeNextDates(generatedAt, schedule.cycleMonths, schedule.alertDaysBefore);
 
+      // バッチID生成
+      const batchId = crypto.randomUUID();
+
+      // plan_creation_date: 初回は contractStart の前日または today（早い方）、更新時は today
+      const today = toDateString(new Date());
+      let planCreationDate = today;
+      if (action.type === 'generate_plan' && !schedule.lastGeneratedAt && client.contractStart) {
+        const dayBefore = new Date(client.contractStart + 'T00:00:00');
+        dayBefore.setDate(dayBefore.getDate() - 1);
+        const dayBeforeStr = toDateString(dayBefore);
+        planCreationDate = dayBeforeStr < today ? dayBeforeStr : today;
+      }
+
       // 計画書スケジュール更新
-      await saveDocumentSchedule({
+      const savedPlan = await saveDocumentSchedule({
         ...schedule,
         status: 'active',
         lastGeneratedAt: generatedAt,
@@ -95,6 +124,10 @@ export async function executeScheduleAction(
         expiryDate,
         planRevisionNeeded: null,
         planRevisionReason: null,
+        generationBatchId: batchId,
+        planCreationDate,
+        periodStart: planCreationDate,
+        periodEnd: nextDueDate,
       });
 
       // 手順書も生成
@@ -122,6 +155,10 @@ export async function executeScheduleAction(
         expiryDate,
         cycleMonths: schedule.cycleMonths,
         alertDaysBefore: schedule.alertDaysBefore,
+        generationBatchId: batchId,
+        linkedPlanScheduleId: savedPlan.id,
+        periodStart: planCreationDate,
+        periodEnd: nextDueDate,
       });
 
       // モニタリング次回日設定
@@ -135,9 +172,14 @@ export async function executeScheduleAction(
         expiryDate: monitoringDates.expiryDate,
         cycleMonths: schedule.cycleMonths,
         alertDaysBefore: schedule.alertDaysBefore,
+        linkedPlanScheduleId: savedPlan.id,
       });
 
       onProgress?.('計画書・手順書の生成完了');
+
+      // 生成後に検証実行
+      await runPostGenerationValidation(client);
+
       return { success: true };
 
     } else if (action.type === 'generate_monitoring') {
@@ -186,6 +228,10 @@ export async function executeScheduleAction(
       }
 
       onProgress?.('モニタリング報告書の生成完了');
+
+      // 生成後に検証実行
+      await runPostGenerationValidation(client);
+
       return { success: true, planRevisionNeeded: result.planRevisionNeeded };
     }
 
@@ -263,6 +309,10 @@ export async function executeMonitoringScheduleAction(
     }
 
     onProgress?.('モニタリング報告書の生成完了');
+
+    // 生成後に検証実行
+    await runPostGenerationValidation(client);
+
     return { success: true, planRevisionNeeded };
   } catch (error: any) {
     console.error('v2モニタリング実行エラー:', error);

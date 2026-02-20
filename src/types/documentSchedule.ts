@@ -20,6 +20,27 @@ export interface DocumentSchedule {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+  // リンク用フィールド
+  linkedPlanScheduleId: string | null;
+  generationBatchId: string | null;
+  planCreationDate: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+}
+
+// 検証チェック結果
+export interface ValidationCheck {
+  check: string;
+  status: 'pass' | 'fail' | 'warn';
+  message: string;
+  severity: 'critical' | 'warning' | 'info';
+}
+
+export interface ValidationResult {
+  careClientId: string;
+  isValid: boolean;
+  checks: ValidationCheck[];
+  checkedAt: string;
 }
 
 export type ScheduleActionType =

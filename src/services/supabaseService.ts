@@ -2858,6 +2858,11 @@ export const loadDocumentSchedules = async (careClientId?: string): Promise<any[
       notes: row.notes,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      linkedPlanScheduleId: row.linked_plan_schedule_id || null,
+      generationBatchId: row.generation_batch_id || null,
+      planCreationDate: row.plan_creation_date || null,
+      periodStart: row.period_start || null,
+      periodEnd: row.period_end || null,
     }));
   } catch (error) {
     console.error('書類スケジュール読み込みエラー:', error);
@@ -2884,6 +2889,11 @@ export const saveDocumentSchedule = async (item: any): Promise<any> => {
       auto_generate: item.autoGenerate ?? false,
       notes: item.notes || null,
       updated_at: new Date().toISOString(),
+      linked_plan_schedule_id: item.linkedPlanScheduleId || null,
+      generation_batch_id: item.generationBatchId || null,
+      plan_creation_date: item.planCreationDate || null,
+      period_start: item.periodStart || null,
+      period_end: item.periodEnd || null,
     };
     if (item.id) {
       saveData.id = item.id;
@@ -2913,6 +2923,11 @@ export const saveDocumentSchedule = async (item: any): Promise<any> => {
       notes: data.notes,
       createdAt: data.created_at,
       updatedAt: data.updated_at,
+      linkedPlanScheduleId: data.linked_plan_schedule_id || null,
+      generationBatchId: data.generation_batch_id || null,
+      planCreationDate: data.plan_creation_date || null,
+      periodStart: data.period_start || null,
+      periodEnd: data.period_end || null,
     };
   } catch (error) {
     console.error('書類スケジュール保存エラー:', error);
@@ -3133,5 +3148,58 @@ export const deleteMonitoringSchedule = async (id: string): Promise<void> => {
   } catch (error) {
     console.error('モニタリングスケジュール削除エラー:', error);
     throw error;
+  }
+};
+
+// ========== 書類検証結果管理 ==========
+
+export const saveDocumentValidation = async (result: any): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('document_validations')
+      .upsert({
+        care_client_id: result.careClientId,
+        checked_at: result.checkedAt || new Date().toISOString(),
+        is_valid: result.isValid,
+        checks: result.checks,
+      }, { onConflict: 'care_client_id' })
+    if (error) {
+      // onConflictが使えない場合（unique制約がない）は削除＋挿入
+      await supabase
+        .from('document_validations')
+        .delete()
+        .eq('care_client_id', result.careClientId);
+      const { error: insertError } = await supabase
+        .from('document_validations')
+        .insert({
+          care_client_id: result.careClientId,
+          checked_at: result.checkedAt || new Date().toISOString(),
+          is_valid: result.isValid,
+          checks: result.checks,
+        });
+      if (insertError) throw insertError;
+    }
+  } catch (error) {
+    console.error('検証結果保存エラー:', error);
+    throw error;
+  }
+};
+
+export const loadDocumentValidations = async (): Promise<any[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('document_validations')
+      .select('*')
+      .order('care_client_id');
+    if (error) throw error;
+    return (data || []).map((row: any) => ({
+      careClientId: row.care_client_id,
+      isValid: row.is_valid,
+      checks: row.checks || [],
+      checkedAt: row.checked_at,
+    }));
+  } catch (error) {
+    console.error('検証結果読み込みエラー:', error);
+    return [];
   }
 };

@@ -177,6 +177,10 @@ export const {
   loadMonitoringSchedules,
   saveMonitoringSchedule,
   deleteMonitoringSchedule,
+
+  // 書類検証結果管理
+  saveDocumentValidation,
+  loadDocumentValidations,
 } = dataService;
 
 // AIプロンプト関連（Supabase専用）

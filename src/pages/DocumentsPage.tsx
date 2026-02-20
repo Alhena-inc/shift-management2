@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmounts, loadBillingRecordsForMonth, loadShogaiDocuments, saveShogaiDocument, deleteShogaiDocument, uploadShogaiDocFile, loadAiPrompt, saveAiPrompt, saveDocumentSchedule, loadMonitoringSchedules, saveMonitoringSchedule, loadGoalPeriods } from '../services/dataService';
+import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmounts, loadBillingRecordsForMonth, loadShogaiDocuments, saveShogaiDocument, deleteShogaiDocument, uploadShogaiDocFile, loadAiPrompt, saveAiPrompt, saveDocumentSchedule, loadMonitoringSchedules, saveMonitoringSchedule, loadGoalPeriods, saveDocumentValidation, loadDocumentSchedules } from '../services/dataService';
 import { computeNextDates } from '../utils/documentScheduleChecker';
 import { isGeminiAvailable } from '../services/geminiService';
+import { validateClientDocuments } from '../utils/documentValidation';
 import type { Helper, CareClient, Shift, BillingRecord, ShogaiSupplyAmount, ShogaiDocument } from '../types';
 import type { AiPrompt } from '../services/supabaseService';
 
@@ -296,17 +297,28 @@ const DocumentsPage: React.FC = () => {
       if (selectedClient) {
         const generatedAt = new Date().toISOString();
         const { nextDueDate, alertDate, expiryDate } = computeNextDates(generatedAt, 6, 30);
+        const batchId = crypto.randomUUID();
+        const today = new Date().toISOString().slice(0, 10);
+        let planCreationDate = today;
+        if (doc.id === 'care-plan' && selectedClient.contractStart) {
+          const dayBefore = new Date(selectedClient.contractStart + 'T00:00:00');
+          dayBefore.setDate(dayBefore.getDate() - 1);
+          const dayBeforeStr = dayBefore.toISOString().slice(0, 10);
+          planCreationDate = dayBeforeStr < today ? dayBeforeStr : today;
+        }
         try {
           if (doc.id === 'care-plan') {
-            await saveDocumentSchedule({
+            const savedPlan = await saveDocumentSchedule({
               careClientId: selectedClient.id, docType: 'care_plan', status: 'active',
               lastGeneratedAt: generatedAt, nextDueDate, alertDate, expiryDate,
               cycleMonths: 6, alertDaysBefore: 30,
+              generationBatchId: batchId, planCreationDate, periodStart: planCreationDate, periodEnd: nextDueDate,
             });
             await saveDocumentSchedule({
               careClientId: selectedClient.id, docType: 'tejunsho', status: 'active',
               lastGeneratedAt: generatedAt, nextDueDate, alertDate, expiryDate,
               cycleMonths: 6, alertDaysBefore: 30,
+              generationBatchId: batchId, linkedPlanScheduleId: savedPlan.id, periodStart: planCreationDate, periodEnd: nextDueDate,
             });
             // v2: 目標期間が未設定ならアラート
             try {
@@ -351,6 +363,14 @@ const DocumentsPage: React.FC = () => {
               cycleMonths: 6, alertDaysBefore: 30,
             });
           }
+
+          // 生成後に検証実行
+          try {
+            const allSchedules = await loadDocumentSchedules(selectedClient.id);
+            const allHelpers = await loadHelpers();
+            const valResult = validateClientDocuments(selectedClient, allSchedules, allHelpers, billingRecords);
+            await saveDocumentValidation(valResult);
+          } catch { /* 検証失敗は無視 */ }
         } catch (schedErr) {
           console.warn('スケジュール更新失敗（書類生成は成功）:', schedErr);
         }
