@@ -32,6 +32,7 @@ const CATEGORY_CONFIG: Record<DocumentCategory, { label: string; icon: string; c
 const DOCUMENTS: DocumentDefinition[] = [
   { id: '2-5', number: '2-⑤', name: 'アセスメント', category: 'service', group: 'C', unit: 'client', description: '利用者ごとにアセスメントをアップロード' },
   { id: 'care-plan', number: '2-⑥', name: '居宅介護計画書', category: 'service', group: 'B', unit: 'client', description: '実績・アセスメントを元にAIが計画書を作成' },
+  { id: 'care-procedure', number: '2-⑦', name: '訪問介護手順書', category: 'service', group: 'B', unit: 'client', description: '計画書の内容を元にAIが訪問ごとの手順書を作成' },
 ];
 
 // ========== 事業所情報（デフォルト値） ==========
@@ -244,7 +245,7 @@ const DocumentsPage: React.FC = () => {
     if (doc.id === 'manual') return;
 
     // 居宅介護計画書: 利用者選択モーダルを表示
-    if (doc.id === 'care-plan' && !selectedClient) {
+    if ((doc.id === 'care-plan' || doc.id === 'care-procedure') && !selectedClient) {
       setClientSelectModalDoc(doc);
       return;
     }
@@ -377,6 +378,7 @@ const DocumentsPage: React.FC = () => {
         case '2-4': return (await import('../utils/documentGenerators/municipalityReportGenerator')).generate;
         case '3-3': return (await import('../utils/documentGenerators/legalProxyNoticeGenerator')).generate;
         case 'care-plan': return (await import('../utils/documentGenerators/carePlanGenerator')).generate;
+        case 'care-procedure': return (await import('../utils/documentGenerators/careProcedureGenerator')).generate;
         default: return null;
       }
     } catch {

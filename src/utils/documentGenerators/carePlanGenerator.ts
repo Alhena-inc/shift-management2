@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import { generateWithFiles, generateText } from '../../services/geminiService';
-import { loadShogaiDocuments, loadBillingRecordsForMonth } from '../../services/dataService';
+import { loadShogaiDocuments, loadBillingRecordsForMonth, uploadCarePlanFile, saveShogaiCarePlanDocument } from '../../services/dataService';
 import type { GeneratorContext } from './types';
 import type { CareClient, BillingRecord, ShogaiSupplyAmount } from '../../types';
 
@@ -1086,7 +1086,29 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `居宅介護計画書_${client.name}_${year}年${month}月.xlsx`;
+  const fileName = `居宅介護計画書_${client.name}_${year}年${month}月.xlsx`;
+  link.download = fileName;
   link.click();
   URL.revokeObjectURL(url);
+
+  // 自動保存: 利用者情報の居宅介護計画書セクションに保存
+  try {
+    const file = new File([outputBuffer], fileName, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const { url: fileUrl } = await uploadCarePlanFile(client.id, 'kyotaku', file);
+    await saveShogaiCarePlanDocument({
+      id: '',
+      careClientId: client.id,
+      planCategory: 'kyotaku',
+      fileName,
+      fileUrl,
+      fileSize: file.size,
+      notes: `${year}年${month}月分 AI自動生成`,
+      sortOrder: 0,
+    });
+    console.log('[CarePlan] 利用者情報に自動保存完了');
+  } catch (err) {
+    console.warn('[CarePlan] 利用者情報への自動保存に失敗（ダウンロードは成功）:', err);
+  }
 }
