@@ -317,7 +317,8 @@ function createMonitoringSheet(
   ws.getCell('A3').alignment = { horizontal: 'center', vertical: 'middle' };
 
   ws.mergeCells('B3:D3');
-  ws.getCell('B3').value = `${client.name}　様`;
+  const displayName = client.childName ? `${client.name}（${client.childName}）` : client.name;
+  ws.getCell('B3').value = `${displayName}　様`;
   ws.getCell('B3').font = dataFont;
   ws.getCell('B3').border = allBorders;
   ws.getCell('B3').alignment = { vertical: 'middle' };

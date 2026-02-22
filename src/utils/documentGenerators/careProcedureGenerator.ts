@@ -285,7 +285,8 @@ function createProcedureSheet(
   ws.getCell('A3').alignment = { horizontal: 'center', vertical: 'middle' };
 
   ws.mergeCells('C3:E3');
-  ws.getCell('C3').value = `${client.name}　様`;
+  const displayName = client.childName ? `${client.name}（${client.childName}）` : client.name;
+  ws.getCell('C3').value = `${displayName}　様`;
   ws.getCell('C3').font = dataFont;
   ws.getCell('C3').border = allBorders;
   ws.getCell('C3').alignment = { vertical: 'middle' };
