@@ -435,6 +435,7 @@ const thinBorder: Partial<ExcelJS.Border> = { style: 'thin' };
  * テンプレートのレイアウト（0:00始まりの24時間）:
  *   Row21=0:00, Row22=0:30, Row23=1:00, Row24=1:30, ...
  *   Row37=8:00, Row38=8:30, Row39=9:00, Row40=9:30, ...
+ *   Row57=18:00, Row58=18:30, Row59=19:00, Row60=19:30, ...
  *   Row67=23:00, Row68=23:30
  * 各時間2行（正時 + 30分）、0:00起点。
  */
@@ -442,14 +443,14 @@ function timeToRow(time: string): number {
   const parts = time.split(':');
   const h = parseInt(parts[0], 10);
   const m = parseInt(parts[1] || '0', 10);
-  // 0:00を起点(offset=0): 0→0, 1→1, ..., 23→23
+  // 0:00を起点: 0→Row21, 1→Row23, ..., 23→Row67
   return 21 + h * 2 + (m >= 30 ? 1 : 0);
 }
 
 /** 終了時刻からブロックの最終行を計算する。
  * endTimeが30分刻み（00分 or 30分）ならその行の1つ前まで使う。
  * それ以外（例: 09:20, 15:45）はその行自体まで使う。
- * 例: end=09:30 → 9:00行(21)まで, end=09:20 → 9:00行(21)まで, end=10:00 → 9:30行(22)まで
+ * 例: end=09:30 → Row39(9:00)まで, end=10:00 → Row40(9:30)まで, end=09:20 → Row39(9:00)まで
  */
 function endTimeToLastRow(time: string): number {
   const parts = time.split(':');
@@ -526,7 +527,7 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
   // サービス種別が異なっても同じ曜日・同じ時間帯なら1つのブロックにまとめる。
   //
   // テンプレートは0:00始まりの24時間（Row21=0:00, Row22=0:30, ..., Row67=23:00, Row68=23:30）。
-  // 日またぎ（endTime < startTime、例: 23:00→08:30）は最終行(23:30)まで描画する。
+  // 日またぎ（endTime < startTime、例: 23:00→翌08:00）は最終行(23:30)まで描画する。
   //
   // 処理の流れ:
   // 1. 全レコードから (曜日, 開始行, 終了行, ラベル) を抽出
@@ -569,7 +570,7 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
       // 通常ケース（例: 08:30→09:30、18:30→19:30）
       addPattern(dayName, label, sRow, eLastRow, r.startTime, r.endTime);
     } else if (r.startTime !== r.endTime) {
-      // 日またぎ（例: 23:00→08:00）→ 開始行→最終行まで描画
+      // 日またぎ（例: 23:00→翌08:00）→ 開始行→最終行まで描画
       addPattern(dayName, label, sRow, maxRow, r.startTime, r.endTime);
     }
   }
