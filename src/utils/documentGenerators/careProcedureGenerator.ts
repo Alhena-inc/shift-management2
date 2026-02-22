@@ -430,7 +430,7 @@ function createProcedureSheet(
     ws.getCell(`A${row}`).value = step.time;
     ws.getCell(`A${row}`).font = { ...dataFont, bold: true };
     ws.getCell(`A${row}`).border = allBorders;
-    ws.getCell(`A${row}`).alignment = { horizontal: 'center', vertical: 'top', wrapText: true };
+    ws.getCell(`A${row}`).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
     if (rowFill) ws.getCell(`A${row}`).fill = rowFill;
 
     // 援助項目 (B-C結合)
@@ -438,7 +438,7 @@ function createProcedureSheet(
     ws.getCell(`B${row}`).value = step.item;
     ws.getCell(`B${row}`).font = dataFont;
     ws.getCell(`B${row}`).border = allBorders;
-    ws.getCell(`B${row}`).alignment = { vertical: 'top', wrapText: true };
+    ws.getCell(`B${row}`).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
     if (rowFill) ws.getCell(`B${row}`).fill = rowFill;
 
     // 具体的な手順 (D-F結合)
@@ -446,7 +446,7 @@ function createProcedureSheet(
     ws.getCell(`D${row}`).value = step.detail;
     ws.getCell(`D${row}`).font = dataFont;
     ws.getCell(`D${row}`).border = allBorders;
-    ws.getCell(`D${row}`).alignment = { vertical: 'top', wrapText: true };
+    ws.getCell(`D${row}`).alignment = { vertical: 'middle', wrapText: true };
     if (rowFill) ws.getCell(`D${row}`).fill = rowFill;
 
     // 留意事項 (G-H結合)
@@ -454,7 +454,7 @@ function createProcedureSheet(
     ws.getCell(`G${row}`).value = step.note;
     ws.getCell(`G${row}`).font = dataFont;
     ws.getCell(`G${row}`).border = allBorders;
-    ws.getCell(`G${row}`).alignment = { vertical: 'top', wrapText: true };
+    ws.getCell(`G${row}`).alignment = { vertical: 'middle', wrapText: true };
     if (rowFill) ws.getCell(`G${row}`).fill = rowFill;
 
     // 行の高さを自動調整（手順の文字数に応じて）

@@ -7,6 +7,7 @@ import { checkDocumentSchedules, createInitialSchedules, toDateString, generateM
 import { executeScheduleAction } from '../utils/documentScheduleExecutor';
 import { executeMonitoringScheduleAction } from '../utils/documentScheduleExecutor';
 import { validateAllClients, getClientValidationStatus } from '../utils/documentValidation';
+import DocumentTimelineView from './DocumentTimelineView';
 
 const DOC_TYPE_LABELS: Record<ScheduleDocType, string> = {
   care_plan: '計画書',
@@ -107,6 +108,10 @@ const DocumentScheduleDashboard: React.FC = () => {
 
   // パターン変更検知
   const [patternChangedClientIds, setPatternChangedClientIds] = useState<Set<string>>(new Set());
+
+  // タブ切り替え
+  type DashboardTab = 'list' | 'timeline';
+  const [activeTab, setActiveTab] = useState<DashboardTab>('list');
 
   // 臨時モニタリング
   const [emergencyClientId, setEmergencyClientId] = useState<string | null>(null);
@@ -853,6 +858,44 @@ const DocumentScheduleDashboard: React.FC = () => {
         </div>
       )}
 
+      {/* タブ切り替え */}
+      <div className="mb-4 flex items-center gap-1 bg-gray-100 rounded-lg p-1 w-fit">
+        <button
+          onClick={() => setActiveTab('list')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeTab === 'list'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <span className="material-symbols-outlined text-base">view_list</span>
+          一覧ビュー
+        </button>
+        <button
+          onClick={() => setActiveTab('timeline')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeTab === 'timeline'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <span className="material-symbols-outlined text-base">view_timeline</span>
+          時系列ビュー
+        </button>
+      </div>
+
+      {/* 時系列ビュー */}
+      {activeTab === 'timeline' && (
+        <DocumentTimelineView
+          clients={clients}
+          schedules={schedules}
+          monitoringSchedules={monitoringSchedules}
+          goalPeriods={goalPeriods}
+        />
+      )}
+
+      {/* 一覧ビュー */}
+      {activeTab === 'list' && (<>
       {/* サマリーカード */}
       <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-3">
         <button
@@ -1462,6 +1505,7 @@ const DocumentScheduleDashboard: React.FC = () => {
           {filterStatus !== 'all' ? 'フィルタ条件に一致する利用者がいません' : '利用者が登録されていません'}
         </div>
       )}
+      </>)}
     </div>
   );
 };

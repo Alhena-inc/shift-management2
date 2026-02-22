@@ -292,7 +292,7 @@ function toReiwa(year: number): number {
 }
 
 function setWrapText(cell: ExcelJS.Cell) {
-  cell.alignment = { ...cell.alignment, wrapText: true, vertical: 'top' };
+  cell.alignment = { ...cell.alignment, wrapText: true, vertical: 'middle' };
 }
 
 // ==================== 型定義 ====================
@@ -420,13 +420,17 @@ function colToNum(col: string): number {
 /** 薄い罫線スタイル */
 const thinBorder: Partial<ExcelJS.Border> = { style: 'thin' };
 
-/** 時刻文字列(HH:MM)をExcelの行番号に変換。30分以降は次の行 */
+/** 時刻文字列(HH:MM)をExcelの行番号に変換。30分以降は次の行
+ * テンプレートのレイアウト: Row21=9:00, Row22=9:30, Row23=10:00, ... Row50=23:30,
+ * Row51=0:00, Row52=0:30, ... Row68=8:30（9:00始まりの24時間）
+ */
 function timeToRow(time: string): number {
   const parts = time.split(':');
   const h = parseInt(parts[0], 10);
   const m = parseInt(parts[1] || '0', 10);
-  // Row21=0:00(上半分), Row22=0:00(下半分=0:30), Row23=1:00, ...
-  return 21 + h * 2 + (m >= 30 ? 1 : 0);
+  // 9:00始まりの24時間ループ: 9→0, 10→1, ..., 23→14, 0→15, ..., 8→23
+  const offset = h >= 9 ? (h - 9) : (h + 15);
+  return 21 + offset * 2 + (m >= 30 ? 1 : 0);
 }
 
 /** 罫線を明示的に消すための hair スタイル（テンプレートの元の細線に戻す） */
@@ -522,24 +526,33 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     const endM = parseInt(endParts[1] || '0', 10);
     if (isNaN(startH) || isNaN(endH)) continue;
 
-    // 日またぎ判定: endTime <= startTime の場合は翌日にまたがるため、24時として扱う
-    // 例: 18:00→00:00 → endH=24, 23:00→00:00 → endH=24, 18:00→02:00 → endH=24+2=26(ただし予定表は24hまで)
+    // 9:00始まりの24時間テンプレート用オフセット計算
+    const hourToOffset = (h: number) => h >= 9 ? (h - 9) : (h + 15);
+
+    // 日またぎ判定は不要（9:00始まりのため0:00-8:30は自然に後半に配置される）
+    // ただし endTime が startTime より前（例: 23:00→01:00）の場合は endH を補正
+    let adjustedEndH = endH;
+    const adjustedEndM = endM;
     if (endH < startH || (endH === startH && endM <= startM) || (endH === 0 && endM === 0)) {
-      // 日またぎ: endを24時以降に補正（予定表は最大24:00=row68まで）
-      endH = endH === 0 && endM === 0 ? 24 : 24 + endH;
+      // 日またぎ: endを翌日として扱う（9:00始まりでは24hに収まらない場合は最終行まで）
+      adjustedEndH = endH === 0 && endM === 0 ? 9 : endH; // 0:00 → 9:00相当（最終行+1）
+      // endHのオフセットがstartHのオフセットより小さい場合は24h超え → 最終行まで
     }
 
-    // 開始行: 30分刻み (Row21=0:00, Row22=0:30, Row23=1:00, ...)
-    const sRow = 21 + startH * 2 + (startM >= 30 ? 1 : 0);
+    // 開始行: 9:00始まりオフセット
+    const startOffset = hourToOffset(startH);
+    const sRow = 21 + startOffset * 2 + (startM >= 30 ? 1 : 0);
+
     // 終了行: endTimeの直前の30分枠
     let eRow: number;
-    if (endH >= 24) {
-      // 24時以降 → 予定表の最終行(68=23:30)まで
+    const endOffset = hourToOffset(adjustedEndH);
+    // 日またぎでendがstartより前のオフセットになった場合 → 最終行まで
+    if (endOffset < startOffset && (endH < startH || (endH === 0 && endM === 0))) {
       eRow = maxRow;
-    } else if (endM > 0) {
-      eRow = 21 + endH * 2 + (endM >= 30 ? 1 : 0) - 1;
+    } else if (adjustedEndM > 0) {
+      eRow = 21 + endOffset * 2 + (adjustedEndM >= 30 ? 1 : 0) - 1;
     } else {
-      eRow = 21 + endH * 2 - 1;
+      eRow = 21 + endOffset * 2 - 1;
     }
 
     const clampedStart = Math.max(sRow, minRow);
@@ -574,11 +587,17 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     }
   }
 
+  // 行番号→時刻の逆変換（ログ用）
+  const rowToTimeLabel = (row: number): string => {
+    const offset = Math.floor((row - 21) / 2);
+    const half = (row - 21) % 2 === 0 ? '00' : '30';
+    const h = (offset + 9) % 24;
+    return `${h}:${half}`;
+  };
+
   console.log(`[CarePlan] 計画予定表パターン: ${patterns.length}件 → マージ後: ${merged.length}件`);
   for (const p of merged) {
-    const startTime = `${Math.floor((p.startRow - 21) / 2)}:${(p.startRow - 21) % 2 === 0 ? '00' : '30'}`;
-    const endTime = `${Math.floor((p.endRow - 21 + 1) / 2)}:${(p.endRow - 21 + 1) % 2 === 0 ? '00' : '30'}`;
-    console.log(`  ${p.dayName} ${startTime}-${endTime} ${p.type} (Row${p.startRow}-${p.endRow})`);
+    console.log(`  ${p.dayName} ${rowToTimeLabel(p.startRow)}-${rowToTimeLabel(p.endRow + 1)} ${p.type} (Row${p.startRow}-${p.endRow})`);
   }
 
   // 同じ曜日列で異なるサービスが重なる場合の警告（重なりがあっても描画はする）
@@ -1059,11 +1078,12 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
   console.log(`[CarePlan] 計画予定表書き込み - 実績件数: ${clientRecords.length}`);
   fillScheduleFromBilling(ws0, clientRecords);
 
-  // 備考欄
+  // 備考欄（K21:K68をマージして全文表示）
   if (plan.schedule_remarks) {
+    ws0.mergeCells('K21:K68');
     const remarkCell = ws0.getCell('K21');
     remarkCell.value = plan.schedule_remarks;
-    setWrapText(remarkCell);
+    remarkCell.alignment = { vertical: 'top', wrapText: true };
   }
 
   // ==============================
