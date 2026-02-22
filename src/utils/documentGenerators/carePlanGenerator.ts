@@ -431,17 +431,34 @@ function colToNum(col: string): number {
 /** 薄い罫線スタイル */
 const thinBorder: Partial<ExcelJS.Border> = { style: 'thin' };
 
-/** 時刻文字列(HH:MM)をExcelの行番号に変換。30分以降は次の行
- * テンプレートのレイアウト: Row21=9:00, Row22=9:30, Row23=10:00, ... Row50=23:30,
- * Row51=0:00, Row52=0:30, ... Row68=8:30（9:00始まりの24時間）
+/** 時刻文字列(HH:MM)をExcelの行番号に変換（開始時刻用）。
+ * テンプレートのレイアウト（0:00始まりの24時間）:
+ *   Row21=0:00, Row22=0:30, Row23=1:00, Row24=1:30, ...
+ *   Row37=8:00, Row38=8:30, Row39=9:00, Row40=9:30, ...
+ *   Row67=23:00, Row68=23:30
+ * 各時間2行（正時 + 30分）、0:00起点。
  */
 function timeToRow(time: string): number {
   const parts = time.split(':');
   const h = parseInt(parts[0], 10);
   const m = parseInt(parts[1] || '0', 10);
-  // 9:00始まりの24時間ループ: 9→0, 10→1, ..., 23→14, 0→15, ..., 8→23
-  const offset = h >= 9 ? (h - 9) : (h + 15);
-  return 21 + offset * 2 + (m >= 30 ? 1 : 0);
+  // 0:00を起点(offset=0): 0→0, 1→1, ..., 23→23
+  return 21 + h * 2 + (m >= 30 ? 1 : 0);
+}
+
+/** 終了時刻からブロックの最終行を計算する。
+ * endTimeが30分刻み（00分 or 30分）ならその行の1つ前まで使う。
+ * それ以外（例: 09:20, 15:45）はその行自体まで使う。
+ * 例: end=09:30 → 9:00行(21)まで, end=09:20 → 9:00行(21)まで, end=10:00 → 9:30行(22)まで
+ */
+function endTimeToLastRow(time: string): number {
+  const parts = time.split(':');
+  const m = parseInt(parts[1] || '0', 10);
+  const row = timeToRow(time);
+  // ちょうど30分刻みのときは「その行は次ブロック」なので-1
+  if (m === 0 || m === 30) return row - 1;
+  // 端数分（例: 20, 45）はその行に含まれる
+  return row;
 }
 
 /** 罫線を明示的に消すための hair スタイル（テンプレートの元の細線に戻す） */
@@ -508,12 +525,11 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
   // 実績レコードを「曜日 × 時間帯」のユニークパターンに集約する。
   // サービス種別が異なっても同じ曜日・同じ時間帯なら1つのブロックにまとめる。
   //
-  // テンプレートは9:00始まりの24時間ループ（Row21=9:00 〜 Row68=8:30）。
-  // 9:00境界をまたぐサービス（例: 08:30→09:30）は2つのブロックに分割して描画する。
+  // テンプレートは0:00始まりの24時間（Row21=0:00, Row22=0:30, ..., Row67=23:00, Row68=23:30）。
+  // 日またぎ（endTime < startTime、例: 23:00→08:30）は最終行(23:30)まで描画する。
   //
   // 処理の流れ:
   // 1. 全レコードから (曜日, 開始行, 終了行, ラベル) を抽出
-  //    - 9:00境界をまたぐ場合は Part1(開始→8:30) + Part2(9:00→終了) に分割
   // 2. 同じ曜日で隣接・重複する行範囲を統合（サービス種別問わず）
   // 3. 統合したブロックのラベルを結合（例: "身体介護\n家事援助"）
 
@@ -547,19 +563,14 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     }
 
     const sRow = timeToRow(r.startTime);
-    const eRowCalc = timeToRow(r.endTime);
+    const eLastRow = endTimeToLastRow(r.endTime);
 
-    if (eRowCalc > sRow) {
-      // 通常ケース: 9:00境界をまたがない（例: 10:00→12:00, 0:00→8:30）
-      addPattern(dayName, label, sRow, eRowCalc - 1, r.startTime, r.endTime);
+    if (eLastRow >= sRow) {
+      // 通常ケース（例: 08:30→09:30、18:30→19:30）
+      addPattern(dayName, label, sRow, eLastRow, r.startTime, r.endTime);
     } else if (r.startTime !== r.endTime) {
-      // 9:00境界をまたぐケース（例: 08:30→09:30, 07:00→10:00）
-      // Part1: 開始 → テンプレート最終行（8:30 = Row68）
-      addPattern(dayName, label, sRow, maxRow, r.startTime, '09:00');
-      // Part2: テンプレート先頭行（9:00 = Row21） → 終了
-      if (eRowCalc > minRow) {
-        addPattern(dayName, label, minRow, eRowCalc - 1, '09:00', r.endTime);
-      }
+      // 日またぎ（例: 23:00→08:00）→ 開始行→最終行まで描画
+      addPattern(dayName, label, sRow, maxRow, r.startTime, r.endTime);
     }
   }
 
