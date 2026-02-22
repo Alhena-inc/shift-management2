@@ -505,12 +505,35 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
   }
 
   // ========== パターン集約 ==========
-  // 実績レコードを「曜日 × 時間帯 × サービス種別」のユニークパターンに集約する。
-  // timeToRow() を使って開始行を求め、終了行は endTime の行 - 1 で算出する。
-  // 9:00始まりの24時間テンプレートのため、0:00-8:30 は自然に後半に配置される。
+  // 実績レコードを「曜日 × 時間帯」のユニークパターンに集約する。
+  // サービス種別が異なっても同じ曜日・同じ時間帯なら1つのブロックにまとめる。
+  //
+  // テンプレートは9:00始まりの24時間ループ（Row21=9:00 〜 Row68=8:30）。
+  // 9:00境界をまたぐサービス（例: 08:30→09:30）は2つのブロックに分割して描画する。
+  //
+  // 処理の流れ:
+  // 1. 全レコードから (曜日, 開始行, 終了行, ラベル) を抽出
+  //    - 9:00境界をまたぐ場合は Part1(開始→8:30) + Part2(9:00→終了) に分割
+  // 2. 同じ曜日で隣接・重複する行範囲を統合（サービス種別問わず）
+  // 3. 統合したブロックのラベルを結合（例: "身体介護\n家事援助"）
 
-  const seen = new Set<string>();
-  const patterns: { dayName: string; type: string; startRow: number; endRow: number; startTime: string; endTime: string }[] = [];
+  // Step 1: 全レコードを行範囲に変換
+  interface RawPattern { dayName: string; labels: Set<string>; startRow: number; endRow: number; startTime: string; endTime: string }
+  const rawPatterns: RawPattern[] = [];
+
+  /** ヘルパー: パターンを追加（同一曜日・同一行範囲は統合） */
+  function addPattern(dayName: string, label: string, startRow: number, endRow: number, startTime: string, endTime: string) {
+    const cs = Math.max(startRow, minRow);
+    const ce = Math.min(endRow, maxRow);
+    if (cs > ce) return;
+    const key = `${dayName}_${cs}_${ce}`;
+    const existing = rawPatterns.find(p => `${p.dayName}_${p.startRow}_${p.endRow}` === key);
+    if (existing) {
+      existing.labels.add(label);
+    } else {
+      rawPatterns.push({ dayName, labels: new Set([label]), startRow: cs, endRow: ce, startTime, endTime });
+    }
+  }
 
   for (const r of records) {
     if (!r.startTime || !r.endTime || !r.serviceDate) continue;
@@ -518,72 +541,64 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
     const dayName = WEEKDAY_NAMES[d.getDay()];
     const label = serviceCodeToLabel(r.serviceCode);
 
-    // ラベルが完全に空（コードが空の場合のみ）はスキップ
     if (!label) {
       console.log(`[CarePlan] スキップ（コード空）: ${dayName} ${r.startTime}-${r.endTime} コード="${r.serviceCode}"`);
       continue;
     }
 
-    // timeToRow を使って開始行を計算
     const sRow = timeToRow(r.startTime);
+    const eRowCalc = timeToRow(r.endTime);
 
-    // 終了行の計算: endTime の行の直前（endTime はサービスが終わる時刻なので、その行自体は含まない）
-    const endRow = timeToRow(r.endTime);
-    let eRow: number;
-
-    // endRow が sRow 以下の場合 = 9:00境界を跨ぐ（例: 23:00→7:00）→ 最終行まで
-    if (endRow <= sRow && r.startTime !== r.endTime) {
-      eRow = maxRow;
-    } else {
-      eRow = endRow - 1;
+    if (eRowCalc > sRow) {
+      // 通常ケース: 9:00境界をまたがない（例: 10:00→12:00, 0:00→8:30）
+      addPattern(dayName, label, sRow, eRowCalc - 1, r.startTime, r.endTime);
+    } else if (r.startTime !== r.endTime) {
+      // 9:00境界をまたぐケース（例: 08:30→09:30, 07:00→10:00）
+      // Part1: 開始 → テンプレート最終行（8:30 = Row68）
+      addPattern(dayName, label, sRow, maxRow, r.startTime, '09:00');
+      // Part2: テンプレート先頭行（9:00 = Row21） → 終了
+      if (eRowCalc > minRow) {
+        addPattern(dayName, label, minRow, eRowCalc - 1, '09:00', r.endTime);
+      }
     }
-
-    const clampedStart = Math.max(sRow, minRow);
-    const clampedEnd = Math.min(eRow, maxRow);
-    if (clampedStart > clampedEnd) continue;
-
-    // 重複排除（同一曜日・同一行範囲・同一ラベル）
-    const key = `${dayName}_${clampedStart}_${clampedEnd}_${label}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    patterns.push({ dayName, type: label, startRow: clampedStart, endRow: clampedEnd, startTime: r.startTime, endTime: r.endTime });
   }
 
-  // ========== 隣接・重複パターンのマージ ==========
-  // 同じ曜日・同じサービス種別で、連続する時間帯（endRow+1 === 次のstartRow）を結合
-  patterns.sort((a, b) => {
+  console.log(`[CarePlan] 実績レコード → ユニークパターン: ${rawPatterns.length}件`);
+  for (const p of rawPatterns) {
+    console.log(`  ${p.dayName} ${p.startTime}-${p.endTime} [${[...p.labels].join(',')}] (Row${p.startRow}-${p.endRow})`);
+  }
+
+  // Step 2: 同じ曜日で隣接・重複する行範囲を統合（サービス種別問わず）
+  rawPatterns.sort((a, b) => {
     if (a.dayName !== b.dayName) return WEEKDAY_NAMES.indexOf(a.dayName) - WEEKDAY_NAMES.indexOf(b.dayName);
-    if (a.type !== b.type) return a.type.localeCompare(b.type);
     return a.startRow - b.startRow;
   });
 
-  const merged: typeof patterns = [];
-  for (const p of patterns) {
+  const merged: RawPattern[] = [];
+  for (const p of rawPatterns) {
     const last = merged[merged.length - 1];
-    if (last && last.dayName === p.dayName && last.type === p.type && last.endRow + 1 >= p.startRow) {
-      // 隣接 or 重複 → マージ（endRowを大きい方に拡張）
+    if (last && last.dayName === p.dayName && last.endRow + 1 >= p.startRow) {
+      // 隣接 or 重複 → マージ
       last.endRow = Math.max(last.endRow, p.endRow);
-      // 時刻も更新（最も早い開始・最も遅い終了）
+      for (const l of p.labels) last.labels.add(l);
+      // 時刻も更新（元のサービス時刻を保持）
       if (p.startTime < last.startTime) last.startTime = p.startTime;
       if (p.endTime > last.endTime) last.endTime = p.endTime;
     } else {
-      merged.push({ ...p });
+      merged.push({
+        dayName: p.dayName,
+        labels: new Set(p.labels),
+        startRow: p.startRow,
+        endRow: p.endRow,
+        startTime: p.startTime,
+        endTime: p.endTime,
+      });
     }
   }
 
-  console.log(`[CarePlan] 計画予定表パターン: ${patterns.length}件 → マージ後: ${merged.length}件`);
+  console.log(`[CarePlan] 計画予定表パターン: ${rawPatterns.length}件 → マージ後: ${merged.length}件`);
   for (const p of merged) {
-    console.log(`  ${p.dayName} ${p.startTime}-${p.endTime} ${p.type} (Row${p.startRow}-${p.endRow})`);
-  }
-
-  // 同じ曜日列で異なるサービスが重なる場合の警告（重なりがあっても描画はする）
-  for (let i = 0; i < merged.length; i++) {
-    for (let j = i + 1; j < merged.length; j++) {
-      const a = merged[i], b = merged[j];
-      if (a.dayName === b.dayName && a.startRow <= b.endRow && b.startRow <= a.endRow) {
-        console.warn(`[CarePlan] ⚠ 重なり検出: ${a.dayName} ${a.type}(Row${a.startRow}-${a.endRow}) と ${b.type}(Row${b.startRow}-${b.endRow})`);
-      }
-    }
+    console.log(`  ${p.dayName} ${p.startTime}-${p.endTime} [${[...p.labels].join(',')}] (Row${p.startRow}-${p.endRow})`);
   }
 
   // ========== STEP 3: サービスブロック再描画 ==========
@@ -602,10 +617,13 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
       ws.mergeCells(p.startRow, colNum, p.endRow, colNum);
     }
 
+    // ラベルを結合（複数サービスがある場合は改行区切り）
+    const labelText = [...p.labels].join('\n');
+
     // マスターセル（結合の先頭 or 単一セル）にラベル・スタイル・罫線を設定
     // 罫線はhair（テンプレートの元の細線と同じ）→ 太い黒線は出ない
     const cell = ws.getCell(`${col}${p.startRow}`);
-    cell.value = p.type;
+    cell.value = labelText;
     cell.font = planFont;
     cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
     const isLeftEdge = (colNum === minCol);
