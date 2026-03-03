@@ -20,14 +20,14 @@ import {
 } from '../../services/dataService';
 
 // 信号機カラー（DocumentScheduleDashboard準拠）
-const SIGNAL_COLORS = {
+export const SIGNAL_COLORS = {
   green: { bg: '#F0FDF4', border: '#BBF7D0', text: '#166534', dot: '#22C55E' },
   yellow: { bg: '#FEFCE8', border: '#FEF08A', text: '#854D0E', dot: '#EAB308' },
   red: { bg: '#FEF2F2', border: '#FECACA', text: '#991B1B', dot: '#EF4444' },
   gray: { bg: '#F9FAFB', border: '#E5E7EB', text: '#6B7280', dot: '#9CA3AF' },
 };
 
-const OVERALL_RESULT_CONFIG: Record<OverallResult, { label: string; colorKey: keyof typeof SIGNAL_COLORS }> = {
+export const OVERALL_RESULT_CONFIG: Record<OverallResult, { label: string; colorKey: keyof typeof SIGNAL_COLORS }> = {
   revision_needed: { label: '要再作成', colorKey: 'red' },
   pending: { label: '確認中', colorKey: 'yellow' },
   no_revision: { label: '再作成不要', colorKey: 'green' },
@@ -39,7 +39,8 @@ interface Props {
   contractSupplyAmounts: ShogaiSupplyAmount[];
   decidedSupplyAmounts: ShogaiSupplyAmount[];
   monitoringSchedules: MonitoringScheduleItem[];
-  onBack: () => void;
+  onBack?: () => void;
+  inline?: boolean;
 }
 
 const PlanRevisionCheckPanel: React.FC<Props> = ({
@@ -49,6 +50,7 @@ const PlanRevisionCheckPanel: React.FC<Props> = ({
   decidedSupplyAmounts,
   monitoringSchedules,
   onBack,
+  inline = false,
 }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -173,18 +175,22 @@ const PlanRevisionCheckPanel: React.FC<Props> = ({
 
   return (
     <div>
-      {/* 戻るボタン */}
-      <button
-        onClick={onBack}
-        className="mb-4 px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-gray-700"
-      >
-        ← 戻る
-      </button>
+      {/* 戻るボタン（インラインモードでは非表示） */}
+      {!inline && onBack && (
+        <button
+          onClick={onBack}
+          className="mb-4 px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-gray-700"
+        >
+          ← 戻る
+        </button>
+      )}
 
-      {/* タイトル */}
-      <div className="border border-gray-300 rounded-lg p-4 mb-4">
-        <h3 className="font-bold text-gray-800">計画書 再作成判定チェック</h3>
-      </div>
+      {/* タイトル（インラインモードでは非表示） */}
+      {!inline && (
+        <div className="border border-gray-300 rounded-lg p-4 mb-4">
+          <h3 className="font-bold text-gray-800">計画書 再作成判定チェック</h3>
+        </div>
+      )}
 
       {/* 総合判定バナー */}
       <div
@@ -350,7 +356,7 @@ const PlanRevisionCheckPanel: React.FC<Props> = ({
         >
           {saving ? '保存中...' : '判定結果を保存'}
         </button>
-        {overallResult === 'revision_needed' && (
+        {overallResult === 'revision_needed' && onBack && (
           <button
             onClick={onBack}
             className="px-6 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
