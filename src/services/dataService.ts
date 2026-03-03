@@ -181,6 +181,11 @@ export const {
   // 書類検証結果管理
   saveDocumentValidation,
   loadDocumentValidations,
+
+  // 計画書再作成判定チェック
+  loadPlanRevisionCheck,
+  savePlanRevisionCheck,
+  loadPlanRevisionCheckHistory,
 } = dataService;
 
 // AIプロンプト関連（Supabase専用）

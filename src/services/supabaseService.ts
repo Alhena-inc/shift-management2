@@ -3203,3 +3203,103 @@ export const loadDocumentValidations = async (): Promise<any[]> => {
     return [];
   }
 };
+
+// ========== 計画書再作成判定チェック ==========
+
+export const loadPlanRevisionCheck = async (careClientId: string): Promise<any | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('plan_revision_checks')
+      .select('*')
+      .eq('care_client_id', careClientId)
+      .order('checked_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    return {
+      id: data.id,
+      careClientId: data.care_client_id,
+      checkedAt: data.checked_at,
+      overallResult: data.overall_result,
+      autoChecks: data.auto_checks || [],
+      manualChecks: data.manual_checks || [],
+      triggeredReasons: data.triggered_reasons || [],
+      notes: data.notes || '',
+      acknowledgedAt: data.acknowledged_at || null,
+      acknowledgedBy: data.acknowledged_by || null,
+    };
+  } catch (error) {
+    console.error('計画書再作成判定読み込みエラー:', error);
+    return null;
+  }
+};
+
+export const savePlanRevisionCheck = async (result: any): Promise<any> => {
+  try {
+    const saveData: any = {
+      care_client_id: result.careClientId,
+      checked_at: result.checkedAt || new Date().toISOString(),
+      overall_result: result.overallResult || 'pending',
+      auto_checks: result.autoChecks || [],
+      manual_checks: result.manualChecks || [],
+      triggered_reasons: result.triggeredReasons || [],
+      notes: result.notes || null,
+      acknowledged_at: result.acknowledgedAt || null,
+      acknowledged_by: result.acknowledgedBy || null,
+      updated_at: new Date().toISOString(),
+    };
+    if (result.id) {
+      saveData.id = result.id;
+    }
+    // upsert with unique constraint on care_client_id
+    const { data, error } = await supabase
+      .from('plan_revision_checks')
+      .upsert(saveData, { onConflict: 'care_client_id' })
+      .select()
+      .single();
+    if (error) throw error;
+    return {
+      id: data.id,
+      careClientId: data.care_client_id,
+      checkedAt: data.checked_at,
+      overallResult: data.overall_result,
+      autoChecks: data.auto_checks || [],
+      manualChecks: data.manual_checks || [],
+      triggeredReasons: data.triggered_reasons || [],
+      notes: data.notes || '',
+      acknowledgedAt: data.acknowledged_at || null,
+      acknowledgedBy: data.acknowledged_by || null,
+    };
+  } catch (error) {
+    console.error('計画書再作成判定保存エラー:', error);
+    throw error;
+  }
+};
+
+export const loadPlanRevisionCheckHistory = async (careClientId: string): Promise<any[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('plan_revision_checks')
+      .select('*')
+      .eq('care_client_id', careClientId)
+      .order('checked_at', { ascending: false })
+      .limit(10);
+    if (error) throw error;
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      careClientId: row.care_client_id,
+      checkedAt: row.checked_at,
+      overallResult: row.overall_result,
+      autoChecks: row.auto_checks || [],
+      manualChecks: row.manual_checks || [],
+      triggeredReasons: row.triggered_reasons || [],
+      notes: row.notes || '',
+      acknowledgedAt: row.acknowledged_at || null,
+      acknowledgedBy: row.acknowledged_by || null,
+    }));
+  } catch (error) {
+    console.error('計画書再作成判定履歴読み込みエラー:', error);
+    return [];
+  }
+};

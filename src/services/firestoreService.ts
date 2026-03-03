@@ -1431,3 +1431,19 @@ export const loadDocumentValidations = async () => {
   console.warn('書類検証はSupabaseモードでのみ利用可能です');
   return [];
 };
+
+// 計画書再作成判定チェック（Supabaseモードでのみ利用可能）
+export const loadPlanRevisionCheck = async (_careClientId: string) => {
+  console.warn('計画書再作成判定はSupabaseモードでのみ利用可能です');
+  return null;
+};
+
+export const savePlanRevisionCheck = async (_result: any) => {
+  console.warn('計画書再作成判定はSupabaseモードでのみ利用可能です');
+  return _result;
+};
+
+export const loadPlanRevisionCheckHistory = async (_careClientId: string) => {
+  console.warn('計画書再作成判定はSupabaseモードでのみ利用可能です');
+  return [];
+};

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { CareClient, ShogaiSogoCity, ShogaiSogoCareCategory, ShogaiBurdenLimit, ShogaiBurdenLimitOffice, ShogaiServiceResponsible, ShogaiPlanConsultation, ShogaiCarePlan, ShogaiSameBuildingDeduction, ShogaiSupplyAmount, ShogaiCarePlanDocument, ShogaiDocument, ShogaiUsedService, Helper } from '../../types';
+import type { MonitoringScheduleItem } from '../../types/documentSchedule';
 import AccordionSection from '../AccordionSection';
 import ShogaiCityList from './ShogaiCityList';
 import ShogaiCareCategoryList from './ShogaiCareCategoryList';
@@ -13,6 +14,7 @@ import ShogaiSupplyAmountList from './ShogaiSupplyAmountList';
 import ShogaiCarePlanDocList from './ShogaiCarePlanDocList';
 import ShogaiDocumentList from './ShogaiDocumentList';
 import ShogaiUsedServiceList from './ShogaiUsedServiceList';
+import PlanRevisionCheckPanel from './PlanRevisionCheckPanel';
 import {
   loadShogaiSogoCities, loadShogaiSogoCareCategories,
   loadShogaiBurdenLimits, loadShogaiBurdenLimitOffices,
@@ -23,6 +25,7 @@ import {
   loadShogaiDocuments,
   loadShogaiUsedServices,
   loadHelpers,
+  loadMonitoringSchedules,
 } from '../../services/dataService';
 
 interface Props {
@@ -36,7 +39,7 @@ type SubPage = null | 'jukyu' | 'cities' | 'categories'
   | 'planConsultations' | 'carePlans' | 'sameBuildingDeductions'
   | 'supplyAmounts' | 'carePlanDocs'
   | 'tantoushaKaigi' | 'assessment' | 'monitoring' | 'tejunsho'
-  | 'usedServices';
+  | 'usedServices' | 'planRevisionCheck';
 
 const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }) => {
   const [cities, setCities] = useState<ShogaiSogoCity[]>([]);
@@ -57,6 +60,7 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
   const [tejunshoDocs, setTejunshoDocs] = useState<ShogaiDocument[]>([]);
   const [usedServices, setUsedServices] = useState<ShogaiUsedService[]>([]);
   const [helpers, setHelpers] = useState<Helper[]>([]);
+  const [monitoringSchedules, setMonitoringSchedules] = useState<MonitoringScheduleItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [subPage, setSubPageState] = useState<SubPage>(null);
 
@@ -79,6 +83,7 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
           loadedTantoushaKaigi, loadedAssessment, loadedMonitoring, loadedTejunsho,
           loadedUsedServices,
           loadedHelpers,
+          loadedMonitoringSchedules,
         ] = await Promise.all([
           loadShogaiSogoCities(client.id),
           loadShogaiSogoCareCategories(client.id),
@@ -98,6 +103,7 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
           loadShogaiDocuments(client.id, 'tejunsho'),
           loadShogaiUsedServices(client.id),
           loadHelpers(),
+          loadMonitoringSchedules(client.id),
         ]);
         setCities(loadedCities);
         setCategories(loadedCategories);
@@ -117,6 +123,7 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
         setTejunshoDocs(loadedTejunsho);
         setUsedServices(loadedUsedServices);
         setHelpers(loadedHelpers);
+        setMonitoringSchedules(loadedMonitoringSchedules);
       } catch (error) {
         console.error('障害者総合支援データ読み込みエラー:', error);
       } finally {
@@ -297,6 +304,20 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
         title="訪問介護手順書"
         documents={tejunshoDocs}
         onUpdate={setTejunshoDocs}
+        onBack={() => setSubPage(null)}
+      />
+    );
+  }
+
+  // ========== 計画書 再作成判定サブページ ==========
+  if (subPage === 'planRevisionCheck') {
+    return (
+      <PlanRevisionCheckPanel
+        careClientId={client.id}
+        categories={categories}
+        contractSupplyAmounts={contractSupplyAmounts}
+        decidedSupplyAmounts={decidedSupplyAmounts}
+        monitoringSchedules={monitoringSchedules}
         onBack={() => setSubPage(null)}
       />
     );
@@ -496,6 +517,7 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
         if (key === 'jukyu') setSubPage('jukyu');
         if (key === 'keiyaku') setSubPage('supplyAmounts');
         if (key === 'kyotakuKeikaku') setSubPage('carePlanDocs');
+        if (key === 'planRevisionCheck') setSubPage('planRevisionCheck');
         if (key === 'tantoushaKaigi') setSubPage('tantoushaKaigi');
         if (key === 'assessment') setSubPage('assessment');
         if (key === 'monitoring') setSubPage('monitoring');
@@ -523,6 +545,12 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
           key: 'kyotakuKeikaku',
           title: '居宅介護計画書',
           summary: carePlanDocsSummary,
+          navigable: true,
+          content: null,
+        },
+        {
+          key: 'planRevisionCheck',
+          title: '計画書 再作成判定',
           navigable: true,
           content: null,
         },
