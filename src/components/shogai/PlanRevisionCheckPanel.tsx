@@ -18,6 +18,7 @@ import {
   loadPlanRevisionCheck,
   savePlanRevisionCheck,
 } from '../../services/dataService';
+import { syncRevisionToSchedule } from '../../utils/planRevisionSync';
 
 // 信号機カラー（DocumentScheduleDashboard準拠）
 export const SIGNAL_COLORS = {
@@ -145,6 +146,11 @@ const PlanRevisionCheckPanel: React.FC<Props> = ({
       const saved = await savePlanRevisionCheck(result);
       setExistingId(saved.id);
       setPreviousCheck(saved);
+      try {
+        await syncRevisionToSchedule(careClientId, overallResult, triggeredReasons);
+      } catch (syncError) {
+        console.error('スケジュール同期エラー:', syncError);
+      }
       setSavedMessage('保存しました');
       setTimeout(() => setSavedMessage(''), 3000);
       if (onSaved) onSaved(saved);

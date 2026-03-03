@@ -10,6 +10,7 @@ import type { PlanRevisionCheckResult, OverallResult } from '../types/planRevisi
 import PlanRevisionCheckPanel, { SIGNAL_COLORS, OVERALL_RESULT_CONFIG } from '../components/shogai/PlanRevisionCheckPanel';
 import { runAllAutoChecks, computeOverallResult, collectTriggeredReasons } from '../utils/planRevisionChecker';
 import { createDefaultManualChecks } from '../types/planRevisionCheck';
+import { syncRevisionToSchedule } from '../utils/planRevisionSync';
 
 // ========== 書類定義 ==========
 
@@ -262,6 +263,11 @@ const DocumentsPage: React.FC = () => {
 
         const saved = await savePlanRevisionCheck(result);
         updatedChecks[client.id] = saved;
+        try {
+          await syncRevisionToSchedule(client.id, overallResult, triggeredReasons);
+        } catch (syncError) {
+          console.error(`スケジュール同期エラー (${client.name}):`, syncError);
+        }
       } catch (error) {
         console.error(`一括判定エラー (${client.name}):`, error);
       }
@@ -442,7 +448,11 @@ const DocumentsPage: React.FC = () => {
       // スケジュール更新（選択された利用者がいる場合）
       if (selectedClient) {
         const generatedAt = new Date().toISOString();
-        const { nextDueDate, alertDate, expiryDate } = computeNextDates(generatedAt, 6, 30);
+        // care-plan の場合はAI判定の長期目標期間を使用、それ以外はデフォルト6ヶ月
+        const cycleMonths = (doc.id === 'care-plan' && generatorResult?.long_term_goal_months)
+          ? generatorResult.long_term_goal_months
+          : 6;
+        const { nextDueDate, alertDate, expiryDate } = computeNextDates(generatedAt, cycleMonths, 30);
         const batchId = crypto.randomUUID();
         const today = new Date().toISOString().slice(0, 10);
         let planCreationDate = today;
@@ -457,13 +467,13 @@ const DocumentsPage: React.FC = () => {
             const savedPlan = await saveDocumentSchedule({
               careClientId: selectedClient.id, docType: 'care_plan', status: 'active',
               lastGeneratedAt: generatedAt, nextDueDate, alertDate, expiryDate,
-              cycleMonths: 6, alertDaysBefore: 30,
+              cycleMonths, alertDaysBefore: 30,
               generationBatchId: batchId, planCreationDate, periodStart: planCreationDate, periodEnd: nextDueDate,
             });
             await saveDocumentSchedule({
               careClientId: selectedClient.id, docType: 'tejunsho', status: 'active',
               lastGeneratedAt: generatedAt, nextDueDate, alertDate, expiryDate,
-              cycleMonths: 6, alertDaysBefore: 30,
+              cycleMonths, alertDaysBefore: 30,
               generationBatchId: batchId, linkedPlanScheduleId: savedPlan.id, periodStart: planCreationDate, periodEnd: nextDueDate,
             });
             // v2: 目標期間が未設定ならアラート

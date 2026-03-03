@@ -114,6 +114,25 @@ export const checkDocumentSchedules = (
       });
     }
 
+    // 計画書自体に再作成要フラグが立っている場合（再作成判定チェックからの連携）
+    if (schedule.docType === 'care_plan' && schedule.planRevisionNeeded === 'あり') {
+      const alreadyHasRevision = actions.some(
+        a => a.type === 'plan_revision' && a.clientId === schedule.careClientId
+      );
+      if (!alreadyHasRevision) {
+        actions.push({
+          type: 'plan_revision',
+          clientId: schedule.careClientId,
+          clientName,
+          docType: 'care_plan',
+          schedule,
+          dueDate: today,
+          daysUntilDue: 0,
+          autoGenerate: schedule.autoGenerate,
+        });
+      }
+    }
+
     if (!schedule.nextDueDate) continue;
 
     // 手順書は定期周期なし（パターン変更時のみ更新）→ 期限チェックをスキップ
