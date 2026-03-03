@@ -1,14 +1,15 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmounts, loadBillingRecordsForMonth, loadShogaiDocuments, saveShogaiDocument, deleteShogaiDocument, uploadShogaiDocFile, loadAiPrompt, saveAiPrompt, saveDocumentSchedule, loadMonitoringSchedules, saveMonitoringSchedule, loadGoalPeriods, saveDocumentValidation, loadDocumentSchedules, loadShogaiSogoCareCategories, loadPlanRevisionCheck } from '../services/dataService';
-import { computeNextDates } from '../utils/documentScheduleChecker';
+import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmounts, loadBillingRecordsForMonth, loadShogaiDocuments, saveShogaiDocument, deleteShogaiDocument, uploadShogaiDocFile, loadAiPrompt, saveAiPrompt, saveDocumentSchedule, loadMonitoringSchedules, saveMonitoringSchedule, loadGoalPeriods, saveDocumentValidation, loadDocumentSchedules, loadShogaiSogoCareCategories, loadPlanRevisionCheck, savePlanRevisionCheck } from '../services/dataService';
+import { computeNextDates, daysDiff, toDateString } from '../utils/documentScheduleChecker';
 import { isGeminiAvailable } from '../services/geminiService';
 import { validateClientDocuments } from '../utils/documentValidation';
 import type { Helper, CareClient, Shift, BillingRecord, ShogaiSupplyAmount, ShogaiDocument, ShogaiSogoCareCategory } from '../types';
 import type { AiPrompt } from '../services/supabaseService';
-import type { MonitoringScheduleItem } from '../types/documentSchedule';
+import type { DocumentSchedule, MonitoringScheduleItem } from '../types/documentSchedule';
 import type { PlanRevisionCheckResult, OverallResult } from '../types/planRevisionCheck';
 import PlanRevisionCheckPanel, { SIGNAL_COLORS, OVERALL_RESULT_CONFIG } from '../components/shogai/PlanRevisionCheckPanel';
-import { runAllAutoChecks, computeOverallResult } from '../utils/planRevisionChecker';
+import { runAllAutoChecks, computeOverallResult, collectTriggeredReasons } from '../utils/planRevisionChecker';
+import { createDefaultManualChecks } from '../types/planRevisionCheck';
 
 // ========== 書類定義 ==========
 
@@ -105,6 +106,9 @@ const DocumentsPage: React.FC = () => {
   const [clientMonitoringSchedules, setClientMonitoringSchedules] = useState<Record<string, MonitoringScheduleItem[]>>({});
   const [clientRevisionChecks, setClientRevisionChecks] = useState<Record<string, PlanRevisionCheckResult | null>>({});
   const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
+  const [clientDocSchedules, setClientDocSchedules] = useState<Record<string, DocumentSchedule | null>>({});
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
 
   // 設定メニュー
   const [showSettings, setShowSettings] = useState(false);
@@ -154,26 +158,30 @@ const DocumentsPage: React.FC = () => {
       const supply: Record<string, { contract: ShogaiSupplyAmount[]; decided: ShogaiSupplyAmount[] }> = {};
       const schedules: Record<string, MonitoringScheduleItem[]> = {};
       const checks: Record<string, PlanRevisionCheckResult | null> = {};
+      const docScheds: Record<string, DocumentSchedule | null> = {};
 
       await Promise.all(
         careClients.map(async (client) => {
           try {
-            const [c, sc, sd, ms, chk] = await Promise.all([
+            const [c, sc, sd, ms, chk, ds] = await Promise.all([
               loadShogaiSogoCareCategories(client.id),
               loadShogaiSupplyAmounts(client.id, 'contract'),
               loadShogaiSupplyAmounts(client.id, 'decided'),
               loadMonitoringSchedules(client.id),
               loadPlanRevisionCheck(client.id),
+              loadDocumentSchedules(client.id),
             ]);
             cats[client.id] = c;
             supply[client.id] = { contract: sc, decided: sd };
             schedules[client.id] = ms;
             checks[client.id] = chk;
+            docScheds[client.id] = ds.find(d => d.docType === 'care_plan') || null;
           } catch {
             cats[client.id] = [];
             supply[client.id] = { contract: [], decided: [] };
             schedules[client.id] = [];
             checks[client.id] = null;
+            docScheds[client.id] = null;
           }
         })
       );
@@ -181,6 +189,7 @@ const DocumentsPage: React.FC = () => {
       setClientSupplyAmounts(supply);
       setClientMonitoringSchedules(schedules);
       setClientRevisionChecks(checks);
+      setClientDocSchedules(docScheds);
     } catch (err) {
       console.error('再作成判定データ読み込みエラー:', err);
     } finally {
@@ -205,6 +214,67 @@ const DocumentsPage: React.FC = () => {
     const manualChecks = previousCheck?.manualChecks || [];
     return computeOverallResult(autoChecks, manualChecks);
   }, [clientCategories, clientSupplyAmounts, clientMonitoringSchedules, clientRevisionChecks]);
+
+  // 一括判定＋保存
+  const runBatchJudgment = useCallback(async () => {
+    if (batchRunning || careClients.length === 0) return;
+    setBatchRunning(true);
+    setBatchProgress({ current: 0, total: careClients.length });
+    const updatedChecks: Record<string, PlanRevisionCheckResult | null> = { ...clientRevisionChecks };
+
+    for (let i = 0; i < careClients.length; i++) {
+      const client = careClients[i];
+      setBatchProgress({ current: i + 1, total: careClients.length });
+      try {
+        const categories = clientCategories[client.id] || [];
+        const supply = clientSupplyAmounts[client.id] || { contract: [], decided: [] };
+        const allSupply = [...supply.contract, ...supply.decided];
+        const schedules = clientMonitoringSchedules[client.id] || [];
+        const previousCheck = clientRevisionChecks[client.id] || null;
+
+        const autoChecks = runAllAutoChecks(categories, allSupply, schedules, previousCheck);
+
+        // 既存の手動チェックを維持、なければデフォルト
+        let manualChecks = createDefaultManualChecks();
+        if (previousCheck?.manualChecks && previousCheck.manualChecks.length > 0) {
+          const defaults = createDefaultManualChecks();
+          manualChecks = defaults.map(d => {
+            const saved = previousCheck.manualChecks.find(m => m.checkId === d.checkId);
+            return saved ? { ...d, checked: saved.checked, notes: saved.notes } : d;
+          });
+        }
+
+        const overallResult = computeOverallResult(autoChecks, manualChecks);
+        const triggeredReasons = collectTriggeredReasons(autoChecks, manualChecks);
+
+        const result: PlanRevisionCheckResult = {
+          id: previousCheck?.id,
+          careClientId: client.id,
+          checkedAt: new Date().toISOString(),
+          overallResult,
+          autoChecks,
+          manualChecks,
+          triggeredReasons,
+          notes: previousCheck?.notes || '',
+          acknowledgedAt: null,
+          acknowledgedBy: null,
+        };
+
+        const saved = await savePlanRevisionCheck(result);
+        updatedChecks[client.id] = saved;
+      } catch (error) {
+        console.error(`一括判定エラー (${client.name}):`, error);
+      }
+    }
+
+    setClientRevisionChecks(updatedChecks);
+    setBatchRunning(false);
+  }, [batchRunning, careClients, clientCategories, clientSupplyAmounts, clientMonitoringSchedules, clientRevisionChecks]);
+
+  // 個別保存後のコールバック
+  const handleRevisionCheckSaved = useCallback((careClientId: string, result: PlanRevisionCheckResult) => {
+    setClientRevisionChecks(prev => ({ ...prev, [careClientId]: result }));
+  }, []);
 
   const openUploadModal = useCallback(async (docId: string) => {
     setUploadModalDoc(docId);
@@ -465,6 +535,16 @@ const DocumentsPage: React.FC = () => {
     await handleGenerate(clientSelectModalDoc, client);
   }, [clientSelectModalDoc, handleGenerate]);
 
+  // 居宅介護計画書タブからのAI作成（生成後にスケジュール再取得）
+  const handleCarePlanGenerate = useCallback(async (doc: DocumentDefinition, client: CareClient) => {
+    await handleGenerate(doc, client);
+    try {
+      const ds = await loadDocumentSchedules(client.id);
+      const carePlanSched = ds.find(d => d.docType === 'care_plan') || null;
+      setClientDocSchedules(prev => ({ ...prev, [client.id]: carePlanSched }));
+    } catch { /* スケジュール再取得失敗は無視 */ }
+  }, [handleGenerate]);
+
   const handleBulkGenerate = useCallback(async () => {
     const gemini = isGeminiAvailable();
     const groupA = DOCUMENTS.filter(d => d.group === 'A' && d.id !== '1-7');
@@ -670,8 +750,8 @@ const DocumentsPage: React.FC = () => {
               }`}
             >
               <span className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-base">checklist</span>
-                計画書 再作成判定
+                <span className="material-symbols-outlined text-base">assignment</span>
+                居宅介護計画書
               </span>
             </button>
           </nav>
@@ -867,17 +947,41 @@ const DocumentsPage: React.FC = () => {
                         <div className="w-3 h-3 rounded-full" style={{ backgroundColor: SIGNAL_COLORS.green.dot }} />
                         <span className="text-sm text-gray-700">問題なし: <strong className="text-green-700">{okCount}人</strong></span>
                       </div>
-                      <div className="ml-auto">
+                      <div className="ml-auto flex items-center gap-2">
                         <button
                           onClick={loadRevisionCheckData}
-                          disabled={revisionCheckLoading}
+                          disabled={revisionCheckLoading || batchRunning}
                           className="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-gray-600 flex items-center gap-1 disabled:opacity-50"
                         >
                           <span className="material-symbols-outlined text-sm">refresh</span>
                           更新
                         </button>
+                        <button
+                          onClick={runBatchJudgment}
+                          disabled={batchRunning || revisionCheckLoading}
+                          className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                        >
+                          <span className="material-symbols-outlined text-sm">play_arrow</span>
+                          一括判定
+                        </button>
                       </div>
                     </div>
+                    {/* 一括判定 進捗バー */}
+                    {batchRunning && (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 bg-gray-200 rounded-full h-2 overflow-hidden">
+                            <div
+                              className="bg-indigo-500 h-2 rounded-full transition-all duration-300"
+                              style={{ width: `${batchProgress.total > 0 ? (batchProgress.current / batchProgress.total) * 100 : 0}%` }}
+                            />
+                          </div>
+                          <span className="text-xs text-gray-500 flex-shrink-0">
+                            {batchProgress.current}/{batchProgress.total}人 処理中...
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -890,34 +994,69 @@ const DocumentsPage: React.FC = () => {
                   const colors = SIGNAL_COLORS[config.colorKey];
                   const check = clientRevisionChecks[client.id];
                   const isExpanded = expandedClientId === client.id;
+                  const docSched = clientDocSchedules[client.id];
+                  const carePlanDoc = DOCUMENTS.find(d => d.id === 'care-plan')!;
+
+                  // 次回作成日バッジの計算
+                  const nextDueBadge = (() => {
+                    if (!docSched || !docSched.nextDueDate) {
+                      return { label: '未作成', bgColor: '#F3F4F6', textColor: '#6B7280', borderColor: '#D1D5DB' };
+                    }
+                    const today = toDateString(new Date());
+                    const days = daysDiff(today, docSched.nextDueDate);
+                    const mmdd = docSched.nextDueDate.slice(5); // MM-DD
+                    if (days <= 0) {
+                      return { label: `期限切れ ${mmdd}`, bgColor: '#FEE2E2', textColor: '#991B1B', borderColor: '#FECACA' };
+                    }
+                    if (days <= 30) {
+                      return { label: `次回: ${mmdd}`, bgColor: '#FEF9C3', textColor: '#854D0E', borderColor: '#FDE68A' };
+                    }
+                    return { label: `次回: ${mmdd}`, bgColor: '#DBEAFE', textColor: '#1E40AF', borderColor: '#BFDBFE' };
+                  })();
 
                   return (
                     <div key={client.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                       {/* 利用者行 */}
-                      <button
-                        onClick={() => setExpandedClientId(isExpanded ? null : client.id)}
-                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
-                      >
-                        <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
-                          <span className="material-symbols-outlined text-gray-500 text-base">person</span>
-                        </div>
-                        <span className="text-sm font-medium text-gray-800 flex-1 min-w-0 truncate">{client.name}</span>
-                        <span
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0"
-                          style={{ backgroundColor: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}
+                      <div className="flex items-center gap-2 px-4 py-3">
+                        <button
+                          onClick={() => setExpandedClientId(isExpanded ? null : client.id)}
+                          className="flex items-center gap-3 flex-1 min-w-0 hover:bg-gray-50 transition-colors text-left rounded-lg -ml-1 pl-1 py-0.5"
                         >
-                          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colors.dot }} />
-                          {config.label}
-                        </span>
-                        {check?.checkedAt && (
-                          <span className="text-xs text-gray-400 flex-shrink-0 hidden sm:inline">
-                            最終: {check.checkedAt.slice(0, 10)}
+                          <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span className="material-symbols-outlined text-gray-500 text-base">person</span>
+                          </div>
+                          <span className="text-sm font-medium text-gray-800 min-w-0 truncate">{client.name}</span>
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0"
+                            style={{ backgroundColor: nextDueBadge.bgColor, color: nextDueBadge.textColor, border: `1px solid ${nextDueBadge.borderColor}` }}
+                          >
+                            {nextDueBadge.label}
                           </span>
-                        )}
-                        <span className={`material-symbols-outlined text-gray-400 text-base transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
-                          expand_more
-                        </span>
-                      </button>
+                          <span
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0"
+                            style={{ backgroundColor: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}
+                          >
+                            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colors.dot }} />
+                            {config.label}
+                          </span>
+                          {check?.checkedAt && (
+                            <span className="text-xs text-gray-400 flex-shrink-0 hidden sm:inline">
+                              最終: {check.checkedAt.slice(0, 10)}
+                            </span>
+                          )}
+                          <span className={`material-symbols-outlined text-gray-400 text-base transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+                            expand_more
+                          </span>
+                        </button>
+                        <button
+                          onClick={() => handleCarePlanGenerate(carePlanDoc, client)}
+                          disabled={generatingDoc === 'care-plan'}
+                          className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <span className="material-symbols-outlined text-sm">auto_awesome</span>
+                          {generatingDoc === 'care-plan' ? '生成中...' : 'AI作成'}
+                        </button>
+                      </div>
 
                       {/* 展開時: PlanRevisionCheckPanel */}
                       {isExpanded && (
@@ -928,6 +1067,7 @@ const DocumentsPage: React.FC = () => {
                             contractSupplyAmounts={clientSupplyAmounts[client.id]?.contract || []}
                             decidedSupplyAmounts={clientSupplyAmounts[client.id]?.decided || []}
                             monitoringSchedules={clientMonitoringSchedules[client.id] || []}
+                            onSaved={(result) => handleRevisionCheckSaved(client.id, result)}
                             inline
                           />
                         </div>

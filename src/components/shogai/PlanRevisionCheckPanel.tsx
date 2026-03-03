@@ -40,6 +40,7 @@ interface Props {
   decidedSupplyAmounts: ShogaiSupplyAmount[];
   monitoringSchedules: MonitoringScheduleItem[];
   onBack?: () => void;
+  onSaved?: (result: PlanRevisionCheckResult) => void;
   inline?: boolean;
 }
 
@@ -50,6 +51,7 @@ const PlanRevisionCheckPanel: React.FC<Props> = ({
   decidedSupplyAmounts,
   monitoringSchedules,
   onBack,
+  onSaved,
   inline = false,
 }) => {
   const [loading, setLoading] = useState(true);
@@ -145,13 +147,14 @@ const PlanRevisionCheckPanel: React.FC<Props> = ({
       setPreviousCheck(saved);
       setSavedMessage('保存しました');
       setTimeout(() => setSavedMessage(''), 3000);
+      if (onSaved) onSaved(saved);
     } catch (error) {
       console.error('保存エラー:', error);
       setSavedMessage('保存に失敗しました');
     } finally {
       setSaving(false);
     }
-  }, [careClientId, autoChecks, manualChecks, notes, overallResult, existingId]);
+  }, [careClientId, autoChecks, manualChecks, notes, overallResult, existingId, onSaved]);
 
   // ステータスドット
   const StatusDot: React.FC<{ status: AutoCheckItem['status'] }> = ({ status }) => {
