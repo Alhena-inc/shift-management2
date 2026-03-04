@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { loadShogaiDocuments, deleteShogaiDocument, loadShogaiCarePlanDocuments, deleteShogaiCarePlanDocument } from '../../services/dataService';
 import type { CareClient } from '../../types';
+import ExcelViewer from './ExcelViewer';
 
 // ========== 定数 ==========
 
@@ -72,6 +73,7 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
   const [clientDocs, setClientDocs] = useState<Record<string, UnifiedDocument[]>>({});
   const [loadingClientId, setLoadingClientId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [viewerDoc, setViewerDoc] = useState<UnifiedDocument | null>(null);
 
   const loadClientDocuments = useCallback(async (clientId: string) => {
     setLoadingClientId(clientId);
@@ -167,6 +169,14 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
 
   return (
     <div className="space-y-2">
+      {viewerDoc && (
+        <ExcelViewer
+          isOpen={!!viewerDoc}
+          onClose={() => setViewerDoc(null)}
+          fileUrl={viewerDoc.fileUrl}
+          fileName={viewerDoc.fileName || viewerDoc.typeLabel}
+        />
+      )}
       {careClients.map(client => {
         const isExpanded = expandedClientId === client.id;
         const isLoading = loadingClientId === client.id;
@@ -228,7 +238,14 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
                               <div className="flex items-center justify-center gap-1">
                                 {doc.fileUrl && (
                                   <button
-                                    onClick={() => window.open(doc.fileUrl, '_blank')}
+                                    onClick={() => {
+                                      const ext = (doc.fileName || '').split('.').pop()?.toLowerCase();
+                                      if (ext === 'xlsx' || ext === 'xls') {
+                                        setViewerDoc(doc);
+                                      } else {
+                                        window.open(doc.fileUrl, '_blank');
+                                      }
+                                    }}
                                     className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
                                     title="閲覧"
                                   >
