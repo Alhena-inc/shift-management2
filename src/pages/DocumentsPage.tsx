@@ -37,8 +37,6 @@ const CATEGORY_CONFIG: Record<DocumentCategory, { label: string; icon: string; c
 const DOCUMENTS: DocumentDefinition[] = [
   { id: '2-5', number: '2-⑤', name: 'アセスメント', category: 'service', group: 'C', unit: 'client', description: '利用者ごとにアセスメントをアップロード' },
   { id: 'care-plan', number: '2-⑥', name: '居宅介護計画書', category: 'service', group: 'B', unit: 'client', description: '実績・アセスメントを元にAIが計画書を作成' },
-  { id: 'care-procedure', number: '2-⑦', name: '訪問介護手順書', category: 'service', group: 'B', unit: 'client', description: '計画書の内容を元にAIが訪問ごとの手順書を作成' },
-  { id: 'monitoring', number: '2-⑧', name: 'モニタリング報告書', category: 'service', group: 'B', unit: 'client', description: '計画書のサービス内容に対するモニタリング評価をAIが作成' },
 ];
 
 // ========== 事業所情報（デフォルト値） ==========
