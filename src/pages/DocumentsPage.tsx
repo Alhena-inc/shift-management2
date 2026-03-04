@@ -95,12 +95,11 @@ const DocumentsPage: React.FC = () => {
   const [clientSelectModalDoc, setClientSelectModalDoc] = useState<DocumentDefinition | null>(null);
 
   // タブ管理
-  const [activeTab, setActiveTab] = useState<'documents' | 'documentList' | 'schedule'>(() => {
+  const [activeTab, setActiveTab] = useState<'documentList' | 'schedule'>(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get('tab');
     if (tab === 'schedule') return 'schedule';
-    if (tab === 'documentList') return 'documentList';
-    return 'documents';
+    return 'documentList';
   });
 
   // 設定メニュー
@@ -588,19 +587,6 @@ const DocumentsPage: React.FC = () => {
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <nav className="flex gap-0 -mb-px">
             <button
-              onClick={() => setActiveTab('documents')}
-              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'documents'
-                  ? 'border-indigo-600 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <span className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-base">description</span>
-                書類管理
-              </span>
-            </button>
-            <button
               onClick={() => setActiveTab('documentList')}
               className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === 'documentList'
@@ -630,136 +616,43 @@ const DocumentsPage: React.FC = () => {
         </div>
       </div>
 
-      {activeTab === 'documents' && (
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-5">
-        {/* 実績データセクション */}
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-7 h-7 rounded-md flex items-center justify-center" style={{ backgroundColor: '#E0F2F1' }}>
-              <span className="material-symbols-outlined text-base" style={{ color: '#009688' }}>fact_check</span>
-            </div>
-            <h2 className="text-base font-bold text-gray-800">実績データ</h2>
-          </div>
-          <div
-            onClick={() => window.location.href = '/import/billing'}
-            className="rounded-xl border border-gray-200 bg-white hover:shadow-md hover:border-gray-300 transition-all duration-200 cursor-pointer p-4 flex items-center gap-4"
-          >
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#E0F2F1' }}>
-              <span className="material-symbols-outlined" style={{ color: '#009688' }}>upload_file</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-bold text-gray-900">実績データ取込・一覧</h3>
-              <p className="text-xs text-gray-500 mt-0.5">かんたん介護CSV・PDFからの取込、取込済みデータの確認・検索・管理</p>
-            </div>
-            <span className="material-symbols-outlined text-gray-400">arrow_forward</span>
-          </div>
-        </div>
-
-        {isBulkGenerating && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-5">
-          <div className="flex items-center justify-between text-xs text-gray-600 mb-1.5">
-            <span className="font-medium">生成中: {bulkProgress.currentName}</span>
-            <span>{bulkProgress.current} / {bulkProgress.total}</span>
-          </div>
-          <div className="w-full bg-gray-100 rounded-full h-2">
-            <div
-              className="bg-indigo-500 h-2 rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
-            />
-          </div>
-        </div>
-        )}
-
-        {/* エラー表示 */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 mb-5 flex items-start gap-2">
-            <span className="material-symbols-outlined text-red-500 text-lg mt-0.5">error</span>
-            <span className="text-red-700 text-sm flex-1">{error}</span>
-            <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600 p-0.5">
-              <span className="material-symbols-outlined text-base">close</span>
-            </button>
-          </div>
-        )}
-
-        {/* 書類カード */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {DOCUMENTS.map(doc => {
-            const config = CATEGORY_CONFIG[doc.category];
-            const isUploadDoc = doc.group === 'C' && doc.id !== 'manual';
-            const groupConfig = GROUP_LABEL[doc.group];
-
-            return (
-              <div
-                key={doc.id}
-                className="rounded-xl border overflow-hidden transition-all duration-200 border-gray-200 bg-white hover:shadow-md hover:border-gray-300"
-              >
-                <div className="px-4 pt-3.5 pb-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-start gap-2.5 min-w-0">
-                      <span
-                        className="flex-shrink-0 inline-flex items-center justify-center min-w-[28px] h-7 px-1.5 rounded-md text-xs font-bold leading-none"
-                        style={{ backgroundColor: config.bgColor, color: config.color }}
-                      >
-                        {doc.number}
-                      </span>
-                      <div className="min-w-0">
-                        <h3 className="text-sm font-bold text-gray-900 leading-snug">{doc.name}</h3>
-                        <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{doc.description}</p>
-                      </div>
-                    </div>
-                    <span
-                      className="flex-shrink-0 inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap"
-                      style={{ backgroundColor: groupConfig.bgColor, color: groupConfig.color }}
-                    >
-                      <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>
-                        {groupConfig.icon}
-                      </span>
-                      {groupConfig.label}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="px-4 pb-3 pt-1">
-                  {isUploadDoc ? (
-                    <button
-                      onClick={() => openUploadModal(doc.id)}
-                      className="w-full px-3 py-2 bg-teal-50 text-teal-700 rounded-lg hover:bg-teal-100 transition-colors text-xs font-medium flex items-center justify-center gap-1.5 border border-teal-200"
-                    >
-                      <span className="material-symbols-outlined text-sm">folder_open</span>
-                      アップロード管理
-                    </button>
-                  ) : (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleGenerate(doc)}
-                        disabled={generatingDoc === doc.id || isBulkGenerating}
-                        className="flex-1 px-3 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 hover:shadow-sm rounded-lg transition-all duration-200 text-xs font-medium flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <span className="material-symbols-outlined text-sm">play_arrow</span>
-                        生成
-                      </button>
-                      {doc.group === 'B' && (
-                        <button
-                          onClick={() => openPromptModal(doc.id)}
-                          className="px-2.5 py-2 bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100 hover:text-gray-700 rounded-lg transition-colors"
-                          title="プロンプト設定"
-                        >
-                          <span className="material-symbols-outlined text-sm">tune</span>
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </main>
-      )}
-
       {/* 書類一覧タブ */}
       {activeTab === 'documentList' && (
         <main className="max-w-6xl mx-auto px-4 sm:px-6 py-5">
+          {/* 実績データ取込・一覧 */}
+          <div className="mb-5">
+            <div
+              onClick={() => window.location.href = '/import/billing'}
+              className="rounded-xl border border-gray-200 bg-white hover:shadow-md hover:border-gray-300 transition-all duration-200 cursor-pointer p-4 flex items-center gap-4"
+            >
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#E0F2F1' }}>
+                <span className="material-symbols-outlined" style={{ color: '#009688' }}>upload_file</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-bold text-gray-900">実績データ取込・一覧</h3>
+                <p className="text-xs text-gray-500 mt-0.5">かんたん介護CSV・PDFからの取込、取込済みデータの確認・検索・管理</p>
+              </div>
+              <span className="material-symbols-outlined text-gray-400">arrow_forward</span>
+            </div>
+          </div>
+
+          {/* アセスメントアップロード */}
+          <div className="mb-5">
+            <div
+              onClick={() => openUploadModal('2-5')}
+              className="rounded-xl border border-gray-200 bg-white hover:shadow-md hover:border-gray-300 transition-all duration-200 cursor-pointer p-4 flex items-center gap-4"
+            >
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-teal-50">
+                <span className="material-symbols-outlined text-teal-600">folder_open</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-bold text-gray-900">アセスメント</h3>
+                <p className="text-xs text-gray-500 mt-0.5">利用者ごとにアセスメントをアップロード</p>
+              </div>
+              <span className="material-symbols-outlined text-gray-400">arrow_forward</span>
+            </div>
+          </div>
+
           <ClientDocumentListTab careClients={careClients} />
         </main>
       )}
