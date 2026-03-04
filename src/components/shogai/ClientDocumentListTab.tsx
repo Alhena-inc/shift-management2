@@ -168,7 +168,7 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
   }
 
   return (
-    <div className="space-y-2">
+    <div>
       {viewerDoc && (
         <ExcelViewer
           isOpen={!!viewerDoc}
@@ -177,104 +177,123 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
           fileName={viewerDoc.fileName || viewerDoc.typeLabel}
         />
       )}
-      {careClients.map(client => {
-        const isExpanded = expandedClientId === client.id;
-        const isLoading = loadingClientId === client.id;
-        const docs = clientDocs[client.id] || [];
+
+      {/* グリッド: 利用者カード */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        {careClients.map(client => {
+          const isExpanded = expandedClientId === client.id;
+          const cachedDocs = clientDocs[client.id];
+
+          return (
+            <button
+              key={client.id}
+              onClick={() => handleToggle(client.id)}
+              className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-left transition-all text-sm ${
+                isExpanded
+                  ? 'bg-indigo-50 border-indigo-300 text-indigo-700 font-bold shadow-sm'
+                  : 'bg-white border-gray-200 text-gray-800 hover:bg-gray-50 hover:border-gray-300'
+              }`}
+            >
+              <span className="material-symbols-outlined text-base flex-shrink-0" style={{ color: isExpanded ? '#4F46E5' : '#9CA3AF' }}>person</span>
+              <span className="truncate flex-1">{client.name}</span>
+              {cachedDocs && !isExpanded && (
+                <span className="text-[10px] text-gray-400 flex-shrink-0">{cachedDocs.length}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 展開時: 書類テーブル（グリッドの下に全幅表示） */}
+      {expandedClientId && (() => {
+        const isLoading = loadingClientId === expandedClientId;
+        const docs = clientDocs[expandedClientId] || [];
+        const clientName = careClients.find(c => c.id === expandedClientId)?.name || '';
 
         return (
-          <div key={client.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            {/* 利用者行 */}
-            <button
-              onClick={() => handleToggle(client.id)}
-              className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50 transition-colors text-left"
-            >
-              <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <span className="material-symbols-outlined text-gray-500 text-base">person</span>
+          <div className="mt-3 bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-indigo-600 text-base">person</span>
+                <span className="text-sm font-bold text-gray-800">{clientName}</span>
+                {!isLoading && <span className="text-xs text-gray-400">{docs.length}件</span>}
               </div>
-              <span className="text-sm font-medium text-gray-800 min-w-0 truncate flex-1">{client.name}</span>
-              {isExpanded && !isLoading && (
-                <span className="text-xs text-gray-400">{docs.length}件</span>
-              )}
-              <span className={`material-symbols-outlined text-gray-400 text-base transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
-                expand_more
-              </span>
-            </button>
-
-            {/* 展開時: 書類テーブル */}
-            {isExpanded && (
-              <div className="border-t border-gray-200 bg-gray-50">
-                {isLoading ? (
-                  <div className="flex items-center justify-center py-8 text-gray-400 gap-2">
-                    <span className="animate-spin material-symbols-outlined text-sm">progress_activity</span>
-                    <span className="text-sm">読み込み中...</span>
-                  </div>
-                ) : docs.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400 text-sm">書類がありません</div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-gray-100 text-gray-600 text-xs">
-                          <th className="text-left px-4 py-2 font-medium">日付</th>
-                          <th className="text-left px-4 py-2 font-medium">種類</th>
-                          <th className="text-left px-4 py-2 font-medium">ファイル名</th>
-                          <th className="text-right px-4 py-2 font-medium">サイズ</th>
-                          <th className="text-center px-4 py-2 font-medium">操作</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {docs.map(doc => (
-                          <tr key={doc.id} className="border-t border-gray-100 hover:bg-white transition-colors">
-                            <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{formatDate(doc.createdAt)}</td>
-                            <td className="px-4 py-2">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">
-                                {doc.typeLabel}
+              <button
+                onClick={() => setExpandedClientId(null)}
+                className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+              >
+                <span className="material-symbols-outlined text-base">close</span>
+              </button>
+            </div>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8 text-gray-400 gap-2">
+                <span className="animate-spin material-symbols-outlined text-sm">progress_activity</span>
+                <span className="text-sm">読み込み中...</span>
+              </div>
+            ) : docs.length === 0 ? (
+              <div className="text-center py-8 text-gray-400 text-sm">書類がありません</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-100 text-gray-600 text-xs">
+                      <th className="text-left px-4 py-2 font-medium">日付</th>
+                      <th className="text-left px-4 py-2 font-medium">種類</th>
+                      <th className="text-left px-4 py-2 font-medium">ファイル名</th>
+                      <th className="text-right px-4 py-2 font-medium">サイズ</th>
+                      <th className="text-center px-4 py-2 font-medium">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {docs.map(doc => (
+                      <tr key={doc.id} className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{formatDate(doc.createdAt)}</td>
+                        <td className="px-4 py-2">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">
+                            {doc.typeLabel}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-gray-800 max-w-[200px] truncate">{doc.fileName || '-'}</td>
+                        <td className="px-4 py-2 text-gray-500 text-right whitespace-nowrap">{formatFileSize(doc.fileSize)}</td>
+                        <td className="px-4 py-2 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            {doc.fileUrl && (
+                              <button
+                                onClick={() => {
+                                  const ext = (doc.fileName || '').split('.').pop()?.toLowerCase();
+                                  if (ext === 'xlsx' || ext === 'xls') {
+                                    setViewerDoc(doc);
+                                  } else {
+                                    window.open(doc.fileUrl, '_blank');
+                                  }
+                                }}
+                                className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                title="閲覧"
+                              >
+                                <span className="material-symbols-outlined text-base">visibility</span>
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDelete(doc, expandedClientId)}
+                              disabled={deletingId === doc.id}
+                              className="p-1 text-red-500 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                              title="削除"
+                            >
+                              <span className="material-symbols-outlined text-base">
+                                {deletingId === doc.id ? 'progress_activity' : 'delete'}
                               </span>
-                            </td>
-                            <td className="px-4 py-2 text-gray-800 max-w-[200px] truncate">{doc.fileName || '-'}</td>
-                            <td className="px-4 py-2 text-gray-500 text-right whitespace-nowrap">{formatFileSize(doc.fileSize)}</td>
-                            <td className="px-4 py-2 text-center">
-                              <div className="flex items-center justify-center gap-1">
-                                {doc.fileUrl && (
-                                  <button
-                                    onClick={() => {
-                                      const ext = (doc.fileName || '').split('.').pop()?.toLowerCase();
-                                      if (ext === 'xlsx' || ext === 'xls') {
-                                        setViewerDoc(doc);
-                                      } else {
-                                        window.open(doc.fileUrl, '_blank');
-                                      }
-                                    }}
-                                    className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                    title="閲覧"
-                                  >
-                                    <span className="material-symbols-outlined text-base">visibility</span>
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => handleDelete(doc, client.id)}
-                                  disabled={deletingId === doc.id}
-                                  className="p-1 text-red-500 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-                                  title="削除"
-                                >
-                                  <span className="material-symbols-outlined text-base">
-                                    {deletingId === doc.id ? 'progress_activity' : 'delete'}
-                                  </span>
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
         );
-      })}
+      })()}
     </div>
   );
 };

@@ -1310,6 +1310,40 @@ const DocumentScheduleDashboard: React.FC = () => {
                         </div>
                       )}
 
+                      {/* 初回計画書作成ボタン（未作成の場合） */}
+                      {(!planSchedule || !planSchedule.lastGeneratedAt) && (
+                        <div className="mt-4 pt-3 border-t border-gray-200">
+                          <button
+                            onClick={() => {
+                              const carePlanAction = actions.find(a => a.clientId === client.id && a.docType === 'care_plan');
+                              if (carePlanAction) {
+                                handleExecute(carePlanAction);
+                              } else {
+                                // アクションがない場合は直接作成
+                                const schedule = planSchedule || schedules.find(s => s.careClientId === client.id && s.docType === 'care_plan');
+                                if (schedule) {
+                                  handleExecute({
+                                    type: 'generate_plan',
+                                    clientId: client.id,
+                                    clientName: client.name || '',
+                                    docType: 'care_plan',
+                                    schedule,
+                                    dueDate: toDateString(new Date()),
+                                    daysUntilDue: 0,
+                                    autoGenerate: false,
+                                  });
+                                }
+                              }
+                            }}
+                            disabled={executingClientId === client.id || isBulkRunning}
+                            className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 font-medium flex items-center justify-center gap-2"
+                          >
+                            <span className="material-symbols-outlined text-base">add_circle</span>
+                            居宅介護計画書を作成
+                          </button>
+                        </div>
+                      )}
+
                       {/* 計画書 手動再生成セクション */}
                       <div className="mt-4 pt-3 border-t border-gray-200">
                         <h5 className="text-xs font-bold text-gray-700 mb-2">計画書 手動再生成</h5>
