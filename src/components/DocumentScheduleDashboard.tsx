@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { DocumentSchedule, ScheduleAction, ScheduleDocType, GoalPeriod, MonitoringScheduleItem, MonitoringAction, StatusChangeType, ValidationResult } from '../types/documentSchedule';
 import { STATUS_CHANGE_LABELS } from '../types/documentSchedule';
 import type { CareClient, BillingRecord } from '../types';
-import { loadDocumentSchedules, saveDocumentSchedule, loadCareClients, loadGoalPeriods, saveGoalPeriod, deleteGoalPeriod, loadMonitoringSchedules, saveMonitoringSchedule, loadDocumentValidations, saveDocumentValidation, loadHelpers, loadBillingRecordsForMonth } from '../services/dataService';
-import { checkDocumentSchedules, createInitialSchedules, toDateString, generateMonitoringSchedulesFromGoals, checkMonitoringSchedules, checkContractDateAlerts } from '../utils/documentScheduleChecker';
+import { loadDocumentSchedules, saveDocumentSchedule, loadCareClients, loadGoalPeriods, loadMonitoringSchedules, saveMonitoringSchedule, loadDocumentValidations, saveDocumentValidation, loadHelpers, loadBillingRecordsForMonth } from '../services/dataService';
+import { checkDocumentSchedules, createInitialSchedules, toDateString, checkMonitoringSchedules, checkContractDateAlerts } from '../utils/documentScheduleChecker';
 import { executeScheduleAction } from '../utils/documentScheduleExecutor';
 import { executeMonitoringScheduleAction } from '../utils/documentScheduleExecutor';
 import { validateAllClients, getClientValidationStatus } from '../utils/documentValidation';
@@ -102,9 +102,6 @@ const DocumentScheduleDashboard: React.FC = () => {
   const [sortBy, setSortBy] = useState<'severity' | 'name' | 'dueDate'>('severity');
   const [filterStatus, setFilterStatus] = useState<'all' | 'critical' | 'warning' | 'ok'>('all');
 
-  // 目標期間入力フォーム
-  const [editingGoals, setEditingGoals] = useState<Record<string, Partial<GoalPeriod>[]>>({});
-  const [savingGoals, setSavingGoals] = useState(false);
 
   // パターン変更検知
   const [patternChangedClientIds, setPatternChangedClientIds] = useState<Set<string>>(new Set());
@@ -343,79 +340,13 @@ const DocumentScheduleDashboard: React.FC = () => {
     }
   }, [loadData]);
 
-  // v2: 目標期間の展開時に編集データを初期化
   const handleExpandClient = useCallback((clientId: string) => {
     if (expandedClientId === clientId) {
       setExpandedClientId(null);
       return;
     }
     setExpandedClientId(clientId);
-
-    const clientGoals = goalPeriods.filter(g => g.careClientId === clientId && g.isActive);
-    const longTermGoals = clientGoals.filter(g => g.goalType === 'long_term');
-    const shortTermGoals = clientGoals.filter(g => g.goalType === 'short_term');
-
-    const goals: Partial<GoalPeriod>[] = [];
-
-    if (longTermGoals.length > 0) {
-      goals.push(longTermGoals[0]);
-    } else {
-      goals.push({ goalType: 'long_term', goalIndex: 0, goalText: '', startDate: '', endDate: '', careClientId: clientId, isActive: true });
-    }
-
-    for (let i = 0; i < 3; i++) {
-      if (shortTermGoals[i]) {
-        goals.push(shortTermGoals[i]);
-      } else {
-        goals.push({ goalType: 'short_term', goalIndex: i, goalText: '', startDate: '', endDate: '', careClientId: clientId, isActive: true });
-      }
-    }
-
-    setEditingGoals(prev => ({ ...prev, [clientId]: goals }));
-  }, [expandedClientId, goalPeriods]);
-
-  // v2: 目標期間の保存
-  const handleSaveGoals = useCallback(async (clientId: string) => {
-    const goals = editingGoals[clientId];
-    if (!goals) return;
-
-    setSavingGoals(true);
-    try {
-      const existingGoals = goalPeriods.filter(g => g.careClientId === clientId && g.isActive);
-      for (const g of existingGoals) {
-        await deleteGoalPeriod(g.id);
-      }
-
-      const savedGoals: GoalPeriod[] = [];
-      for (const goal of goals) {
-        if (!goal.startDate || !goal.endDate) continue;
-        const saved = await saveGoalPeriod({
-          careClientId: clientId,
-          goalType: goal.goalType,
-          goalIndex: goal.goalIndex ?? 0,
-          goalText: goal.goalText || null,
-          startDate: goal.startDate,
-          endDate: goal.endDate,
-          isActive: true,
-        });
-        savedGoals.push(saved);
-      }
-
-      const existingMonSchedules = monitoringSchedules.filter(s => s.careClientId === clientId);
-      const newSchedules = generateMonitoringSchedulesFromGoals(savedGoals, existingMonSchedules, toDateString(new Date()));
-
-      for (const sched of newSchedules) {
-        await saveMonitoringSchedule(sched);
-      }
-
-      alert('目標期間を保存し、モニタリングスケジュールを生成しました');
-      await loadData();
-    } catch (err: any) {
-      alert(`保存エラー: ${err.message || err}`);
-    } finally {
-      setSavingGoals(false);
-    }
-  }, [editingGoals, goalPeriods, monitoringSchedules, loadData]);
+  }, [expandedClientId]);
 
   // v2: 臨時モニタリング作成
   const handleCreateEmergencyMonitoring = useCallback(async () => {
@@ -482,14 +413,6 @@ const DocumentScheduleDashboard: React.FC = () => {
 
   const getClientGoalPeriods = (clientId: string): GoalPeriod[] => {
     return goalPeriods.filter(g => g.careClientId === clientId && g.isActive);
-  };
-
-  const updateGoalField = (clientId: string, index: number, field: string, value: string) => {
-    setEditingGoals(prev => {
-      const goals = [...(prev[clientId] || [])];
-      goals[index] = { ...goals[index], [field]: value };
-      return { ...prev, [clientId]: goals };
-    });
   };
 
   // 利用者の信号色を判定
@@ -1320,56 +1243,6 @@ const DocumentScheduleDashboard: React.FC = () => {
                           </button>
                         </div>
                       )}
-                    </div>
-
-                    {/* 目標期間セクション */}
-                    <div className="bg-white rounded-lg border border-gray-200 p-4">
-                      <h4 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-indigo-600 text-base">flag</span>
-                        目標期間
-                      </h4>
-                      {(editingGoals[client.id] || []).map((goal, idx) => (
-                        <div key={idx} className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
-                          <div className="text-xs font-medium text-gray-600 mb-2">
-                            {goal.goalType === 'long_term' ? '長期目標' : `短期目標${(goal.goalIndex ?? idx) + 1}`}
-                          </div>
-                          <input
-                            type="text"
-                            value={goal.goalText || ''}
-                            onChange={e => updateGoalField(client.id, idx, 'goalText', e.target.value)}
-                            placeholder="目標テキスト（任意）"
-                            className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-sm mb-2 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                          />
-                          <div className="flex gap-2">
-                            <div className="flex-1">
-                              <label className="block text-[10px] text-gray-500 mb-0.5">開始日</label>
-                              <input
-                                type="date"
-                                value={goal.startDate || ''}
-                                onChange={e => updateGoalField(client.id, idx, 'startDate', e.target.value)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                              />
-                            </div>
-                            <div className="flex-1">
-                              <label className="block text-[10px] text-gray-500 mb-0.5">終了日</label>
-                              <input
-                                type="date"
-                                value={goal.endDate || ''}
-                                onChange={e => updateGoalField(client.id, idx, 'endDate', e.target.value)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      <button
-                        onClick={() => handleSaveGoals(client.id)}
-                        disabled={savingGoals}
-                        className="w-full mt-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 text-sm font-medium flex items-center justify-center gap-1.5"
-                      >
-                        <span className="material-symbols-outlined text-sm">save</span>
-                        {savingGoals ? '保存中...' : '目標期間を保存'}
-                      </button>
                     </div>
 
                     {/* モニタリングタイムライン */}

@@ -1,16 +1,12 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmounts, loadBillingRecordsForMonth, loadShogaiDocuments, saveShogaiDocument, deleteShogaiDocument, uploadShogaiDocFile, loadAiPrompt, saveAiPrompt, saveDocumentSchedule, loadMonitoringSchedules, saveMonitoringSchedule, loadGoalPeriods, saveDocumentValidation, loadDocumentSchedules, loadShogaiSogoCareCategories, loadPlanRevisionCheck, savePlanRevisionCheck } from '../services/dataService';
-import { computeNextDates, daysDiff, toDateString } from '../utils/documentScheduleChecker';
+import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmounts, loadBillingRecordsForMonth, loadShogaiDocuments, saveShogaiDocument, deleteShogaiDocument, uploadShogaiDocFile, loadAiPrompt, saveAiPrompt, saveDocumentSchedule, loadMonitoringSchedules, saveMonitoringSchedule, loadGoalPeriods, saveDocumentValidation, loadDocumentSchedules } from '../services/dataService';
+import { computeNextDates } from '../utils/documentScheduleChecker';
 import { isGeminiAvailable } from '../services/geminiService';
 import { validateClientDocuments } from '../utils/documentValidation';
-import type { Helper, CareClient, Shift, BillingRecord, ShogaiSupplyAmount, ShogaiDocument, ShogaiSogoCareCategory } from '../types';
+import type { Helper, CareClient, Shift, BillingRecord, ShogaiSupplyAmount, ShogaiDocument } from '../types';
 import type { AiPrompt } from '../services/supabaseService';
-import type { DocumentSchedule, MonitoringScheduleItem } from '../types/documentSchedule';
-import type { PlanRevisionCheckResult, OverallResult } from '../types/planRevisionCheck';
-import PlanRevisionCheckPanel, { SIGNAL_COLORS, OVERALL_RESULT_CONFIG } from '../components/shogai/PlanRevisionCheckPanel';
-import { runAllAutoChecks, computeOverallResult, collectTriggeredReasons } from '../utils/planRevisionChecker';
-import { createDefaultManualChecks } from '../types/planRevisionCheck';
-import { syncRevisionToSchedule } from '../utils/planRevisionSync';
+import type { DocumentSchedule } from '../types/documentSchedule';
+import ClientDocumentListTab from '../components/shogai/ClientDocumentListTab';
 
 // ========== 書類定義 ==========
 
@@ -98,18 +94,7 @@ const DocumentsPage: React.FC = () => {
   const [clientSelectModalDoc, setClientSelectModalDoc] = useState<DocumentDefinition | null>(null);
 
   // タブ管理
-  const [activeTab, setActiveTab] = useState<'documents' | 'planRevisionCheck'>('documents');
-
-  // 計画書 再作成判定
-  const [revisionCheckLoading, setRevisionCheckLoading] = useState(false);
-  const [clientCategories, setClientCategories] = useState<Record<string, ShogaiSogoCareCategory[]>>({});
-  const [clientSupplyAmounts, setClientSupplyAmounts] = useState<Record<string, { contract: ShogaiSupplyAmount[]; decided: ShogaiSupplyAmount[] }>>({});
-  const [clientMonitoringSchedules, setClientMonitoringSchedules] = useState<Record<string, MonitoringScheduleItem[]>>({});
-  const [clientRevisionChecks, setClientRevisionChecks] = useState<Record<string, PlanRevisionCheckResult | null>>({});
-  const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
-  const [clientDocSchedules, setClientDocSchedules] = useState<Record<string, DocumentSchedule | null>>({});
-  const [batchRunning, setBatchRunning] = useState(false);
-  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
+  const [activeTab, setActiveTab] = useState<'documents' | 'documentList'>('documents');
 
   // 設定メニュー
   const [showSettings, setShowSettings] = useState(false);
@@ -149,138 +134,6 @@ const DocumentsPage: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  // 計画書 再作成判定タブのデータ読み込み
-  const loadRevisionCheckData = useCallback(async () => {
-    if (careClients.length === 0) return;
-    setRevisionCheckLoading(true);
-    try {
-      const cats: Record<string, ShogaiSogoCareCategory[]> = {};
-      const supply: Record<string, { contract: ShogaiSupplyAmount[]; decided: ShogaiSupplyAmount[] }> = {};
-      const schedules: Record<string, MonitoringScheduleItem[]> = {};
-      const checks: Record<string, PlanRevisionCheckResult | null> = {};
-      const docScheds: Record<string, DocumentSchedule | null> = {};
-
-      await Promise.all(
-        careClients.map(async (client) => {
-          try {
-            const [c, sc, sd, ms, chk, ds] = await Promise.all([
-              loadShogaiSogoCareCategories(client.id),
-              loadShogaiSupplyAmounts(client.id, 'contract'),
-              loadShogaiSupplyAmounts(client.id, 'decided'),
-              loadMonitoringSchedules(client.id),
-              loadPlanRevisionCheck(client.id),
-              loadDocumentSchedules(client.id),
-            ]);
-            cats[client.id] = c;
-            supply[client.id] = { contract: sc, decided: sd };
-            schedules[client.id] = ms;
-            checks[client.id] = chk;
-            docScheds[client.id] = ds.find(d => d.docType === 'care_plan') || null;
-          } catch {
-            cats[client.id] = [];
-            supply[client.id] = { contract: [], decided: [] };
-            schedules[client.id] = [];
-            checks[client.id] = null;
-            docScheds[client.id] = null;
-          }
-        })
-      );
-      setClientCategories(cats);
-      setClientSupplyAmounts(supply);
-      setClientMonitoringSchedules(schedules);
-      setClientRevisionChecks(checks);
-      setClientDocSchedules(docScheds);
-    } catch (err) {
-      console.error('再作成判定データ読み込みエラー:', err);
-    } finally {
-      setRevisionCheckLoading(false);
-    }
-  }, [careClients]);
-
-  useEffect(() => {
-    if (activeTab === 'planRevisionCheck') {
-      loadRevisionCheckData();
-    }
-  }, [activeTab, loadRevisionCheckData]);
-
-  // 利用者ごとの総合判定を計算
-  const getClientOverallResult = useCallback((clientId: string): OverallResult => {
-    const categories = clientCategories[clientId] || [];
-    const supply = clientSupplyAmounts[clientId] || { contract: [], decided: [] };
-    const allSupply = [...supply.contract, ...supply.decided];
-    const schedules = clientMonitoringSchedules[clientId] || [];
-    const previousCheck = clientRevisionChecks[clientId] || null;
-    const autoChecks = runAllAutoChecks(categories, allSupply, schedules, previousCheck);
-    const manualChecks = previousCheck?.manualChecks || [];
-    return computeOverallResult(autoChecks, manualChecks);
-  }, [clientCategories, clientSupplyAmounts, clientMonitoringSchedules, clientRevisionChecks]);
-
-  // 一括判定＋保存
-  const runBatchJudgment = useCallback(async () => {
-    if (batchRunning || careClients.length === 0) return;
-    setBatchRunning(true);
-    setBatchProgress({ current: 0, total: careClients.length });
-    const updatedChecks: Record<string, PlanRevisionCheckResult | null> = { ...clientRevisionChecks };
-
-    for (let i = 0; i < careClients.length; i++) {
-      const client = careClients[i];
-      setBatchProgress({ current: i + 1, total: careClients.length });
-      try {
-        const categories = clientCategories[client.id] || [];
-        const supply = clientSupplyAmounts[client.id] || { contract: [], decided: [] };
-        const allSupply = [...supply.contract, ...supply.decided];
-        const schedules = clientMonitoringSchedules[client.id] || [];
-        const previousCheck = clientRevisionChecks[client.id] || null;
-
-        const autoChecks = runAllAutoChecks(categories, allSupply, schedules, previousCheck);
-
-        // 既存の手動チェックを維持、なければデフォルト
-        let manualChecks = createDefaultManualChecks();
-        if (previousCheck?.manualChecks && previousCheck.manualChecks.length > 0) {
-          const defaults = createDefaultManualChecks();
-          manualChecks = defaults.map(d => {
-            const saved = previousCheck.manualChecks.find(m => m.checkId === d.checkId);
-            return saved ? { ...d, checked: saved.checked, notes: saved.notes } : d;
-          });
-        }
-
-        const overallResult = computeOverallResult(autoChecks, manualChecks);
-        const triggeredReasons = collectTriggeredReasons(autoChecks, manualChecks);
-
-        const result: PlanRevisionCheckResult = {
-          id: previousCheck?.id,
-          careClientId: client.id,
-          checkedAt: new Date().toISOString(),
-          overallResult,
-          autoChecks,
-          manualChecks,
-          triggeredReasons,
-          notes: previousCheck?.notes || '',
-          acknowledgedAt: null,
-          acknowledgedBy: null,
-        };
-
-        const saved = await savePlanRevisionCheck(result);
-        updatedChecks[client.id] = saved;
-        try {
-          await syncRevisionToSchedule(client.id, overallResult, triggeredReasons);
-        } catch (syncError) {
-          console.error(`スケジュール同期エラー (${client.name}):`, syncError);
-        }
-      } catch (error) {
-        console.error(`一括判定エラー (${client.name}):`, error);
-      }
-    }
-
-    setClientRevisionChecks(updatedChecks);
-    setBatchRunning(false);
-  }, [batchRunning, careClients, clientCategories, clientSupplyAmounts, clientMonitoringSchedules, clientRevisionChecks]);
-
-  // 個別保存後のコールバック
-  const handleRevisionCheckSaved = useCallback((careClientId: string, result: PlanRevisionCheckResult) => {
-    setClientRevisionChecks(prev => ({ ...prev, [careClientId]: result }));
-  }, []);
 
   const openUploadModal = useCallback(async (docId: string) => {
     setUploadModalDoc(docId);
@@ -545,16 +398,6 @@ const DocumentsPage: React.FC = () => {
     await handleGenerate(clientSelectModalDoc, client);
   }, [clientSelectModalDoc, handleGenerate]);
 
-  // 居宅介護計画書タブからのAI作成（生成後にスケジュール再取得）
-  const handleCarePlanGenerate = useCallback(async (doc: DocumentDefinition, client: CareClient) => {
-    await handleGenerate(doc, client);
-    try {
-      const ds = await loadDocumentSchedules(client.id);
-      const carePlanSched = ds.find(d => d.docType === 'care_plan') || null;
-      setClientDocSchedules(prev => ({ ...prev, [client.id]: carePlanSched }));
-    } catch { /* スケジュール再取得失敗は無視 */ }
-  }, [handleGenerate]);
-
   const handleBulkGenerate = useCallback(async () => {
     const gemini = isGeminiAvailable();
     const groupA = DOCUMENTS.filter(d => d.group === 'A' && d.id !== '1-7');
@@ -752,16 +595,16 @@ const DocumentsPage: React.FC = () => {
               </span>
             </button>
             <button
-              onClick={() => setActiveTab('planRevisionCheck')}
+              onClick={() => setActiveTab('documentList')}
               className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'planRevisionCheck'
+                activeTab === 'documentList'
                   ? 'border-indigo-600 text-indigo-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               <span className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-base">assignment</span>
-                居宅介護計画書
+                <span className="material-symbols-outlined text-base">folder_open</span>
+                書類一覧
               </span>
             </button>
           </nav>
@@ -924,170 +767,10 @@ const DocumentsPage: React.FC = () => {
       </main>
       )}
 
-      {/* 計画書 再作成判定タブ */}
-      {activeTab === 'planRevisionCheck' && (
+      {/* 書類一覧タブ */}
+      {activeTab === 'documentList' && (
         <main className="max-w-6xl mx-auto px-4 sm:px-6 py-5">
-          {revisionCheckLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
-              <span className="ml-3 text-gray-500">読み込み中...</span>
-            </div>
-          ) : careClients.length === 0 ? (
-            <div className="text-center py-16 text-gray-400 text-sm">利用者が登録されていません</div>
-          ) : (
-            <>
-              {/* サマリーバー */}
-              {(() => {
-                const results = careClients.map(c => getClientOverallResult(c.id));
-                const revisionCount = results.filter(r => r === 'revision_needed').length;
-                const pendingCount = results.filter(r => r === 'pending').length;
-                const okCount = results.filter(r => r === 'no_revision').length;
-                return (
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-5">
-                    <div className="flex flex-wrap items-center gap-6">
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: SIGNAL_COLORS.red.dot }} />
-                        <span className="text-sm text-gray-700">要再作成: <strong className="text-red-700">{revisionCount}人</strong></span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: SIGNAL_COLORS.yellow.dot }} />
-                        <span className="text-sm text-gray-700">確認中: <strong className="text-yellow-700">{pendingCount}人</strong></span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: SIGNAL_COLORS.green.dot }} />
-                        <span className="text-sm text-gray-700">問題なし: <strong className="text-green-700">{okCount}人</strong></span>
-                      </div>
-                      <div className="ml-auto flex items-center gap-2">
-                        <button
-                          onClick={loadRevisionCheckData}
-                          disabled={revisionCheckLoading || batchRunning}
-                          className="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-gray-600 flex items-center gap-1 disabled:opacity-50"
-                        >
-                          <span className="material-symbols-outlined text-sm">refresh</span>
-                          更新
-                        </button>
-                        <button
-                          onClick={runBatchJudgment}
-                          disabled={batchRunning || revisionCheckLoading}
-                          className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-                        >
-                          <span className="material-symbols-outlined text-sm">play_arrow</span>
-                          一括判定
-                        </button>
-                      </div>
-                    </div>
-                    {/* 一括判定 進捗バー */}
-                    {batchRunning && (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1 bg-gray-200 rounded-full h-2 overflow-hidden">
-                            <div
-                              className="bg-indigo-500 h-2 rounded-full transition-all duration-300"
-                              style={{ width: `${batchProgress.total > 0 ? (batchProgress.current / batchProgress.total) * 100 : 0}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-gray-500 flex-shrink-0">
-                            {batchProgress.current}/{batchProgress.total}人 処理中...
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* 利用者一覧 */}
-              <div className="space-y-2">
-                {careClients.map(client => {
-                  const result = getClientOverallResult(client.id);
-                  const config = OVERALL_RESULT_CONFIG[result];
-                  const colors = SIGNAL_COLORS[config.colorKey];
-                  const check = clientRevisionChecks[client.id];
-                  const isExpanded = expandedClientId === client.id;
-                  const docSched = clientDocSchedules[client.id];
-                  const carePlanDoc = DOCUMENTS.find(d => d.id === 'care-plan')!;
-
-                  // 次回作成日バッジの計算
-                  const nextDueBadge = (() => {
-                    if (!docSched || !docSched.nextDueDate) {
-                      return { label: '未作成', bgColor: '#F3F4F6', textColor: '#6B7280', borderColor: '#D1D5DB' };
-                    }
-                    const today = toDateString(new Date());
-                    const days = daysDiff(today, docSched.nextDueDate);
-                    const mmdd = docSched.nextDueDate.slice(5); // MM-DD
-                    if (days <= 0) {
-                      return { label: `期限切れ ${mmdd}`, bgColor: '#FEE2E2', textColor: '#991B1B', borderColor: '#FECACA' };
-                    }
-                    if (days <= 30) {
-                      return { label: `次回: ${mmdd}`, bgColor: '#FEF9C3', textColor: '#854D0E', borderColor: '#FDE68A' };
-                    }
-                    return { label: `次回: ${mmdd}`, bgColor: '#DBEAFE', textColor: '#1E40AF', borderColor: '#BFDBFE' };
-                  })();
-
-                  return (
-                    <div key={client.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                      {/* 利用者行 */}
-                      <div className="flex items-center gap-2 px-4 py-3">
-                        <button
-                          onClick={() => setExpandedClientId(isExpanded ? null : client.id)}
-                          className="flex items-center gap-3 flex-1 min-w-0 hover:bg-gray-50 transition-colors text-left rounded-lg -ml-1 pl-1 py-0.5"
-                        >
-                          <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
-                            <span className="material-symbols-outlined text-gray-500 text-base">person</span>
-                          </div>
-                          <span className="text-sm font-medium text-gray-800 min-w-0 truncate">{client.name}</span>
-                          <span
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0"
-                            style={{ backgroundColor: nextDueBadge.bgColor, color: nextDueBadge.textColor, border: `1px solid ${nextDueBadge.borderColor}` }}
-                          >
-                            {nextDueBadge.label}
-                          </span>
-                          <span
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0"
-                            style={{ backgroundColor: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}
-                          >
-                            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colors.dot }} />
-                            {config.label}
-                          </span>
-                          {check?.checkedAt && (
-                            <span className="text-xs text-gray-400 flex-shrink-0 hidden sm:inline">
-                              最終: {check.checkedAt.slice(0, 10)}
-                            </span>
-                          )}
-                          <span className={`material-symbols-outlined text-gray-400 text-base transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
-                            expand_more
-                          </span>
-                        </button>
-                        <button
-                          onClick={() => handleCarePlanGenerate(carePlanDoc, client)}
-                          disabled={generatingDoc === 'care-plan'}
-                          className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <span className="material-symbols-outlined text-sm">auto_awesome</span>
-                          {generatingDoc === 'care-plan' ? '生成中...' : 'AI作成'}
-                        </button>
-                      </div>
-
-                      {/* 展開時: PlanRevisionCheckPanel */}
-                      {isExpanded && (
-                        <div className="border-t border-gray-200 px-4 py-4 bg-gray-50">
-                          <PlanRevisionCheckPanel
-                            careClientId={client.id}
-                            categories={clientCategories[client.id] || []}
-                            contractSupplyAmounts={clientSupplyAmounts[client.id]?.contract || []}
-                            decidedSupplyAmounts={clientSupplyAmounts[client.id]?.decided || []}
-                            monitoringSchedules={clientMonitoringSchedules[client.id] || []}
-                            onSaved={(result) => handleRevisionCheckSaved(client.id, result)}
-                            inline
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
+          <ClientDocumentListTab careClients={careClients} />
         </main>
       )}
 
