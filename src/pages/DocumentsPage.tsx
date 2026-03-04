@@ -7,6 +7,7 @@ import type { Helper, CareClient, Shift, BillingRecord, ShogaiSupplyAmount, Shog
 import type { AiPrompt } from '../services/supabaseService';
 import type { DocumentSchedule } from '../types/documentSchedule';
 import ClientDocumentListTab from '../components/shogai/ClientDocumentListTab';
+import DocumentScheduleDashboard from '../components/DocumentScheduleDashboard';
 
 // ========== 書類定義 ==========
 
@@ -94,7 +95,13 @@ const DocumentsPage: React.FC = () => {
   const [clientSelectModalDoc, setClientSelectModalDoc] = useState<DocumentDefinition | null>(null);
 
   // タブ管理
-  const [activeTab, setActiveTab] = useState<'documents' | 'documentList'>('documents');
+  const [activeTab, setActiveTab] = useState<'documents' | 'documentList' | 'schedule'>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if (tab === 'schedule') return 'schedule';
+    if (tab === 'documentList') return 'documentList';
+    return 'documents';
+  });
 
   // 設定メニュー
   const [showSettings, setShowSettings] = useState(false);
@@ -607,6 +614,19 @@ const DocumentsPage: React.FC = () => {
                 書類一覧
               </span>
             </button>
+            <button
+              onClick={() => setActiveTab('schedule')}
+              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'schedule'
+                  ? 'border-indigo-600 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <span className="flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-base">event_note</span>
+                書類スケジュール
+              </span>
+            </button>
           </nav>
         </div>
       </div>
@@ -771,6 +791,13 @@ const DocumentsPage: React.FC = () => {
       {activeTab === 'documentList' && (
         <main className="max-w-6xl mx-auto px-4 sm:px-6 py-5">
           <ClientDocumentListTab careClients={careClients} />
+        </main>
+      )}
+
+      {/* 書類スケジュールタブ */}
+      {activeTab === 'schedule' && (
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 py-5">
+          <DocumentScheduleDashboard />
         </main>
       )}
 

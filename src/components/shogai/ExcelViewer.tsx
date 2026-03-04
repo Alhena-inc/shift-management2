@@ -26,7 +26,7 @@ function excelColorToCss(color: Partial<ExcelJS.Color> | undefined, fallback: st
 
 // セルの罫線スタイルをCSS化
 function borderStyle(border: Partial<ExcelJS.Border> | undefined): string {
-  if (!border || !border.style) return 'none';
+  if (!border || !border.style) return '';
   const color = excelColorToCss(border.color, '#000000');
   const styleMap: Record<string, string> = {
     thin: `1px solid ${color}`,
@@ -35,7 +35,7 @@ function borderStyle(border: Partial<ExcelJS.Border> | undefined): string {
     dotted: `1px dotted ${color}`,
     dashed: `1px dashed ${color}`,
     double: `3px double ${color}`,
-    hair: `1px solid ${color}`,
+    hair: `0.5px solid ${color}`,
     dashDot: `1px dashed ${color}`,
     dashDotDot: `1px dashed ${color}`,
     mediumDashed: `2px dashed ${color}`,
@@ -82,12 +82,23 @@ function colLetterToNum(letters: string): number {
   return n;
 }
 
-// ワークシートをHTMLテーブル文字列に変換
-function worksheetToHtml(ws: ExcelJS.Worksheet): string {
-  const mergedCells = new Map<string, { rowSpan: number; colSpan: number }>();
+// 結合セル情報を構築
+interface MergeInfo {
+  rowSpan: number;
+  colSpan: number;
+  startRow: number;
+  startCol: number;
+  endRow: number;
+  endCol: number;
+}
+
+function buildMergeMap(ws: ExcelJS.Worksheet): {
+  mergedCells: Map<string, MergeInfo>;
+  skipCells: Set<string>;
+} {
+  const mergedCells = new Map<string, MergeInfo>();
   const skipCells = new Set<string>();
 
-  // 結合セル情報を収集
   if (ws.model && (ws.model as any).merges) {
     for (const mergeRange of (ws.model as any).merges) {
       const match = mergeRange.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/);
@@ -96,10 +107,12 @@ function worksheetToHtml(ws: ExcelJS.Worksheet): string {
       const startRow = parseInt(match[2]);
       const endCol = colLetterToNum(match[3]);
       const endRow = parseInt(match[4]);
-      mergedCells.set(`${startRow}-${startCol}`, {
+      const info: MergeInfo = {
         rowSpan: endRow - startRow + 1,
         colSpan: endCol - startCol + 1,
-      });
+        startRow, startCol, endRow, endCol,
+      };
+      mergedCells.set(`${startRow}-${startCol}`, info);
       for (let r = startRow; r <= endRow; r++) {
         for (let c = startCol; c <= endCol; c++) {
           if (r !== startRow || c !== startCol) {
@@ -109,17 +122,51 @@ function worksheetToHtml(ws: ExcelJS.Worksheet): string {
       }
     }
   }
+  return { mergedCells, skipCells };
+}
+
+// 結合セルの罫線を正しく取得する
+// 結合セルの場合、外枠の罫線は範囲の端のセルから取得する必要がある
+function getMergedBorders(
+  ws: ExcelJS.Worksheet,
+  merge: MergeInfo,
+  topLeftBorder: Partial<ExcelJS.Borders> | undefined,
+): { top: string; right: string; bottom: string; left: string } {
+  // top: 最上行の最初のセルのtop
+  const topCell = ws.getRow(merge.startRow).getCell(merge.startCol);
+  const topBorder = topCell.border;
+  const top = borderStyle(topBorder?.top);
+
+  // left: 最左列の最初のセルのleft
+  const left = borderStyle(topBorder?.left);
+
+  // bottom: 最下行の最初の列のセルのbottom
+  const bottomCell = ws.getRow(merge.endRow).getCell(merge.startCol);
+  const bottomBorder = bottomCell.border;
+  const bottom = borderStyle(bottomBorder?.bottom);
+
+  // right: 最上行の最右列のセルのright
+  const rightCell = ws.getRow(merge.startRow).getCell(merge.endCol);
+  const rightBorder = rightCell.border;
+  const right = borderStyle(rightBorder?.right);
+
+  return { top, right, bottom, left };
+}
+
+// ワークシートをHTMLテーブル文字列に変換
+function worksheetToHtml(ws: ExcelJS.Worksheet): string {
+  const { mergedCells, skipCells } = buildMergeMap(ws);
 
   const rowCount = ws.rowCount || 0;
   const colCount = ws.columnCount || 0;
   if (rowCount === 0 || colCount === 0) return '<p style="padding:16px;color:#888;">空のシートです</p>';
 
-  // 列幅: ExcelJSのwidthは文字数単位。Excelでは1文字≒7px + 余白5pxが標準。
-  // デフォルトのExcel列幅は8.43文字≒約72px
+  // 列幅: ExcelJSのwidthは文字数単位
+  // Excelの1文字幅 = 約7.5px。余白を含めて width * 8.5 が近い
   const colWidths: number[] = [];
   for (let c = 1; c <= colCount; c++) {
     const col = ws.getColumn(c);
-    const w = col.width ? Math.round(col.width * 7.5 + 5) : 72;
+    const w = col.width ? Math.round(col.width * 8.5) : 72;
     colWidths.push(w);
   }
 
@@ -132,7 +179,7 @@ function worksheetToHtml(ws: ExcelJS.Worksheet): string {
 
   for (let r = 1; r <= rowCount; r++) {
     const row = ws.getRow(r);
-    // ExcelJSの行高さはポイント単位。1pt ≒ 1.333px。デフォルト行高さ15pt ≒ 20px
+    // ExcelJSの行高さはポイント単位。1pt ≒ 1.333px。デフォルト15pt ≒ 20px
     const rowHeight = row.height ? Math.round(row.height * 1.333) : 20;
     html += `<tr style="height:${rowHeight}px;">`;
 
@@ -151,7 +198,6 @@ function worksheetToHtml(ws: ExcelJS.Worksheet): string {
       if (font) {
         if (font.bold) styles.push('font-weight:bold');
         if (font.italic) styles.push('font-style:italic');
-        // Excelのフォントサイズはpt単位。ブラウザでもptで指定
         if (font.size) styles.push(`font-size:${font.size}pt`);
         if (font.underline) styles.push('text-decoration:underline');
         if (font.strike) styles.push('text-decoration:line-through');
@@ -170,7 +216,7 @@ function worksheetToHtml(ws: ExcelJS.Worksheet): string {
       // テキスト配置
       const alignment = cell.alignment;
       if (alignment) {
-        if (alignment.horizontal) {
+        if (alignment.horizontal && (alignment.horizontal as string) !== 'general') {
           const hMap: Record<string, string> = {
             left: 'left', center: 'center', right: 'right', justify: 'justify',
             fill: 'left', centerContinuous: 'center', distributed: 'justify',
@@ -186,17 +232,26 @@ function worksheetToHtml(ws: ExcelJS.Worksheet): string {
         if (alignment.wrapText) styles.push('white-space:pre-wrap;word-wrap:break-word');
       }
 
-      // 罫線 — 罫線がないセルはborder:noneのまま（Excelらしくグリッド線なし）
-      const border = cell.border;
-      if (border) {
-        const bt = borderStyle(border.top);
-        const br = borderStyle(border.right);
-        const bb = borderStyle(border.bottom);
-        const bl = borderStyle(border.left);
-        if (bt !== 'none') styles.push(`border-top:${bt}`);
-        if (br !== 'none') styles.push(`border-right:${br}`);
-        if (bb !== 'none') styles.push(`border-bottom:${bb}`);
-        if (bl !== 'none') styles.push(`border-left:${bl}`);
+      // 罫線
+      if (merge) {
+        // 結合セルの場合、外枠の罫線を各辺の端のセルから取得
+        const borders = getMergedBorders(ws, merge, cell.border);
+        if (borders.top) styles.push(`border-top:${borders.top}`);
+        if (borders.right) styles.push(`border-right:${borders.right}`);
+        if (borders.bottom) styles.push(`border-bottom:${borders.bottom}`);
+        if (borders.left) styles.push(`border-left:${borders.left}`);
+      } else {
+        const border = cell.border;
+        if (border) {
+          const bt = borderStyle(border.top);
+          const br = borderStyle(border.right);
+          const bb = borderStyle(border.bottom);
+          const bl = borderStyle(border.left);
+          if (bt) styles.push(`border-top:${bt}`);
+          if (br) styles.push(`border-right:${br}`);
+          if (bb) styles.push(`border-bottom:${bb}`);
+          if (bl) styles.push(`border-left:${bl}`);
+        }
       }
 
       styles.push('padding:2px 4px');
@@ -274,7 +329,6 @@ const ExcelViewer: React.FC<Props> = ({ isOpen, onClose, fileUrl, fileName }) =>
     return () => { cancelled = true; };
   }, [isOpen, fileUrl]);
 
-  // Excelファイルをダウンロード
   const handleDownloadExcel = useCallback(async () => {
     if (!fileUrl) return;
     setDownloading(true);
@@ -360,7 +414,7 @@ const ExcelViewer: React.FC<Props> = ({ isOpen, onClose, fileUrl, fileName }) =>
             </div>
           ) : sheets.length > 0 ? (
             <div
-              className="bg-white shadow-sm inline-block min-w-full p-4"
+              className="bg-white shadow-sm inline-block min-w-full p-6"
               dangerouslySetInnerHTML={{ __html: sheets[activeSheet].html }}
             />
           ) : null}

@@ -106,6 +106,9 @@ const DocumentScheduleDashboard: React.FC = () => {
   // パターン変更検知
   const [patternChangedClientIds, setPatternChangedClientIds] = useState<Set<string>>(new Set());
 
+  // 実績表読み込み件数
+  const [billingCountByClient, setBillingCountByClient] = useState<Record<string, number>>({});
+
   // タブ切り替え
   type DashboardTab = 'list' | 'timeline';
   const [activeTab, setActiveTab] = useState<DashboardTab>('list');
@@ -201,8 +204,10 @@ const DocumentScheduleDashboard: React.FC = () => {
         ]);
 
         const changedIds = new Set<string>();
+        const countMap: Record<string, number> = {};
         for (const client of activeClients) {
           const clientName = client.name || '';
+          countMap[client.id] = currRecords.filter(r => r.clientName === clientName).length;
           if (!clientName) continue;
           if (detectCarePatternChanges(clientName, prevRecords, currRecords)) {
             changedIds.add(client.id);
@@ -213,6 +218,7 @@ const DocumentScheduleDashboard: React.FC = () => {
             }
           }
         }
+        setBillingCountByClient(countMap);
         setPatternChangedClientIds(changedIds);
       } catch {
         // パターン検知失敗は無視
@@ -664,6 +670,26 @@ const DocumentScheduleDashboard: React.FC = () => {
     );
   };
 
+  // ===== 実績表ステータスピル =====
+  const BillingStatusPill = ({ clientId }: { clientId: string }) => {
+    const count = billingCountByClient[clientId];
+    if (count === undefined) {
+      return <span className="text-xs text-gray-300">-</span>;
+    }
+    if (count > 0) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: '#F0FDF4', color: '#22C55E' }}>
+          ✓ {count}件
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: '#FEF2F2', color: '#EF4444' }}>
+        ✕ 未読込
+      </span>
+    );
+  };
+
   // ===== 検証バッジ =====
   const ValidationBadge = ({ clientId }: { clientId: string }) => {
     const validation = validations[clientId];
@@ -1080,6 +1106,10 @@ const DocumentScheduleDashboard: React.FC = () => {
                       <MonitoringColumn clientId={client.id} />
                     </div>
                     <div className="text-center">
+                      <div className="text-[10px] text-gray-400 mb-0.5">実績表</div>
+                      <BillingStatusPill clientId={client.id} />
+                    </div>
+                    <div className="text-center">
                       <div className="text-[10px] text-gray-400 mb-0.5">検証状態</div>
                       <ValidationBadge clientId={client.id} />
                     </div>
@@ -1144,6 +1174,10 @@ const DocumentScheduleDashboard: React.FC = () => {
                   <div className="text-center flex-1">
                     <div className="text-[10px] text-gray-400">モニタリング</div>
                     <MonitoringColumn clientId={client.id} />
+                  </div>
+                  <div className="text-center flex-1">
+                    <div className="text-[10px] text-gray-400">実績表</div>
+                    <BillingStatusPill clientId={client.id} />
                   </div>
                   <div className="text-center flex-1">
                     <div className="text-[10px] text-gray-400">検証</div>
