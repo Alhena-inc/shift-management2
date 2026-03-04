@@ -587,18 +587,8 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
     createProcedureSheet(workbook, manual.procedures[i], client, year, month, officeInfo, i);
   }
 
-  // ダウンロード
   const outputBuffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([outputBuffer], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
   const fileName = `訪問介護手順書_${client.name}_${year}年${month}月.xlsx`;
-  link.download = fileName;
-  link.click();
-  URL.revokeObjectURL(url);
 
   // 自動保存: 利用者情報の手順書セクションに保存
   try {

@@ -1,7 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import ExcelJS from 'exceljs';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
 
 interface Props {
   isOpen: boolean;
@@ -20,15 +18,8 @@ function excelColorToCss(color: Partial<ExcelJS.Color> | undefined, fallback: st
   if (!color) return fallback;
   if (color.argb) {
     const argb = color.argb;
-    // ARGBは8文字 (AA RR GG BB)
-    if (argb.length === 8) {
-      return `#${argb.substring(2)}`;
-    }
+    if (argb.length === 8) return `#${argb.substring(2)}`;
     return `#${argb}`;
-  }
-  if (color.theme !== undefined) {
-    // テーマカラーはデフォルトにフォールバック
-    return fallback;
   }
   return fallback;
 }
@@ -67,23 +58,28 @@ function cellValueToString(value: ExcelJS.CellValue): string {
     const d = String(value.getDate()).padStart(2, '0');
     return `${y}/${m}/${d}`;
   }
-  // RichText
   if (typeof value === 'object' && 'richText' in value) {
     return (value as ExcelJS.CellRichTextValue).richText.map(rt => rt.text).join('');
   }
-  // Formula結果
   if (typeof value === 'object' && 'result' in value) {
     return cellValueToString((value as ExcelJS.CellFormulaValue).result as ExcelJS.CellValue);
   }
-  // SharedFormula
   if (typeof value === 'object' && 'sharedFormula' in value) {
     return cellValueToString((value as any).result);
   }
-  // CellErrorValue
   if (typeof value === 'object' && 'error' in value) {
     return (value as ExcelJS.CellErrorValue).error || '#ERROR';
   }
   return String(value);
+}
+
+// 列文字→数値変換 (A=1, B=2, ..., AA=27)
+function colLetterToNum(letters: string): number {
+  let n = 0;
+  for (let i = 0; i < letters.length; i++) {
+    n = n * 26 + (letters.charCodeAt(i) - 64);
+  }
+  return n;
 }
 
 // ワークシートをHTMLテーブル文字列に変換
@@ -100,9 +96,10 @@ function worksheetToHtml(ws: ExcelJS.Worksheet): string {
       const startRow = parseInt(match[2]);
       const endCol = colLetterToNum(match[3]);
       const endRow = parseInt(match[4]);
-      const rowSpan = endRow - startRow + 1;
-      const colSpan = endCol - startCol + 1;
-      mergedCells.set(`${startRow}-${startCol}`, { rowSpan, colSpan });
+      mergedCells.set(`${startRow}-${startCol}`, {
+        rowSpan: endRow - startRow + 1,
+        colSpan: endCol - startCol + 1,
+      });
       for (let r = startRow; r <= endRow; r++) {
         for (let c = startCol; c <= endCol; c++) {
           if (r !== startRow || c !== startCol) {
@@ -113,22 +110,20 @@ function worksheetToHtml(ws: ExcelJS.Worksheet): string {
     }
   }
 
-  // 行範囲と列範囲を取得
   const rowCount = ws.rowCount || 0;
   const colCount = ws.columnCount || 0;
   if (rowCount === 0 || colCount === 0) return '<p style="padding:16px;color:#888;">空のシートです</p>';
 
-  // 列幅を取得
+  // 列幅: ExcelJSのwidthは文字数単位。Excelでは1文字≒7px + 余白5pxが標準。
+  // デフォルトのExcel列幅は8.43文字≒約72px
   const colWidths: number[] = [];
   for (let c = 1; c <= colCount; c++) {
     const col = ws.getColumn(c);
-    // ExcelJSのwidthは文字数単位、1文字≒8px程度
-    const w = col.width ? Math.round(col.width * 8) : 64;
+    const w = col.width ? Math.round(col.width * 7.5 + 5) : 72;
     colWidths.push(w);
   }
 
-  let html = '<table style="border-collapse:collapse;table-layout:fixed;">';
-  // colgroup
+  let html = '<table style="border-collapse:collapse;table-layout:fixed;background:#fff;">';
   html += '<colgroup>';
   for (let c = 0; c < colCount; c++) {
     html += `<col style="width:${colWidths[c]}px;">`;
@@ -137,7 +132,8 @@ function worksheetToHtml(ws: ExcelJS.Worksheet): string {
 
   for (let r = 1; r <= rowCount; r++) {
     const row = ws.getRow(r);
-    const rowHeight = row.height ? Math.round(row.height * 1.33) : 22;
+    // ExcelJSの行高さはポイント単位。1pt ≒ 1.333px。デフォルト行高さ15pt ≒ 20px
+    const rowHeight = row.height ? Math.round(row.height * 1.333) : 20;
     html += `<tr style="height:${rowHeight}px;">`;
 
     for (let c = 1; c <= colCount; c++) {
@@ -148,7 +144,6 @@ function worksheetToHtml(ws: ExcelJS.Worksheet): string {
       const text = cellValueToString(cell.value);
       const merge = mergedCells.get(key);
 
-      // スタイル構築
       const styles: string[] = [];
 
       // フォント
@@ -156,11 +151,13 @@ function worksheetToHtml(ws: ExcelJS.Worksheet): string {
       if (font) {
         if (font.bold) styles.push('font-weight:bold');
         if (font.italic) styles.push('font-style:italic');
-        if (font.size) styles.push(`font-size:${Math.round(font.size * 1.1)}px`);
+        // Excelのフォントサイズはpt単位。ブラウザでもptで指定
+        if (font.size) styles.push(`font-size:${font.size}pt`);
         if (font.underline) styles.push('text-decoration:underline');
         if (font.strike) styles.push('text-decoration:line-through');
         const fontColor = excelColorToCss(font.color, '');
         if (fontColor) styles.push(`color:${fontColor}`);
+        if (font.name) styles.push(`font-family:"${font.name}",sans-serif`);
       }
 
       // 背景色
@@ -189,15 +186,17 @@ function worksheetToHtml(ws: ExcelJS.Worksheet): string {
         if (alignment.wrapText) styles.push('white-space:pre-wrap;word-wrap:break-word');
       }
 
-      // 罫線
+      // 罫線 — 罫線がないセルはborder:noneのまま（Excelらしくグリッド線なし）
       const border = cell.border;
       if (border) {
-        styles.push(`border-top:${borderStyle(border.top)}`);
-        styles.push(`border-right:${borderStyle(border.right)}`);
-        styles.push(`border-bottom:${borderStyle(border.bottom)}`);
-        styles.push(`border-left:${borderStyle(border.left)}`);
-      } else {
-        styles.push('border:1px solid #e5e7eb');
+        const bt = borderStyle(border.top);
+        const br = borderStyle(border.right);
+        const bb = borderStyle(border.bottom);
+        const bl = borderStyle(border.left);
+        if (bt !== 'none') styles.push(`border-top:${bt}`);
+        if (br !== 'none') styles.push(`border-right:${br}`);
+        if (bb !== 'none') styles.push(`border-bottom:${bb}`);
+        if (bl !== 'none') styles.push(`border-left:${bl}`);
       }
 
       styles.push('padding:2px 4px');
@@ -210,7 +209,6 @@ function worksheetToHtml(ws: ExcelJS.Worksheet): string {
       }
       td += '>';
 
-      // テキストをHTMLエスケープ
       const escaped = text
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
@@ -226,24 +224,12 @@ function worksheetToHtml(ws: ExcelJS.Worksheet): string {
   return html;
 }
 
-// 列文字→数値変換 (A=1, B=2, ..., AA=27)
-function colLetterToNum(letters: string): number {
-  let n = 0;
-  for (let i = 0; i < letters.length; i++) {
-    n = n * 26 + (letters.charCodeAt(i) - 64);
-  }
-  return n;
-}
-
-const PX_TO_MM = 0.2645833333;
-
 const ExcelViewer: React.FC<Props> = ({ isOpen, onClose, fileUrl, fileName }) => {
   const [sheets, setSheets] = useState<ParsedSheet[]>([]);
   const [activeSheet, setActiveSheet] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [savingPdf, setSavingPdf] = useState(false);
-  const tableRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !fileUrl) return;
@@ -264,10 +250,7 @@ const ExcelViewer: React.FC<Props> = ({ isOpen, onClose, fileUrl, fileName }) =>
 
         const parsed: ParsedSheet[] = [];
         workbook.eachSheet((ws) => {
-          parsed.push({
-            name: ws.name,
-            html: worksheetToHtml(ws),
-          });
+          parsed.push({ name: ws.name, html: worksheetToHtml(ws) });
         });
 
         if (!cancelled) {
@@ -291,59 +274,31 @@ const ExcelViewer: React.FC<Props> = ({ isOpen, onClose, fileUrl, fileName }) =>
     return () => { cancelled = true; };
   }, [isOpen, fileUrl]);
 
-  const handleSavePdf = useCallback(async () => {
-    if (!tableRef.current || sheets.length === 0) return;
-    setSavingPdf(true);
-
+  // Excelファイルをダウンロード
+  const handleDownloadExcel = useCallback(async () => {
+    if (!fileUrl) return;
+    setDownloading(true);
     try {
-      const scale = 2;
-      const marginMm = 8;
-      const canvas = await html2canvas(tableRef.current, {
-        scale,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-      });
-
-      const contentW = (canvas.width / scale) * PX_TO_MM;
-      const contentH = (canvas.height / scale) * PX_TO_MM;
-      const pdfPageW = contentW + marginMm * 2;
-      const pdfPageH = contentH + marginMm * 2;
-      const orient = pdfPageW >= pdfPageH ? 'l' : 'p';
-
-      const pdf = new jsPDF({
-        orientation: orient as 'l' | 'p',
-        unit: 'mm',
-        format: [pdfPageW, pdfPageH],
-        compress: true,
-      });
-
-      pdf.setFillColor(255, 255, 255);
-      pdf.rect(0, 0, pdfPageW, pdfPageH, 'F');
-      pdf.addImage(canvas as any, 'PNG', marginMm, marginMm, contentW, contentH);
-
-      const pdfName = fileName.replace(/\.(xlsx|xls)$/i, '.pdf');
-      const blob = pdf.output('blob');
+      const response = await fetch(fileUrl);
+      if (!response.ok) throw new Error('ダウンロードに失敗しました');
+      const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = pdfName;
+      link.download = fileName;
       document.body.appendChild(link);
       link.click();
-
       setTimeout(() => {
-        try {
-          if (document.body.contains(link)) document.body.removeChild(link);
-        } catch { /* noop */ }
+        try { if (document.body.contains(link)) document.body.removeChild(link); } catch { /* noop */ }
         URL.revokeObjectURL(url);
       }, 0);
     } catch (err) {
-      console.error('PDF保存エラー:', err);
-      alert('PDF保存に失敗しました');
+      console.error('Excelダウンロードエラー:', err);
+      alert('ダウンロードに失敗しました');
     } finally {
-      setSavingPdf(false);
+      setDownloading(false);
     }
-  }, [sheets, fileName]);
+  }, [fileUrl, fileName]);
 
   if (!isOpen) return null;
 
@@ -355,14 +310,14 @@ const ExcelViewer: React.FC<Props> = ({ isOpen, onClose, fileUrl, fileName }) =>
           <span className="material-symbols-outlined text-lg">description</span>
           <h2 className="text-sm font-bold truncate flex-1">{fileName}</h2>
           <button
-            onClick={handleSavePdf}
-            disabled={savingPdf || loading || sheets.length === 0}
+            onClick={handleDownloadExcel}
+            disabled={downloading || loading}
             className="flex items-center gap-1 px-3 py-1.5 bg-white bg-opacity-20 hover:bg-opacity-30 rounded text-xs font-medium transition-colors disabled:opacity-50"
           >
             <span className="material-symbols-outlined text-sm">
-              {savingPdf ? 'progress_activity' : 'picture_as_pdf'}
+              {downloading ? 'progress_activity' : 'download'}
             </span>
-            {savingPdf ? 'PDF保存中...' : 'PDF保存'}
+            {downloading ? 'ダウンロード中...' : 'Excelダウンロード'}
           </button>
           <button
             onClick={onClose}
@@ -392,7 +347,7 @@ const ExcelViewer: React.FC<Props> = ({ isOpen, onClose, fileUrl, fileName }) =>
         )}
 
         {/* ボディ */}
-        <div className="flex-1 overflow-auto p-2 bg-gray-50">
+        <div className="flex-1 overflow-auto p-4 bg-gray-100">
           {loading ? (
             <div className="flex items-center justify-center py-16 text-gray-400 gap-2">
               <span className="animate-spin material-symbols-outlined text-lg">progress_activity</span>
@@ -405,8 +360,7 @@ const ExcelViewer: React.FC<Props> = ({ isOpen, onClose, fileUrl, fileName }) =>
             </div>
           ) : sheets.length > 0 ? (
             <div
-              ref={tableRef}
-              className="bg-white inline-block min-w-full"
+              className="bg-white shadow-sm inline-block min-w-full p-4"
               dangerouslySetInnerHTML={{ __html: sheets[activeSheet].html }}
             />
           ) : null}

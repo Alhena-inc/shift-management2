@@ -1193,18 +1193,8 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
     }
   }
 
-  // ダウンロード
   const outputBuffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([outputBuffer], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
   const fileName = `居宅介護計画書_${client.name}_${year}年${month}月.xlsx`;
-  link.download = fileName;
-  link.click();
-  URL.revokeObjectURL(url);
 
   // 自動保存: 利用者情報の居宅介護計画書セクションに保存
   try {
