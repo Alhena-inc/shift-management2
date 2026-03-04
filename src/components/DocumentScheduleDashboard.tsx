@@ -10,6 +10,7 @@ import { validateAllClients, getClientValidationStatus } from '../utils/document
 import { useAutoRegeneration } from '../hooks/useAutoRegeneration';
 import AutoRegenNotificationToast from './AutoRegenNotificationToast';
 import DocumentTimelineView from './DocumentTimelineView';
+import UpcomingScheduleCalendar from './UpcomingScheduleCalendar';
 
 const DOC_TYPE_LABELS: Record<ScheduleDocType, string> = {
   care_plan: '計画書',
@@ -865,6 +866,13 @@ const DocumentScheduleDashboard: React.FC = () => {
           <div className="text-3xl font-bold text-gray-900">{summary.total}</div>
         </div>
       </div>
+
+      {/* 3ヶ月カレンダー */}
+      <UpcomingScheduleCalendar
+        schedules={schedules}
+        monitoringSchedules={monitoringSchedules}
+        clients={clients}
+      />
 
       {/* 直近の予定一覧 */}
       {(() => {

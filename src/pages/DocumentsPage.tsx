@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmounts, loadBillingRecordsForMonth, loadShogaiDocuments, saveShogaiDocument, deleteShogaiDocument, uploadShogaiDocFile, loadAiPrompt, saveAiPrompt, saveDocumentSchedule, loadMonitoringSchedules, saveMonitoringSchedule, loadGoalPeriods, saveDocumentValidation, loadDocumentSchedules } from '../services/dataService';
+import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmounts, loadBillingRecordsForMonth, loadShogaiDocuments, saveShogaiDocument, deleteShogaiDocument, uploadShogaiDocFile, loadAiPrompt, saveAiPrompt, saveDocumentSchedule, loadMonitoringSchedules, saveMonitoringSchedule, saveDocumentValidation, loadDocumentSchedules } from '../services/dataService';
 import { computeNextDates } from '../utils/documentScheduleChecker';
 import { isGeminiAvailable } from '../services/geminiService';
 import { validateClientDocuments } from '../utils/documentValidation';
@@ -345,16 +345,6 @@ const DocumentsPage: React.FC = () => {
               cycleMonths, alertDaysBefore: 30,
               generationBatchId: batchId, linkedPlanScheduleId: savedPlan.id, periodStart: planCreationDate, periodEnd: nextDueDate,
             });
-            // v2: 目標期間が未設定ならアラート
-            try {
-              const existingGoals = await loadGoalPeriods(selectedClient.id);
-              const activeGoals = existingGoals.filter((g: any) => g.isActive);
-              if (activeGoals.length === 0) {
-                setTimeout(() => {
-                  alert(`${selectedClient.name}の目標期間が未設定です。\n書類スケジュール画面で長期・短期目標の期間を設定してください。`);
-                }, 500);
-              }
-            } catch { /* 目標期間チェック失敗は無視 */ }
           } else if (doc.id === 'monitoring') {
             const planRevisionNeeded = (generatorResult as any)?.planRevisionNeeded || 'なし';
             await saveDocumentSchedule({
