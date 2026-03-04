@@ -654,49 +654,20 @@ const DocumentsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* 集計バー + プログレス */}
+        {isBulkGenerating && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-5">
-          <div className="flex flex-wrap items-center gap-5">
-            <div className="flex items-center gap-4">
-              {/* 進捗リング風 */}
-              <div className="relative w-14 h-14 flex items-center justify-center">
-                <svg className="w-14 h-14 -rotate-90" viewBox="0 0 56 56">
-                  <circle cx="28" cy="28" r="24" fill="none" stroke="#E5E7EB" strokeWidth="4" />
-                  <circle
-                    cx="28" cy="28" r="24" fill="none"
-                    stroke="#4F46E5" strokeWidth="4" strokeLinecap="round"
-                    strokeDasharray={`${(generatedCount / totalDocs) * 150.8} 150.8`}
-                  />
-                </svg>
-                <span className="absolute text-xs font-bold text-gray-700">{generatedCount}/{totalDocs}</span>
-              </div>
-              <div>
-                <div className="text-sm font-medium text-gray-900">
-                  {generatedCount === 0 ? '未着手' : generatedCount === totalDocs ? '全書類生成済み' : `${generatedCount}件 生成済み`}
-                </div>
-                <div className="text-xs text-gray-500 mt-0.5">
-                  テンプレート {DOCUMENTS.filter(d => d.group === 'A').length}件 / 手動 {DOCUMENTS.filter(d => d.group === 'C').length}件
-                </div>
-              </div>
-            </div>
-
+          <div className="flex items-center justify-between text-xs text-gray-600 mb-1.5">
+            <span className="font-medium">生成中: {bulkProgress.currentName}</span>
+            <span>{bulkProgress.current} / {bulkProgress.total}</span>
           </div>
-
-          {isBulkGenerating && (
-            <div className="mt-4 pt-3 border-t border-gray-100">
-              <div className="flex items-center justify-between text-xs text-gray-600 mb-1.5">
-                <span className="font-medium">生成中: {bulkProgress.currentName}</span>
-                <span>{bulkProgress.current} / {bulkProgress.total}</span>
-              </div>
-              <div className="w-full bg-gray-100 rounded-full h-2">
-                <div
-                  className="bg-indigo-500 h-2 rounded-full transition-all duration-500 ease-out"
-                  style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
-                />
-              </div>
-            </div>
-          )}
+          <div className="w-full bg-gray-100 rounded-full h-2">
+            <div
+              className="bg-indigo-500 h-2 rounded-full transition-all duration-500 ease-out"
+              style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
+            />
+          </div>
         </div>
+        )}
 
         {/* エラー表示 */}
         {error && (
