@@ -38,13 +38,14 @@ interface Props {
   onUpdate: (categories: ShogaiSogoCareCategory[]) => void;
   onBack: () => void;
   source?: string;
+  onAfterSave?: (saved: ShogaiSogoCareCategory, previousItem: ShogaiSogoCareCategory | null) => void;
 }
 
 type View = 'list' | 'form';
 
 const isKaigo = (s: string) => s === 'kaigo';
 
-const ShogaiCareCategoryList: React.FC<Props> = ({ careClientId, categories, onUpdate, onBack, source = 'shogai' }) => {
+const ShogaiCareCategoryList: React.FC<Props> = ({ careClientId, categories, onUpdate, onBack, source = 'shogai', onAfterSave }) => {
   const [view, setView] = useState<View>('list');
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -84,6 +85,7 @@ const ShogaiCareCategoryList: React.FC<Props> = ({ careClientId, categories, onU
   const handleSave = async () => {
     setSaving(true);
     try {
+      const previousItem = editIndex !== null ? categories[editIndex] : null;
       const saved = await saveShogaiSogoCareCategory(formData, source);
       if (editIndex !== null) {
         const updated = [...categories];
@@ -92,6 +94,7 @@ const ShogaiCareCategoryList: React.FC<Props> = ({ careClientId, categories, onU
       } else {
         onUpdate([...categories, saved]);
       }
+      onAfterSave?.(saved, previousItem);
       setView('list');
     } catch (error) {
       console.error('障害支援区分保存エラー:', error);

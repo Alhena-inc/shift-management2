@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { CareClient, CareClientServices } from '../types';
-import { loadCareClients, saveCareClient, softDeleteCareClient } from '../services/dataService';
+import { loadCareClients, saveCareClient, softDeleteCareClient, loadDocumentSchedules, saveDocumentSchedule } from '../services/dataService';
 import ShogaiSogoTab from '../components/shogai/ShogaiSogoTab';
 import ChiikiSeikatsuTab from '../components/shogai/ChiikiSeikatsuTab';
 import KaigoHokenTab from '../components/kaigo/KaigoHokenTab';
@@ -539,7 +539,28 @@ const CareClientDetailPage: React.FC = () => {
 
           {/* 障害者総合支援タブ */}
           {activeTab === 'shogaiSogo' && (
-            <ShogaiSogoTab client={client} updateField={updateField} onSubPageChange={setIsSubPage} />
+            <ShogaiSogoTab
+              client={client}
+              updateField={updateField}
+              onSubPageChange={setIsSubPage}
+              onCertificateDataChanged={async (changeType, changedClientId) => {
+                try {
+                  const schedules = await loadDocumentSchedules(changedClientId);
+                  const carePlanSchedule = schedules.find(s => s.docType === 'care_plan');
+                  if (carePlanSchedule) {
+                    const reason = changeType === 'supply_amount' ? '支給量の変更' : '障害支援区分の変更';
+                    await saveDocumentSchedule({
+                      ...carePlanSchedule,
+                      planRevisionNeeded: 'あり',
+                      planRevisionReason: reason,
+                      status: 'overdue',
+                    });
+                  }
+                } catch (err) {
+                  console.error('計画書再生成フラグ保存エラー:', err);
+                }
+              }}
+            />
           )}
 
           {/* 介護保険タブ */}

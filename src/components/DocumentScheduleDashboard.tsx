@@ -10,7 +10,6 @@ import { validateAllClients, getClientValidationStatus } from '../utils/document
 import { useAutoRegeneration } from '../hooks/useAutoRegeneration';
 import AutoRegenNotificationToast from './AutoRegenNotificationToast';
 import DocumentTimelineView from './DocumentTimelineView';
-import UpcomingScheduleCalendar from './UpcomingScheduleCalendar';
 
 const DOC_TYPE_LABELS: Record<ScheduleDocType, string> = {
   care_plan: '計画書',
@@ -57,7 +56,7 @@ const DocumentScheduleDashboard: React.FC = () => {
   const hiddenDivRef = useRef<HTMLDivElement>(null);
 
   // 自動再生成
-  const { checkGoalExpiryAndRegen, notifications: regenNotifications, clearNotification: clearRegenNotification } = useAutoRegeneration({ externalHiddenDivRef: hiddenDivRef });
+  const { checkGoalExpiryAndRegen, regenerateForClient, triggerBillingPatternRegen, notifications: regenNotifications, clearNotification: clearRegenNotification } = useAutoRegeneration({ externalHiddenDivRef: hiddenDivRef });
 
   // v2 state
   const [goalPeriods, setGoalPeriods] = useState<GoalPeriod[]>([]);
@@ -90,6 +89,10 @@ const DocumentScheduleDashboard: React.FC = () => {
   const [emergencyClientId, setEmergencyClientId] = useState<string | null>(null);
   const [emergencyEvent, setEmergencyEvent] = useState<StatusChangeType>('CONDITION_WORSENED');
   const [emergencyNotes, setEmergencyNotes] = useState('');
+
+  // 手動計画書再生成
+  const [manualRegenClientId, setManualRegenClientId] = useState<string | null>(null);
+  const [situationChangeReason, setSituationChangeReason] = useState('');
 
   // ===== データ読み込み =====
   const loadData = useCallback(async () => {
@@ -189,10 +192,26 @@ const DocumentScheduleDashboard: React.FC = () => {
             if (tejunshoSched && tejunshoSched.status !== 'overdue' && tejunshoSched.status !== 'generating') {
               await saveDocumentSchedule({ ...tejunshoSched, status: 'due_soon' }).catch(() => {});
             }
+            // 居宅介護計画書も再作成が必要 — 実績のケア内容(週間予定)が変わった
+            const carePlanSched = allSchedules.find(s => s.careClientId === client.id && s.docType === 'care_plan');
+            if (carePlanSched && carePlanSched.lastGeneratedAt) {
+              await saveDocumentSchedule({
+                ...carePlanSched,
+                status: 'overdue',
+                planRevisionNeeded: 'あり',
+                planRevisionReason: '実績パターンの変更',
+              }).catch(() => {});
+            }
           }
         }
         setBillingCountByClient(countMap);
         setPatternChangedClientIds(changedIds);
+
+        // 実績パターン変更があるクライアントの計画書を自動再生成
+        if (changedIds.size > 0) {
+          const changedClients = activeClients.filter(c => changedIds.has(c.id));
+          triggerBillingPatternRegen(changedClients);
+        }
       } catch {
         // パターン検知失敗は無視
       }
@@ -208,7 +227,7 @@ const DocumentScheduleDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [checkGoalExpiryAndRegen]);
+  }, [checkGoalExpiryAndRegen, triggerBillingPatternRegen]);
 
   useEffect(() => {
     loadData();
@@ -354,6 +373,35 @@ const DocumentScheduleDashboard: React.FC = () => {
       alert(`作成エラー: ${err.message || err}`);
     }
   }, [emergencyClientId, emergencyEvent, emergencyNotes, loadData]);
+
+  // 手動計画書再生成
+  const handleManualPlanRegeneration = useCallback(async (
+    clientId: string,
+    reason: string,
+    triggerType: 'service_plan_change' | 'situation_change',
+  ) => {
+    const client = clients.find(c => c.id === clientId);
+    if (!client) return;
+
+    // 対象クライアントのcare_planスケジュールにplanRevisionReasonを保存
+    const carePlanSchedule = schedules.find(s => s.careClientId === clientId && s.docType === 'care_plan');
+    if (carePlanSchedule) {
+      try {
+        await saveDocumentSchedule({
+          ...carePlanSchedule,
+          planRevisionReason: reason,
+          planRevisionNeeded: 'あり',
+        });
+      } catch (err) {
+        console.error('planRevisionReason保存エラー:', err);
+      }
+    }
+
+    await regenerateForClient(client, triggerType, reason);
+    setManualRegenClientId(null);
+    setSituationChangeReason('');
+    await loadData();
+  }, [clients, schedules, regenerateForClient, loadData]);
 
   // v2: モニタリングスケジュール実行
   const handleExecuteMonitoringSchedule = useCallback(async (schedule: MonitoringScheduleItem) => {
@@ -526,12 +574,20 @@ const DocumentScheduleDashboard: React.FC = () => {
         }
       }
 
-      // パターン変更検知された手順書はアラートとして追加
+      // パターン変更検知された手順書・計画書はアラートとして追加
       if (patternChangedClientIds.has(client.id)) {
         items.push({
           clientId: client.id,
           clientName: client.name || '',
           docType: 'tejunsho',
+          dueDate: today,
+          daysUntil: 0,
+          isPatternChange: true,
+        });
+        items.push({
+          clientId: client.id,
+          clientName: client.name || '',
+          docType: 'care_plan',
           dueDate: today,
           daysUntil: 0,
           isPatternChange: true,
@@ -866,13 +922,6 @@ const DocumentScheduleDashboard: React.FC = () => {
           <div className="text-3xl font-bold text-gray-900">{summary.total}</div>
         </div>
       </div>
-
-      {/* 3ヶ月カレンダー */}
-      <UpcomingScheduleCalendar
-        schedules={schedules}
-        monitoringSchedules={monitoringSchedules}
-        clients={clients}
-      />
 
       {/* 直近の予定一覧 */}
       {(() => {
@@ -1260,6 +1309,67 @@ const DocumentScheduleDashboard: React.FC = () => {
                           </button>
                         </div>
                       )}
+
+                      {/* 計画書 手動再生成セクション */}
+                      <div className="mt-4 pt-3 border-t border-gray-200">
+                        <h5 className="text-xs font-bold text-gray-700 mb-2">計画書 手動再生成</h5>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => {
+                              if (!confirm(`${client.name}のサービス等利用計画変更に伴い、計画書を再作成しますか？`)) return;
+                              handleManualPlanRegeneration(client.id, 'サービス等利用計画の変更', 'service_plan_change');
+                            }}
+                            disabled={executingClientId === client.id}
+                            className="px-3 py-1.5 rounded text-xs border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                          >
+                            サービス等利用計画変更に伴う再作成
+                          </button>
+                          <button
+                            onClick={() => setManualRegenClientId(manualRegenClientId === client.id ? null : client.id)}
+                            disabled={executingClientId === client.id}
+                            className="px-3 py-1.5 rounded text-xs border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                          >
+                            状況の変化による再作成
+                          </button>
+                        </div>
+                        {manualRegenClientId === client.id && (
+                          <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                            <label className="text-xs font-medium text-amber-800 block mb-1">状況の変化の理由</label>
+                            <textarea
+                              value={situationChangeReason}
+                              onChange={(e) => setSituationChangeReason(e.target.value)}
+                              rows={2}
+                              className="w-full px-3 py-2 border border-amber-300 rounded text-sm focus:ring-2 focus:ring-amber-400 focus:border-transparent resize-y"
+                              placeholder="変化の内容を入力してください..."
+                            />
+                            <div className="flex gap-2 mt-2">
+                              <button
+                                onClick={() => {
+                                  if (!situationChangeReason.trim()) {
+                                    alert('理由を入力してください');
+                                    return;
+                                  }
+                                  handleManualPlanRegeneration(
+                                    client.id,
+                                    `状況の変化: ${situationChangeReason.trim()}`,
+                                    'situation_change',
+                                  );
+                                }}
+                                disabled={executingClientId === client.id}
+                                className="px-3 py-1.5 rounded text-xs bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 font-medium"
+                              >
+                                再作成実行
+                              </button>
+                              <button
+                                onClick={() => { setManualRegenClientId(null); setSituationChangeReason(''); }}
+                                className="px-3 py-1.5 rounded text-xs border border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+                              >
+                                キャンセル
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* モニタリングタイムライン */}

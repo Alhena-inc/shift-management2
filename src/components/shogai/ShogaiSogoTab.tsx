@@ -29,6 +29,7 @@ interface Props {
   client: CareClient;
   updateField: (field: keyof CareClient, value: any) => void;
   onSubPageChange?: (isSubPage: boolean) => void;
+  onCertificateDataChanged?: (changeType: 'supply_amount' | 'care_category', clientId: string) => void;
 }
 
 type SubPage = null | 'jukyu' | 'cities' | 'categories'
@@ -38,7 +39,7 @@ type SubPage = null | 'jukyu' | 'cities' | 'categories'
   | 'tantoushaKaigi' | 'assessment' | 'monitoring' | 'tejunsho'
   | 'usedServices';
 
-const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }) => {
+const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange, onCertificateDataChanged }) => {
   const [cities, setCities] = useState<ShogaiSogoCity[]>([]);
   const [categories, setCategories] = useState<ShogaiSogoCareCategory[]>([]);
   const [burdenLimits, setBurdenLimits] = useState<ShogaiBurdenLimit[]>([]);
@@ -155,6 +156,12 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
         categories={categories}
         onUpdate={setCategories}
         onBack={() => setSubPage('jukyu')}
+        onAfterSave={(saved, previousItem) => {
+          // 支援区分が変わった or 新規追加 → 通知
+          if (!previousItem || previousItem.supportCategory !== saved.supportCategory) {
+            onCertificateDataChanged?.('care_category', client.id);
+          }
+        }}
       />
     );
   }
@@ -324,6 +331,12 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange }
         onUpdateContract={setContractSupplyAmounts}
         onUpdateDecided={setDecidedSupplyAmounts}
         onBack={() => setSubPage(null)}
+        onAfterSave={(saved, previousItem) => {
+          // 支給量が変わった or 新規追加 → 通知
+          if (!previousItem || previousItem.supplyAmount !== saved.supplyAmount) {
+            onCertificateDataChanged?.('supply_amount', client.id);
+          }
+        }}
       />
     );
   }

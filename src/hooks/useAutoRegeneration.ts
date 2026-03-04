@@ -5,7 +5,7 @@ import { loadDocumentSchedules, loadCareClients, loadGoalPeriods } from '../serv
 import { executeScheduleAction } from '../utils/documentScheduleExecutor';
 import { toDateString, addDays } from '../utils/documentScheduleChecker';
 
-export type RegenTriggerType = 'billing_pattern' | 'assessment_upload' | 'goal_expiry';
+export type RegenTriggerType = 'billing_pattern' | 'assessment_upload' | 'goal_expiry' | 'certificate_update' | 'service_plan_change' | 'situation_change';
 
 export interface RegenNotification {
   id: string;
@@ -24,6 +24,9 @@ const TRIGGER_LABELS: Record<RegenTriggerType, string> = {
   billing_pattern: 'ケアパターン変更',
   assessment_upload: 'アセスメント更新',
   goal_expiry: '目標期間満了',
+  certificate_update: '受給者証の更新・変更',
+  service_plan_change: 'サービス等利用計画の変更',
+  situation_change: '状況の変化',
 };
 
 const GOAL_CHECK_THROTTLE_KEY = 'auto_regen_goal_check_last';
@@ -156,26 +159,43 @@ export function useAutoRegeneration(options: UseAutoRegenerationOptions = {}) {
 
       const clientMap = new Map(allClients.filter(c => !c.deleted).map(c => [c.id, c]));
 
-      // 30日以内に満了するアクティブな目標を収集（クライアント単位で重複排除）
-      const clientsNeedingCheck = new Map<string, GoalPeriod[]>();
+      // 目標をexpired（期限切れ）とexpiring（30日以内に満了）に分離
+      const expiredClients = new Map<string, GoalPeriod[]>();
+      const expiringClients = new Map<string, GoalPeriod[]>();
+
       for (const goal of allGoals) {
         if (!goal.isActive) continue;
-        if (goal.endDate > threshold) continue; // 30日より先
         const client = clientMap.get(goal.careClientId);
         if (!client) continue;
 
-        const existing = clientsNeedingCheck.get(goal.careClientId) || [];
-        existing.push(goal);
-        clientsNeedingCheck.set(goal.careClientId, existing);
+        if (goal.endDate < today) {
+          // expired: 目標期間が既に過ぎている → 即座に再生成
+          const existing = expiredClients.get(goal.careClientId) || [];
+          existing.push(goal);
+          expiredClients.set(goal.careClientId, existing);
+        } else if (goal.endDate <= threshold) {
+          // expiring: 30日以内に満了 → AI判定
+          const existing = expiringClients.get(goal.careClientId) || [];
+          existing.push(goal);
+          expiringClients.set(goal.careClientId, existing);
+        }
       }
 
-      if (clientsNeedingCheck.size === 0) return;
+      // expired → AI判定なしで即座に再生成
+      for (const [clientId, goals] of expiredClients) {
+        const client = clientMap.get(clientId);
+        if (!client) continue;
+        const goalTexts = goals.map(g => g.goalText || '未設定').join('、');
+        await regenerateForClient(client, 'goal_expiry', `目標期間終了: ${goalTexts}`);
+      }
 
-      // AI判定: Geminiで目標変更が必要かチェック
+      // expiring → 既存のAI判定ロジック
+      if (expiringClients.size === 0) return;
+
       const { isGeminiAvailable: checkGemini, generateText } = await import('../services/geminiService');
       if (!checkGemini()) return;
 
-      for (const [clientId, goals] of clientsNeedingCheck) {
+      for (const [clientId, goals] of expiringClients) {
         const client = clientMap.get(clientId);
         if (!client) continue;
 
@@ -224,6 +244,7 @@ ${goalDescriptions}
     triggerBillingPatternRegen,
     triggerAssessmentRegen,
     checkGoalExpiryAndRegen,
+    regenerateForClient,
     hiddenDivRef: internalHiddenDivRef,
   };
 }
