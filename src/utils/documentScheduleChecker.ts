@@ -1,5 +1,38 @@
 import type { DocumentSchedule, ScheduleDocType, ScheduleAction, GoalPeriod, MonitoringScheduleItem, MonitoringAction } from '../types/documentSchedule';
-import type { CareClient } from '../types';
+import type { CareClient, BillingRecord } from '../types';
+
+// ========== ケアパターン変更検知 ==========
+
+export const getCarePattern = (records: BillingRecord[]): Set<string> => {
+  const patterns = new Set<string>();
+  for (const r of records) {
+    if (!r.serviceDate || !r.serviceCode) continue;
+    const dayOfWeek = new Date(r.serviceDate + 'T00:00:00').getDay();
+    patterns.add(`${dayOfWeek}_${r.startTime}-${r.endTime}_${r.serviceCode}`);
+  }
+  return patterns;
+};
+
+export const detectCarePatternChanges = (
+  clientName: string,
+  prevRecords: BillingRecord[],
+  currRecords: BillingRecord[]
+): boolean => {
+  const prevClientRecords = prevRecords.filter(r => r.clientName === clientName);
+  const currClientRecords = currRecords.filter(r => r.clientName === clientName);
+
+  if (prevClientRecords.length === 0 && currClientRecords.length === 0) return false;
+  if (prevClientRecords.length === 0 || currClientRecords.length === 0) return true;
+
+  const prevPattern = getCarePattern(prevClientRecords);
+  const currPattern = getCarePattern(currClientRecords);
+
+  if (prevPattern.size !== currPattern.size) return true;
+  for (const p of prevPattern) {
+    if (!currPattern.has(p)) return true;
+  }
+  return false;
+};
 
 // ========== 日付ユーティリティ ==========
 

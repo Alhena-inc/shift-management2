@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { DocumentSchedule, ScheduleAction, ScheduleDocType, GoalPeriod, MonitoringScheduleItem, MonitoringAction, StatusChangeType, ValidationResult } from '../types/documentSchedule';
 import { STATUS_CHANGE_LABELS } from '../types/documentSchedule';
-import type { CareClient, BillingRecord } from '../types';
+import type { CareClient } from '../types';
 import { loadDocumentSchedules, saveDocumentSchedule, loadCareClients, loadGoalPeriods, loadMonitoringSchedules, saveMonitoringSchedule, loadDocumentValidations, saveDocumentValidation, loadHelpers, loadBillingRecordsForMonth } from '../services/dataService';
-import { checkDocumentSchedules, createInitialSchedules, toDateString, checkMonitoringSchedules, checkContractDateAlerts } from '../utils/documentScheduleChecker';
+import { checkDocumentSchedules, createInitialSchedules, toDateString, checkMonitoringSchedules, checkContractDateAlerts, detectCarePatternChanges } from '../utils/documentScheduleChecker';
 import { executeScheduleAction } from '../utils/documentScheduleExecutor';
 import { executeMonitoringScheduleAction } from '../utils/documentScheduleExecutor';
 import { validateAllClients, getClientValidationStatus } from '../utils/documentValidation';
+import { useAutoRegeneration } from '../hooks/useAutoRegeneration';
+import AutoRegenNotificationToast from './AutoRegenNotificationToast';
 import DocumentTimelineView from './DocumentTimelineView';
 
 const DOC_TYPE_LABELS: Record<ScheduleDocType, string> = {
@@ -15,40 +17,7 @@ const DOC_TYPE_LABELS: Record<ScheduleDocType, string> = {
   monitoring: 'モニタリング',
 };
 
-// ケアパターン変更検知
-const getCarePattern = (records: BillingRecord[]): Set<string> => {
-  const patterns = new Set<string>();
-  for (const r of records) {
-    if (!r.serviceDate || !r.serviceCode) continue;
-    const dayOfWeek = new Date(r.serviceDate + 'T00:00:00').getDay();
-    patterns.add(`${dayOfWeek}_${r.startTime}-${r.endTime}_${r.serviceCode}`);
-  }
-  return patterns;
-};
-
-const detectCarePatternChanges = (
-  clientName: string,
-  prevRecords: BillingRecord[],
-  currRecords: BillingRecord[]
-): boolean => {
-  const prevClientRecords = prevRecords.filter(r => r.clientName === clientName);
-  const currClientRecords = currRecords.filter(r => r.clientName === clientName);
-
-  // 両方実績がない場合は変更なし
-  if (prevClientRecords.length === 0 && currClientRecords.length === 0) return false;
-  // 片方だけ実績がある場合は変更あり（新規・終了）
-  if (prevClientRecords.length === 0 || currClientRecords.length === 0) return true;
-
-  const prevPattern = getCarePattern(prevClientRecords);
-  const currPattern = getCarePattern(currClientRecords);
-
-  // 差分があれば変更あり
-  if (prevPattern.size !== currPattern.size) return true;
-  for (const p of prevPattern) {
-    if (!currPattern.has(p)) return true;
-  }
-  return false;
-};
+// ケアパターン変更検知: documentScheduleChecker.ts からインポート
 
 const MONITORING_TYPE_LABELS: Record<string, string> = {
   short_term: '短期目標',
@@ -85,6 +54,9 @@ const DocumentScheduleDashboard: React.FC = () => {
   const [progressMessage, setProgressMessage] = useState<string>('');
   const [isBulkRunning, setIsBulkRunning] = useState(false);
   const hiddenDivRef = useRef<HTMLDivElement>(null);
+
+  // 自動再生成
+  const { checkGoalExpiryAndRegen, notifications: regenNotifications, clearNotification: clearRegenNotification } = useAutoRegeneration({ externalHiddenDivRef: hiddenDivRef });
 
   // v2 state
   const [goalPeriods, setGoalPeriods] = useState<GoalPeriod[]>([]);
@@ -227,12 +199,15 @@ const DocumentScheduleDashboard: React.FC = () => {
       // 契約日チェック
       const cAlerts = checkContractDateAlerts(allSchedules, activeClients, today);
       setContractAlerts(cAlerts);
+
+      // トリガー3: 目標期間満了チェック → AI判定 → 必要なら自動再生成
+      checkGoalExpiryAndRegen();
     } catch (err: any) {
       setError(err.message || 'データの読み込みに失敗しました');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [checkGoalExpiryAndRegen]);
 
   useEffect(() => {
     loadData();
@@ -1413,6 +1388,9 @@ const DocumentScheduleDashboard: React.FC = () => {
         </div>
       )}
       </>)}
+
+      {/* 自動再生成通知 */}
+      <AutoRegenNotificationToast notifications={regenNotifications} onClear={clearRegenNotification} />
     </div>
   );
 };

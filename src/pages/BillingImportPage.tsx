@@ -2,6 +2,9 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { parseBillingCsv, type ParsedBillingRecord, type SkippedRow } from '../utils/billingCsvParser';
 import { parseBillingPdf } from '../utils/billingPdfParser';
 import { saveBillingRecords, loadBillingRecordsForMonth, deleteBillingRecordsByBatch, loadCareClients } from '../services/dataService';
+import { detectCarePatternChanges } from '../utils/documentScheduleChecker';
+import { useAutoRegeneration } from '../hooks/useAutoRegeneration';
+import AutoRegenNotificationToast from '../components/AutoRegenNotificationToast';
 import type { BillingRecord, CareClient } from '../types';
 
 type ImportState = 'idle' | 'previewing' | 'importing' | 'done' | 'error';
@@ -22,6 +25,9 @@ const BillingImportPage: React.FC = () => {
   const [result, setResult] = useState<ImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+
+  // 自動再生成
+  const { triggerBillingPatternRegen, notifications, clearNotification, hiddenDivRef: autoRegenHiddenDivRef } = useAutoRegeneration();
 
   // 年月セレクタ
   const [year, setYear] = useState(now.getFullYear());
@@ -269,11 +275,36 @@ const BillingImportPage: React.FC = () => {
       });
       setState('done');
       reloadRecords();
+
+      // トリガー1: パターン変更検知 → 計画書自動再生成
+      try {
+        const prevDate = new Date(year, month - 2, 1);
+        const prevYear = prevDate.getFullYear();
+        const prevMonth = prevDate.getMonth() + 1;
+        const [prevRecords, currRecords] = await Promise.all([
+          loadBillingRecordsForMonth(prevYear, prevMonth),
+          loadBillingRecordsForMonth(year, month),
+        ]);
+        const clients = await loadCareClients();
+        const activeClients = clients.filter(c => !c.deleted);
+        const changedClients: CareClient[] = [];
+        for (const client of activeClients) {
+          if (!client.name) continue;
+          if (detectCarePatternChanges(client.name, prevRecords, currRecords)) {
+            changedClients.push(client);
+          }
+        }
+        if (changedClients.length > 0) {
+          triggerBillingPatternRegen(changedClients);
+        }
+      } catch (err) {
+        console.warn('[BillingImport] パターン変更検知に失敗:', err);
+      }
     } catch (err: any) {
       setErrorMessage(err.message || '取り込みに失敗しました');
       setState('error');
     }
-  }, [records, skippedRows, reloadRecords]);
+  }, [records, skippedRows, reloadRecords, year, month, triggerBillingPatternRegen]);
 
   const handleReset = useCallback(() => {
     setState('idle');
@@ -663,6 +694,12 @@ const BillingImportPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* 自動再生成用hiddenDiv */}
+      <div ref={autoRegenHiddenDivRef} style={{ display: 'none' }} />
+
+      {/* 自動再生成通知 */}
+      <AutoRegenNotificationToast notifications={notifications} onClear={clearNotification} />
     </div>
   );
 };

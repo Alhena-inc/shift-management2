@@ -1,7 +1,7 @@
 import type { ScheduleAction, MonitoringScheduleItem, DocumentSchedule } from '../types/documentSchedule';
 import type { CareClient } from '../types';
-import { saveDocumentSchedule, saveMonitoringSchedule, saveDocumentValidation, loadBillingRecordsForMonth, loadShiftsForMonth, loadHelpers, loadCareClients, loadAiPrompt, loadDocumentSchedules, loadShogaiDocuments, loadShogaiCarePlanDocuments } from '../services/dataService';
-import { computeNextDates, toDateString } from './documentScheduleChecker';
+import { saveDocumentSchedule, saveMonitoringSchedule, saveDocumentValidation, loadBillingRecordsForMonth, loadShiftsForMonth, loadHelpers, loadCareClients, loadAiPrompt, loadDocumentSchedules, loadShogaiDocuments, loadShogaiCarePlanDocuments, saveGoalPeriod, loadGoalPeriods } from '../services/dataService';
+import { computeNextDates, toDateString, addMonths } from './documentScheduleChecker';
 import { validateClientDocuments } from './documentValidation';
 
 interface ExecutionResult {
@@ -187,9 +187,45 @@ export async function executeScheduleAction(
 
       // 計画書生成
       const { generate: generatePlan } = await import('./documentGenerators/carePlanGenerator');
-      await generatePlan(ctx);
+      const planResult = await generatePlan(ctx);
 
       const generatedAt = new Date().toISOString();
+
+      // GoalPeriod自動保存（AI判定結果から期間を設定）
+      try {
+        const existingGoals = await loadGoalPeriods(client.id);
+        // 既存のアクティブGoalPeriodを無効化
+        for (const g of existingGoals) {
+          if (g.isActive) {
+            await saveGoalPeriod({ ...g, isActive: false });
+          }
+        }
+        const todayForGoal = toDateString(new Date());
+        // 短期目標
+        await saveGoalPeriod({
+          careClientId: client.id,
+          goalType: 'short_term',
+          goalIndex: 0,
+          goalText: null,
+          startDate: todayForGoal,
+          endDate: addMonths(todayForGoal, planResult.short_term_goal_months),
+          linkedPlanId: null,
+          isActive: true,
+        });
+        // 長期目標
+        await saveGoalPeriod({
+          careClientId: client.id,
+          goalType: 'long_term',
+          goalIndex: 0,
+          goalText: null,
+          startDate: todayForGoal,
+          endDate: addMonths(todayForGoal, planResult.long_term_goal_months),
+          linkedPlanId: null,
+          isActive: true,
+        });
+      } catch (err) {
+        console.warn('[Executor] GoalPeriod自動保存に失敗:', err);
+      }
       const { nextDueDate, alertDate, expiryDate } = computeNextDates(generatedAt, schedule.cycleMonths, schedule.alertDaysBefore);
 
       // バッチID生成
