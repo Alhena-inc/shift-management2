@@ -9,37 +9,37 @@ interface MonitoringSheetYoshikiA {
   no: string;
   periodFrom: string;
   periodTo: string;
-  eval1Selection: 1 | 2 | 3;   // ①サービスの実施状況
+  eval1Selection: 0 | 1 | 2 | 3;   // ①サービスの実施状況 (0=未選択)
   eval1Notes: string;
-  eval2Selection: 1 | 2 | 3;   // ②利用者及び家族の満足度
+  eval2Selection: 0 | 1 | 2 | 3;   // ②利用者及び家族の満足度
   eval2Notes: string;
-  eval3Selection: 1 | 2;       // ③心身の状況の変化
+  eval3Selection: 0 | 1 | 2;       // ③心身の状況の変化
   eval3Notes: string;
-  eval4Selection: 1 | 2;       // ④サービス変更の必要性
+  eval4Selection: 0 | 1 | 2;       // ④サービス変更の必要性
   eval4Notes: string;
   implementationDate: string;
   implementerName: string;
 }
 
-// ==================== テストデータ ====================
+// ==================== テストデータ（空白） ====================
 const TEST_DATA: MonitoringSheetYoshikiA = {
-  clientName: '新井達也',
-  serviceType: '居宅介護（身体介護）',
-  officeName: '訪問介護事業所のあ',
-  creationDate: '令和8年3月5日',
-  no: '1',
-  periodFrom: '令和7年10月1日',
-  periodTo: '令和8年3月31日',
-  eval1Selection: 1,
+  clientName: '',
+  serviceType: '',
+  officeName: '',
+  creationDate: '',
+  no: '',
+  periodFrom: '',
+  periodTo: '',
+  eval1Selection: 0,
   eval1Notes: '',
-  eval2Selection: 1,
+  eval2Selection: 0,
   eval2Notes: '',
-  eval3Selection: 1,
-  eval3Notes: '日常生活動作は安定しており、心身の状態に大きな変化は見られない。食事摂取量・水分量ともに良好。',
-  eval4Selection: 1,
+  eval3Selection: 0,
+  eval3Notes: '',
+  eval4Selection: 0,
   eval4Notes: '',
-  implementationDate: '令和8年3月5日',
-  implementerName: '山田花子',
+  implementationDate: '',
+  implementerName: '',
 };
 
 // ==================== スタイル定数 ====================
@@ -96,114 +96,108 @@ export async function generateMonitoringSheetYoshikiA(data?: MonitoringSheetYosh
     margins: { left: 0.4, right: 0.4, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 },
   };
 
-  // ===== Row 1: 空行 =====
-  ws.getRow(1).height = 8;
+  // ===== Row 1: タイトル =====
+  ws.getCell('A1').value = '様式A';
+  ws.getCell('A1').font = titleFont;
+  ws.getRow(1).height = 22;
 
-  // ===== Row 2: タイトル =====
-  ws.getCell('A2').value = '様式A';
-  ws.getCell('A2').font = titleFont;
-  ws.getRow(2).height = 22;
+  // ===== Row 2: 利用者名 / サービス種類 / 事業所 =====
+  ws.getRow(2).height = 20;
 
-  // ===== Row 3: 利用者名 / サービス種類 / 事業所 =====
+  ws.getCell('A2').value = '利用者名';
+  ws.getCell('A2').font = labelFont;
+  ws.getCell('A2').border = allBorders;
+  ws.getCell('A2').fill = labelFill;
+  ws.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
+
+  ws.mergeCells('B2:C2');
+  ws.getCell('B2').value = d.clientName ? `${d.clientName}　殿` : '';
+  ws.getCell('B2').font = dataFont;
+  ws.getCell('B2').border = allBorders;
+  ws.getCell('B2').alignment = { vertical: 'middle' };
+
+  ws.mergeCells('D2:E2');
+  ws.getCell('D2').value = 'サービス種類';
+  ws.getCell('D2').font = labelFont;
+  ws.getCell('D2').border = allBorders;
+  ws.getCell('D2').fill = labelFill;
+  ws.getCell('D2').alignment = { horizontal: 'center', vertical: 'middle' };
+
+  ws.mergeCells('F2:I2');
+  ws.getCell('F2').value = d.serviceType;
+  ws.getCell('F2').font = dataFont;
+  ws.getCell('F2').border = allBorders;
+  ws.getCell('F2').alignment = { vertical: 'middle' };
+
+  ws.mergeCells('J2:K2');
+  ws.getCell('J2').value = '事業所';
+  ws.getCell('J2').font = labelFont;
+  ws.getCell('J2').border = allBorders;
+  ws.getCell('J2').fill = labelFill;
+  ws.getCell('J2').alignment = { horizontal: 'center', vertical: 'middle' };
+
+  ws.mergeCells('L2:O2');
+  ws.getCell('L2').value = d.officeName;
+  ws.getCell('L2').font = dataFont;
+  ws.getCell('L2').border = allBorders;
+  ws.getCell('L2').alignment = { vertical: 'middle' };
+
+  // ===== Row 3: 作成日 / No / 期間 =====
   ws.getRow(3).height = 20;
 
-  ws.getCell('A3').value = '利用者名';
+  ws.getCell('A3').value = '作成日';
   ws.getCell('A3').font = labelFont;
   ws.getCell('A3').border = allBorders;
   ws.getCell('A3').fill = labelFill;
   ws.getCell('A3').alignment = { horizontal: 'center', vertical: 'middle' };
 
   ws.mergeCells('B3:C3');
-  ws.getCell('B3').value = `${d.clientName}　殿`;
+  ws.getCell('B3').value = d.creationDate;
   ws.getCell('B3').font = dataFont;
   ws.getCell('B3').border = allBorders;
   ws.getCell('B3').alignment = { vertical: 'middle' };
 
-  ws.mergeCells('D3:E3');
-  ws.getCell('D3').value = 'サービス種類';
+  ws.getCell('D3').value = 'No';
   ws.getCell('D3').font = labelFont;
   ws.getCell('D3').border = allBorders;
   ws.getCell('D3').fill = labelFill;
   ws.getCell('D3').alignment = { horizontal: 'center', vertical: 'middle' };
 
-  ws.mergeCells('F3:I3');
-  ws.getCell('F3').value = d.serviceType;
-  ws.getCell('F3').font = dataFont;
+  ws.getCell('E3').value = d.no;
+  ws.getCell('E3').font = dataFont;
+  ws.getCell('E3').border = allBorders;
+  ws.getCell('E3').alignment = { vertical: 'middle' };
+
+  ws.mergeCells('F3:G3');
+  ws.getCell('F3').value = '期間';
+  ws.getCell('F3').font = labelFont;
   ws.getCell('F3').border = allBorders;
-  ws.getCell('F3').alignment = { vertical: 'middle' };
+  ws.getCell('F3').fill = labelFill;
+  ws.getCell('F3').alignment = { horizontal: 'center', vertical: 'middle' };
 
-  ws.mergeCells('J3:K3');
-  ws.getCell('J3').value = '事業所';
-  ws.getCell('J3').font = labelFont;
+  ws.mergeCells('H3:I3');
+  ws.getCell('H3').value = d.periodFrom ? `${d.periodFrom}　から` : '';
+  ws.getCell('H3').font = dataFont;
+  ws.getCell('H3').border = allBorders;
+  ws.getCell('H3').alignment = { vertical: 'middle' };
+
+  ws.mergeCells('J3:L3');
+  ws.getCell('J3').value = d.periodTo ? `${d.periodTo}　まで` : '';
+  ws.getCell('J3').font = dataFont;
   ws.getCell('J3').border = allBorders;
-  ws.getCell('J3').fill = labelFill;
-  ws.getCell('J3').alignment = { horizontal: 'center', vertical: 'middle' };
+  ws.getCell('J3').alignment = { vertical: 'middle' };
 
-  ws.mergeCells('L3:O3');
-  ws.getCell('L3').value = d.officeName;
-  ws.getCell('L3').font = dataFont;
-  ws.getCell('L3').border = allBorders;
-  ws.getCell('L3').alignment = { vertical: 'middle' };
+  // M3:O3 空セル（罫線だけ）
+  ws.mergeCells('M3:O3');
+  ws.getCell('M3').border = allBorders;
 
-  // ===== Row 4: 作成日 / No / 期間 =====
-  ws.getRow(4).height = 20;
+  // ===== Row 4: 評価タイトル行 =====
+  ws.getRow(4).height = 28;
 
-  ws.getCell('A4').value = '作成日';
-  ws.getCell('A4').font = labelFont;
+  // A4-B4: 空（左側のラベル列）
+  ws.mergeCells('A4:B4');
   ws.getCell('A4').border = allBorders;
   ws.getCell('A4').fill = labelFill;
-  ws.getCell('A4').alignment = { horizontal: 'center', vertical: 'middle' };
-
-  ws.mergeCells('B4:C4');
-  ws.getCell('B4').value = d.creationDate;
-  ws.getCell('B4').font = dataFont;
-  ws.getCell('B4').border = allBorders;
-  ws.getCell('B4').alignment = { vertical: 'middle' };
-
-  ws.getCell('D4').value = 'No';
-  ws.getCell('D4').font = labelFont;
-  ws.getCell('D4').border = allBorders;
-  ws.getCell('D4').fill = labelFill;
-  ws.getCell('D4').alignment = { horizontal: 'center', vertical: 'middle' };
-
-  ws.getCell('E4').value = d.no;
-  ws.getCell('E4').font = dataFont;
-  ws.getCell('E4').border = allBorders;
-  ws.getCell('E4').alignment = { vertical: 'middle' };
-
-  ws.mergeCells('F4:G4');
-  ws.getCell('F4').value = '期間';
-  ws.getCell('F4').font = labelFont;
-  ws.getCell('F4').border = allBorders;
-  ws.getCell('F4').fill = labelFill;
-  ws.getCell('F4').alignment = { horizontal: 'center', vertical: 'middle' };
-
-  ws.mergeCells('H4:I4');
-  ws.getCell('H4').value = `${d.periodFrom}　から`;
-  ws.getCell('H4').font = dataFont;
-  ws.getCell('H4').border = allBorders;
-  ws.getCell('H4').alignment = { vertical: 'middle' };
-
-  ws.mergeCells('J4:L4');
-  ws.getCell('J4').value = `${d.periodTo}　まで`;
-  ws.getCell('J4').font = dataFont;
-  ws.getCell('J4').border = allBorders;
-  ws.getCell('J4').alignment = { vertical: 'middle' };
-
-  // M4:O4 空セル（罫線だけ）
-  ws.mergeCells('M4:O4');
-  ws.getCell('M4').border = allBorders;
-
-  // ===== Row 5: 空行 =====
-  ws.getRow(5).height = 8;
-
-  // ===== Row 6: 評価タイトル行 =====
-  ws.getRow(6).height = 28;
-
-  // A6-B6: 空（左側のラベル列）
-  ws.mergeCells('A6:B6');
-  ws.getCell('A6').border = allBorders;
-  ws.getCell('A6').fill = labelFill;
 
   // 各評価タイトル
   const evalTitles = [
@@ -221,8 +215,8 @@ export async function generateMonitoringSheetYoshikiA(data?: MonitoringSheetYosh
 
   for (let i = 0; i < 4; i++) {
     const [startCol, endCol] = evalCols[i];
-    ws.mergeCells(`${startCol}6:${endCol}6`);
-    const cell = ws.getCell(`${startCol}6`);
+    ws.mergeCells(`${startCol}4:${endCol}4`);
+    const cell = ws.getCell(`${startCol}4`);
     cell.value = evalTitles[i];
     cell.font = evalTitleFont;
     cell.border = allBorders;
@@ -230,16 +224,16 @@ export async function generateMonitoringSheetYoshikiA(data?: MonitoringSheetYosh
     cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
   }
 
-  // C6: 区切り列
-  ws.getCell('C6').border = allBorders;
+  // C4: 区切り列
+  ws.getCell('C4').border = allBorders;
 
-  // ===== Row 7: 説明文行 =====
-  ws.getRow(7).height = 45;
+  // ===== Row 5: 説明文行 =====
+  ws.getRow(5).height = 45;
 
-  ws.mergeCells('A7:B7');
-  ws.getCell('A7').border = allBorders;
+  ws.mergeCells('A5:B5');
+  ws.getCell('A5').border = allBorders;
 
-  ws.getCell('C7').border = allBorders;
+  ws.getCell('C5').border = allBorders;
 
   const evalDescriptions = [
     '居宅介護計画に基づいたサービスが提供されているか確認してください',
@@ -250,33 +244,29 @@ export async function generateMonitoringSheetYoshikiA(data?: MonitoringSheetYosh
 
   for (let i = 0; i < 4; i++) {
     const [startCol, endCol] = evalCols[i];
-    ws.mergeCells(`${startCol}7:${endCol}7`);
-    const cell = ws.getCell(`${startCol}7`);
+    ws.mergeCells(`${startCol}5:${endCol}5`);
+    const cell = ws.getCell(`${startCol}5`);
     cell.value = evalDescriptions[i];
     cell.font = smallFont;
     cell.border = allBorders;
     cell.alignment = { horizontal: 'left', vertical: 'top', wrapText: true };
   }
 
-  // ===== Row 8-10: 選択肢行（ラジオボタン） =====
-  // ① サービスの実施状況: 3択
+  // ===== Row 6-8: 選択肢行（ラジオボタン） =====
   const eval1Options = [
     '1. 計画に基づいたサービスが提供されている',
     '2. 計画に基づいたサービスが一部提供されていない',
     '3. 計画に基づいたサービスが提供されていない',
   ];
-  // ② 利用者及び家族の満足度: 3択
   const eval2Options = [
     '1. 満足している',
     '2. 一部不満がある',
     '3. 不満がある',
   ];
-  // ③ 心身の状況の変化: 2択
   const eval3Options = [
     '1. 変化なし',
     '2. 変化あり',
   ];
-  // ④ サービス変更の必要性: 2択
   const eval4Options = [
     '1. 変更の必要なし',
     '2. 変更の必要あり',
@@ -284,28 +274,28 @@ export async function generateMonitoringSheetYoshikiA(data?: MonitoringSheetYosh
 
   const allEvalOptions = [eval1Options, eval2Options, eval3Options, eval4Options];
   const selections = [d.eval1Selection, d.eval2Selection, d.eval3Selection, d.eval4Selection];
-  const maxOptions = 3; // 最大選択肢数
+  const maxOptions = 3;
 
-  // 左側ラベル（実施日、モニタリング実施者）
-  ws.mergeCells('A8:A10');
-  ws.getCell('A8').value = '実施日';
-  ws.getCell('A8').font = labelFont;
-  ws.getCell('A8').border = allBorders;
-  ws.getCell('A8').fill = labelFill;
-  ws.getCell('A8').alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+  // 左側ラベル（実施日）
+  ws.mergeCells('A6:A8');
+  ws.getCell('A6').value = '実施日';
+  ws.getCell('A6').font = labelFont;
+  ws.getCell('A6').border = allBorders;
+  ws.getCell('A6').fill = labelFill;
+  ws.getCell('A6').alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
 
-  ws.mergeCells('B8:B10');
-  ws.getCell('B8').value = d.implementationDate;
-  ws.getCell('B8').font = dataFont;
-  ws.getCell('B8').border = allBorders;
-  ws.getCell('B8').alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+  ws.mergeCells('B6:B8');
+  ws.getCell('B6').value = d.implementationDate;
+  ws.getCell('B6').font = dataFont;
+  ws.getCell('B6').border = allBorders;
+  ws.getCell('B6').alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
 
-  for (let row = 8; row <= 10; row++) {
+  for (let row = 6; row <= 8; row++) {
     ws.getCell(`C${row}`).border = allBorders;
   }
 
   for (let optIdx = 0; optIdx < maxOptions; optIdx++) {
-    const row = 8 + optIdx;
+    const row = 6 + optIdx;
     ws.getRow(row).height = 18;
 
     for (let evalIdx = 0; evalIdx < 4; evalIdx++) {
@@ -324,21 +314,21 @@ export async function generateMonitoringSheetYoshikiA(data?: MonitoringSheetYosh
     }
   }
 
-  // ===== Row 11: 注釈ラベル行 =====
-  ws.getRow(11).height = 22;
+  // ===== Row 9: 注釈ラベル行 =====
+  ws.getRow(9).height = 22;
 
-  ws.getCell('A11').value = 'モニタリング\n実施者';
-  ws.getCell('A11').font = labelFont;
-  ws.getCell('A11').border = allBorders;
-  ws.getCell('A11').fill = labelFill;
-  ws.getCell('A11').alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+  ws.getCell('A9').value = 'モニタリング\n実施者';
+  ws.getCell('A9').font = labelFont;
+  ws.getCell('A9').border = allBorders;
+  ws.getCell('A9').fill = labelFill;
+  ws.getCell('A9').alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
 
-  ws.getCell('B11').value = d.implementerName;
-  ws.getCell('B11').font = dataFont;
-  ws.getCell('B11').border = allBorders;
-  ws.getCell('B11').alignment = { horizontal: 'center', vertical: 'middle' };
+  ws.getCell('B9').value = d.implementerName;
+  ws.getCell('B9').font = dataFont;
+  ws.getCell('B9').border = allBorders;
+  ws.getCell('B9').alignment = { horizontal: 'center', vertical: 'middle' };
 
-  ws.getCell('C11').border = allBorders;
+  ws.getCell('C9').border = allBorders;
 
   const noteLabels = [
     '※提供されていない場合はその理由',
@@ -349,8 +339,8 @@ export async function generateMonitoringSheetYoshikiA(data?: MonitoringSheetYosh
 
   for (let i = 0; i < 4; i++) {
     const [startCol, endCol] = evalCols[i];
-    ws.mergeCells(`${startCol}11:${endCol}11`);
-    const cell = ws.getCell(`${startCol}11`);
+    ws.mergeCells(`${startCol}9:${endCol}9`);
+    const cell = ws.getCell(`${startCol}9`);
     cell.value = noteLabels[i];
     cell.font = smallFont;
     cell.border = allBorders;
@@ -358,9 +348,9 @@ export async function generateMonitoringSheetYoshikiA(data?: MonitoringSheetYosh
     cell.alignment = { vertical: 'middle', wrapText: true };
   }
 
-  // ===== Row 12-18: テキストエリア（理由・状況記入欄） =====
-  const notesStartRow = 12;
-  const notesEndRow = 18;
+  // ===== Row 10-16: テキストエリア（理由・状況記入欄） =====
+  const notesStartRow = 10;
+  const notesEndRow = 16;
   const evalNotes = [d.eval1Notes, d.eval2Notes, d.eval3Notes, d.eval4Notes];
 
   // 左側は空欄
@@ -390,7 +380,7 @@ export async function generateMonitoringSheetYoshikiA(data?: MonitoringSheetYosh
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `モニタリングシート_様式A_${d.clientName}.xlsx`;
+  link.download = 'モニタリングシート_様式A.xlsx';
   link.click();
   URL.revokeObjectURL(url);
 }
