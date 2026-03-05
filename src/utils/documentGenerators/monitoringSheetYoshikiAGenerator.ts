@@ -353,13 +353,15 @@ export async function generateMonitoringSheetYoshikiA(data?: MonitoringSheetYosh
   const notesEndRow = 16;
   const evalNotes = [d.eval1Notes, d.eval2Notes, d.eval3Notes, d.eval4Notes];
 
-  // 左側は空欄
-  ws.mergeCells(`A${notesStartRow}:B${notesEndRow}`);
-  ws.getCell(`A${notesStartRow}`).border = allBorders;
-
+  // 左側A-B列は罫線なし（空白エリア）
   for (let row = notesStartRow; row <= notesEndRow; row++) {
-    ws.getCell(`C${row}`).border = allBorders;
     ws.getRow(row).height = 18;
+    // C列: 左右の細線のみ（区切り柱）
+    ws.getCell(`C${row}`).border = {
+      left: thinBorder,
+      right: thinBorder,
+      ...(row === notesEndRow ? { bottom: thinBorder } : {}),
+    };
   }
 
   for (let i = 0; i < 4; i++) {
