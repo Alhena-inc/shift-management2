@@ -31,11 +31,6 @@ const HelperManagementPage: React.FC = () => {
 
   // ステータスバッジの色（ヘルパーはデフォルトで稼働中扱い）
   const getEmploymentTypeBadge = (helper: Helper) => {
-    // 給与タイプが固定給の場合は「正社員」として表示
-    if (helper.salaryType === 'fixed') {
-      return { color: 'bg-blue-100 text-blue-800', label: '正社員' };
-    }
-
     switch (helper.employmentType) {
       case 'fulltime':
         return { color: 'bg-blue-100 text-blue-800', label: '正社員' };
