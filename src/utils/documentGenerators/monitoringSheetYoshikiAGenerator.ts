@@ -45,16 +45,13 @@ const TEST_DATA: MonitoringSheetYoshikiA = {
 // ==================== スタイル定数 ====================
 const thin: Partial<ExcelJS.Border> = { style: 'thin' };
 const medium: Partial<ExcelJS.Border> = { style: 'medium' };
-
-const borders: Partial<ExcelJS.Borders> = {
-  top: thin, bottom: thin, left: thin, right: thin,
-};
+const borders: Partial<ExcelJS.Borders> = { top: thin, bottom: thin, left: thin, right: thin };
 
 const titleFont: Partial<ExcelJS.Font> = { name: 'MS ゴシック', size: 14, bold: true };
 const labelFont: Partial<ExcelJS.Font> = { name: 'MS ゴシック', size: 9, bold: true };
 const dataFont: Partial<ExcelJS.Font> = { name: 'MS ゴシック', size: 9 };
 const smallFont: Partial<ExcelJS.Font> = { name: 'MS ゴシック', size: 8 };
-const smallFontItalic: Partial<ExcelJS.Font> = { name: 'MS ゴシック', size: 7.5, italic: true, color: { argb: 'FF666666' } };
+const noteFont: Partial<ExcelJS.Font> = { name: 'MS ゴシック', size: 7, italic: true, color: { argb: 'FF666666' } };
 const evalHeaderFont: Partial<ExcelJS.Font> = { name: 'MS ゴシック', size: 9, bold: true };
 
 const headerFill: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E2F3' } };
@@ -65,23 +62,9 @@ function radio(selected: boolean): string {
   return selected ? '●' : '○';
 }
 
-function setCell(
-  ws: ExcelJS.Worksheet,
-  ref: string,
-  value: string | number,
-  font: Partial<ExcelJS.Font>,
-  opts?: {
-    border?: Partial<ExcelJS.Borders>;
-    fill?: ExcelJS.FillPattern;
-    align?: Partial<ExcelJS.Alignment>;
-  },
-) {
-  const cell = ws.getCell(ref);
-  cell.value = value;
-  cell.font = font;
-  cell.border = opts?.border ?? borders;
-  if (opts?.fill) cell.fill = opts.fill;
-  cell.alignment = opts?.align ?? { vertical: 'middle' };
+// 内部罫線（評価セクション Row6-11 用）: 左=thin, 右=thin（O列のみmedium）
+function evalBorder(colIdx: number): Partial<ExcelJS.Borders> {
+  return { top: thin, bottom: thin, left: thin, right: colIdx === 3 ? medium : thin };
 }
 
 // ==================== Excel生成 ====================
@@ -94,7 +77,7 @@ export async function generateMonitoringSheetYoshikiA(data?: MonitoringSheetYosh
     properties: { defaultRowHeight: 15 },
   });
 
-  // ===== 列幅 =====
+  // ===== 列幅 (A=15, B=15, C=1.5, D-O=12) =====
   const colWidths = [15, 15, 1.5, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12];
   colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
@@ -114,105 +97,137 @@ export async function generateMonitoringSheetYoshikiA(data?: MonitoringSheetYosh
   ];
 
   // =============================================
-  // Row 1: タイトル
+  // Row 1: タイトル (h=30)
   // =============================================
   ws.getRow(1).height = 30;
   ws.mergeCells('A1:O1');
-  setCell(ws, 'A1', 'モニタリングシート（様式A）', titleFont, {
-    border: { bottom: medium },
-    align: { horizontal: 'center', vertical: 'middle' },
-  });
+  const titleCell = ws.getCell('A1');
+  titleCell.value = 'モニタリングシート（様式A）';
+  titleCell.font = titleFont;
+  titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  titleCell.border = { bottom: medium };
 
   // =============================================
-  // Row 2: 利用者名 / サービス種類 / 事業所名
+  // Row 2: 空行 (h=6)
   // =============================================
-  ws.getRow(2).height = 22;
-
-  setCell(ws, 'A2', '利用者名', labelFont, {
-    fill: labelFill, align: { horizontal: 'center', vertical: 'middle' },
-  });
-
-  ws.mergeCells('B2:C2');
-  setCell(ws, 'B2', d.clientName ? `${d.clientName}　殿` : '', dataFont, {
-    align: { horizontal: 'left', vertical: 'middle', indent: 1 },
-  });
-
-  ws.mergeCells('D2:E2');
-  setCell(ws, 'D2', 'サービス種類', labelFont, {
-    fill: labelFill, align: { horizontal: 'center', vertical: 'middle' },
-  });
-
-  ws.mergeCells('F2:I2');
-  setCell(ws, 'F2', d.serviceType, dataFont, {
-    align: { horizontal: 'left', vertical: 'middle', indent: 1 },
-  });
-
-  ws.mergeCells('J2:K2');
-  setCell(ws, 'J2', '事業所名', labelFont, {
-    fill: labelFill, align: { horizontal: 'center', vertical: 'middle' },
-  });
-
-  ws.mergeCells('L2:O2');
-  setCell(ws, 'L2', d.officeName, dataFont, {
-    align: { horizontal: 'left', vertical: 'middle', indent: 1 },
-  });
+  ws.getRow(2).height = 6;
 
   // =============================================
-  // Row 3: 作成日 / No / 期間
+  // Row 3: 利用者名 / サービス種類 / 事業所名 (h=22)
   // =============================================
   ws.getRow(3).height = 22;
 
-  setCell(ws, 'A3', '作成日', labelFont, {
-    fill: labelFill, align: { horizontal: 'center', vertical: 'middle' },
-  });
+  // A3
+  ws.getCell('A3').value = '利用者名';
+  ws.getCell('A3').font = labelFont;
+  ws.getCell('A3').fill = labelFill;
+  ws.getCell('A3').border = borders;
+  ws.getCell('A3').alignment = { horizontal: 'center', vertical: 'middle' };
 
+  // B3:C3
   ws.mergeCells('B3:C3');
-  setCell(ws, 'B3', d.creationDate, dataFont, {
-    align: { horizontal: 'left', vertical: 'middle', indent: 1 },
-  });
+  ws.getCell('B3').value = d.clientName ? `${d.clientName}　殿` : '';
+  ws.getCell('B3').font = dataFont;
+  ws.getCell('B3').border = borders;
+  ws.getCell('B3').alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
 
-  setCell(ws, 'D3', 'No', labelFont, {
-    fill: labelFill, align: { horizontal: 'center', vertical: 'middle' },
-  });
+  // D3:E3
+  ws.mergeCells('D3:E3');
+  ws.getCell('D3').value = 'サービス種類';
+  ws.getCell('D3').font = labelFont;
+  ws.getCell('D3').fill = labelFill;
+  ws.getCell('D3').border = borders;
+  ws.getCell('D3').alignment = { horizontal: 'center', vertical: 'middle' };
 
-  setCell(ws, 'E3', d.no, dataFont, {
-    align: { horizontal: 'center', vertical: 'middle' },
-  });
+  // F3:I3
+  ws.mergeCells('F3:I3');
+  ws.getCell('F3').value = d.serviceType;
+  ws.getCell('F3').font = dataFont;
+  ws.getCell('F3').border = borders;
+  ws.getCell('F3').alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
 
-  ws.mergeCells('F3:G3');
-  setCell(ws, 'F3', '期間', labelFont, {
-    fill: labelFill, align: { horizontal: 'center', vertical: 'middle' },
-  });
+  // J3:K3
+  ws.mergeCells('J3:K3');
+  ws.getCell('J3').value = '事業所名';
+  ws.getCell('J3').font = labelFont;
+  ws.getCell('J3').fill = labelFill;
+  ws.getCell('J3').border = borders;
+  ws.getCell('J3').alignment = { horizontal: 'center', vertical: 'middle' };
 
-  ws.mergeCells('H3:J3');
-  setCell(ws, 'H3', d.periodFrom ? `${d.periodFrom}　から` : '', dataFont, {
-    align: { horizontal: 'left', vertical: 'middle', indent: 1 },
-  });
-
-  ws.mergeCells('K3:M3');
-  setCell(ws, 'K3', d.periodTo ? `${d.periodTo}　まで` : '', dataFont, {
-    align: { horizontal: 'left', vertical: 'middle', indent: 1 },
-  });
-
-  ws.mergeCells('N3:O3');
-  ws.getCell('N3').border = borders;
+  // L3:O3
+  ws.mergeCells('L3:O3');
+  ws.getCell('L3').value = d.officeName;
+  ws.getCell('L3').font = dataFont;
+  ws.getCell('L3').border = borders;
+  ws.getCell('L3').alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
 
   // =============================================
-  // Row 4: 空行（ヘッダーと評価セクションの区切り）
+  // Row 4: 作成日 / No / 期間 (h=22)
   // =============================================
-  ws.getRow(4).height = 6;
+  ws.getRow(4).height = 22;
+
+  ws.getCell('A4').value = '作成日';
+  ws.getCell('A4').font = labelFont;
+  ws.getCell('A4').fill = labelFill;
+  ws.getCell('A4').border = borders;
+  ws.getCell('A4').alignment = { horizontal: 'center', vertical: 'middle' };
+
+  ws.mergeCells('B4:C4');
+  ws.getCell('B4').value = d.creationDate;
+  ws.getCell('B4').font = dataFont;
+  ws.getCell('B4').border = borders;
+  ws.getCell('B4').alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+
+  ws.getCell('D4').value = 'No';
+  ws.getCell('D4').font = labelFont;
+  ws.getCell('D4').fill = labelFill;
+  ws.getCell('D4').border = borders;
+  ws.getCell('D4').alignment = { horizontal: 'center', vertical: 'middle' };
+
+  ws.getCell('E4').value = d.no;
+  ws.getCell('E4').font = dataFont;
+  ws.getCell('E4').border = borders;
+  ws.getCell('E4').alignment = { horizontal: 'center', vertical: 'middle' };
+
+  ws.mergeCells('F4:G4');
+  ws.getCell('F4').value = '期間';
+  ws.getCell('F4').font = labelFont;
+  ws.getCell('F4').fill = labelFill;
+  ws.getCell('F4').border = borders;
+  ws.getCell('F4').alignment = { horizontal: 'center', vertical: 'middle' };
+
+  ws.mergeCells('H4:J4');
+  ws.getCell('H4').value = d.periodFrom ? `${d.periodFrom}　から` : '';
+  ws.getCell('H4').font = dataFont;
+  ws.getCell('H4').border = borders;
+  ws.getCell('H4').alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+
+  ws.mergeCells('K4:M4');
+  ws.getCell('K4').value = d.periodTo ? `${d.periodTo}　まで` : '';
+  ws.getCell('K4').font = dataFont;
+  ws.getCell('K4').border = borders;
+  ws.getCell('K4').alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+
+  ws.mergeCells('N4:O4');
+  ws.getCell('N4').border = borders;
 
   // =============================================
-  // Row 5: 評価タイトル行（①②③④）青背景
+  // Row 5: 空行 (h=4)
   // =============================================
-  ws.getRow(5).height = 26;
+  ws.getRow(5).height = 4;
 
-  ws.mergeCells('A5:B5');
-  setCell(ws, 'A5', '', labelFont, {
-    fill: headerFill,
-    border: { top: medium, bottom: thin, left: medium, right: thin },
-  });
-  ws.getCell('C5').border = { top: medium, bottom: thin, left: thin, right: thin };
+  // =============================================
+  // Row 6: 評価タイトル行 (h=26) — 青背景, 外枠top=medium
+  // =============================================
+  ws.getRow(6).height = 26;
+
+  // A6:B6 (マージ, 青背景, 空)
+  ws.mergeCells('A6:B6');
+  ws.getCell('A6').fill = headerFill;
+  ws.getCell('A6').border = { top: medium, bottom: thin, left: medium, right: thin };
+
+  // C6
+  ws.getCell('C6').border = { top: medium, bottom: thin, left: thin, right: thin };
 
   const evalTitles = [
     '①サービスの実施状況',
@@ -223,8 +238,8 @@ export async function generateMonitoringSheetYoshikiA(data?: MonitoringSheetYosh
 
   for (let i = 0; i < 4; i++) {
     const [sc, ec] = evalCols[i];
-    ws.mergeCells(`${sc}5:${ec}5`);
-    const cell = ws.getCell(`${sc}5`);
+    ws.mergeCells(`${sc}6:${ec}6`);
+    const cell = ws.getCell(`${sc}6`);
     cell.value = evalTitles[i];
     cell.font = evalHeaderFont;
     cell.fill = headerFill;
@@ -233,13 +248,13 @@ export async function generateMonitoringSheetYoshikiA(data?: MonitoringSheetYosh
   }
 
   // =============================================
-  // Row 6: 説明文行
+  // Row 7: 説明文行 (h=42)
   // =============================================
-  ws.getRow(6).height = 42;
+  ws.getRow(7).height = 42;
 
-  ws.mergeCells('A6:B6');
-  ws.getCell('A6').border = { top: thin, bottom: thin, left: medium, right: thin };
-  ws.getCell('C6').border = borders;
+  ws.mergeCells('A7:B7');
+  ws.getCell('A7').border = { top: thin, bottom: thin, left: medium, right: thin };
+  ws.getCell('C7').border = borders;
 
   const evalDescs = [
     '居宅介護計画に基づいたサービスが提供されているか確認してください',
@@ -250,46 +265,34 @@ export async function generateMonitoringSheetYoshikiA(data?: MonitoringSheetYosh
 
   for (let i = 0; i < 4; i++) {
     const [sc, ec] = evalCols[i];
-    ws.mergeCells(`${sc}6:${ec}6`);
-    const cell = ws.getCell(`${sc}6`);
+    ws.mergeCells(`${sc}7:${ec}7`);
+    const cell = ws.getCell(`${sc}7`);
     cell.value = evalDescs[i];
     cell.font = smallFont;
-    cell.border = { top: thin, bottom: thin, left: thin, right: i === 3 ? medium : thin };
+    cell.border = evalBorder(i);
     cell.alignment = { horizontal: 'left', vertical: 'top', wrapText: true, indent: 1 };
   }
 
   // =============================================
-  // Row 7: 空行（説明文と選択肢の間）
-  // =============================================
-  ws.getRow(7).height = 6;
-  // 外枠だけ維持
-  ws.getCell('A7').border = { left: medium };
-  ws.getCell('C7').border = { left: thin, right: thin };
-  for (let i = 0; i < 4; i++) {
-    const [sc] = evalCols[i];
-    ws.getCell(`${sc}7`).border = { left: thin, right: i === 3 ? medium : thin };
-  }
-
-  // =============================================
-  // Row 8-10: ラジオ選択肢 + 実施日
+  // Row 8-10: ラジオ選択肢 + 実施日 (h=20 each)
   // =============================================
   const eval1Opts = [
-    '1.  計画に基づいたサービスが提供されている',
-    '2.  計画に基づいたサービスが一部提供されていない',
-    '3.  計画に基づいたサービスが提供されていない',
+    '1. 計画に基づいたサービスが提供されている',
+    '2. 計画に基づいたサービスが一部提供されていない',
+    '3. 計画に基づいたサービスが提供されていない',
   ];
   const eval2Opts = [
-    '1.  満足している',
-    '2.  一部不満がある',
-    '3.  不満がある',
+    '1. 満足している',
+    '2. 一部不満がある',
+    '3. 不満がある',
   ];
   const eval3Opts = [
-    '1.  変化なし',
-    '2.  変化あり',
+    '1. 変化なし',
+    '2. 変化あり',
   ];
   const eval4Opts = [
-    '1.  変更の必要なし',
-    '2.  変更の必要あり',
+    '1. 変更の必要なし',
+    '2. 変更の必要あり',
   ];
 
   const allOpts = [eval1Opts, eval2Opts, eval3Opts, eval4Opts];
@@ -312,13 +315,15 @@ export async function generateMonitoringSheetYoshikiA(data?: MonitoringSheetYosh
   implValue.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
   implValue.border = borders;
 
+  // C8-C10
   for (let r = 8; r <= 10; r++) {
     ws.getCell(`C${r}`).border = borders;
   }
 
+  // 選択肢
   for (let optIdx = 0; optIdx < 3; optIdx++) {
     const row = 8 + optIdx;
-    ws.getRow(row).height = 22;
+    ws.getRow(row).height = 20;
 
     for (let ei = 0; ei < 4; ei++) {
       const [sc, ec] = evalCols[ei];
@@ -331,19 +336,27 @@ export async function generateMonitoringSheetYoshikiA(data?: MonitoringSheetYosh
         cell.value = `  ${radio(isSel)}　${opts[optIdx]}`;
         cell.font = dataFont;
       }
-      cell.border = { top: thin, bottom: thin, left: thin, right: ei === 3 ? medium : thin };
+      cell.border = evalBorder(ei);
       cell.alignment = { vertical: 'middle', wrapText: true };
     }
   }
 
   // =============================================
-  // Row 11: 注釈ラベル行（黄背景）
+  // Row 11: モニタリング実施者（左） + 注釈ラベル（右, 黄背景） (h=24)
   // =============================================
-  ws.getRow(11).height = 22;
+  ws.getRow(11).height = 24;
 
-  // A11: 空（実施日の下）
+  ws.getCell('A11').value = 'モニタリング\n実施者';
+  ws.getCell('A11').font = labelFont;
+  ws.getCell('A11').fill = labelFill;
+  ws.getCell('A11').alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
   ws.getCell('A11').border = { top: thin, bottom: thin, left: medium, right: thin };
+
+  ws.getCell('B11').value = d.implementerName;
+  ws.getCell('B11').font = dataFont;
+  ws.getCell('B11').alignment = { horizontal: 'center', vertical: 'middle' };
   ws.getCell('B11').border = borders;
+
   ws.getCell('C11').border = borders;
 
   const noteLabels = [
@@ -360,94 +373,69 @@ export async function generateMonitoringSheetYoshikiA(data?: MonitoringSheetYosh
     cell.value = noteLabels[i];
     cell.font = smallFont;
     cell.fill = noteLabelFill;
-    cell.border = { top: thin, bottom: thin, left: thin, right: i === 3 ? medium : thin };
     cell.alignment = { vertical: 'middle', wrapText: true, indent: 1 };
+    cell.border = evalBorder(i);
   }
 
   // =============================================
-  // Row 12: 空行（注釈と記入欄の区切り）
+  // Row 12-18: 自由記入欄 (h=20 each)
+  // A列: left=medium のみ (最終行は bottom=medium 追加)
+  // B列: 罫線なし (最終行は bottom=medium)
+  // C列: left+right=thin (最終行は bottom=medium 追加)
+  // D-O列: マージ、top=thin, bottom=medium, left=thin, right=thin/medium
   // =============================================
-  ws.getRow(12).height = 6;
-  ws.getCell('A12').border = { left: medium };
-  ws.getCell('C12').border = { left: thin, right: thin };
-  for (let i = 0; i < 4; i++) {
-    const [sc] = evalCols[i];
-    ws.getCell(`${sc}12`).border = { left: thin, right: i === 3 ? medium : thin };
-  }
-
-  // =============================================
-  // Row 13-14: モニタリング実施者（左）+ 記入欄開始（右）
-  // Row 15-20: 記入欄続き
-  // =============================================
-  const notesStart = 13;
-  const notesEnd = 20;
+  const notesStart = 12;
+  const notesEnd = 18;
   const evalNotes = [d.eval1Notes, d.eval2Notes, d.eval3Notes, d.eval4Notes];
 
-  // モニタリング実施者ラベル（A13:A14マージ）
-  ws.mergeCells('A13:A14');
-  const monLabel = ws.getCell('A13');
-  monLabel.value = 'モニタリング\n実施者';
-  monLabel.font = labelFont;
-  monLabel.fill = labelFill;
-  monLabel.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-  monLabel.border = { top: thin, bottom: thin, left: medium, right: thin };
-
-  // モニタリング実施者値（B13:B14マージ）
-  ws.mergeCells('B13:B14');
-  const monValue = ws.getCell('B13');
-  monValue.value = d.implementerName;
-  monValue.font = dataFont;
-  monValue.alignment = { horizontal: 'center', vertical: 'middle' };
-  monValue.border = borders;
-
-  // Row 15以降のA-B列: 罫線なし（空白エリア）
-  for (let row = 15; row <= notesEnd; row++) {
-    ws.getCell(`A${row}`).border = {
-      left: medium,
-      ...(row === notesEnd ? { bottom: medium } : {}),
-    };
-  }
-
-  // C列: 全行で左右線のみ
   for (let row = notesStart; row <= notesEnd; row++) {
     ws.getRow(row).height = 20;
+
+    const isLast = row === notesEnd;
+
+    // A列
+    ws.getCell(`A${row}`).border = {
+      left: medium,
+      ...(isLast ? { bottom: medium } : {}),
+    };
+
+    // B列: 最終行のみ下線
+    if (isLast) {
+      ws.getCell(`B${row}`).border = { bottom: medium };
+    }
+
+    // C列
     ws.getCell(`C${row}`).border = {
       left: thin,
       right: thin,
-      ...(row === notesEnd ? { bottom: medium } : {}),
+      ...(isLast ? { bottom: medium } : {}),
     };
   }
 
-  // 記入欄（D-O列マージ、Row 13-20）
+  // D-O列: 各評価列をマージ
   for (let i = 0; i < 4; i++) {
     const [sc, ec] = evalCols[i];
     ws.mergeCells(`${sc}${notesStart}:${ec}${notesEnd}`);
     const cell = ws.getCell(`${sc}${notesStart}`);
     cell.value = evalNotes[i];
     cell.font = dataFont;
-    cell.border = {
-      top: thin,
-      bottom: medium,
-      left: thin,
-      right: i === 3 ? medium : thin,
-    };
     cell.alignment = { horizontal: 'left', vertical: 'top', wrapText: true, indent: 1 };
+    cell.border = { top: thin, bottom: medium, left: thin, right: i === 3 ? medium : thin };
   }
 
   // =============================================
-  // Row 21: 空行
+  // Row 19: 空行 (h=8)
   // =============================================
-  ws.getRow(21).height = 8;
+  ws.getRow(19).height = 8;
 
   // =============================================
-  // Row 22: 記入上の注意
+  // Row 20: 記入上の注意 (h=14)
   // =============================================
-  ws.getRow(22).height = 14;
-  ws.mergeCells('A22:O22');
-  setCell(ws, 'A22', '※ 各項目について該当する番号に●を付け、必要に応じて理由・状況等を記入してください。', smallFontItalic, {
-    border: {},
-    align: { horizontal: 'left', vertical: 'middle' },
-  });
+  ws.getRow(20).height = 14;
+  ws.mergeCells('A20:O20');
+  ws.getCell('A20').value = '※ 各項目について該当する番号に●を付け、必要に応じて理由・状況等を記入してください。';
+  ws.getCell('A20').font = noteFont;
+  ws.getCell('A20').alignment = { horizontal: 'left', vertical: 'middle' };
 
   // ===== ファイル出力 =====
   const outputBuffer = await workbook.xlsx.writeBuffer();

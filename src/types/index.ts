@@ -100,6 +100,7 @@ export interface Helper {
   deleted?: boolean;       // 論理削除フラグ
   deletedAt?: any;         // 削除日時
   deletedBy?: string;      // 削除者
+  excludeFromShift?: boolean;  // シフト表に入れないフラグ（trueの場合シフト表には表示しないが、給与計算・給与明細には含める）
 
   // 基本情報
   birthDate?: string;      // 生年月日

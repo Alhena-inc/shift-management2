@@ -803,6 +803,22 @@ const HelperDetailPage: React.FC = () => {
                     <option value="outsourced">業務委託</option>
                   </select>
                 </div>
+
+                {/* 3. シフト表表示設定 */}
+                <div className="mt-6 pt-6 border-t border-gray-300">
+                  <label className={`flex items-start gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${helper.excludeFromShift ? 'border-orange-400 bg-orange-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}>
+                    <input
+                      type="checkbox"
+                      checked={helper.excludeFromShift || false}
+                      onChange={(e) => handleChange('excludeFromShift', e.target.checked)}
+                      className="mt-1 w-5 h-5 text-orange-600 focus:ring-orange-500 rounded"
+                    />
+                    <div>
+                      <div className="font-bold text-gray-800">シフト表に入れない</div>
+                      <p className="text-xs text-gray-500 mt-1">シフト表には表示されませんが、給料計算・給与明細の対象には含まれます。</p>
+                    </div>
+                  </label>
+                </div>
               </div>
 
               {/* 時給制（パート・派遣・業務委託） */}

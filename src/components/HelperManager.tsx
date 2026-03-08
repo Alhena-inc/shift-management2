@@ -140,6 +140,11 @@ const SortableHelperRow = ({
                   <div className="text-sm text-gray-600">
                     {helper.gender === 'male' ? '男性' : '女性'}
                     {helper.lastName && helper.firstName && ` · ${helper.lastName}${helper.firstName}`}
+                    {helper.excludeFromShift && (
+                      <span className="ml-2 px-1.5 py-0.5 bg-orange-100 text-orange-700 text-xs rounded font-medium">
+                        給与のみ
+                      </span>
+                    )}
                   </div>
                 </>
               )}
@@ -239,6 +244,7 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
   const [newHelperGender, setNewHelperGender] = useState<'male' | 'female'>('male');
   const [newHelperSalaryType, setNewHelperSalaryType] = useState<'hourly' | 'fixed'>('hourly');
   const [newHelperEmploymentType, setNewHelperEmploymentType] = useState<string>('parttime');
+  const [newHelperExcludeFromShift, setNewHelperExcludeFromShift] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [localHelpers, setLocalHelpers] = useState<Helper[]>(helpers);
   const [hasChanges, setHasChanges] = useState(false);
@@ -314,6 +320,7 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
       personalToken: generateToken(),
       salaryType: newHelperSalaryType,
       employmentType: newHelperEmploymentType as any,
+      excludeFromShift: newHelperExcludeFromShift,
       // 時給制のデフォルト
       hourlyRate: isFixed ? 0 : 1200,
       treatmentImprovementPerHour: isFixed ? 0 : 800,
@@ -334,6 +341,7 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
     setNewHelperName('');
     setNewHelperLastName('');
     setNewHelperFirstName('');
+    setNewHelperExcludeFromShift(false);
     setShowAddForm(false);
     setHasChanges(false); // 追加時は即座に保存するため変更フラグは折る
 
@@ -350,7 +358,7 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
     } finally {
       setIsSaving(false);
     }
-  }, [localHelpers, newHelperLastName, newHelperFirstName, newHelperName, newHelperGender, newHelperSalaryType, newHelperEmploymentType, onUpdate]);
+  }, [localHelpers, newHelperLastName, newHelperFirstName, newHelperName, newHelperGender, newHelperSalaryType, newHelperEmploymentType, newHelperExcludeFromShift, onUpdate]);
 
   const handleStartEdit = useCallback((helper: Helper) => {
     setEditingHelperId(helper.id);
@@ -692,6 +700,25 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
                     )}
                   </select>
                 </div>
+              </div>
+
+              <div className="pt-4 border-t border-gray-100">
+                <label className="flex items-center gap-3 cursor-pointer p-4 border-2 rounded-lg hover:bg-gray-50 transition-colors"
+                  style={{ borderColor: newHelperExcludeFromShift ? '#f97316' : '#d1d5db' }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={newHelperExcludeFromShift}
+                    onChange={(e) => setNewHelperExcludeFromShift(e.target.checked)}
+                    className="w-5 h-5 text-orange-600"
+                  />
+                  <div>
+                    <span className="text-lg font-medium">シフト表に入れない</span>
+                    <p className="text-sm text-gray-500 mt-1">
+                      チェックすると、シフト表には表示されませんが、給料計算・給与明細の対象には含まれます（固定給設定で計算）
+                    </p>
+                  </div>
+                </label>
               </div>
             </div>
 

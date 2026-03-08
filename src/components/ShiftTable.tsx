@@ -692,6 +692,9 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
     return helpers
       .filter(helper => {
+        // シフト表に入れないヘルパーは非表示（給与計算のみ対象）
+        if (helper.excludeFromShift) return false;
+
         // 削除されていないヘルパーは常に表示
         if (!helper.deleted) return true;
 
