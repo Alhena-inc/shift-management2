@@ -59,6 +59,7 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
         department: helper.department || null,
         status: helper.status || 'active',
         cash_payment: helper.cashPayment || false,
+        exclude_from_shift: helper.excludeFromShift || false,
 
         // 時給制
         hourly_rate: hourlyWage,
@@ -252,6 +253,7 @@ export const loadHelpers = async (): Promise<Helper[]> => {
           department: row.department || undefined,
           status: row.status || 'active',
           cashPayment: row.cash_payment || false,
+          excludeFromShift: row.exclude_from_shift || false,
 
           // 時給制
           hourlyRate: row.hourly_rate || row.hourly_wage || 2000,
