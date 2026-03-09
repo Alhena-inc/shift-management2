@@ -1064,22 +1064,11 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
     goalShortText = `${goalShortText}（安全な生活環境を整え、日常動作の維持を図る）`;
   }
 
-  // 目標期間を計算（作成日起点）
-  const longEndDate = new Date(planDate);
-  longEndDate.setMonth(longEndDate.getMonth() + plan.long_term_goal_months);
-  longEndDate.setDate(longEndDate.getDate() - 1);
-  const longPeriod = `（${toReiwa(planDate.getFullYear())}年${planDate.getMonth() + 1}月${planDate.getDate()}日〜${toReiwa(longEndDate.getFullYear())}年${longEndDate.getMonth() + 1}月${longEndDate.getDate()}日）`;
-
-  const shortEndDate = new Date(planDate);
-  shortEndDate.setMonth(shortEndDate.getMonth() + plan.short_term_goal_months);
-  shortEndDate.setDate(shortEndDate.getDate() - 1);
-  const shortPeriod = `（${toReiwa(planDate.getFullYear())}年${planDate.getMonth() + 1}月${planDate.getDate()}日〜${toReiwa(shortEndDate.getFullYear())}年${shortEndDate.getMonth() + 1}月${shortEndDate.getDate()}日）`;
-
   const goalCell12 = ws0.getCell('E12');
-  goalCell12.value = `長期${longPeriod}: ${goalLongText}`;
+  goalCell12.value = `長期（${plan.long_term_goal_months}ヶ月）: ${goalLongText}`;
   setWrapText(goalCell12);
   const goalCell13 = ws0.getCell('E13');
-  goalCell13.value = `短期${shortPeriod}: ${goalShortText}`;
+  goalCell13.value = `短期（${plan.short_term_goal_months}ヶ月）: ${goalShortText}`;
   setWrapText(goalCell13);
   const goalCell14 = ws0.getCell('E14');
   goalCell14.value = plan.needs ? `課題: ${plan.needs}` : '';
