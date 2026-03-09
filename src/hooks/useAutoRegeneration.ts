@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import type { CareClient } from '../types';
 import type { GoalPeriod } from '../types/documentSchedule';
-import { loadDocumentSchedules, loadCareClients, loadGoalPeriods } from '../services/dataService';
+import { loadDocumentSchedules, loadCareClients, loadGoalPeriods, saveGoalPeriod } from '../services/dataService';
 import { executeScheduleAction } from '../utils/documentScheduleExecutor';
 import { toDateString, addDays } from '../utils/documentScheduleChecker';
 
@@ -181,23 +181,72 @@ export function useAutoRegeneration(options: UseAutoRegenerationOptions = {}) {
         }
       }
 
-      // expired → AI判定なしで即座に再生成
+      const { isGeminiAvailable: checkGemini, generateText } = await import('../services/geminiService');
+      const geminiOk = checkGemini();
+
+      // 達成度が未設定のGoalPeriodに対してAI自動判定を行う
+      const autoJudgeAchievement = async (goal: GoalPeriod, client: CareClient) => {
+        if (goal.achievementStatus && goal.achievementStatus !== 'pending') return; // 手動設定済み
+        if (!geminiOk) return;
+
+        try {
+          const typeLabel = goal.goalType === 'long_term' ? '長期' : '短期';
+          const prompt = `以下の居宅介護計画の${typeLabel}目標について、達成状況を判定してください。
+
+利用者: ${client.name}
+障害支援区分: ${client.careLevel || '不明'}
+目標: ${goal.goalText || '未設定'}
+期間: ${goal.startDate}〜${goal.endDate}
+
+以下のJSON形式で回答してください:
+{"achievement": "achieved" | "partially_achieved" | "not_achieved", "reason": "判定理由（30〜60文字）"}
+
+- "achieved": 目標を達成できた
+- "partially_achieved": 一部達成（改善は見られるが完全には達成していない）
+- "not_achieved": 未達成`;
+
+          const response = await generateText(prompt);
+          const text = response?.text || '';
+          const jsonMatch = text.match(/\{[\s\S]*?\}/);
+          if (!jsonMatch) return;
+
+          const parsed = JSON.parse(jsonMatch[0]);
+          await saveGoalPeriod({
+            ...goal,
+            achievementStatus: parsed.achievement || 'not_achieved',
+            achievementNote: parsed.reason || '',
+            achievementSetBy: 'auto',
+          });
+          console.log(`[AutoRegen] ${client.name}の${typeLabel}目標を自動判定: ${parsed.achievement}`);
+        } catch (err) {
+          console.warn(`[AutoRegen] ${client.name}の達成度自動判定に失敗:`, err);
+        }
+      };
+
+      // expired → 達成度を自動判定してから再生成
       for (const [clientId, goals] of expiredClients) {
         const client = clientMap.get(clientId);
         if (!client) continue;
+        // 手動設定されていない場合はAIで自動判定
+        for (const goal of goals) {
+          await autoJudgeAchievement(goal, client);
+        }
         const goalTexts = goals.map(g => g.goalText || '未設定').join('、');
         await regenerateForClient(client, 'goal_expiry', `目標期間終了: ${goalTexts}`);
       }
 
-      // expiring → 既存のAI判定ロジック
+      // expiring → 達成度を自動判定 + 目標変更要否判定
       if (expiringClients.size === 0) return;
-
-      const { isGeminiAvailable: checkGemini, generateText } = await import('../services/geminiService');
-      if (!checkGemini()) return;
+      if (!geminiOk) return;
 
       for (const [clientId, goals] of expiringClients) {
         const client = clientMap.get(clientId);
         if (!client) continue;
+
+        // 手動設定されていない場合はAIで自動判定
+        for (const goal of goals) {
+          await autoJudgeAchievement(goal, client);
+        }
 
         try {
           const goalDescriptions = goals.map(g =>

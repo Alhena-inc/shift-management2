@@ -64,6 +64,8 @@ export interface ScheduleAction {
 // ========== v2: 目標期間駆動モニタリング管理 ==========
 
 // 目標期間
+export type GoalAchievementStatus = 'achieved' | 'partially_achieved' | 'not_achieved' | 'pending' | null;
+
 export interface GoalPeriod {
   id: string;
   careClientId: string;
@@ -74,6 +76,9 @@ export interface GoalPeriod {
   endDate: string;
   linkedPlanId: string | null;
   isActive: boolean;
+  achievementStatus: GoalAchievementStatus;  // 達成状況（手動/自動設定）
+  achievementNote: string | null;            // 達成に関するメモ
+  achievementSetBy: 'manual' | 'auto' | null; // 手動 or AI自動判定
   createdAt: string;
   updatedAt: string;
 }

@@ -2998,6 +2998,9 @@ export const loadGoalPeriods = async (careClientId?: string): Promise<any[]> => 
       endDate: row.end_date,
       linkedPlanId: row.linked_plan_id,
       isActive: row.is_active,
+      achievementStatus: row.achievement_status || null,
+      achievementNote: row.achievement_note || null,
+      achievementSetBy: row.achievement_set_by || null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }));
@@ -3018,6 +3021,9 @@ export const saveGoalPeriod = async (item: any): Promise<any> => {
       end_date: item.endDate,
       linked_plan_id: item.linkedPlanId || null,
       is_active: item.isActive ?? true,
+      achievement_status: item.achievementStatus || null,
+      achievement_note: item.achievementNote || null,
+      achievement_set_by: item.achievementSetBy || null,
       updated_at: new Date().toISOString(),
     };
     if (item.id) {
@@ -3039,6 +3045,9 @@ export const saveGoalPeriod = async (item: any): Promise<any> => {
       endDate: data.end_date,
       linkedPlanId: data.linked_plan_id,
       isActive: data.is_active,
+      achievementStatus: data.achievement_status || null,
+      achievementNote: data.achievement_note || null,
+      achievementSetBy: data.achievement_set_by || null,
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     };

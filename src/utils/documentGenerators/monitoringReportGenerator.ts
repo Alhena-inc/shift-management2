@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import { generateWithFiles, generateText } from '../../services/geminiService';
-import { loadShogaiDocuments, loadBillingRecordsForMonth, uploadShogaiDocFile, saveShogaiDocument } from '../../services/dataService';
+import { loadShogaiDocuments, loadBillingRecordsForMonth, uploadShogaiDocFile, saveShogaiDocument, loadGoalPeriods } from '../../services/dataService';
 import type { GeneratorContext } from './types';
 import type { CareClient, BillingRecord, ShogaiSupplyAmount } from '../../types';
 
@@ -660,6 +660,28 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     assessmentFileUrls = docs.filter((d: any) => d.fileUrl).slice(0, 3).map((d: any) => d.fileUrl);
   } catch { /* skip */ }
 
+  // 現在の目標達成状況を取得
+  let goalStatusNote = '';
+  try {
+    const goals = await loadGoalPeriods(client.id);
+    const activeGoals = goals.filter((g: any) => g.isActive && g.goalText);
+    if (activeGoals.length > 0) {
+      const ACHIEVEMENT_LABELS: Record<string, string> = {
+        achieved: '達成',
+        partially_achieved: '一部達成',
+        not_achieved: '未達成',
+        pending: '未評価',
+      };
+      const lines = activeGoals.map((g: any) => {
+        const typeLabel = g.goalType === 'long_term' ? '長期' : '短期';
+        const status = g.achievementStatus ? (ACHIEVEMENT_LABELS[g.achievementStatus] || '未評価') : '未評価';
+        const note = g.achievementNote ? `（${g.achievementNote}）` : '';
+        return `- ${typeLabel}目標（${g.startDate}〜${g.endDate}）: ${g.goalText} → 達成状況: ${status}${note}`;
+      });
+      goalStatusNote = `\n\n【現在の目標達成状況】\n${lines.join('\n')}\n★ 未達成の目標がある場合は「目標未達成のため継続」とモニタリング評価に明記してください。達成済みの場合は「目標達成」と明記してください。`;
+    }
+  } catch { /* skip */ }
+
   // テンプレート変数
   const templateVars: Record<string, string> = {
     client_name: client.name,
@@ -673,9 +695,10 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     month: String(month),
     billing_summary: billingSummary,
     supply_amounts: supplyText,
-    assessment_note: assessmentFileUrls.length > 0
+    assessment_note: (assessmentFileUrls.length > 0
       ? '【添付アセスメント資料あり】添付のアセスメント資料の内容を必ず読み取り、利用者の心身状態・ADL・IADL情報に基づいた個別性のあるモニタリング評価を作成してください。'
-      : '【アセスメント資料なし】利用者情報・実績データ・契約支給量から推測して、一般的なモニタリング報告書を作成してください。',
+      : '【アセスメント資料なし】利用者情報・実績データ・契約支給量から推測して、一般的なモニタリング報告書を作成してください。')
+      + goalStatusNote,
   };
 
   const prompt = applyTemplate(promptTemplate, templateVars);

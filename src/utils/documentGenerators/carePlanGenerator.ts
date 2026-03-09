@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import { generateWithFiles, generateText } from '../../services/geminiService';
-import { loadShogaiDocuments, loadBillingRecordsForMonth, uploadCarePlanFile, saveShogaiCarePlanDocument } from '../../services/dataService';
+import { loadShogaiDocuments, loadBillingRecordsForMonth, uploadCarePlanFile, saveShogaiCarePlanDocument, loadGoalPeriods } from '../../services/dataService';
 import type { GeneratorContext } from './types';
 import type { CareClient, BillingRecord, ShogaiSupplyAmount } from '../../types';
 
@@ -848,6 +848,8 @@ export interface CarePlanGenerationResult {
   long_term_goal_months: number;
   period_reasoning: string;
   severity_level: 'standard' | 'moderate' | 'severe';
+  goal_long_text: string;
+  goal_short_text: string;
 }
 
 export async function generate(ctx: GeneratorContext): Promise<CarePlanGenerationResult> {
@@ -921,6 +923,28 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
     assessmentFileUrls = docs.filter(d => d.fileUrl).slice(0, 3).map(d => d.fileUrl);
   } catch { /* skip */ }
 
+  // 前回目標の達成状況を取得
+  let previousGoalsNote = '';
+  try {
+    const prevGoals = await loadGoalPeriods(client.id);
+    const inactiveGoals = prevGoals.filter((g: any) => !g.isActive && g.goalText);
+    if (inactiveGoals.length > 0) {
+      const ACHIEVEMENT_LABELS: Record<string, string> = {
+        achieved: '達成',
+        partially_achieved: '一部達成',
+        not_achieved: '未達成',
+        pending: '未評価',
+      };
+      const goalLines = inactiveGoals.map((g: any) => {
+        const typeLabel = g.goalType === 'long_term' ? '長期' : '短期';
+        const status = ACHIEVEMENT_LABELS[g.achievementStatus] || '未評価';
+        const note = g.achievementNote ? `（${g.achievementNote}）` : '';
+        return `- 前回${typeLabel}目標: ${g.goalText} → ${status}${note}`;
+      });
+      previousGoalsNote = `\n【前回目標の達成状況】\n${goalLines.join('\n')}\n\n★ 達成済みの目標は新しい目標を設定してください。未達成の目標は「前回目標が未達成のため継続」として同じ内容を引き継いでください。`;
+    }
+  } catch { /* skip */ }
+
   // テンプレート変数
   const templateVars: Record<string, string> = {
     client_name: client.name,
@@ -935,9 +959,10 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
     month: String(month),
     billing_summary: billingSummary,
     supply_amounts: supplyText,
-    assessment_note: assessmentFileUrls.length > 0
+    assessment_note: (assessmentFileUrls.length > 0
       ? '【添付アセスメント資料あり】添付のアセスメント資料の内容（利用者の心身状態・ADL・IADL・生活環境・介護者の状況等）を必ず読み取り、それに基づいて援助目標・サービス内容・留意事項を具体的に作成してください。'
-      : '【アセスメント資料なし】利用者情報・実績データ・契約支給量から推測して、一般的な訪問介護計画を作成してください。',
+      : '【アセスメント資料なし】利用者情報・実績データ・契約支給量から推測して、一般的な訪問介護計画を作成してください。')
+      + previousGoalsNote,
   };
 
   const prompt = applyTemplate(promptTemplate, templateVars);
@@ -1221,5 +1246,7 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
     long_term_goal_months: plan.long_term_goal_months,
     period_reasoning: plan.period_reasoning,
     severity_level: plan.severity_level,
+    goal_long_text: goalLongText,
+    goal_short_text: goalShortText,
   };
 }

@@ -206,22 +206,28 @@ export async function executeScheduleAction(
           careClientId: client.id,
           goalType: 'short_term',
           goalIndex: 0,
-          goalText: null,
+          goalText: planResult.goal_short_text || null,
           startDate: todayForGoal,
           endDate: addMonths(todayForGoal, planResult.short_term_goal_months),
           linkedPlanId: null,
           isActive: true,
+          achievementStatus: null,
+          achievementNote: null,
+          achievementSetBy: null,
         });
         // 長期目標
         await saveGoalPeriod({
           careClientId: client.id,
           goalType: 'long_term',
           goalIndex: 0,
-          goalText: null,
+          goalText: planResult.goal_long_text || null,
           startDate: todayForGoal,
           endDate: addMonths(todayForGoal, planResult.long_term_goal_months),
           linkedPlanId: null,
           isActive: true,
+          achievementStatus: null,
+          achievementNote: null,
+          achievementSetBy: null,
         });
       } catch (err) {
         console.warn('[Executor] GoalPeriod自動保存に失敗:', err);
