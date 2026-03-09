@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { CareClient, ShogaiSogoCity, ShogaiSogoCareCategory, ShogaiBurdenLimit, ShogaiBurdenLimitOffice, ShogaiServiceResponsible, ShogaiPlanConsultation, ShogaiCarePlan, ShogaiSameBuildingDeduction, ShogaiSupplyAmount, ShogaiCarePlanDocument, ShogaiDocument, ShogaiUsedService, Helper } from '../../types';
 import AccordionSection from '../AccordionSection';
 import ShogaiCityList from './ShogaiCityList';
@@ -23,7 +23,13 @@ import {
   loadShogaiDocuments,
   loadShogaiUsedServices,
   loadHelpers,
+  loadCareClients, loadShiftsForMonth, loadBillingRecordsForMonth,
+  saveDocumentSchedule, loadDocumentSchedules, saveDocumentValidation,
+  loadAiPrompt,
 } from '../../services/dataService';
+import { computeNextDates } from '../../utils/documentScheduleChecker';
+import { isGeminiAvailable } from '../../services/geminiService';
+import { validateClientDocuments } from '../../utils/documentValidation';
 
 interface Props {
   client: CareClient;
@@ -60,11 +66,103 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange, 
   const [helpers, setHelpers] = useState<Helper[]>([]);
   const [loading, setLoading] = useState(true);
   const [subPage, setSubPageState] = useState<SubPage>(null);
+  const hiddenDivRef = useRef<HTMLDivElement>(null);
 
   const setSubPage = (page: SubPage) => {
     setSubPageState(page);
     onSubPageChange?.(page !== null);
   };
+
+  const handleGenerateCarePlan = useCallback(async () => {
+    if (!isGeminiAvailable()) {
+      alert('Gemini APIキーが設定されていません。設定画面からAPIキーを登録してください。');
+      return;
+    }
+
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+
+    const [allClients, shifts, billingRecords, allSupply] = await Promise.all([
+      loadCareClients(),
+      loadShiftsForMonth(year, month),
+      loadBillingRecordsForMonth(year, month),
+      loadShogaiSupplyAmounts(client.id),
+    ]);
+
+    const serviceManager = localStorage.getItem('care_plan_service_manager') || '';
+
+    let customPrompt: string | undefined;
+    let customSystemInstruction: string | undefined;
+    try {
+      const promptData = await loadAiPrompt('care-plan');
+      if (promptData) {
+        customPrompt = promptData.prompt;
+        customSystemInstruction = promptData.system_instruction;
+      }
+    } catch { /* skip */ }
+
+    const { generate } = await import('../../utils/documentGenerators/carePlanGenerator');
+
+    if (!hiddenDivRef.current) return;
+
+    const generatorResult = await generate({
+      helpers,
+      careClients: allClients.filter(c => !c.deleted),
+      shifts,
+      billingRecords,
+      supplyAmounts: allSupply,
+      year,
+      month,
+      officeInfo: { name: '訪問介護事業所のあ', address: '東京都渋谷区', tel: '', administrator: '', serviceManager, establishedDate: '' },
+      hiddenDiv: hiddenDivRef.current,
+      customPrompt,
+      customSystemInstruction,
+      selectedClient: client,
+    });
+
+    // スケジュール更新
+    const generatedAt = new Date().toISOString();
+    const cycleMonths = generatorResult?.long_term_goal_months || 6;
+    const { nextDueDate, alertDate, expiryDate } = computeNextDates(generatedAt, cycleMonths, 30);
+    const batchId = crypto.randomUUID();
+    const today = new Date().toISOString().slice(0, 10);
+    let planCreationDate = today;
+    if (client.contractStart) {
+      const dayBefore = new Date(client.contractStart + 'T00:00:00');
+      dayBefore.setDate(dayBefore.getDate() - 1);
+      const dayBeforeStr = dayBefore.toISOString().slice(0, 10);
+      planCreationDate = dayBeforeStr < today ? dayBeforeStr : today;
+    }
+
+    try {
+      const savedPlan = await saveDocumentSchedule({
+        careClientId: client.id, docType: 'care_plan', status: 'active',
+        lastGeneratedAt: generatedAt, nextDueDate, alertDate, expiryDate,
+        cycleMonths, alertDaysBefore: 30,
+        generationBatchId: batchId, planCreationDate, periodStart: planCreationDate, periodEnd: nextDueDate,
+      });
+      await saveDocumentSchedule({
+        careClientId: client.id, docType: 'tejunsho', status: 'active',
+        lastGeneratedAt: generatedAt, nextDueDate, alertDate, expiryDate,
+        cycleMonths, alertDaysBefore: 30,
+        generationBatchId: batchId, linkedPlanScheduleId: savedPlan.id, periodStart: planCreationDate, periodEnd: nextDueDate,
+      });
+
+      try {
+        const allSchedules = await loadDocumentSchedules(client.id);
+        const allHelpers = await loadHelpers();
+        const valResult = validateClientDocuments(client, allSchedules, allHelpers, billingRecords);
+        await saveDocumentValidation(valResult);
+      } catch { /* 検証失敗は無視 */ }
+    } catch (schedErr) {
+      console.warn('スケジュール更新失敗:', schedErr);
+    }
+
+    // ドキュメント一覧を再読み込み
+    const updatedDocs = await loadShogaiCarePlanDocuments(client.id);
+    setCarePlanDocuments(updatedDocs);
+  }, [client, helpers]);
 
   useEffect(() => {
     const load = async () => {
@@ -244,12 +342,16 @@ const ShogaiSogoTab: React.FC<Props> = ({ client, updateField, onSubPageChange, 
   // ========== 居宅介護計画書ドキュメントサブページ ==========
   if (subPage === 'carePlanDocs') {
     return (
-      <ShogaiCarePlanDocList
-        careClientId={client.id}
-        documents={carePlanDocuments}
-        onUpdate={setCarePlanDocuments}
-        onBack={() => setSubPage(null)}
-      />
+      <>
+        <ShogaiCarePlanDocList
+          careClientId={client.id}
+          documents={carePlanDocuments}
+          onUpdate={setCarePlanDocuments}
+          onBack={() => setSubPage(null)}
+          onGenerate={handleGenerateCarePlan}
+        />
+        <div ref={hiddenDivRef} style={{ position: 'fixed', left: '-9999px', top: 0, width: '210mm', minHeight: '297mm', background: '#fff', zIndex: -1 }} />
+      </>
     );
   }
 

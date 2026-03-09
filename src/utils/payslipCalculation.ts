@@ -418,8 +418,8 @@ export function generateFixedPayslipFromShifts(
 
   // 標準報酬月額の決定
   // 1. 保険未加入の場合は0
-  // 2. ヘルパー設定で固定値（0を含む）が指定されていればそれを使用
-  // 3. 指定がなければ（undefinedまたはNaN）、支給総額（保険対象額）から等級表に基づいて自動決定
+  // 2. ヘルパー設定で0より大きい固定値が指定されていればそれを使用
+  // 3. 未設定（undefined/null/0）の場合は、支給総額（保険対象額）から等級表に基づいて自動決定
   let standardRemuneration = 0;
 
   // 社会保険加入判定
@@ -432,7 +432,7 @@ export function generateFixedPayslipFromShifts(
         ? Number((helper as any).standardMonthlyRemuneration)
         : NaN;
 
-    if (!isNaN(fixedValue)) {
+    if (!isNaN(fixedValue) && fixedValue > 0) {
       standardRemuneration = fixedValue;
     } else {
       standardRemuneration = getHealthStandardRemuneration(insuranceBaseAmount);
@@ -920,7 +920,7 @@ export function generateHourlyPayslipFromShifts(
         ? Number((helper as any).standardMonthlyRemuneration)
         : NaN;
 
-    if (!isNaN(fixedValue)) {
+    if (!isNaN(fixedValue) && fixedValue > 0) {
       standardRemuneration = fixedValue;
     } else {
       standardRemuneration = salaryCoreAmount;

@@ -16,6 +16,7 @@ interface Props {
   documents: ShogaiCarePlanDocument[];
   onUpdate: (items: ShogaiCarePlanDocument[]) => void;
   onBack: () => void;
+  onGenerate?: () => Promise<void>;
 }
 
 const formatFileSize = (bytes: number): string => {
@@ -31,10 +32,24 @@ const formatDate = (dateStr: string): string => {
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
 };
 
-const ShogaiCarePlanDocList: React.FC<Props> = ({ careClientId, documents, onUpdate, onBack }) => {
+const ShogaiCarePlanDocList: React.FC<Props> = ({ careClientId, documents, onUpdate, onBack, onGenerate }) => {
   const [activeTab, setActiveTab] = useState<PlanCategory>('kyotaku');
   const [uploading, setUploading] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleGenerate = async () => {
+    if (!onGenerate || generating) return;
+    setGenerating(true);
+    try {
+      await onGenerate();
+    } catch (error) {
+      console.error('計画書生成エラー:', error);
+      alert('計画書の生成に失敗しました');
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const currentItems = documents.filter(d => d.planCategory === activeTab);
 
@@ -127,6 +142,22 @@ const ShogaiCarePlanDocList: React.FC<Props> = ({ careClientId, documents, onUpd
             >
               {uploading ? 'アップロード中...' : 'ファイルを追加'}
             </button>
+            {onGenerate && (
+              <button
+                onClick={handleGenerate}
+                disabled={generating}
+                className="px-4 py-1.5 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors font-medium disabled:opacity-50 flex items-center gap-1"
+              >
+                {generating ? (
+                  <>
+                    <span className="animate-spin inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full"></span>
+                    作成中...
+                  </>
+                ) : (
+                  'AI作成'
+                )}
+              </button>
+            )}
           </div>
 
           {/* ドキュメントリスト */}

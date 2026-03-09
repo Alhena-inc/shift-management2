@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmounts, loadBillingRecordsForMonth, loadShogaiDocuments, saveShogaiDocument, deleteShogaiDocument, uploadShogaiDocFile, loadAiPrompt, saveAiPrompt, saveDocumentSchedule, loadMonitoringSchedules, saveMonitoringSchedule, saveDocumentValidation, loadDocumentSchedules } from '../services/dataService';
+import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmounts, loadBillingRecordsForMonth, loadShogaiDocuments, saveShogaiDocument, deleteShogaiDocument, uploadShogaiDocFile, loadAiPrompt, saveAiPrompt, saveDocumentSchedule, loadMonitoringSchedules, saveMonitoringSchedule, saveDocumentValidation, loadDocumentSchedules, loadShogaiCarePlanDocuments } from '../services/dataService';
 import { computeNextDates } from '../utils/documentScheduleChecker';
 import { isGeminiAvailable } from '../services/geminiService';
 import { validateClientDocuments } from '../utils/documentValidation';
@@ -464,6 +464,89 @@ const DocumentsPage: React.FC = () => {
     alert(`一括生成が完了しました。\n成功: ${successCount} / ${total}件`);
   }, [helpers, careClients, shifts, billingRecords, supplyAmounts, selectedYear, selectedMonth]);
 
+  // ========== 居宅介護計画書 一括生成（必要な利用者のみ） ==========
+  const handleBulkCarePlanGenerate = useCallback(async () => {
+    if (!isGeminiAvailable()) {
+      alert('Gemini APIキーが設定されていません。');
+      return;
+    }
+
+    setIsBulkGenerating(true);
+    setError(null);
+    setBulkProgress({ current: 0, total: 0, currentName: '対象者を確認中...' });
+
+    try {
+      // 各利用者のアセスメント有無・計画書有無をチェック
+      const targetClients: CareClient[] = [];
+      const skipReasons: { name: string; reason: string }[] = [];
+
+      for (const client of careClients) {
+        try {
+          const [assessmentDocs, carePlanDocs] = await Promise.all([
+            loadShogaiDocuments(client.id, 'assessment'),
+            loadShogaiCarePlanDocuments(client.id),
+          ]);
+          const hasAssessment = assessmentDocs.some((d: any) => d.fileUrl);
+          const hasKyotakuPlan = carePlanDocs.some((d: any) => d.planCategory === 'kyotaku');
+
+          if (!hasAssessment) {
+            skipReasons.push({ name: client.name, reason: 'アセスメント未登録' });
+          } else if (hasKyotakuPlan) {
+            skipReasons.push({ name: client.name, reason: '計画書作成済み' });
+          } else {
+            targetClients.push(client);
+          }
+        } catch {
+          skipReasons.push({ name: client.name, reason: 'データ確認失敗' });
+        }
+      }
+
+      if (targetClients.length === 0) {
+        setIsBulkGenerating(false);
+        const skipInfo = skipReasons.map(s => `  ${s.name}: ${s.reason}`).join('\n');
+        alert(`作成が必要な利用者はいません。\n\n${skipInfo}`);
+        return;
+      }
+
+      const skipInfo = skipReasons.length > 0
+        ? `\n\nスキップ:\n${skipReasons.map(s => `  ${s.name}（${s.reason}）`).join('\n')}`
+        : '';
+      if (!confirm(`${targetClients.length}名の計画書を作成します。\n対象: ${targetClients.map(c => c.name).join('、')}${skipInfo}`)) {
+        setIsBulkGenerating(false);
+        return;
+      }
+
+      const total = targetClients.length;
+      let successCount = 0;
+
+      const carePlanDoc = DOCUMENTS.find(d => d.id === 'care-plan')!;
+
+      for (let i = 0; i < targetClients.length; i++) {
+        const client = targetClients[i];
+        setBulkProgress({ current: i + 1, total, currentName: `${client.name}の計画書` });
+
+        try {
+          await handleGenerate(carePlanDoc, client);
+          successCount++;
+        } catch (err) {
+          console.error(`${client.name}の計画書生成エラー:`, err);
+        }
+
+        // API負荷軽減
+        if (i < targetClients.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+
+      alert(`計画書一括作成が完了しました。\n成功: ${successCount} / ${total}名`);
+    } catch (err: any) {
+      console.error('計画書一括生成エラー:', err);
+      setError(`計画書一括生成に失敗しました: ${err.message || err}`);
+    } finally {
+      setIsBulkGenerating(false);
+    }
+  }, [careClients, handleGenerate]);
+
   const loadGenerator = async (docId: string): Promise<((ctx: any) => Promise<any>) | null> => {
     try {
       switch (docId) {
@@ -540,6 +623,14 @@ const DocumentsPage: React.FC = () => {
               >
                 <span className="material-symbols-outlined text-base">bolt</span>
                 一括生成
+              </button>
+              <button
+                onClick={handleBulkCarePlanGenerate}
+                disabled={isBulkGenerating}
+                className="px-4 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-sm font-medium flex items-center gap-1.5 shadow-sm"
+              >
+                <span className="material-symbols-outlined text-base">auto_awesome</span>
+                計画書一括
               </button>
               <div className="relative">
                 <button
