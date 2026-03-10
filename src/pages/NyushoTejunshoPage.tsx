@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import ExcelJS from 'exceljs';
 
 interface ProcedureRow {
   id: string;
@@ -14,6 +15,151 @@ const createEmptyRow = (): ProcedureRow => ({
   notes: '',
 });
 
+/** フォームの内容をExcelファイルとしてダウンロード */
+async function downloadExcel(
+  createdDate: string,
+  name: string,
+  periodFrom: string,
+  periodTo: string,
+  rows: ProcedureRow[],
+  remarks: string,
+) {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('入所手順書');
+
+  // --- 列幅設定 ---
+  ws.columns = [
+    { width: 4 },   // A: No.
+    { width: 22 },  // B: 項目
+    { width: 45 },  // C: サービス内容と手順
+    { width: 28 },  // D: 留意事項
+  ];
+
+  const thinBorder: Partial<ExcelJS.Borders> = {
+    top: { style: 'thin' },
+    left: { style: 'thin' },
+    bottom: { style: 'thin' },
+    right: { style: 'thin' },
+  };
+
+  const headerFill: ExcelJS.FillPattern = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFD9D9D9' },
+  };
+
+  // --- Row 1: タイトル ---
+  ws.mergeCells('A1:D1');
+  const titleCell = ws.getCell('A1');
+  titleCell.value = '入所手順書';
+  titleCell.font = { bold: true, size: 14 };
+  titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  ws.getRow(1).height = 28;
+
+  // --- Row 2: 空行 ---
+  ws.getRow(2).height = 6;
+
+  // --- Row 3: 作成年月日 / 期間 ---
+  ws.getCell('A3').value = '作成年月日';
+  ws.getCell('A3').font = { bold: true, size: 10 };
+  ws.getCell('B3').value = createdDate || '';
+  ws.getCell('C3').value = '期間';
+  ws.getCell('C3').font = { bold: true, size: 10 };
+  ws.getCell('C3').alignment = { horizontal: 'right' };
+  const periodText = (periodFrom || periodTo)
+    ? `${periodFrom || ''}  ～  ${periodTo || ''}`
+    : '';
+  ws.getCell('D3').value = periodText;
+
+  // --- Row 4: 名称 ---
+  ws.getCell('A4').value = '名称';
+  ws.getCell('A4').font = { bold: true, size: 10 };
+  ws.getCell('B4').value = name || '';
+
+  // --- Row 5: 空行 ---
+  ws.getRow(5).height = 6;
+
+  // --- Row 6: テーブルヘッダー ---
+  const headerRow = 6;
+  const headers = ['No.', '項目', 'サービス内容と手順', '留意事項'];
+  headers.forEach((h, i) => {
+    const cell = ws.getCell(headerRow, i + 1);
+    cell.value = h;
+    cell.font = { bold: true, size: 10 };
+    cell.fill = headerFill;
+    cell.border = thinBorder;
+    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+  });
+  ws.getRow(headerRow).height = 22;
+
+  // --- データ行 ---
+  const dataRows = rows.filter(r => r.item || r.serviceContent || r.notes);
+  const outputRows = dataRows.length > 0 ? dataRows : rows;
+
+  outputRows.forEach((row, i) => {
+    const r = headerRow + 1 + i;
+    const excelRow = ws.getRow(r);
+    excelRow.height = 60;
+
+    const noCell = ws.getCell(r, 1);
+    noCell.value = i + 1;
+    noCell.border = thinBorder;
+    noCell.alignment = { horizontal: 'center', vertical: 'top' };
+    noCell.font = { size: 10 };
+
+    const itemCell = ws.getCell(r, 2);
+    itemCell.value = row.item;
+    itemCell.border = thinBorder;
+    itemCell.alignment = { vertical: 'top', wrapText: true };
+    itemCell.font = { size: 10 };
+
+    const serviceCell = ws.getCell(r, 3);
+    serviceCell.value = row.serviceContent;
+    serviceCell.border = thinBorder;
+    serviceCell.alignment = { vertical: 'top', wrapText: true };
+    serviceCell.font = { size: 10 };
+
+    const notesCell = ws.getCell(r, 4);
+    notesCell.value = row.notes;
+    notesCell.border = thinBorder;
+    notesCell.alignment = { vertical: 'top', wrapText: true };
+    notesCell.font = { size: 10 };
+  });
+
+  // --- 注意点セクション ---
+  const remarksHeaderRow = headerRow + 1 + outputRows.length + 1;
+  ws.mergeCells(remarksHeaderRow, 1, remarksHeaderRow, 4);
+  const remarksLabel = ws.getCell(remarksHeaderRow, 1);
+  remarksLabel.value = '注意点';
+  remarksLabel.font = { bold: true, size: 10 };
+
+  const remarksDataRow = remarksHeaderRow + 1;
+  ws.mergeCells(remarksDataRow, 1, remarksDataRow, 4);
+  const remarksCell = ws.getCell(remarksDataRow, 1);
+  remarksCell.value = remarks;
+  remarksCell.border = thinBorder;
+  remarksCell.alignment = { vertical: 'top', wrapText: true };
+  remarksCell.font = { size: 10 };
+  ws.getRow(remarksDataRow).height = 80;
+
+  // --- ダウンロード ---
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const fileName = name
+    ? `入所手順書_${name}.xlsx`
+    : '入所手順書.xlsx';
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 const NyushoTejunshoPage: React.FC = () => {
   const [createdDate, setCreatedDate] = useState('');
   const [name, setName] = useState('');
@@ -25,6 +171,7 @@ const NyushoTejunshoPage: React.FC = () => {
     createEmptyRow(),
   ]);
   const [remarks, setRemarks] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const addRow = useCallback(() => {
     setRows(prev => [...prev, createEmptyRow()]);
@@ -53,6 +200,18 @@ const NyushoTejunshoPage: React.FC = () => {
       return next;
     });
   }, []);
+
+  const handleDownload = useCallback(async () => {
+    setIsDownloading(true);
+    try {
+      await downloadExcel(createdDate, name, periodFrom, periodTo, rows, remarks);
+    } catch (e) {
+      console.error('Excel生成エラー:', e);
+      alert('ダウンロードに失敗しました');
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [createdDate, name, periodFrom, periodTo, rows, remarks]);
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
@@ -225,6 +384,14 @@ const NyushoTejunshoPage: React.FC = () => {
             className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
           >
             保存
+          </button>
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={isDownloading}
+            className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-green-400 transition-colors text-sm"
+          >
+            {isDownloading ? 'ダウンロード中...' : '様式ダウンロード (Excel)'}
           </button>
         </div>
       </div>
