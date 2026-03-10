@@ -269,6 +269,22 @@ async function fillTemplateWorkbook(
     templateLoaded = false;
   }
 
+  // === 列幅・行高さ調整（テンプレート読み込み後にも適用） ===
+  ws.getColumn(1).width = 16;   // A: ラベル列
+  ws.getColumn(2).width = 16;   // B: 実施日・実施者名
+  ws.getColumn(3).width = 1.5;  // C: 区切り
+  for (let c = 4; c <= 15; c++) {
+    ws.getColumn(c).width = 13; // D-O: 選択肢・理由欄
+  }
+  ws.getRow(7).height = 48;     // 説明文
+  ws.getRow(8).height = 22;     // 選択肢1
+  ws.getRow(9).height = 22;     // 選択肢2
+  ws.getRow(10).height = 22;    // 選択肢3
+  ws.getRow(11).height = 30;    // モニタリング実施者
+  for (let r = 12; r <= 18; r++) {
+    ws.getRow(r).height = 22;   // 理由記入欄
+  }
+
   const displayName = client.childName ? `${client.name}（${client.childName}）` : client.name;
   const reiwaYear = toReiwa(year);
   const lastDay = new Date(year, month, 0).getDate();
@@ -294,8 +310,9 @@ async function fillTemplateWorkbook(
   ws.getCell('E4').value = '';  // No（連番は任意）
   ws.getCell('H4').value = periodText;
   ws.getCell('H4').font = dataFont;
-  ws.getCell('K4').value = sabiName;
+  ws.getCell('K4').value = `サ責: ${sabiName}`;
   ws.getCell('K4').font = dataFont;
+  ws.getCell('K4').alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
 
   // === 選択肢記入（○→●に変える） ===
 
@@ -354,9 +371,10 @@ async function fillTemplateWorkbook(
   ws.getCell('B8').value = implementationDate;
   ws.getCell('B8').font = dataFont;
 
-  // モニタリング実施者（Row 11 B列）
+  // モニタリング実施者（Row 11 B列）= サービス提供責任者名
   ws.getCell('B11').value = sabiName;
   ws.getCell('B11').font = dataFont;
+  ws.getCell('B11').alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
 
   // === 理由記入欄 (Row 12-18 マージセル) ===
   const reasonFont: Partial<ExcelJS.Font> = { name: 'MS ゴシック', size: 8 };
