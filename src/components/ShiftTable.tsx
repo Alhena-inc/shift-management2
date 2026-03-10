@@ -2606,7 +2606,10 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
             if (helperIndex !== -1) {
               const currentAmount = updatedHelpers[helperIndex].monthlyPayments?.[monthKey]?.transportationAllowance || 0;
 
-
+              // 自動取得時は既に値がある場合は上書きしない（手動入力値を保護）
+              if (skipConfirmation && currentAmount > 0) {
+                return;
+              }
 
               // 金額が変わっている場合のみ更新
               if (currentAmount !== item.amount) {
@@ -2642,7 +2645,10 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
             if (helperIndex !== -1) {
               const currentAmount = updatedHelpers[helperIndex].monthlyPayments?.[monthKey]?.advanceExpense || 0;
 
-
+              // 自動取得時は既に値がある場合は上書きしない（手動入力値を保護）
+              if (skipConfirmation && currentAmount > 0) {
+                return;
+              }
 
               // 金額が変わっている場合のみ更新
               if (currentAmount !== item.amount) {
