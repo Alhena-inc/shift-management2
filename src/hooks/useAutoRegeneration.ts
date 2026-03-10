@@ -59,11 +59,13 @@ export function useAutoRegeneration(options: UseAutoRegenerationOptions = {}) {
     setNotifications(prev => prev.filter(n => n.id !== id));
   }, []);
 
-  // コア: 単一クライアントの計画書再生成
+  // コア: モニタリング → 計画書 の流れで再生成
+  // 初回（計画書未作成）は計画書のみ生成。2回目以降は先にモニタリングを実施してから計画書を再生成。
   const regenerateForClient = useCallback(async (
     client: CareClient,
     triggerType: RegenTriggerType,
     reason: string,
+    skipMonitoring?: boolean, // 特定のケースでモニタリングをスキップ（初回生成等）
   ) => {
     const hiddenDiv = getHiddenDiv();
     if (!hiddenDiv) {
@@ -71,30 +73,74 @@ export function useAutoRegeneration(options: UseAutoRegenerationOptions = {}) {
       return;
     }
 
-    const notifId = addNotification({
-      clientName: client.name,
-      triggerType,
-      status: 'generating',
-      message: `${client.name}の計画書を自動再生成中（${TRIGGER_LABELS[triggerType]}）`,
-    });
+    const schedules = await loadDocumentSchedules(client.id);
+    const carePlanSchedule = schedules.find(s => s.docType === 'care_plan');
+    const monitoringSchedule = schedules.find(s => s.docType === 'monitoring');
+
+    if (!carePlanSchedule) {
+      addNotification({
+        clientName: client.name,
+        triggerType,
+        status: 'error',
+        message: `${client.name}: 計画書スケジュールが見つかりません`,
+      });
+      return;
+    }
+
+    const isFirstPlan = !carePlanSchedule.lastGeneratedAt;
+    const shouldDoMonitoring = !isFirstPlan && !skipMonitoring && monitoringSchedule;
 
     try {
       setIsRegenerating(true);
 
-      // クライアントのcare_planスケジュールを取得
-      const schedules = await loadDocumentSchedules(client.id);
-      const carePlanSchedule = schedules.find(s => s.docType === 'care_plan');
-
-      if (!carePlanSchedule) {
-        updateNotification(notifId, {
-          status: 'error',
-          message: `${client.name}: 計画書スケジュールが見つかりません`,
+      // ===== Step 1: モニタリング実施（2回目以降） =====
+      let monitoringResult: { planRevisionNeeded?: string } | null = null;
+      if (shouldDoMonitoring) {
+        const monitorNotifId = addNotification({
+          clientName: client.name,
+          triggerType,
+          status: 'generating',
+          message: `${client.name}のモニタリングを実施中（${TRIGGER_LABELS[triggerType]}）`,
         });
-        return;
+
+        try {
+          const monitoringAction = {
+            type: 'generate_monitoring' as const,
+            clientId: client.id,
+            clientName: client.name,
+            docType: 'monitoring' as const,
+            schedule: monitoringSchedule!,
+            dueDate: toDateString(new Date()),
+            daysUntilDue: 0,
+            autoGenerate: true,
+          };
+
+          monitoringResult = await executeScheduleAction(monitoringAction, client, hiddenDiv);
+
+          updateNotification(monitorNotifId, {
+            status: 'success',
+            message: `${client.name}のモニタリング完了（${TRIGGER_LABELS[triggerType]}）`,
+          });
+        } catch (err: any) {
+          updateNotification(monitorNotifId, {
+            status: 'error',
+            message: `${client.name}: モニタリング失敗 - ${err.message || 'エラー'}`,
+          });
+          // モニタリング失敗時は計画書生成に進まない
+          return;
+        }
       }
 
-      const action = {
-        type: carePlanSchedule.lastGeneratedAt ? 'plan_revision' as const : 'generate_plan' as const,
+      // ===== Step 2: 計画書再生成 =====
+      const planNotifId = addNotification({
+        clientName: client.name,
+        triggerType,
+        status: 'generating',
+        message: `${client.name}の計画書を${isFirstPlan ? '作成' : '再生成'}中（${TRIGGER_LABELS[triggerType]}）`,
+      });
+
+      const planAction = {
+        type: isFirstPlan ? 'generate_plan' as const : 'plan_revision' as const,
         clientId: client.id,
         clientName: client.name,
         docType: 'care_plan' as const,
@@ -104,21 +150,23 @@ export function useAutoRegeneration(options: UseAutoRegenerationOptions = {}) {
         autoGenerate: true,
       };
 
-      const result = await executeScheduleAction(action, client, hiddenDiv);
+      const result = await executeScheduleAction(planAction, client, hiddenDiv);
 
       if (result.success) {
-        updateNotification(notifId, {
+        updateNotification(planNotifId, {
           status: 'success',
-          message: `${client.name}の計画書を自動再生成しました（${TRIGGER_LABELS[triggerType]}）`,
+          message: `${client.name}の計画書を${isFirstPlan ? '作成' : '再生成'}しました（${TRIGGER_LABELS[triggerType]}）`,
         });
       } else {
-        updateNotification(notifId, {
+        updateNotification(planNotifId, {
           status: 'error',
           message: `${client.name}: ${result.error || '再生成に失敗しました'}`,
         });
       }
     } catch (err: any) {
-      updateNotification(notifId, {
+      addNotification({
+        clientName: client.name,
+        triggerType,
         status: 'error',
         message: `${client.name}: ${err.message || '再生成中にエラー'}`,
       });
@@ -223,7 +271,8 @@ export function useAutoRegeneration(options: UseAutoRegenerationOptions = {}) {
         }
       };
 
-      // expired → 達成度を自動判定してから再生成
+      // expired → 達成度を自動判定 → モニタリング → 計画書再生成
+      // 流れ: 目標期間終了 → AI達成判定 → モニタリング実施 → 計画書再生成（新目標設定）
       for (const [clientId, goals] of expiredClients) {
         const client = clientMap.get(clientId);
         if (!client) continue;
@@ -232,10 +281,11 @@ export function useAutoRegeneration(options: UseAutoRegenerationOptions = {}) {
           await autoJudgeAchievement(goal, client);
         }
         const goalTexts = goals.map(g => g.goalText || '未設定').join('、');
+        // regenerateForClientが自動的に「モニタリング → 計画書」の順で実行
         await regenerateForClient(client, 'goal_expiry', `目標期間終了: ${goalTexts}`);
       }
 
-      // expiring → 達成度を自動判定 + 目標変更要否判定
+      // expiring → 達成度を自動判定 + 目標変更要否判定 → 必要ならモニタリング → 計画書再生成
       if (expiringClients.size === 0) return;
       if (!geminiOk) return;
 
@@ -249,11 +299,15 @@ export function useAutoRegeneration(options: UseAutoRegenerationOptions = {}) {
         }
 
         try {
-          const goalDescriptions = goals.map(g =>
-            `${g.goalType === 'long_term' ? '長期' : '短期'}目標: 期間 ${g.startDate}〜${g.endDate}, 内容: ${g.goalText || '未設定'}`
-          ).join('\n');
+          const goalDescriptions = goals.map(g => {
+            const typeLabel = g.goalType === 'long_term' ? '長期' : '短期';
+            const achieveLabel = g.achievementStatus === 'achieved' ? '達成'
+              : g.achievementStatus === 'partially_achieved' ? '一部達成'
+              : g.achievementStatus === 'not_achieved' ? '未達成' : '未評価';
+            return `${typeLabel}目標: 期間 ${g.startDate}〜${g.endDate}, 内容: ${g.goalText || '未設定'}, 達成状況: ${achieveLabel}`;
+          }).join('\n');
 
-          const prompt = `以下の居宅介護計画の目標期間が満了間近です。目標の変更が必要か判定してください。
+          const prompt = `以下の居宅介護計画の目標期間が満了間近です。モニタリング実施と目標の変更が必要か判定してください。
 
 利用者: ${client.name}
 障害支援区分: ${client.careLevel || '不明'}
@@ -263,8 +317,11 @@ ${goalDescriptions}
 以下のJSON形式で回答してください:
 {"decision": "change" | "continue", "reason": "判定理由"}
 
-- "change": 目標内容の見直しが必要（状態変化、目標達成、新たなニーズ等）
-- "continue": 現行目標を継続で問題なし（期間延長のみ）`;
+- "change": 目標内容の見直しが必要（達成して新目標が必要、未達成で内容見直し、状態変化等）
+- "continue": 現行目標を継続で問題なし（期間延長のみ）
+
+★ 目標が「達成」の場合は新しい目標設定が必要なため "change" にしてください
+★ 目標が「未達成」でも内容自体は適切な場合は "continue"（期間延長）にしてください`;
 
           const response = await generateText(prompt);
           const text = response?.text || '';
@@ -275,7 +332,22 @@ ${goalDescriptions}
 
           const parsed = JSON.parse(jsonMatch[0]);
           if (parsed.decision === 'change') {
+            // モニタリング → 計画書再生成（新目標設定含む）
             await regenerateForClient(client, 'goal_expiry', `目標期間満了: ${parsed.reason}`);
+          } else {
+            // 目標継続の場合 → GoalPeriodの期間を延長
+            for (const goal of goals) {
+              const { addMonths } = await import('../utils/documentScheduleChecker');
+              const monthsToExtend = goal.goalType === 'long_term' ? 6 : 3;
+              await saveGoalPeriod({
+                ...goal,
+                endDate: addMonths(goal.endDate, monthsToExtend),
+                achievementStatus: null,  // リセット
+                achievementNote: null,
+                achievementSetBy: null,
+              });
+              console.log(`[AutoRegen] ${client.name}の${goal.goalType === 'long_term' ? '長期' : '短期'}目標を${monthsToExtend}ヶ月延長`);
+            }
           }
         } catch (err) {
           console.warn(`[AutoRegen] ${client.name}のAI目標判定に失敗:`, err);

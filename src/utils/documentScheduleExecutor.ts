@@ -294,8 +294,11 @@ export async function executeScheduleAction(
         periodEnd: nextDueDate,
       });
 
-      // モニタリング次回日設定（3ヶ月周期）
-      const monitoringDates = computeNextDates(generatedAt, 3, schedule.alertDaysBefore);
+      // モニタリング次回日設定（区分に応じた動的周期）
+      const { getMonitoringCycleMonths, getClientSupportCategory } = await import('./documentGenerators/monitoringReportGenerator');
+      const supportCat = await getClientSupportCategory(client.id);
+      const monitoringCycle = getMonitoringCycleMonths(supportCat || client.careLevel || '');
+      const monitoringDates = computeNextDates(generatedAt, monitoringCycle, schedule.alertDaysBefore);
       await saveDocumentSchedule({
         careClientId: client.id,
         docType: 'monitoring',
@@ -303,7 +306,7 @@ export async function executeScheduleAction(
         nextDueDate: monitoringDates.nextDueDate,
         alertDate: monitoringDates.alertDate,
         expiryDate: monitoringDates.expiryDate,
-        cycleMonths: 3,
+        cycleMonths: monitoringCycle,
         alertDaysBefore: schedule.alertDaysBefore,
         linkedPlanScheduleId: savedPlan.id,
       });
@@ -342,8 +345,9 @@ export async function executeScheduleAction(
       const result = await generateMonitoring(ctx);
 
       const generatedAt = new Date().toISOString();
-      // モニタリングは3ヶ月周期固定
-      const { nextDueDate, alertDate, expiryDate } = computeNextDates(generatedAt, 3, schedule.alertDaysBefore);
+      // モニタリング周期は区分に応じて動的に決定（generateから返される）
+      const cycleMonths = result.monitoringCycleMonths || 3;
+      const { nextDueDate, alertDate, expiryDate } = computeNextDates(generatedAt, cycleMonths, schedule.alertDaysBefore);
 
       // モニタリングスケジュール更新
       await saveDocumentSchedule({
@@ -353,7 +357,7 @@ export async function executeScheduleAction(
         nextDueDate,
         alertDate,
         expiryDate,
-        cycleMonths: 3,
+        cycleMonths,
         planRevisionNeeded: result.planRevisionNeeded,
       });
 
@@ -436,6 +440,8 @@ export async function executeMonitoringScheduleAction(
 
     const completedAt = new Date().toISOString();
     const planRevisionNeeded = result.planRevisionNeeded || 'なし';
+    // monitoringCycleMonths は今後のスケジュール設定に利用可能
+    console.log(`[v2Monitoring] 次回周期: ${result.monitoringCycleMonths}ヶ月`);
 
     // モニタリングスケジュール更新
     await saveMonitoringSchedule({

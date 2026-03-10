@@ -86,7 +86,7 @@ export const createInitialSchedules = (
 
   const cycleMonthsMap: Record<ScheduleDocType, number> = {
     care_plan: 6,    // 長期目標周期
-    monitoring: 3,   // 短期目標に合わせて3ヶ月
+    monitoring: 6,   // 初期値6ヶ月（区分に応じて動的変更: 区分3以下→6ヶ月, 区分4→3ヶ月, 区分5-6→3ヶ月）
     tejunsho: 0,     // 定期周期なし（パターン変更時のみ）
   };
 
