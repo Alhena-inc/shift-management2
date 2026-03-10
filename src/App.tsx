@@ -27,6 +27,7 @@ import ShiftBulkInputPage from './pages/ShiftBulkInputPage';
 import BillingImportPage from './pages/BillingImportPage';
 import BillingRecordsPage from './pages/BillingRecordsPage';
 import DocumentsPage from './pages/DocumentsPage';
+import NyushoTejunshoPage from './pages/NyushoTejunshoPage';
 import TestSupabase from './pages/TestSupabase';
 
 import { helpers as initialHelpers } from './data/mockData';
@@ -518,6 +519,15 @@ function App() {
   if (path === '/document-schedules' || path === '/document-schedules/') {
     window.location.href = '/documents?tab=schedule';
     return null;
+  }
+
+  // /nyusho-tejunsho の形式の場合（入所手順書）
+  if (path === '/nyusho-tejunsho' || path === '/nyusho-tejunsho/') {
+    return (
+      <Layout user={user}>
+        <NyushoTejunshoPage />
+      </Layout>
+    );
   }
 
   // /test-supabase の形式の場合（Supabaseテスト）
