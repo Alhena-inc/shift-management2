@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import { generateWithFiles, generateText } from '../../services/geminiService';
-import { loadShogaiDocuments, loadBillingRecordsForMonth, uploadShogaiDocFile, saveShogaiDocument, loadGoalPeriods, loadShogaiSogoCareCategories, loadShogaiServiceResponsibles } from '../../services/dataService';
+import { loadShogaiDocuments, loadBillingRecordsForMonth, uploadShogaiDocFile, saveShogaiDocument, loadGoalPeriods, loadShogaiSogoCareCategories } from '../../services/dataService';
 import type { GeneratorContext } from './types';
 import type { CareClient, BillingRecord, ShogaiSupplyAmount } from '../../types';
 
@@ -49,15 +49,11 @@ export async function getClientSupportCategory(clientId: string): Promise<string
   }
 }
 
-async function getServiceResponsibleName(clientId: string): Promise<string> {
+function getServiceResponsibleName(officeServiceManager: string): string {
+  // 優先順位: 1. officeInfo.serviceManager（書類設定で選択された値） 2. localStorage
+  if (officeServiceManager) return officeServiceManager;
   try {
-    const responsibles = await loadShogaiServiceResponsibles(clientId);
-    if (responsibles.length === 0) return '';
-    const today = new Date().toISOString().slice(0, 10);
-    const valid = responsibles
-      .filter(r => r.validFrom <= today && r.validUntil >= today)
-      .sort((a, b) => b.validFrom.localeCompare(a.validFrom));
-    return valid.length > 0 ? valid[0].helperName : responsibles[0].helperName;
+    return localStorage.getItem('care_plan_service_manager') || '';
   } catch {
     return '';
   }
@@ -630,10 +626,8 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
   if (!client) throw new Error('利用者が選択されていません');
 
   // 障害支援区分・サービス提供責任者を取得
-  const [supportCategory, serviceResponsibleName] = await Promise.all([
-    getClientSupportCategory(client.id),
-    getServiceResponsibleName(client.id),
-  ]);
+  const supportCategory = await getClientSupportCategory(client.id);
+  const serviceResponsibleName = getServiceResponsibleName(officeInfo.serviceManager || '');
   const monitoringCycleMonths = getMonitoringCycleMonths(supportCategory || client.careLevel || '');
 
   const promptTemplate = customPrompt || DEFAULT_PROMPT;

@@ -195,6 +195,9 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
         return;
       }
 
+      // 書類設定のサービス提供責任者名を取得
+      const savedServiceManager = localStorage.getItem('care_plan_service_manager') || '';
+
       const ctx = {
         helpers,
         careClients: allClients,
@@ -208,7 +211,7 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
           address: '',
           tel: '',
           administrator: '',
-          serviceManager: '',
+          serviceManager: savedServiceManager,
           establishedDate: '',
         },
         hiddenDiv,
