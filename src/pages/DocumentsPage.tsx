@@ -480,6 +480,14 @@ const DocumentsPage: React.FC = () => {
       const targetClients: CareClient[] = [];
       const skipReasons: { name: string; reason: string }[] = [];
 
+      // 選択月の実績データを確認
+      let monthBillingRecords = billingRecords;
+      if (monthBillingRecords.length === 0) {
+        try {
+          monthBillingRecords = await loadBillingRecordsForMonth(selectedYear, selectedMonth);
+        } catch { /* skip */ }
+      }
+
       for (const client of careClients) {
         try {
           const [assessmentDocs, carePlanDocs] = await Promise.all([
@@ -488,8 +496,11 @@ const DocumentsPage: React.FC = () => {
           ]);
           const hasAssessment = assessmentDocs.some((d: any) => d.fileUrl);
           const hasKyotakuPlan = carePlanDocs.some((d: any) => d.planCategory === 'kyotaku');
+          const hasBilling = monthBillingRecords.some(r => r.clientName === client.name);
 
-          if (!hasAssessment) {
+          if (!hasBilling) {
+            skipReasons.push({ name: client.name, reason: `${selectedYear}年${selectedMonth}月の実績記録なし` });
+          } else if (!hasAssessment) {
             skipReasons.push({ name: client.name, reason: 'アセスメント未登録' });
           } else if (hasKyotakuPlan) {
             skipReasons.push({ name: client.name, reason: '計画書作成済み' });
@@ -766,6 +777,23 @@ const DocumentsPage: React.FC = () => {
                 <p className="text-xs text-gray-500 mt-0.5">サンプルデータ入りの様式Aモニタリングシートをダウンロード</p>
               </div>
               <span className="material-symbols-outlined text-gray-400">download</span>
+            </div>
+          </div>
+
+          {/* 入所手順書 */}
+          <div className="mb-5">
+            <div
+              onClick={() => window.location.href = '/nyusho-tejunsho'}
+              className="rounded-xl border border-gray-200 bg-white hover:shadow-md hover:border-gray-300 transition-all duration-200 cursor-pointer p-4 flex items-center gap-4"
+            >
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-blue-50">
+                <span className="material-symbols-outlined text-blue-600">description</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-bold text-gray-900">入所手順書</h3>
+                <p className="text-xs text-gray-500 mt-0.5">入所手順書の作成・Excelダウンロード</p>
+              </div>
+              <span className="material-symbols-outlined text-gray-400">arrow_forward</span>
             </div>
           </div>
 
