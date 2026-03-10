@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { loadShogaiDocuments, deleteShogaiDocument, loadShogaiCarePlanDocuments, deleteShogaiCarePlanDocument } from '../../services/dataService';
+import React, { useState, useCallback, useRef } from 'react';
+import { loadShogaiDocuments, deleteShogaiDocument, loadShogaiCarePlanDocuments, deleteShogaiCarePlanDocument, loadBillingRecordsForMonth, loadShiftsForMonth, loadHelpers, loadCareClients, loadAiPrompt, loadDocumentSchedules } from '../../services/dataService';
 import type { CareClient } from '../../types';
 import ExcelViewer from './ExcelViewer';
 
@@ -74,6 +74,8 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
   const [loadingClientId, setLoadingClientId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [viewerDoc, setViewerDoc] = useState<UnifiedDocument | null>(null);
+  const [generatingMonitoring, setGeneratingMonitoring] = useState<string | null>(null);
+  const hiddenDivRef = useRef<HTMLDivElement | null>(null);
 
   const loadClientDocuments = useCallback(async (clientId: string) => {
     setLoadingClientId(clientId);
@@ -161,6 +163,107 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
     }
   }, []);
 
+  // モニタリング報告書AI作成
+  const handleGenerateMonitoring = useCallback(async (clientId: string) => {
+    const { isGeminiAvailable } = await import('../../services/geminiService');
+    if (!isGeminiAvailable()) {
+      alert('Gemini APIキーが設定されていません。');
+      return;
+    }
+
+    const client = careClients.find(c => c.id === clientId);
+    if (!client) return;
+
+    if (!confirm(`${client.name}のモニタリング報告書をAIで作成しますか？`)) return;
+
+    setGeneratingMonitoring(clientId);
+    try {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1;
+
+      const [helpers, allClients, shifts, billingRecords] = await Promise.all([
+        loadHelpers(),
+        loadCareClients(),
+        loadShiftsForMonth(year, month),
+        loadBillingRecordsForMonth(year, month),
+      ]);
+
+      const hiddenDiv = hiddenDivRef.current;
+      if (!hiddenDiv) {
+        alert('内部エラー: hiddenDivが見つかりません');
+        return;
+      }
+
+      const ctx = {
+        helpers,
+        careClients: allClients,
+        shifts,
+        billingRecords,
+        supplyAmounts: [] as any[],
+        year,
+        month,
+        officeInfo: {
+          name: '訪問介護事業所のあ',
+          address: '',
+          tel: '',
+          administrator: '',
+          serviceManager: '',
+          establishedDate: '',
+        },
+        hiddenDiv,
+        selectedClient: client,
+        customPrompt: undefined as string | undefined,
+        customSystemInstruction: undefined as string | undefined,
+      };
+
+      // カスタムプロンプトの読み込み
+      const promptData = await loadAiPrompt('monitoring').catch(() => null);
+      if (promptData) {
+        ctx.customPrompt = promptData.prompt;
+        ctx.customSystemInstruction = promptData.system_instruction;
+      }
+
+      const { generate } = await import('../../utils/documentGenerators/monitoringReportGenerator');
+      const result = await generate(ctx);
+
+      // スケジュール更新（存在する場合）
+      try {
+        const { saveDocumentSchedule } = await import('../../services/dataService');
+        const { computeNextDates } = await import('../../utils/documentScheduleChecker');
+        const schedules = await loadDocumentSchedules(clientId);
+        const monSchedule = schedules.find(s => s.docType === 'monitoring');
+        if (monSchedule) {
+          const generatedAt = new Date().toISOString();
+          const cycleMonths = result.monitoringCycleMonths || 3;
+          const dates = computeNextDates(generatedAt, cycleMonths, monSchedule.alertDaysBefore);
+          await saveDocumentSchedule({
+            ...monSchedule,
+            status: 'active',
+            lastGeneratedAt: generatedAt,
+            nextDueDate: dates.nextDueDate,
+            alertDate: dates.alertDate,
+            expiryDate: dates.expiryDate,
+            cycleMonths,
+            planRevisionNeeded: result.planRevisionNeeded,
+          });
+        }
+      } catch (err) {
+        console.warn('モニタリングスケジュール更新に失敗:', err);
+      }
+
+      alert(`${client.name}のモニタリング報告書を作成しました。`);
+
+      // 書類一覧をリロード
+      await loadClientDocuments(clientId);
+    } catch (err: any) {
+      console.error('モニタリング生成エラー:', err);
+      alert(`モニタリング生成に失敗しました: ${err.message || err}`);
+    } finally {
+      setGeneratingMonitoring(null);
+    }
+  }, [careClients, loadClientDocuments]);
+
   if (careClients.length === 0) {
     return (
       <div className="text-center py-16 text-gray-400 text-sm">利用者が登録されていません</div>
@@ -169,6 +272,9 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
 
   return (
     <div>
+      {/* 非表示div（Excel生成用） */}
+      <div ref={hiddenDivRef} style={{ display: 'none' }} />
+
       {viewerDoc && (
         <ExcelViewer
           isOpen={!!viewerDoc}
@@ -209,6 +315,7 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
         const isLoading = loadingClientId === expandedClientId;
         const docs = clientDocs[expandedClientId] || [];
         const clientName = careClients.find(c => c.id === expandedClientId)?.name || '';
+        const isGenerating = generatingMonitoring === expandedClientId;
 
         return (
           <div className="mt-3 bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -218,12 +325,24 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
                 <span className="text-sm font-bold text-gray-800">{clientName}</span>
                 {!isLoading && <span className="text-xs text-gray-400">{docs.length}件</span>}
               </div>
-              <button
-                onClick={() => setExpandedClientId(null)}
-                className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
-              >
-                <span className="material-symbols-outlined text-base">close</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleGenerateMonitoring(expandedClientId)}
+                  disabled={isGenerating}
+                  className="px-3 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-xs font-medium flex items-center gap-1 shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-sm">
+                    {isGenerating ? 'progress_activity' : 'auto_awesome'}
+                  </span>
+                  {isGenerating ? 'モニタリング作成中...' : 'モニタリングAI作成'}
+                </button>
+                <button
+                  onClick={() => setExpandedClientId(null)}
+                  className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                >
+                  <span className="material-symbols-outlined text-base">close</span>
+                </button>
+              </div>
             </div>
             {isLoading ? (
               <div className="flex items-center justify-center py-8 text-gray-400 gap-2">
