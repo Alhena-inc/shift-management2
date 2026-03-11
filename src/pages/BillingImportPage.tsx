@@ -291,6 +291,54 @@ const BillingImportPage: React.FC = () => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, []);
 
+  // テスト用: 11月の実績を12月〜3月にコピー
+  const handleCopyNovToMarTest = useCallback(async () => {
+    if (!confirm('11月の実績データを12月〜3月（2026年）にコピーします。テスト用です。よろしいですか？')) return;
+    try {
+      const novRecords = await loadBillingRecordsForMonth(2025, 11);
+      if (novRecords.length === 0) {
+        alert('11月の実績データが見つかりません');
+        return;
+      }
+
+      const targetMonths = [
+        { year: 2025, month: 12 },
+        { year: 2026, month: 1 },
+        { year: 2026, month: 2 },
+        { year: 2026, month: 3 },
+      ];
+
+      let totalInserted = 0;
+      for (const target of targetMonths) {
+        const copied = novRecords.map((r: BillingRecord) => {
+          // 11月の日付を対象月に置換
+          const origDay = r.serviceDate.split('-')[2];
+          // 対象月の最終日を計算
+          const lastDay = new Date(target.year, target.month, 0).getDate();
+          const day = Math.min(parseInt(origDay), lastDay);
+          return {
+            service_date: `${target.year}-${String(target.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+            start_time: r.startTime + ':00',
+            end_time: r.endTime + ':00',
+            helper_name: r.helperName,
+            client_name: r.clientName,
+            service_code: r.serviceCode || undefined,
+            is_locked: true,
+            source: 'test_copy',
+            import_batch_id: crypto.randomUUID(),
+          };
+        });
+        const result = await saveBillingRecords(copied);
+        totalInserted += result.inserted;
+      }
+
+      alert(`完了: ${totalInserted}件を12月〜3月にコピーしました`);
+      reloadRecords();
+    } catch (err: any) {
+      alert(`エラー: ${err.message}`);
+    }
+  }, [reloadRecords]);
+
   const handleDeleteBatch = async (batchId: string, count: number) => {
     if (!confirm(`このバッチの${count}件のデータを削除しますか？この操作は元に戻せません。`)) return;
     try {
@@ -314,6 +362,14 @@ const BillingImportPage: React.FC = () => {
           </button>
           <h1 className="text-2xl font-bold text-gray-900">実績データ取込</h1>
           <span className="text-sm text-gray-500">かんたん介護CSV・PDFから請求確定データをインポート</span>
+
+          {/* テスト用: 11月→12〜3月コピー */}
+          <button
+            onClick={handleCopyNovToMarTest}
+            className="px-3 py-1.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-xs"
+          >
+            テスト: 11月→12〜3月コピー
+          </button>
 
           {/* 月切替 */}
           <div className="flex items-center gap-2 ml-auto">
