@@ -310,10 +310,9 @@ const BillingImportPage: React.FC = () => {
 
       let totalInserted = 0;
       for (const target of targetMonths) {
+        const batchId = crypto.randomUUID();
         const copied = novRecords.map((r: BillingRecord) => {
-          // 11月の日付を対象月に置換
           const origDay = r.serviceDate.split('-')[2];
-          // 対象月の最終日を計算
           const lastDay = new Date(target.year, target.month, 0).getDate();
           const day = Math.min(parseInt(origDay), lastDay);
           return {
@@ -325,10 +324,18 @@ const BillingImportPage: React.FC = () => {
             service_code: r.serviceCode || undefined,
             is_locked: true,
             source: 'test_copy',
-            import_batch_id: crypto.randomUUID(),
+            import_batch_id: batchId,
           };
         });
-        const result = await saveBillingRecords(copied);
+        // 同一キー(service_date,helper_name,start_time)の重複を除去
+        const seen = new Set<string>();
+        const deduped = copied.filter(r => {
+          const key = `${r.service_date}_${r.helper_name}_${r.start_time}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        const result = await saveBillingRecords(deduped);
         totalInserted += result.inserted;
       }
 

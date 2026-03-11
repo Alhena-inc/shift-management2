@@ -2719,8 +2719,8 @@ export const saveBillingRecords = async (records: Array<{
   import_batch_id?: string;
 }>): Promise<{ inserted: number; updated: number }> => {
   try {
-    // バッチサイズ制限対策: 500件ずつに分割してupsert
-    const BATCH_SIZE = 500;
+    // バッチサイズ制限対策: 200件ずつに分割してupsert
+    const BATCH_SIZE = 200;
     let totalCount = 0;
 
     for (let i = 0; i < records.length; i += BATCH_SIZE) {
