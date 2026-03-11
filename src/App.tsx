@@ -521,8 +521,8 @@ function App() {
     return null;
   }
 
-  // /nyusho-tejunsho の形式の場合（入所手順書）
-  if (path === '/nyusho-tejunsho' || path === '/nyusho-tejunsho/') {
+  // /tejunsho の形式の場合（手順書）
+  if (path === '/tejunsho' || path === '/tejunsho/' || path === '/nyusho-tejunsho' || path === '/nyusho-tejunsho/') {
     return (
       <Layout user={user}>
         <NyushoTejunshoPage />

@@ -4,7 +4,7 @@ import { STATUS_CHANGE_LABELS } from '../types/documentSchedule';
 import type { CareClient } from '../types';
 import { loadDocumentSchedules, saveDocumentSchedule, loadCareClients, loadGoalPeriods, loadMonitoringSchedules, saveMonitoringSchedule, loadDocumentValidations, saveDocumentValidation, loadHelpers, loadBillingRecordsForMonth } from '../services/dataService';
 import { checkDocumentSchedules, createInitialSchedules, toDateString, checkMonitoringSchedules, checkContractDateAlerts, detectCarePatternChanges } from '../utils/documentScheduleChecker';
-import { executeScheduleAction } from '../utils/documentScheduleExecutor';
+import { executeScheduleAction, executeCatchUpGeneration } from '../utils/documentScheduleExecutor';
 import { executeMonitoringScheduleAction } from '../utils/documentScheduleExecutor';
 import { validateAllClients, getClientValidationStatus } from '../utils/documentValidation';
 import { useAutoRegeneration } from '../hooks/useAutoRegeneration';
@@ -289,6 +289,51 @@ const DocumentScheduleDashboard: React.FC = () => {
       alert(`生成エラー: ${result.error}`);
     }
   }, [clients, loadData]);
+
+  // ===== キャッチアップ一括生成 =====
+  const handleCatchUpGeneration = useCallback(async (clientId: string) => {
+    const client = clients.find(c => c.id === clientId);
+    if (!client || !hiddenDivRef.current) return;
+
+    const planSchedule = schedules.find(s => s.careClientId === clientId && s.docType === 'care_plan');
+    if (!planSchedule) {
+      alert('スケジュールが見つかりません。先にスケジュールを初期化してください。');
+      return;
+    }
+
+    if (!client.contractStart) {
+      alert('契約開始日が設定されていません。利用者情報に契約開始日を入力してください。');
+      return;
+    }
+
+    const msg = `${client.name}の全書類を一括生成します。\n\n` +
+      `契約開始日: ${client.contractStart}\n` +
+      `対象: 契約開始～現在までの計画書・手順書・モニタリングを\nルーティンに沿って全て生成します。\n\n` +
+      `実行しますか？（時間がかかる場合があります）`;
+
+    if (!confirm(msg)) return;
+
+    setExecutingClientId(clientId);
+    setProgressMessage('');
+
+    const result = await executeCatchUpGeneration(
+      client,
+      planSchedule,
+      hiddenDivRef.current,
+      (msg) => setProgressMessage(msg)
+    );
+
+    setExecutingClientId(null);
+    setProgressMessage('');
+
+    if (result.success) {
+      const warning = result.error ? `\n\n注意: ${result.error}` : '';
+      alert(`${client.name}の一括書類生成が完了しました${warning}`);
+      await loadData();
+    } else {
+      alert(`一括生成エラー: ${result.error}`);
+    }
+  }, [clients, schedules, loadData]);
 
   const handleBulkCheck = useCallback(async () => {
     if (actions.length === 0) {
@@ -1341,6 +1386,23 @@ const DocumentScheduleDashboard: React.FC = () => {
                             <span className="material-symbols-outlined text-base">add_circle</span>
                             居宅介護計画書を作成
                           </button>
+                        </div>
+                      )}
+
+                      {/* 一括書類生成（キャッチアップ） */}
+                      {client.contractStart && (
+                        <div className="mt-4 pt-3 border-t border-gray-200">
+                          <button
+                            onClick={() => handleCatchUpGeneration(client.id)}
+                            disabled={executingClientId === client.id || isBulkRunning}
+                            className="w-full px-4 py-2.5 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 disabled:opacity-50 font-medium flex items-center justify-center gap-2"
+                          >
+                            <span className="material-symbols-outlined text-base">auto_awesome</span>
+                            全書類一括生成（{client.contractStart}～現在）
+                          </button>
+                          <p className="text-xs text-gray-500 mt-1 text-center">
+                            契約開始から現在まで、計画書・手順書・モニタリングをルーティン通りに全て生成します
+                          </p>
                         </div>
                       )}
 

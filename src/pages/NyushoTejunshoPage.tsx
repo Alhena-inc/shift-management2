@@ -15,132 +15,242 @@ const createEmptyRow = (): ProcedureRow => ({
   notes: '',
 });
 
-/** フォームの内容をExcelファイルとしてダウンロード */
+/** 日付文字列(yyyy-MM-dd)を令和表記に変換 */
+function toReiwaDate(dateStr: string): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  const reiwa = d.getFullYear() - 2018;
+  return `令和${reiwa}年${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
+/** フォームの内容をテンプレート準拠のExcelファイルとしてダウンロード */
 async function downloadExcel(
   createdDate: string,
-  name: string,
+  clientName: string,
+  gender: string,
+  birthDate: string,
+  address: string,
+  phone: string,
   periodFrom: string,
   periodTo: string,
   rows: ProcedureRow[],
   remarks: string,
 ) {
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('入所手順書');
+  const ws = wb.addWorksheet('手順書');
 
-  // --- 列幅設定 ---
-  ws.columns = [
-    { width: 4 },   // A: No.
-    { width: 22 },  // B: 項目
-    { width: 45 },  // C: サービス内容と手順
-    { width: 28 },  // D: 留意事項
-  ];
+  // --- 列幅設定（テンプレート準拠: A-L 12列）---
+  ws.getColumn(1).width = 18;  // A
+  ws.getColumn(2).width = 10;  // B
+  ws.getColumn(3).width = 14;  // C
+  ws.getColumn(4).width = 14;  // D
+  ws.getColumn(5).width = 14;  // E
+  ws.getColumn(6).width = 8;   // F
+  ws.getColumn(7).width = 6;   // G
+  ws.getColumn(8).width = 10;  // H
+  ws.getColumn(9).width = 16;  // I
+  ws.getColumn(10).width = 10; // J
+  ws.getColumn(11).width = 8;  // K
+  ws.getColumn(12).width = 16; // L
 
+  // 印刷設定
+  ws.pageSetup = {
+    paperSize: 9, // A4
+    orientation: 'portrait',
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    margins: { left: 0.5, right: 0.5, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 },
+  };
+
+  const font9: Partial<ExcelJS.Font> = { name: 'MS ゴシック', size: 9 };
+  const font9Bold: Partial<ExcelJS.Font> = { name: 'MS ゴシック', size: 9, bold: true };
   const thinBorder: Partial<ExcelJS.Borders> = {
-    top: { style: 'thin' },
-    left: { style: 'thin' },
-    bottom: { style: 'thin' },
-    right: { style: 'thin' },
+    top: { style: 'thin' }, left: { style: 'thin' },
+    bottom: { style: 'thin' }, right: { style: 'thin' },
   };
-
   const headerFill: ExcelJS.FillPattern = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb: 'FFD9D9D9' },
+    type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9D9D9' },
   };
+  const centerMiddle: Partial<ExcelJS.Alignment> = { horizontal: 'center', vertical: 'middle' };
 
-  // --- Row 1: タイトル ---
-  ws.mergeCells('A1:D1');
-  const titleCell = ws.getCell('A1');
-  titleCell.value = '入所手順書';
-  titleCell.font = { bold: true, size: 14 };
-  titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
-  ws.getRow(1).height = 28;
+  // ==================== Row 1: タイトル行 ====================
+  ws.getCell('A1').value = `${clientName ? `　${clientName}` : '　　　　'}　様`;
+  ws.getCell('A1').font = { name: 'MS ゴシック', size: 11 };
 
-  // --- Row 2: 空行 ---
+  ws.mergeCells('E1:H1');
+  ws.getCell('E1').value = '手順書';
+  ws.getCell('E1').font = { name: 'MS ゴシック', size: 16, bold: true };
+  ws.getCell('E1').alignment = centerMiddle;
+
+  ws.mergeCells('J1:L1');
+  const reiwaCreated = createdDate ? toReiwaDate(createdDate) : '令和　　年　　月　　日';
+  ws.getCell('J1').value = `作成年月日　${reiwaCreated}`;
+  ws.getCell('J1').font = { name: 'MS ゴシック', size: 9 };
+  ws.getCell('J1').alignment = { horizontal: 'right', vertical: 'middle' };
+  ws.getRow(1).height = 30;
+
+  // ==================== Row 2: 空行 ====================
   ws.getRow(2).height = 6;
 
-  // --- Row 3: 作成年月日 / 期間 ---
-  ws.getCell('A3').value = '作成年月日';
-  ws.getCell('A3').font = { bold: true, size: 10 };
-  ws.getCell('B3').value = createdDate || '';
-  ws.getCell('C3').value = '期間';
-  ws.getCell('C3').font = { bold: true, size: 10 };
-  ws.getCell('C3').alignment = { horizontal: 'right' };
+  // ==================== Row 3: 氏名 / 性別 / 生年月日 / 電話番号 ====================
+  ws.getCell('B3').value = '氏名';
+  ws.getCell('B3').font = font9Bold;
+  ws.getCell('B3').fill = headerFill;
+  ws.getCell('B3').border = thinBorder;
+  ws.getCell('B3').alignment = centerMiddle;
+
+  ws.mergeCells('C3:E3');
+  ws.getCell('C3').value = clientName || '';
+  ws.getCell('C3').font = font9;
+  ws.getCell('C3').border = thinBorder;
+  ws.getCell('C3').alignment = { vertical: 'middle' };
+
+  ws.getCell('F3').value = '性別';
+  ws.getCell('F3').font = font9Bold;
+  ws.getCell('F3').fill = headerFill;
+  ws.getCell('F3').border = thinBorder;
+  ws.getCell('F3').alignment = centerMiddle;
+
+  ws.getCell('G3').value = gender || '';
+  ws.getCell('G3').font = font9;
+  ws.getCell('G3').border = thinBorder;
+  ws.getCell('G3').alignment = { vertical: 'middle' };
+
+  ws.getCell('H3').value = '生年月日';
+  ws.getCell('H3').font = font9Bold;
+  ws.getCell('H3').fill = headerFill;
+  ws.getCell('H3').border = thinBorder;
+  ws.getCell('H3').alignment = centerMiddle;
+
+  ws.mergeCells('I3:J3');
+  ws.getCell('I3').value = birthDate || '';
+  ws.getCell('I3').font = font9;
+  ws.getCell('I3').border = thinBorder;
+  ws.getCell('I3').alignment = { vertical: 'middle' };
+
+  ws.getCell('K3').value = '電話番号';
+  ws.getCell('K3').font = font9Bold;
+  ws.getCell('K3').fill = headerFill;
+  ws.getCell('K3').border = thinBorder;
+  ws.getCell('K3').alignment = centerMiddle;
+
+  ws.getCell('L3').value = phone || '';
+  ws.getCell('L3').font = font9;
+  ws.getCell('L3').border = thinBorder;
+  ws.getCell('L3').alignment = { vertical: 'middle' };
+  ws.getRow(3).height = 22;
+
+  // ==================== Row 4: 住所 ====================
+  ws.getCell('B4').value = '住所';
+  ws.getCell('B4').font = font9Bold;
+  ws.getCell('B4').fill = headerFill;
+  ws.getCell('B4').border = thinBorder;
+  ws.getCell('B4').alignment = centerMiddle;
+
+  ws.mergeCells('C4:L4');
+  ws.getCell('C4').value = address || '';
+  ws.getCell('C4').font = font9;
+  ws.getCell('C4').border = thinBorder;
+  ws.getCell('C4').alignment = { vertical: 'middle' };
+  ws.getRow(4).height = 22;
+
+  // ==================== Row 5: 実施期間 ====================
+  ws.getCell('B5').value = '実施期間';
+  ws.getCell('B5').font = font9Bold;
+  ws.getCell('B5').fill = headerFill;
+  ws.getCell('B5').border = thinBorder;
+  ws.getCell('B5').alignment = centerMiddle;
+
+  ws.mergeCells('C5:L5');
   const periodText = (periodFrom || periodTo)
-    ? `${periodFrom || ''}  ～  ${periodTo || ''}`
+    ? `${toReiwaDate(periodFrom)}　～　${toReiwaDate(periodTo)}`
     : '';
-  ws.getCell('D3').value = periodText;
+  ws.getCell('C5').value = periodText;
+  ws.getCell('C5').font = font9;
+  ws.getCell('C5').border = thinBorder;
+  ws.getCell('C5').alignment = { vertical: 'middle' };
+  ws.getRow(5).height = 22;
 
-  // --- Row 4: 名称 ---
-  ws.getCell('A4').value = '名称';
-  ws.getCell('A4').font = { bold: true, size: 10 };
-  ws.getCell('B4').value = name || '';
+  // ==================== Row 6: 空行 ====================
+  ws.getRow(6).height = 6;
 
-  // --- Row 5: 空行 ---
-  ws.getRow(5).height = 6;
+  // ==================== Row 7: テーブルヘッダー ====================
+  const headerRow = 7;
 
-  // --- Row 6: テーブルヘッダー ---
-  const headerRow = 6;
-  const headers = ['No.', '項目', 'サービス内容と手順', '留意事項'];
-  headers.forEach((h, i) => {
-    const cell = ws.getCell(headerRow, i + 1);
-    cell.value = h;
-    cell.font = { bold: true, size: 10 };
-    cell.fill = headerFill;
-    cell.border = thinBorder;
-    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-  });
+  ws.mergeCells(`A${headerRow}:B${headerRow}`);
+  ws.getCell(`A${headerRow}`).value = '項目';
+  ws.getCell(`A${headerRow}`).font = font9Bold;
+  ws.getCell(`A${headerRow}`).fill = headerFill;
+  ws.getCell(`A${headerRow}`).border = thinBorder;
+  ws.getCell(`A${headerRow}`).alignment = centerMiddle;
+
+  ws.mergeCells(`C${headerRow}:K${headerRow}`);
+  ws.getCell(`C${headerRow}`).value = 'サービス内容と手順';
+  ws.getCell(`C${headerRow}`).font = font9Bold;
+  ws.getCell(`C${headerRow}`).fill = headerFill;
+  ws.getCell(`C${headerRow}`).border = thinBorder;
+  ws.getCell(`C${headerRow}`).alignment = centerMiddle;
+
+  ws.getCell(`L${headerRow}`).value = '留意事項';
+  ws.getCell(`L${headerRow}`).font = font9Bold;
+  ws.getCell(`L${headerRow}`).fill = headerFill;
+  ws.getCell(`L${headerRow}`).border = thinBorder;
+  ws.getCell(`L${headerRow}`).alignment = centerMiddle;
+
   ws.getRow(headerRow).height = 22;
 
-  // --- データ行 ---
+  // ==================== データ行 ====================
   const dataRows = rows.filter(r => r.item || r.serviceContent || r.notes);
   const outputRows = dataRows.length > 0 ? dataRows : rows;
 
   outputRows.forEach((row, i) => {
     const r = headerRow + 1 + i;
-    const excelRow = ws.getRow(r);
-    excelRow.height = 60;
 
-    const noCell = ws.getCell(r, 1);
-    noCell.value = i + 1;
-    noCell.border = thinBorder;
-    noCell.alignment = { horizontal: 'center', vertical: 'top' };
-    noCell.font = { size: 10 };
+    // 項目 (A-B結合)
+    ws.mergeCells(`A${r}:B${r}`);
+    ws.getCell(`A${r}`).value = row.item;
+    ws.getCell(`A${r}`).font = font9;
+    ws.getCell(`A${r}`).border = thinBorder;
+    ws.getCell(`A${r}`).alignment = { vertical: 'middle', wrapText: true };
 
-    const itemCell = ws.getCell(r, 2);
-    itemCell.value = row.item;
-    itemCell.border = thinBorder;
-    itemCell.alignment = { vertical: 'top', wrapText: true };
-    itemCell.font = { size: 10 };
+    // サービス内容と手順 (C-K結合)
+    ws.mergeCells(`C${r}:K${r}`);
+    ws.getCell(`C${r}`).value = row.serviceContent;
+    ws.getCell(`C${r}`).font = font9;
+    ws.getCell(`C${r}`).border = thinBorder;
+    ws.getCell(`C${r}`).alignment = { vertical: 'middle', wrapText: true };
 
-    const serviceCell = ws.getCell(r, 3);
-    serviceCell.value = row.serviceContent;
-    serviceCell.border = thinBorder;
-    serviceCell.alignment = { vertical: 'top', wrapText: true };
-    serviceCell.font = { size: 10 };
+    // 留意事項 (L列)
+    ws.getCell(`L${r}`).value = row.notes;
+    ws.getCell(`L${r}`).font = font9;
+    ws.getCell(`L${r}`).border = thinBorder;
+    ws.getCell(`L${r}`).alignment = { vertical: 'middle', wrapText: true };
 
-    const notesCell = ws.getCell(r, 4);
-    notesCell.value = row.notes;
-    notesCell.border = thinBorder;
-    notesCell.alignment = { vertical: 'top', wrapText: true };
-    notesCell.font = { size: 10 };
+    ws.getRow(r).height = 18;
   });
 
-  // --- 注意点セクション ---
-  const remarksHeaderRow = headerRow + 1 + outputRows.length + 1;
-  ws.mergeCells(remarksHeaderRow, 1, remarksHeaderRow, 4);
-  const remarksLabel = ws.getCell(remarksHeaderRow, 1);
-  remarksLabel.value = '注意点';
-  remarksLabel.font = { bold: true, size: 10 };
+  // ==================== 注意点セクション ====================
+  const lastDataRow = headerRow + outputRows.length;
+  const remarksLabelRow = lastDataRow + 2;
 
-  const remarksDataRow = remarksHeaderRow + 1;
-  ws.mergeCells(remarksDataRow, 1, remarksDataRow, 4);
-  const remarksCell = ws.getCell(remarksDataRow, 1);
-  remarksCell.value = remarks;
-  remarksCell.border = thinBorder;
-  remarksCell.alignment = { vertical: 'top', wrapText: true };
-  remarksCell.font = { size: 10 };
-  ws.getRow(remarksDataRow).height = 80;
+  ws.mergeCells(`A${remarksLabelRow}:L${remarksLabelRow}`);
+  ws.getCell(`A${remarksLabelRow}`).value = '注意点';
+  ws.getCell(`A${remarksLabelRow}`).font = font9Bold;
+
+  // 注意点のテキストを行に分割して書き込み
+  const remarkLines = remarks ? remarks.split('\n') : [''];
+  const remarksStartRow = remarksLabelRow + 1;
+  remarkLines.forEach((line, i) => {
+    const r = remarksStartRow + i;
+    ws.mergeCells(`A${r}:L${r}`);
+    ws.getCell(`A${r}`).value = line;
+    ws.getCell(`A${r}`).font = font9;
+    ws.getCell(`A${r}`).border = thinBorder;
+    ws.getCell(`A${r}`).alignment = { vertical: 'middle', wrapText: true };
+    ws.getRow(r).height = 15;
+  });
 
   // --- ダウンロード ---
   const buffer = await wb.xlsx.writeBuffer();
@@ -150,9 +260,9 @@ async function downloadExcel(
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  const fileName = name
-    ? `入所手順書_${name}.xlsx`
-    : '入所手順書.xlsx';
+  const fileName = clientName
+    ? `手順書_${clientName}.xlsx`
+    : '手順書.xlsx';
   a.download = fileName;
   document.body.appendChild(a);
   a.click();
@@ -162,7 +272,11 @@ async function downloadExcel(
 
 const NyushoTejunshoPage: React.FC = () => {
   const [createdDate, setCreatedDate] = useState('');
-  const [name, setName] = useState('');
+  const [clientName, setClientName] = useState('');
+  const [gender, setGender] = useState('');
+  const [birthDate, setBirthDate] = useState('');
+  const [address, setAddress] = useState('');
+  const [phone, setPhone] = useState('');
   const [periodFrom, setPeriodFrom] = useState('');
   const [periodTo, setPeriodTo] = useState('');
   const [rows, setRows] = useState<ProcedureRow[]>([
@@ -204,14 +318,14 @@ const NyushoTejunshoPage: React.FC = () => {
   const handleDownload = useCallback(async () => {
     setIsDownloading(true);
     try {
-      await downloadExcel(createdDate, name, periodFrom, periodTo, rows, remarks);
+      await downloadExcel(createdDate, clientName, gender, birthDate, address, phone, periodFrom, periodTo, rows, remarks);
     } catch (e) {
       console.error('Excel生成エラー:', e);
       alert('ダウンロードに失敗しました');
     } finally {
       setIsDownloading(false);
     }
-  }, [createdDate, name, periodFrom, periodTo, rows, remarks]);
+  }, [createdDate, clientName, gender, birthDate, address, phone, periodFrom, periodTo, rows, remarks]);
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
@@ -228,7 +342,7 @@ const NyushoTejunshoPage: React.FC = () => {
 
           {/* Form content */}
           <div className="p-6 space-y-6">
-            {/* 作成年月日 & 名称 & 期間 */}
+            {/* 基本情報 */}
             <div className="space-y-3">
               <div className="flex items-center gap-3">
                 <label className="font-bold text-sm whitespace-nowrap w-24 text-right">作成年月日</label>
@@ -240,15 +354,51 @@ const NyushoTejunshoPage: React.FC = () => {
                 />
               </div>
               <div className="flex items-center gap-3">
-                <label className="font-bold text-sm whitespace-nowrap w-24 text-right">名称</label>
+                <label className="font-bold text-sm whitespace-nowrap w-24 text-right">氏名</label>
                 <input
                   type="text"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  className="border border-gray-300 rounded px-3 py-1.5 text-sm w-64"
+                  value={clientName}
+                  onChange={e => setClientName(e.target.value)}
+                  className="border border-gray-300 rounded px-3 py-1.5 text-sm w-48"
+                  placeholder="利用者名"
                 />
-                <div className="flex-1" />
-                <label className="font-bold text-sm whitespace-nowrap">期間</label>
+                <label className="font-bold text-sm whitespace-nowrap">性別</label>
+                <select
+                  value={gender}
+                  onChange={e => setGender(e.target.value)}
+                  className="border border-gray-300 rounded px-3 py-1.5 text-sm w-24"
+                >
+                  <option value="">-</option>
+                  <option value="男">男</option>
+                  <option value="女">女</option>
+                </select>
+                <label className="font-bold text-sm whitespace-nowrap">生年月日</label>
+                <input
+                  type="text"
+                  value={birthDate}
+                  onChange={e => setBirthDate(e.target.value)}
+                  className="border border-gray-300 rounded px-3 py-1.5 text-sm w-48"
+                  placeholder="例: 昭和30年1月1日"
+                />
+                <label className="font-bold text-sm whitespace-nowrap">電話番号</label>
+                <input
+                  type="text"
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  className="border border-gray-300 rounded px-3 py-1.5 text-sm w-40"
+                />
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="font-bold text-sm whitespace-nowrap w-24 text-right">住所</label>
+                <input
+                  type="text"
+                  value={address}
+                  onChange={e => setAddress(e.target.value)}
+                  className="border border-gray-300 rounded px-3 py-1.5 text-sm flex-1"
+                />
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="font-bold text-sm whitespace-nowrap w-24 text-right">実施期間</label>
                 <input
                   type="date"
                   value={periodFrom}

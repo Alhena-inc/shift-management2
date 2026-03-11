@@ -780,18 +780,18 @@ const DocumentsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* 入所手順書 */}
+          {/* 手順書 */}
           <div className="mb-5">
             <div
-              onClick={() => window.location.href = '/nyusho-tejunsho'}
+              onClick={() => window.location.href = '/tejunsho'}
               className="rounded-xl border border-gray-200 bg-white hover:shadow-md hover:border-gray-300 transition-all duration-200 cursor-pointer p-4 flex items-center gap-4"
             >
               <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-blue-50">
                 <span className="material-symbols-outlined text-blue-600">description</span>
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-bold text-gray-900">入所手順書</h3>
-                <p className="text-xs text-gray-500 mt-0.5">入所手順書の作成・Excelダウンロード</p>
+                <h3 className="text-sm font-bold text-gray-900">手順書</h3>
+                <p className="text-xs text-gray-500 mt-0.5">手順書の作成・Excelダウンロード</p>
               </div>
               <span className="material-symbols-outlined text-gray-400">arrow_forward</span>
             </div>

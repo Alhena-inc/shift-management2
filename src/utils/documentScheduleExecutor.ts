@@ -485,3 +485,269 @@ export async function executeMonitoringScheduleAction(
     return { success: false, error: error.message || String(error) };
   }
 }
+
+// ========== 一括キャッチアップ生成 ==========
+
+interface CatchUpStep {
+  type: 'plan' | 'monitoring';
+  year: number;
+  month: number;
+  label: string;
+  periodStart: string;
+}
+
+/**
+ * 契約開始日から現在月までのルーティンに沿って必要な全書類を一括生成する。
+ *
+ * ルーティン:
+ *   契約開始 → 計画書①+手順書① → (3or6ヶ月後)モニタリング① → (6ヶ月後)計画書②+手順書② → ...
+ *
+ * モニタリング周期は障害支援区分に応じて動的決定:
+ *   区分3以下: 6ヶ月, 区分4以上: 3ヶ月
+ */
+export async function executeCatchUpGeneration(
+  client: CareClient,
+  schedule: DocumentSchedule,
+  hiddenDiv: HTMLDivElement,
+  onProgress?: (message: string) => void
+): Promise<ExecutionResult> {
+  const contractStart = client.contractStart;
+  if (!contractStart) {
+    return { success: false, error: '契約開始日が設定されていません。利用者情報に契約開始日を入力してください。' };
+  }
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const todayStr = toDateString(now);
+
+  // モニタリング周期を取得
+  const { getMonitoringCycleMonths, getClientSupportCategory } = await import('./documentGenerators/monitoringReportGenerator');
+  const supportCategory = await getClientSupportCategory(client.id);
+  const monitoringCycle = getMonitoringCycleMonths(supportCategory || client.careLevel || '');
+  const planCycle = 6;
+
+  // 契約開始日の前日 = 初回計画書の作成日
+  const contractDateObj = new Date(contractStart + 'T00:00:00');
+  const dayBeforeContract = new Date(contractDateObj);
+  dayBeforeContract.setDate(dayBeforeContract.getDate() - 1);
+  const initialPlanDate = toDateString(dayBeforeContract);
+
+  // 契約開始日を起点にルーティンのスケジュールを計算
+  const steps: CatchUpStep[] = [];
+  const currentYM = currentYear * 100 + currentMonth;
+
+  // 初回計画書+手順書
+  steps.push({
+    type: 'plan',
+    year: contractDateObj.getFullYear(),
+    month: contractDateObj.getMonth() + 1,
+    label: '初回計画書+手順書',
+    periodStart: initialPlanDate,
+  });
+
+  // 初回以降: モニタリングと計画書更新を時系列に積み上げ
+  let nextMonitoring = addMonths(contractStart, monitoringCycle);
+  let nextPlan = addMonths(contractStart, planCycle);
+
+  for (let safety = 0; safety < 48; safety++) {
+    const mDate = new Date(nextMonitoring + 'T00:00:00');
+    const pDate = new Date(nextPlan + 'T00:00:00');
+    const mYM = mDate.getFullYear() * 100 + (mDate.getMonth() + 1);
+    const pYM = pDate.getFullYear() * 100 + (pDate.getMonth() + 1);
+
+    if (mYM > currentYM && pYM > currentYM) break;
+
+    // 時系列順に追加
+    if (nextMonitoring <= nextPlan) {
+      if (mYM <= currentYM) {
+        steps.push({
+          type: 'monitoring',
+          year: mDate.getFullYear(),
+          month: mDate.getMonth() + 1,
+          label: `モニタリング(${mDate.getFullYear()}年${mDate.getMonth() + 1}月)`,
+          periodStart: nextMonitoring,
+        });
+      }
+      if (nextMonitoring === nextPlan && pYM <= currentYM) {
+        steps.push({
+          type: 'plan',
+          year: pDate.getFullYear(),
+          month: pDate.getMonth() + 1,
+          label: `計画書更新+手順書(${pDate.getFullYear()}年${pDate.getMonth() + 1}月)`,
+          periodStart: nextPlan,
+        });
+        nextPlan = addMonths(nextPlan, planCycle);
+      }
+      nextMonitoring = addMonths(nextMonitoring, monitoringCycle);
+    } else {
+      if (pYM <= currentYM) {
+        steps.push({
+          type: 'plan',
+          year: pDate.getFullYear(),
+          month: pDate.getMonth() + 1,
+          label: `計画書更新+手順書(${pDate.getFullYear()}年${pDate.getMonth() + 1}月)`,
+          periodStart: nextPlan,
+        });
+        nextPlan = addMonths(nextPlan, planCycle);
+      }
+      if (mYM <= currentYM) {
+        steps.push({
+          type: 'monitoring',
+          year: mDate.getFullYear(),
+          month: mDate.getMonth() + 1,
+          label: `モニタリング(${mDate.getFullYear()}年${mDate.getMonth() + 1}月)`,
+          periodStart: nextMonitoring,
+        });
+        nextMonitoring = addMonths(nextMonitoring, monitoringCycle);
+      }
+    }
+  }
+
+  if (steps.length === 0) {
+    return { success: false, error: '生成する書類がありません' };
+  }
+
+  onProgress?.(`${client.name}: ${contractStart}～${todayStr} の全${steps.length}件を生成します`);
+
+  let successCount = 0;
+  let lastError = '';
+  const batchId = crypto.randomUUID();
+
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    onProgress?.(`[${i + 1}/${steps.length}] ${step.label} を生成中...`);
+
+    try {
+      const ctx = await buildContext(client, step.year, step.month, hiddenDiv);
+
+      if (step.type === 'plan') {
+        // === 計画書 + 手順書 ===
+        const promptData = await loadAiPrompt('care-plan').catch(() => null);
+        if (promptData) {
+          ctx.customPrompt = promptData.prompt;
+          ctx.customSystemInstruction = promptData.system_instruction;
+        }
+
+        const { generate: generatePlan } = await import('./documentGenerators/carePlanGenerator');
+        const planResult = await generatePlan(ctx);
+        const generatedAt = new Date().toISOString();
+
+        // GoalPeriod保存
+        try {
+          const existingGoals = await loadGoalPeriods(client.id);
+          for (const g of existingGoals) {
+            if (g.isActive) await saveGoalPeriod({ ...g, isActive: false });
+          }
+          await saveGoalPeriod({
+            careClientId: client.id, goalType: 'short_term', goalIndex: 0,
+            goalText: planResult.goal_short_text || null,
+            startDate: step.periodStart,
+            endDate: addMonths(step.periodStart, planResult.short_term_goal_months),
+            linkedPlanId: null, isActive: true,
+            achievementStatus: null, achievementNote: null, achievementSetBy: null,
+          });
+          await saveGoalPeriod({
+            careClientId: client.id, goalType: 'long_term', goalIndex: 0,
+            goalText: planResult.goal_long_text || null,
+            startDate: step.periodStart,
+            endDate: addMonths(step.periodStart, planResult.long_term_goal_months),
+            linkedPlanId: null, isActive: true,
+            achievementStatus: null, achievementNote: null, achievementSetBy: null,
+          });
+        } catch (err) {
+          console.warn('[CatchUp] GoalPeriod保存失敗:', err);
+        }
+
+        const planDates = computeNextDates(generatedAt, planCycle, schedule.alertDaysBefore);
+        const savedPlan = await saveDocumentSchedule({
+          ...schedule,
+          status: 'active',
+          lastGeneratedAt: generatedAt,
+          nextDueDate: planDates.nextDueDate,
+          alertDate: planDates.alertDate,
+          expiryDate: planDates.expiryDate,
+          planRevisionNeeded: null, planRevisionReason: null,
+          generationBatchId: batchId,
+          planCreationDate: step.periodStart,
+          periodStart: step.periodStart,
+          periodEnd: planDates.nextDueDate,
+        });
+
+        // 手順書
+        onProgress?.(`[${i + 1}/${steps.length}] ${step.label} - 手順書を生成中...`);
+        const procPrompt = await loadAiPrompt('care-procedure').catch(() => null);
+        if (procPrompt) {
+          ctx.customPrompt = procPrompt.prompt;
+          ctx.customSystemInstruction = procPrompt.system_instruction;
+        } else {
+          delete ctx.customPrompt;
+          delete ctx.customSystemInstruction;
+        }
+
+        const { generate: generateProcedure } = await import('./documentGenerators/careProcedureGenerator');
+        await generateProcedure(ctx);
+
+        await saveDocumentSchedule({
+          careClientId: client.id, docType: 'tejunsho',
+          status: 'active', lastGeneratedAt: generatedAt,
+          nextDueDate: null, alertDate: null, expiryDate: null,
+          cycleMonths: 0, alertDaysBefore: schedule.alertDaysBefore,
+          generationBatchId: batchId, linkedPlanScheduleId: savedPlan.id,
+          periodStart: step.periodStart, periodEnd: planDates.nextDueDate,
+        });
+
+        // モニタリング次回日設定
+        const monDates = computeNextDates(generatedAt, monitoringCycle, schedule.alertDaysBefore);
+        await saveDocumentSchedule({
+          careClientId: client.id, docType: 'monitoring',
+          status: 'active',
+          nextDueDate: monDates.nextDueDate, alertDate: monDates.alertDate, expiryDate: monDates.expiryDate,
+          cycleMonths: monitoringCycle, alertDaysBefore: schedule.alertDaysBefore,
+          linkedPlanScheduleId: savedPlan.id,
+        });
+
+        successCount++;
+
+      } else {
+        // === モニタリング ===
+        const promptData = await loadAiPrompt('monitoring').catch(() => null);
+        if (promptData) {
+          ctx.customPrompt = promptData.prompt;
+          ctx.customSystemInstruction = promptData.system_instruction;
+        }
+
+        const { generate: generateMonitoring } = await import('./documentGenerators/monitoringReportGenerator');
+        const result = await generateMonitoring(ctx);
+        const generatedAt = new Date().toISOString();
+        const effectiveCycle = result.monitoringCycleMonths || monitoringCycle;
+        const monDates = computeNextDates(generatedAt, effectiveCycle, schedule.alertDaysBefore);
+
+        await saveDocumentSchedule({
+          careClientId: client.id, docType: 'monitoring',
+          status: 'active', lastGeneratedAt: generatedAt,
+          nextDueDate: monDates.nextDueDate, alertDate: monDates.alertDate, expiryDate: monDates.expiryDate,
+          cycleMonths: effectiveCycle, alertDaysBefore: schedule.alertDaysBefore,
+          planRevisionNeeded: result.planRevisionNeeded,
+        });
+
+        successCount++;
+      }
+    } catch (error: any) {
+      console.error(`[CatchUp] ${step.label} 生成失敗:`, error);
+      lastError = `${step.label}: ${error.message || String(error)}`;
+    }
+  }
+
+  await runPostGenerationValidation(client);
+
+  onProgress?.(`完了: ${successCount}/${steps.length}件の書類を生成しました`);
+
+  if (successCount === 0) {
+    return { success: false, error: `全ての書類生成に失敗しました: ${lastError}` };
+  }
+  if (successCount < steps.length) {
+    return { success: true, error: `${steps.length - successCount}件が失敗: ${lastError}` };
+  }
+  return { success: true };
+}
