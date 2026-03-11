@@ -2719,16 +2719,23 @@ export const saveBillingRecords = async (records: Array<{
   import_batch_id?: string;
 }>): Promise<{ inserted: number; updated: number }> => {
   try {
-    const { data, error } = await supabase
-      .from('billing_records')
-      .upsert(records, { onConflict: 'service_date,helper_name,start_time' })
-      .select();
+    // バッチサイズ制限対策: 500件ずつに分割してupsert
+    const BATCH_SIZE = 500;
+    let totalCount = 0;
 
-    if (error) throw error;
+    for (let i = 0; i < records.length; i += BATCH_SIZE) {
+      const batch = records.slice(i, i + BATCH_SIZE);
+      const { data, error } = await supabase
+        .from('billing_records')
+        .upsert(batch, { onConflict: 'service_date,helper_name,start_time' })
+        .select();
 
-    const count = data?.length || 0;
-    console.log(`✅ [Supabase] billing_records upsert: ${count}件`);
-    return { inserted: count, updated: 0 };
+      if (error) throw error;
+      totalCount += data?.length || 0;
+    }
+
+    console.log(`✅ [Supabase] billing_records upsert: ${totalCount}件`);
+    return { inserted: totalCount, updated: 0 };
   } catch (error) {
     console.error('billing_records保存エラー:', error);
     throw error;

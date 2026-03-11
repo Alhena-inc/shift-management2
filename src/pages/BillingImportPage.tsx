@@ -260,11 +260,17 @@ const BillingImportPage: React.FC = () => {
         import_batch_id: batchId,
       }));
 
-      await saveBillingRecords(dbRecords);
+      const saveResult = await saveBillingRecords(dbRecords);
+
+      if (saveResult.inserted === 0 && records.length > 0) {
+        setErrorMessage(`データの保存に失敗しました（0件）。ブラウザのコンソールを確認してください。`);
+        setState('error');
+        return;
+      }
 
       setResult({
         total: records.length,
-        inserted: records.length,
+        inserted: saveResult.inserted,
         skipped: skippedRows.length,
       });
       setState('done');
