@@ -789,28 +789,35 @@ export async function executeCatchUpGeneration(
         }
 
         if (tejunshoNeeded) {
-          onProgress?.(`[${i + 1}/${steps.length}] ${step.label} - 手順書を生成中（${tejunshoTrigger}: ${tejunshoReason}）...`);
-          const procPrompt = await loadAiPrompt('care-procedure').catch(() => null);
-          if (procPrompt) {
-            ctx.customPrompt = procPrompt.prompt;
-            ctx.customSystemInstruction = procPrompt.system_instruction;
-          } else {
-            delete ctx.customPrompt;
-            delete ctx.customSystemInstruction;
+          try {
+            onProgress?.(`[${i + 1}/${steps.length}] ${step.label} - 手順書を生成中（${tejunshoTrigger}: ${tejunshoReason}）...`);
+            const procPrompt = await loadAiPrompt('care-procedure').catch(() => null);
+            if (procPrompt) {
+              ctx.customPrompt = procPrompt.prompt;
+              ctx.customSystemInstruction = procPrompt.system_instruction;
+            } else {
+              delete ctx.customPrompt;
+              delete ctx.customSystemInstruction;
+            }
+
+            const { generate: generateProcedure } = await import('./documentGenerators/careProcedureGenerator');
+            await generateProcedure(ctx);
+
+            await saveDocumentSchedule({
+              careClientId: client.id, docType: 'tejunsho',
+              status: 'active', lastGeneratedAt: generatedAt,
+              nextDueDate: null, alertDate: null, expiryDate: null,
+              cycleMonths: 0, alertDaysBefore: schedule.alertDaysBefore,
+              generationBatchId: batchId, linkedPlanScheduleId: savedPlan.id,
+              periodStart: step.periodStart, periodEnd: planDates.nextDueDate,
+              planRevisionReason: `${tejunshoTrigger}: ${tejunshoReason}`,
+            });
+            onProgress?.(`[${i + 1}/${steps.length}] 手順書の生成完了`);
+          } catch (tejunshoErr: any) {
+            console.error('[CatchUp] 手順書生成失敗:', tejunshoErr);
+            onProgress?.(`[${i + 1}/${steps.length}] ⚠ 手順書の生成に失敗: ${tejunshoErr.message || tejunshoErr}`);
+            // 手順書が失敗しても計画書は成功扱いにする
           }
-
-          const { generate: generateProcedure } = await import('./documentGenerators/careProcedureGenerator');
-          await generateProcedure(ctx);
-
-          await saveDocumentSchedule({
-            careClientId: client.id, docType: 'tejunsho',
-            status: 'active', lastGeneratedAt: generatedAt,
-            nextDueDate: null, alertDate: null, expiryDate: null,
-            cycleMonths: 0, alertDaysBefore: schedule.alertDaysBefore,
-            generationBatchId: batchId, linkedPlanScheduleId: savedPlan.id,
-            periodStart: step.periodStart, periodEnd: planDates.nextDueDate,
-            planRevisionReason: `${tejunshoTrigger}: ${tejunshoReason}`,
-          });
         } else {
           onProgress?.(`[${i + 1}/${steps.length}] ${step.label} - 手順書: 再作成不要（${tejunshoReason}）`);
         }
@@ -876,6 +883,7 @@ export async function executeCatchUpGeneration(
     } catch (error: any) {
       console.error(`[CatchUp] ${step.label} 生成失敗:`, error);
       lastError = `${step.label}: ${error.message || String(error)}`;
+      onProgress?.(`[${i + 1}/${steps.length}] ⚠ ${step.label} 生成失敗: ${error.message || String(error)}`);
     }
   }
 
