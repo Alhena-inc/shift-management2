@@ -56,7 +56,7 @@ const DocumentScheduleDashboard: React.FC = () => {
   const hiddenDivRef = useRef<HTMLDivElement>(null);
 
   // 自動再生成
-  const { checkGoalExpiryAndRegen, regenerateForClient, triggerBillingPatternRegen, notifications: regenNotifications, clearNotification: clearRegenNotification } = useAutoRegeneration({ externalHiddenDivRef: hiddenDivRef });
+  const { regenerateForClient, notifications: regenNotifications, clearNotification: clearRegenNotification } = useAutoRegeneration({ externalHiddenDivRef: hiddenDivRef });
 
   // v2 state
   const [goalPeriods, setGoalPeriods] = useState<GoalPeriod[]>([]);
@@ -206,12 +206,6 @@ const DocumentScheduleDashboard: React.FC = () => {
         }
         setBillingCountByClient(countMap);
         setPatternChangedClientIds(changedIds);
-
-        // 実績パターン変更があるクライアントの計画書を自動再生成
-        if (changedIds.size > 0) {
-          const changedClients = activeClients.filter(c => changedIds.has(c.id));
-          triggerBillingPatternRegen(changedClients);
-        }
       } catch {
         // パターン検知失敗は無視
       }
@@ -219,15 +213,12 @@ const DocumentScheduleDashboard: React.FC = () => {
       // 契約日チェック
       const cAlerts = checkContractDateAlerts(allSchedules, activeClients, today);
       setContractAlerts(cAlerts);
-
-      // トリガー3: 目標期間満了チェック → AI判定 → 必要なら自動再生成
-      checkGoalExpiryAndRegen();
     } catch (err: any) {
       setError(err.message || 'データの読み込みに失敗しました');
     } finally {
       setLoading(false);
     }
-  }, [checkGoalExpiryAndRegen, triggerBillingPatternRegen]);
+  }, []);
 
   useEffect(() => {
     loadData();

@@ -3,8 +3,6 @@ import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmoun
 import { computeNextDates } from '../utils/documentScheduleChecker';
 import { isGeminiAvailable } from '../services/geminiService';
 import { validateClientDocuments } from '../utils/documentValidation';
-import { useAutoRegeneration } from '../hooks/useAutoRegeneration';
-import AutoRegenNotificationToast from '../components/AutoRegenNotificationToast';
 import type { Helper, CareClient, Shift, BillingRecord, ShogaiSupplyAmount, ShogaiDocument } from '../types';
 import type { AiPrompt } from '../services/supabaseService';
 import type { DocumentSchedule } from '../types/documentSchedule';
@@ -110,9 +108,6 @@ const DocumentsPage: React.FC = () => {
 
   const hiddenDivRef = useRef<HTMLDivElement>(null);
 
-  // 自動再生成
-  const { triggerAssessmentRegen, notifications: regenNotifications, clearNotification: clearRegenNotification } = useAutoRegeneration({ externalHiddenDivRef: hiddenDivRef });
-
   const loadData = useCallback(async () => {
     try {
       const [h, c, s, b] = await Promise.all([
@@ -185,19 +180,13 @@ const DocumentsPage: React.FC = () => {
         ...prev,
         [clientId]: [...(prev[clientId] || []), saved],
       }));
-
-      // トリガー2: アセスメントアップロード → 計画書自動再生成
-      const client = careClients.find(c => c.id === clientId);
-      if (client) {
-        triggerAssessmentRegen(client);
-      }
     } catch (err) {
       console.error('アップロードエラー:', err);
       alert('ファイルのアップロードに失敗しました');
     } finally {
       setUploadingClient(null);
     }
-  }, [assessmentDocs, careClients, triggerAssessmentRegen]);
+  }, [assessmentDocs, careClients]);
 
   const handleAssessmentDelete = useCallback(async (clientId: string, doc: ShogaiDocument) => {
     if (!confirm(`「${doc.fileName}」を削除しますか？`)) return;
@@ -1097,8 +1086,6 @@ const DocumentsPage: React.FC = () => {
         }}
       />
 
-      {/* 自動再生成通知 */}
-      <AutoRegenNotificationToast notifications={regenNotifications} onClear={clearRegenNotification} />
     </div>
   );
 };
