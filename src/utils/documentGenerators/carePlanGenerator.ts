@@ -1012,10 +1012,16 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
   const ws0 = workbook.getWorksheet('居宅介護計画書（表）') || workbook.worksheets[0];
   if (!ws0) throw new Error('居宅介護計画書（表）シートが見つかりません');
 
-  // 作成日 = 契約開始日の2日前（ケア開始前に利用者確認が必要なため）
+  // 作成日の決定
+  // 1. ctx.planCreationDate が指定されていればそれを使用（一括生成時）
+  // 2. 初回のみ契約開始日の2日前（ケア開始前に利用者確認が必要なため）
+  // 3. それ以外は対象年月の1日
   let planDate: Date;
   let planDateText: string;
-  if (client.contractStart) {
+  if (ctx.planCreationDate) {
+    planDate = new Date(ctx.planCreationDate + 'T00:00:00');
+    planDateText = `令和${toReiwa(planDate.getFullYear())}年${planDate.getMonth() + 1}月${planDate.getDate()}日`;
+  } else if (client.contractStart) {
     planDate = new Date(client.contractStart + 'T00:00:00');
     planDate.setDate(planDate.getDate() - 2);
     planDateText = `令和${toReiwa(planDate.getFullYear())}年${planDate.getMonth() + 1}月${planDate.getDate()}日`;

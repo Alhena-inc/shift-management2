@@ -1,7 +1,7 @@
 import type { ScheduleAction, MonitoringScheduleItem, DocumentSchedule } from '../types/documentSchedule';
 import type { CareClient } from '../types';
 import { saveDocumentSchedule, saveMonitoringSchedule, saveDocumentValidation, loadBillingRecordsForMonth, loadShiftsForMonth, loadHelpers, loadCareClients, loadAiPrompt, loadDocumentSchedules, loadShogaiDocuments, loadShogaiCarePlanDocuments, saveGoalPeriod, loadGoalPeriods } from '../services/dataService';
-import { computeNextDates, toDateString, addMonths } from './documentScheduleChecker';
+import { computeNextDates, toDateString, addMonths, addDays } from './documentScheduleChecker';
 import { validateClientDocuments } from './documentValidation';
 
 interface ExecutionResult {
@@ -94,14 +94,17 @@ async function precheckForGeneration(
   };
 }
 
-const DEFAULT_OFFICE_INFO = {
-  name: '訪問介護事業所のあ',
-  address: '東京都渋谷区',
-  tel: '',
-  administrator: '',
-  serviceManager: '',
-  establishedDate: '',
-};
+function getDefaultOfficeInfo() {
+  const serviceManager = (typeof localStorage !== 'undefined' && localStorage.getItem('care_plan_service_manager')) || '';
+  return {
+    name: '訪問介護事業所のあ',
+    address: '東京都渋谷区',
+    tel: '',
+    administrator: '',
+    serviceManager,
+    establishedDate: '',
+  };
+}
 
 async function buildContext(
   client: CareClient,
@@ -124,11 +127,13 @@ async function buildContext(
     supplyAmounts: [] as any[],
     year,
     month,
-    officeInfo: DEFAULT_OFFICE_INFO,
+    officeInfo: getDefaultOfficeInfo(),
     hiddenDiv,
     selectedClient: client,
     customPrompt: undefined as string | undefined,
     customSystemInstruction: undefined as string | undefined,
+    planCreationDate: undefined as string | undefined,
+    planRevisionReason: undefined as string | undefined,
   };
 }
 
@@ -486,6 +491,106 @@ export async function executeMonitoringScheduleAction(
   }
 }
 
+// ========== 手順書 再作成判定 ==========
+
+interface TejunshoJudgment {
+  needed: boolean;
+  trigger: string;  // T-001〜T-007 or 'initial'
+  reason: string;
+}
+
+const TEJUNSHO_JUDGMENT_PROMPT = `あなたは障害福祉サービス事業所の手順書（サービス指示書）の再作成判定を行う専門家です。
+
+以下のトリガーに基づき、手順書の再作成が必要か判定してください。
+
+### 再作成トリガー
+- T-001: 障害支援区分の変更
+- T-002: 身体状況の変化（骨折・手術・入院・退院、医療的ケアの追加変更）
+- T-003: 福祉用具の変更（車椅子・リフト・歩行器等）
+- T-004: 支援内容の変更（計画書更新・サービス種別変更・支援時間/内容/頻度の変更）
+- T-005: コミュニケーション方法の変更
+- T-006: 定期見直し（前回作成日から12ヶ月経過）
+- T-007: 利用者・家族からの申し出
+
+### 入力情報
+利用者名: {clientName}
+障害支援区分: {careLevel}
+前回手順書作成日: {lastTejunshoDate}
+今回モニタリング実施月: {monitoringMonth}
+モニタリング結果（計画変更要否）: {planRevisionNeeded}
+計画変更理由: {planRevisionReason}
+サービス種別: {serviceTypes}
+
+### 判定ルール
+- 計画書が更新・変更された場合は T-004 に該当
+- 前回作成日から12ヶ月経過している場合は T-006 に該当
+- モニタリングで身体状況の変化が報告されている場合は T-002 に該当
+- 上記いずれにも該当しない場合は「不要」
+
+以下のJSON形式のみで回答してください。
+{"needed": true/false, "trigger": "T-XXX", "reason": "判定理由（30〜60文字）"}
+不要の場合: {"needed": false, "trigger": "none", "reason": "該当トリガーなし"}`;
+
+async function judgeTejunshoRenewal(
+  client: CareClient,
+  monitoringYear: number,
+  monitoringMonth: number,
+  planRevisionNeeded: string,
+  planRevisionReason: string,
+  lastTejunshoDate: string | null,
+  serviceTypes: string,
+): Promise<TejunshoJudgment> {
+  try {
+    const { isGeminiAvailable, generateText } = await import('../services/geminiService');
+    if (!isGeminiAvailable()) {
+      // AI使用不可の場合: 計画書更新時(T-004)または12ヶ月経過(T-006)でフォールバック
+      if (planRevisionNeeded === 'あり') {
+        return { needed: true, trigger: 'T-004', reason: '計画書が更新されたため手順書の再作成が必要' };
+      }
+      if (lastTejunshoDate) {
+        const last = new Date(lastTejunshoDate + 'T00:00:00');
+        const now = new Date();
+        const diffMonths = (now.getFullYear() - last.getFullYear()) * 12 + (now.getMonth() - last.getMonth());
+        if (diffMonths >= 12) {
+          return { needed: true, trigger: 'T-006', reason: '前回作成から12ヶ月が経過したため定期見直し' };
+        }
+      }
+      return { needed: false, trigger: 'none', reason: '該当トリガーなし' };
+    }
+
+    const prompt = TEJUNSHO_JUDGMENT_PROMPT
+      .replace('{clientName}', client.name)
+      .replace('{careLevel}', client.careLevel || '不明')
+      .replace('{lastTejunshoDate}', lastTejunshoDate || '未作成')
+      .replace('{monitoringMonth}', `${monitoringYear}年${monitoringMonth}月`)
+      .replace('{planRevisionNeeded}', planRevisionNeeded)
+      .replace('{planRevisionReason}', planRevisionReason || 'なし')
+      .replace('{serviceTypes}', serviceTypes || '居宅介護');
+
+    const response = await generateText(prompt);
+    const text = response?.text || '';
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
+    if (!jsonMatch) {
+      // パース失敗時のフォールバック
+      return planRevisionNeeded === 'あり'
+        ? { needed: true, trigger: 'T-004', reason: '計画書更新に伴う手順書再作成' }
+        : { needed: false, trigger: 'none', reason: '該当トリガーなし' };
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      needed: !!parsed.needed,
+      trigger: parsed.trigger || 'none',
+      reason: parsed.reason || '',
+    };
+  } catch (err) {
+    console.warn('[Tejunsho判定] AI判定失敗、フォールバック:', err);
+    return planRevisionNeeded === 'あり'
+      ? { needed: true, trigger: 'T-004', reason: '計画書更新に伴う手順書再作成（AI判定失敗）' }
+      : { needed: false, trigger: 'none', reason: '該当トリガーなし' };
+  }
+}
+
 // ========== 一括キャッチアップ生成 ==========
 
 interface CatchUpStep {
@@ -494,6 +599,10 @@ interface CatchUpStep {
   month: number;
   label: string;
   periodStart: string;
+  /** 計画書の作成日（YYYY-MM-DD） */
+  planCreationDate?: string;
+  /** 計画書再作成の理由（モニタリング後） */
+  revisionReason?: string;
 }
 
 /**
@@ -537,71 +646,36 @@ export async function executeCatchUpGeneration(
   const steps: CatchUpStep[] = [];
   const currentYM = currentYear * 100 + currentMonth;
 
-  // 初回計画書+手順書
+  // 初回計画書+手順書（作成日 = 契約開始日の2日前）
+  const initialCreationDate = new Date(contractDateObj);
+  initialCreationDate.setDate(initialCreationDate.getDate() - 2);
   steps.push({
     type: 'plan',
     year: contractDateObj.getFullYear(),
     month: contractDateObj.getMonth() + 1,
     label: '初回計画書+手順書',
     periodStart: initialPlanDate,
+    planCreationDate: toDateString(initialCreationDate),
   });
 
-  // 初回以降: モニタリングと計画書更新を時系列に積み上げ
+  // 初回以降: モニタリングのみをスケジュール
+  // 計画書の再作成はモニタリングのAI判定結果に基づいて実行時に動的に追加する
   let nextMonitoring = addMonths(contractStart, monitoringCycle);
-  let nextPlan = addMonths(contractStart, planCycle);
 
   for (let safety = 0; safety < 48; safety++) {
     const mDate = new Date(nextMonitoring + 'T00:00:00');
-    const pDate = new Date(nextPlan + 'T00:00:00');
     const mYM = mDate.getFullYear() * 100 + (mDate.getMonth() + 1);
-    const pYM = pDate.getFullYear() * 100 + (pDate.getMonth() + 1);
 
-    if (mYM > currentYM && pYM > currentYM) break;
+    if (mYM > currentYM) break;
 
-    // 時系列順に追加
-    if (nextMonitoring <= nextPlan) {
-      if (mYM <= currentYM) {
-        steps.push({
-          type: 'monitoring',
-          year: mDate.getFullYear(),
-          month: mDate.getMonth() + 1,
-          label: `モニタリング(${mDate.getFullYear()}年${mDate.getMonth() + 1}月)`,
-          periodStart: nextMonitoring,
-        });
-      }
-      if (nextMonitoring === nextPlan && pYM <= currentYM) {
-        steps.push({
-          type: 'plan',
-          year: pDate.getFullYear(),
-          month: pDate.getMonth() + 1,
-          label: `計画書更新+手順書(${pDate.getFullYear()}年${pDate.getMonth() + 1}月)`,
-          periodStart: nextPlan,
-        });
-        nextPlan = addMonths(nextPlan, planCycle);
-      }
-      nextMonitoring = addMonths(nextMonitoring, monitoringCycle);
-    } else {
-      if (pYM <= currentYM) {
-        steps.push({
-          type: 'plan',
-          year: pDate.getFullYear(),
-          month: pDate.getMonth() + 1,
-          label: `計画書更新+手順書(${pDate.getFullYear()}年${pDate.getMonth() + 1}月)`,
-          periodStart: nextPlan,
-        });
-        nextPlan = addMonths(nextPlan, planCycle);
-      }
-      if (mYM <= currentYM) {
-        steps.push({
-          type: 'monitoring',
-          year: mDate.getFullYear(),
-          month: mDate.getMonth() + 1,
-          label: `モニタリング(${mDate.getFullYear()}年${mDate.getMonth() + 1}月)`,
-          periodStart: nextMonitoring,
-        });
-        nextMonitoring = addMonths(nextMonitoring, monitoringCycle);
-      }
-    }
+    steps.push({
+      type: 'monitoring',
+      year: mDate.getFullYear(),
+      month: mDate.getMonth() + 1,
+      label: `モニタリング(${mDate.getFullYear()}年${mDate.getMonth() + 1}月)`,
+      periodStart: nextMonitoring,
+    });
+    nextMonitoring = addMonths(nextMonitoring, monitoringCycle);
   }
 
   if (steps.length === 0) {
@@ -620,6 +694,14 @@ export async function executeCatchUpGeneration(
 
     try {
       const ctx = await buildContext(client, step.year, step.month, hiddenDiv);
+
+      // 一括生成時の作成日と再作成理由をcontextに設定
+      if (step.planCreationDate) {
+        ctx.planCreationDate = step.planCreationDate;
+      }
+      if (step.revisionReason) {
+        ctx.planRevisionReason = step.revisionReason;
+      }
 
       if (step.type === 'plan') {
         // === 計画書 + 手順書 ===
@@ -667,35 +749,71 @@ export async function executeCatchUpGeneration(
           nextDueDate: planDates.nextDueDate,
           alertDate: planDates.alertDate,
           expiryDate: planDates.expiryDate,
-          planRevisionNeeded: null, planRevisionReason: null,
+          planRevisionNeeded: step.revisionReason ? 'あり' : null,
+          planRevisionReason: step.revisionReason || null,
           generationBatchId: batchId,
-          planCreationDate: step.periodStart,
+          planCreationDate: step.planCreationDate || step.periodStart,
           periodStart: step.periodStart,
           periodEnd: planDates.nextDueDate,
         });
 
-        // 手順書
-        onProgress?.(`[${i + 1}/${steps.length}] ${step.label} - 手順書を生成中...`);
-        const procPrompt = await loadAiPrompt('care-procedure').catch(() => null);
-        if (procPrompt) {
-          ctx.customPrompt = procPrompt.prompt;
-          ctx.customSystemInstruction = procPrompt.system_instruction;
-        } else {
-          delete ctx.customPrompt;
-          delete ctx.customSystemInstruction;
+        // 手順書: 初回は必ず作成、2回目以降はAI判定
+        const isInitialPlan = i === 0 || !step.revisionReason;
+        let tejunshoNeeded = isInitialPlan;
+        let tejunshoTrigger = isInitialPlan ? 'initial' : '';
+        let tejunshoReason = isInitialPlan ? '初回作成' : '';
+
+        if (!isInitialPlan) {
+          // 既存の手順書の最終作成日を取得
+          const existingScheds = await loadDocumentSchedules(client.id);
+          const tejunshoSched = existingScheds.find((s: any) => s.docType === 'tejunsho');
+          const lastTejunshoDate = tejunshoSched?.lastGeneratedAt
+            ? toDateString(new Date(tejunshoSched.lastGeneratedAt))
+            : null;
+
+          // サービス種別を実績から取得
+          const svcTypes = [...new Set(ctx.billingRecords.filter(r => r.clientName === client.name).map(r => r.serviceCode))].filter(Boolean).join('、');
+
+          onProgress?.(`[${i + 1}/${steps.length}] ${step.label} - 手順書の再作成要否を判定中...`);
+          const judgment = await judgeTejunshoRenewal(
+            client, step.year, step.month,
+            step.revisionReason ? 'あり' : 'なし',
+            step.revisionReason || '',
+            lastTejunshoDate,
+            svcTypes || '居宅介護',
+          );
+
+          tejunshoNeeded = judgment.needed;
+          tejunshoTrigger = judgment.trigger;
+          tejunshoReason = judgment.reason;
         }
 
-        const { generate: generateProcedure } = await import('./documentGenerators/careProcedureGenerator');
-        await generateProcedure(ctx);
+        if (tejunshoNeeded) {
+          onProgress?.(`[${i + 1}/${steps.length}] ${step.label} - 手順書を生成中（${tejunshoTrigger}: ${tejunshoReason}）...`);
+          const procPrompt = await loadAiPrompt('care-procedure').catch(() => null);
+          if (procPrompt) {
+            ctx.customPrompt = procPrompt.prompt;
+            ctx.customSystemInstruction = procPrompt.system_instruction;
+          } else {
+            delete ctx.customPrompt;
+            delete ctx.customSystemInstruction;
+          }
 
-        await saveDocumentSchedule({
-          careClientId: client.id, docType: 'tejunsho',
-          status: 'active', lastGeneratedAt: generatedAt,
-          nextDueDate: null, alertDate: null, expiryDate: null,
-          cycleMonths: 0, alertDaysBefore: schedule.alertDaysBefore,
-          generationBatchId: batchId, linkedPlanScheduleId: savedPlan.id,
-          periodStart: step.periodStart, periodEnd: planDates.nextDueDate,
-        });
+          const { generate: generateProcedure } = await import('./documentGenerators/careProcedureGenerator');
+          await generateProcedure(ctx);
+
+          await saveDocumentSchedule({
+            careClientId: client.id, docType: 'tejunsho',
+            status: 'active', lastGeneratedAt: generatedAt,
+            nextDueDate: null, alertDate: null, expiryDate: null,
+            cycleMonths: 0, alertDaysBefore: schedule.alertDaysBefore,
+            generationBatchId: batchId, linkedPlanScheduleId: savedPlan.id,
+            periodStart: step.periodStart, periodEnd: planDates.nextDueDate,
+            planRevisionReason: `${tejunshoTrigger}: ${tejunshoReason}`,
+          });
+        } else {
+          onProgress?.(`[${i + 1}/${steps.length}] ${step.label} - 手順書: 再作成不要（${tejunshoReason}）`);
+        }
 
         // モニタリング次回日設定
         const monDates = computeNextDates(generatedAt, monitoringCycle, schedule.alertDaysBefore);
@@ -722,6 +840,28 @@ export async function executeCatchUpGeneration(
         const generatedAt = new Date().toISOString();
         const effectiveCycle = result.monitoringCycleMonths || monitoringCycle;
         const monDates = computeNextDates(generatedAt, effectiveCycle, schedule.alertDaysBefore);
+
+        // モニタリング結果に基づいて計画書再作成が必要か判定
+        if (result.planRevisionNeeded === 'あり') {
+          // 計画書の再作成が必要 → 次のステップとして動的に追加
+          const revisionDate = addDays(toDateString(new Date(step.year, step.month - 1, 15)), 1);
+          onProgress?.(`[${i + 1}/${steps.length}] モニタリング結果: 計画変更が必要 → 計画書+手順書を再作成します`);
+
+          // モニタリング後の計画書再作成ステップを挿入
+          const newPlanStep: CatchUpStep = {
+            type: 'plan',
+            year: step.year,
+            month: step.month,
+            label: `計画書再作成+手順書(${step.year}年${step.month}月・モニタリング結果)`,
+            periodStart: step.periodStart,
+            planCreationDate: revisionDate,
+            revisionReason: `モニタリング(${step.year}年${step.month}月)により計画変更が必要と判定`,
+          };
+          // 現在位置の次に挿入
+          steps.splice(i + 1, 0, newPlanStep);
+        } else {
+          onProgress?.(`[${i + 1}/${steps.length}] モニタリング結果: 計画変更不要 → 現行計画を継続`);
+        }
 
         await saveDocumentSchedule({
           careClientId: client.id, docType: 'monitoring',

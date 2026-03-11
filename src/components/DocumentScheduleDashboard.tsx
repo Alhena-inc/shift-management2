@@ -1131,7 +1131,9 @@ const DocumentScheduleDashboard: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-gray-900">{client.name}</span>
                       {planSchedule?.planRevisionNeeded === 'あり' && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">計画変更要</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium" title={planSchedule?.planRevisionReason || ''}>
+                          計画変更要{planSchedule?.planRevisionReason ? `（${planSchedule.planRevisionReason}）` : ''}
+                        </span>
                       )}
                       {clientHasV2 && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-medium">v2</span>

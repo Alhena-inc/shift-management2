@@ -22,6 +22,10 @@ export interface GeneratorContext {
   customPrompt?: string;
   customSystemInstruction?: string;
   selectedClient?: CareClient;
+  /** 計画書の作成日（YYYY-MM-DD）。一括生成時にステップごとの日付を指定 */
+  planCreationDate?: string;
+  /** モニタリング後の計画書再作成理由 */
+  planRevisionReason?: string;
 }
 
 export type GenerateFunction = (ctx: GeneratorContext) => Promise<void>;
