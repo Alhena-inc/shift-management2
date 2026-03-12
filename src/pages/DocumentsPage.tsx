@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { loadHelpers, loadShiftsForMonth, loadCareClients, loadShogaiSupplyAmounts, loadBillingRecordsForMonth, loadShogaiDocuments, saveShogaiDocument, deleteShogaiDocument, uploadShogaiDocFile, loadAiPrompt, saveAiPrompt, saveDocumentSchedule, loadMonitoringSchedules, saveMonitoringSchedule, saveDocumentValidation, loadDocumentSchedules, loadShogaiCarePlanDocuments } from '../services/dataService';
-import { computeNextDates } from '../utils/documentScheduleChecker';
+import { computeNextDates, createInitialSchedules } from '../utils/documentScheduleChecker';
 import { isGeminiAvailable } from '../services/geminiService';
+import { executeCatchUpGeneration } from '../utils/documentScheduleExecutor';
 import { validateClientDocuments } from '../utils/documentValidation';
 import type { Helper, CareClient, Shift, BillingRecord, ShogaiSupplyAmount, ShogaiDocument } from '../types';
 import type { AiPrompt } from '../services/supabaseService';
@@ -547,6 +548,131 @@ const DocumentsPage: React.FC = () => {
     }
   }, [careClients, handleGenerate]);
 
+  // ========== 全書類一括生成（契約開始～現在まで必要な全書類を生成） ==========
+  const [catchUpProgress, setCatchUpProgress] = useState<string>('');
+
+  const handleCatchUpGenerate = useCallback(async () => {
+    if (!isGeminiAvailable()) {
+      alert('Gemini APIキーが設定されていません。');
+      return;
+    }
+
+    setIsBulkGenerating(true);
+    setError(null);
+    setCatchUpProgress('対象者を確認中...');
+
+    try {
+      const hiddenDiv = hiddenDivRef.current!;
+
+      // 各利用者の対象チェック
+      const targetClients: CareClient[] = [];
+      const skipReasons: { name: string; reason: string }[] = [];
+
+      for (const client of careClients) {
+        if (!client.contractStart) {
+          skipReasons.push({ name: client.name, reason: '契約開始日未設定' });
+          continue;
+        }
+        try {
+          const assessmentDocs = await loadShogaiDocuments(client.id, 'assessment');
+          const hasAssessment = assessmentDocs.some((d: any) => d.fileUrl);
+          if (!hasAssessment) {
+            skipReasons.push({ name: client.name, reason: 'アセスメント未登録' });
+            continue;
+          }
+          // 実績データがあるか確認（全月を対象にチェック）
+          let hasBilling = false;
+          const now = new Date();
+          const contractDate = new Date(client.contractStart + 'T00:00:00');
+          let checkYear = contractDate.getFullYear();
+          let checkMonth = contractDate.getMonth() + 1;
+          while (checkYear < now.getFullYear() || (checkYear === now.getFullYear() && checkMonth <= now.getMonth() + 1)) {
+            try {
+              const records = await loadBillingRecordsForMonth(checkYear, checkMonth);
+              if (records.some(r => r.clientName === client.name)) {
+                hasBilling = true;
+                break;
+              }
+            } catch { /* skip */ }
+            checkMonth++;
+            if (checkMonth > 12) { checkMonth = 1; checkYear++; }
+          }
+          if (!hasBilling) {
+            skipReasons.push({ name: client.name, reason: '実績記録なし' });
+            continue;
+          }
+          targetClients.push(client);
+        } catch {
+          skipReasons.push({ name: client.name, reason: 'データ確認失敗' });
+        }
+      }
+
+      if (targetClients.length === 0) {
+        const skipInfo = skipReasons.map(s => `  ${s.name}: ${s.reason}`).join('\n');
+        alert(`対象の利用者がいません。\n\n${skipInfo}`);
+        setIsBulkGenerating(false);
+        setCatchUpProgress('');
+        return;
+      }
+
+      const skipInfo = skipReasons.length > 0
+        ? `\n\nスキップ:\n${skipReasons.map(s => `  ${s.name}（${s.reason}）`).join('\n')}`
+        : '';
+      if (!confirm(`${targetClients.length}名の全書類を一括生成します。\n` +
+        `対象: ${targetClients.map(c => `${c.name}(${c.contractStart}～)`).join('、')}\n` +
+        `各利用者の契約開始日から現在までに必要な計画書・手順書・モニタリングを全て生成します。${skipInfo}`)) {
+        setIsBulkGenerating(false);
+        setCatchUpProgress('');
+        return;
+      }
+
+      let successCount = 0;
+      for (let i = 0; i < targetClients.length; i++) {
+        const client = targetClients[i];
+        setCatchUpProgress(`[${i + 1}/${targetClients.length}] ${client.name}の書類を生成中...`);
+
+        // 初期スケジュール作成
+        const schedules = await loadDocumentSchedules(client.id);
+        let planSchedule = schedules.find((s: any) => s.docType === 'care_plan');
+        if (!planSchedule) {
+          await createInitialSchedules(client.id);
+          const newScheds = await loadDocumentSchedules(client.id);
+          planSchedule = newScheds.find((s: any) => s.docType === 'care_plan');
+        }
+        if (!planSchedule) {
+          setCatchUpProgress(`[${i + 1}/${targetClients.length}] ${client.name}: スケジュール作成失敗`);
+          continue;
+        }
+
+        const result = await executeCatchUpGeneration(
+          client,
+          planSchedule,
+          hiddenDiv,
+          (msg) => setCatchUpProgress(`[${i + 1}/${targetClients.length}] ${client.name}: ${msg}`)
+        );
+
+        if (result.success) {
+          successCount++;
+        } else {
+          console.error(`${client.name}の全書類生成失敗:`, result.error);
+        }
+
+        // API負荷軽減
+        if (i < targetClients.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+
+      alert(`全書類一括生成が完了しました。\n成功: ${successCount} / ${targetClients.length}名`);
+    } catch (err: any) {
+      console.error('全書類一括生成エラー:', err);
+      setError(`全書類一括生成に失敗しました: ${err.message || err}`);
+    } finally {
+      setIsBulkGenerating(false);
+      setCatchUpProgress('');
+    }
+  }, [careClients]);
+
   const loadGenerator = async (docId: string): Promise<((ctx: any) => Promise<any>) | null> => {
     try {
       switch (docId) {
@@ -632,6 +758,14 @@ const DocumentsPage: React.FC = () => {
                 <span className="material-symbols-outlined text-base">auto_awesome</span>
                 計画書一括
               </button>
+              <button
+                onClick={handleCatchUpGenerate}
+                disabled={isBulkGenerating}
+                className="px-4 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-sm font-medium flex items-center gap-1.5 shadow-sm"
+              >
+                <span className="material-symbols-outlined text-base">playlist_add_check</span>
+                全書類一括
+              </button>
               <div className="relative">
                 <button
                   onClick={() => setShowSettings(!showSettings)}
@@ -706,6 +840,16 @@ const DocumentsPage: React.FC = () => {
           </nav>
         </div>
       </div>
+
+      {/* 全書類一括生成 進捗表示 */}
+      {catchUpProgress && (
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-2">
+          <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center gap-3">
+            <div className="animate-spin w-5 h-5 border-2 border-green-500 border-t-transparent rounded-full" />
+            <span className="text-sm text-green-800 font-medium">{catchUpProgress}</span>
+          </div>
+        </div>
+      )}
 
       {/* 書類一覧タブ */}
       {activeTab === 'documentList' && (

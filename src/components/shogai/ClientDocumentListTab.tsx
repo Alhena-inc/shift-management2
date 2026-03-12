@@ -1,5 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { loadShogaiDocuments, deleteShogaiDocument, loadShogaiCarePlanDocuments, deleteShogaiCarePlanDocument, loadBillingRecordsForMonth, loadShiftsForMonth, loadHelpers, loadCareClients, loadAiPrompt, loadDocumentSchedules } from '../../services/dataService';
+import { loadShogaiDocuments, deleteShogaiDocument, loadShogaiCarePlanDocuments, deleteShogaiCarePlanDocument, loadBillingRecordsForMonth, loadShiftsForMonth, loadHelpers, loadCareClients, loadAiPrompt, loadDocumentSchedules, saveDocumentSchedule } from '../../services/dataService';
+import { createInitialSchedules } from '../../utils/documentScheduleChecker';
+import { executeCatchUpGeneration } from '../../utils/documentScheduleExecutor';
 import type { CareClient } from '../../types';
 import ExcelViewer from './ExcelViewer';
 
@@ -75,6 +77,8 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [viewerDoc, setViewerDoc] = useState<UnifiedDocument | null>(null);
   const [generatingMonitoring, setGeneratingMonitoring] = useState<string | null>(null);
+  const [generatingAll, setGeneratingAll] = useState<string | null>(null);
+  const [catchUpProgress, setCatchUpProgress] = useState<string>('');
   const hiddenDivRef = useRef<HTMLDivElement | null>(null);
 
   const loadClientDocuments = useCallback(async (clientId: string) => {
@@ -267,6 +271,90 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
     }
   }, [careClients, loadClientDocuments]);
 
+  // 利用者ごと全書類一括生成
+  const handleCatchUpGenerateForClient = useCallback(async (clientId: string) => {
+    const { isGeminiAvailable } = await import('../../services/geminiService');
+    if (!isGeminiAvailable()) {
+      alert('Gemini APIキーが設定されていません。');
+      return;
+    }
+
+    const client = careClients.find(c => c.id === clientId);
+    if (!client) return;
+
+    if (!client.contractStart) {
+      alert('契約開始日が設定されていません。利用者情報に契約開始日を入力してください。');
+      return;
+    }
+
+    // アセスメントチェック
+    try {
+      const assessmentDocs = await loadShogaiDocuments(client.id, 'assessment');
+      const hasAssessment = assessmentDocs.some((d: any) => d.fileUrl);
+      if (!hasAssessment) {
+        alert('アセスメントが未作成です。先にアセスメントを作成・アップロードしてください。');
+        return;
+      }
+    } catch {
+      alert('アセスメントの確認に失敗しました。');
+      return;
+    }
+
+    if (!confirm(`${client.name}の全書類を一括生成しますか？\n契約開始日（${client.contractStart}）から現在までに必要な計画書・手順書・モニタリングを全て生成します。`)) {
+      return;
+    }
+
+    setGeneratingAll(clientId);
+    setCatchUpProgress('準備中...');
+
+    try {
+      const hiddenDiv = hiddenDivRef.current;
+      if (!hiddenDiv) {
+        alert('内部エラー: hiddenDivが見つかりません');
+        return;
+      }
+
+      // スケジュール取得or作成
+      let schedules = await loadDocumentSchedules(client.id);
+      let planSchedule = schedules.find((s: any) => s.docType === 'care_plan');
+      if (!planSchedule) {
+        const initialScheds = createInitialSchedules(client.id, client.contractStart);
+        for (const sched of initialScheds) {
+          await saveDocumentSchedule(sched as any);
+        }
+        schedules = await loadDocumentSchedules(client.id);
+        planSchedule = schedules.find((s: any) => s.docType === 'care_plan');
+      }
+
+      if (!planSchedule) {
+        alert('スケジュール作成に失敗しました。');
+        return;
+      }
+
+      const result = await executeCatchUpGeneration(
+        client,
+        planSchedule,
+        hiddenDiv,
+        (msg) => setCatchUpProgress(msg)
+      );
+
+      if (result.success) {
+        alert(`${client.name}の全書類一括生成が完了しました。${result.error ? `\n注意: ${result.error}` : ''}`);
+      } else {
+        alert(`生成に失敗しました: ${result.error}`);
+      }
+
+      // 書類一覧をリロード
+      await loadClientDocuments(clientId);
+    } catch (err: any) {
+      console.error('一括生成エラー:', err);
+      alert(`一括生成に失敗しました: ${err.message || err}`);
+    } finally {
+      setGeneratingAll(null);
+      setCatchUpProgress('');
+    }
+  }, [careClients, loadClientDocuments]);
+
   if (careClients.length === 0) {
     return (
       <div className="text-center py-16 text-gray-400 text-sm">利用者が登録されていません</div>
@@ -319,6 +407,7 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
         const docs = clientDocs[expandedClientId] || [];
         const clientName = careClients.find(c => c.id === expandedClientId)?.name || '';
         const isGenerating = generatingMonitoring === expandedClientId;
+        const isGeneratingAll = generatingAll === expandedClientId;
 
         return (
           <div className="mt-3 bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -330,8 +419,18 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
               </div>
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() => handleCatchUpGenerateForClient(expandedClientId)}
+                  disabled={isGeneratingAll || isGenerating}
+                  className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-xs font-medium flex items-center gap-1 shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-sm">
+                    {isGeneratingAll ? 'progress_activity' : 'playlist_add_check'}
+                  </span>
+                  {isGeneratingAll ? '一括生成中...' : '全書類一括生成'}
+                </button>
+                <button
                   onClick={() => handleGenerateMonitoring(expandedClientId)}
-                  disabled={isGenerating}
+                  disabled={isGenerating || isGeneratingAll}
                   className="px-3 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-xs font-medium flex items-center gap-1 shadow-sm"
                 >
                   <span className="material-symbols-outlined text-sm">
@@ -347,6 +446,14 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
                 </button>
               </div>
             </div>
+            {isGeneratingAll && catchUpProgress && (
+              <div className="px-4 py-2 bg-green-50 border-b border-green-200">
+                <div className="flex items-center gap-2">
+                  <span className="animate-spin material-symbols-outlined text-sm text-green-600">progress_activity</span>
+                  <span className="text-xs text-green-700">{catchUpProgress}</span>
+                </div>
+              </div>
+            )}
             {isLoading ? (
               <div className="flex items-center justify-center py-8 text-gray-400 gap-2">
                 <span className="animate-spin material-symbols-outlined text-sm">progress_activity</span>
