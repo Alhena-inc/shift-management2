@@ -718,8 +718,12 @@ function getSupplyHours(supplyAmounts: ShogaiSupplyAmount[], clientId: string): 
   const result: Record<string, string> = {};
   const clientSupply = supplyAmounts.filter(s => s.careClientId === clientId);
   for (const s of clientSupply) {
-    const cat = s.serviceCategory || s.serviceContent || '';
-    result[cat] = s.supplyAmount || '';
+    // serviceCategory（例: "居宅介護"）とserviceContent（例: "居宅介護身体介護決定"）の
+    // 両方をキーとして登録し、checkServiceでマッチしやすくする
+    const combined = `${s.serviceCategory || ''} ${s.serviceContent || ''}`.trim();
+    if (combined) {
+      result[combined] = s.supplyAmount || '';
+    }
   }
   return result;
 }
