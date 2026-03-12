@@ -466,10 +466,12 @@ function createProcedureSheet(
 
 // ==================== メイン生成関数 ====================
 export async function generate(ctx: GeneratorContext): Promise<void> {
+  console.log('[CareProcedure] ===== generate() 開始 =====');
   const { careClients, billingRecords, supplyAmounts, year, month, officeInfo, customPrompt, customSystemInstruction, selectedClient } = ctx;
 
   const client: CareClient = selectedClient || careClients[0];
   if (!client) throw new Error('利用者が選択されていません');
+  console.log(`[CareProcedure] 対象利用者: ${client.name}, year=${year}, month=${month}`);
 
   const promptTemplate = customPrompt || DEFAULT_PROMPT;
   const systemInstruction = customSystemInstruction || DEFAULT_SYSTEM_INSTRUCTION;
@@ -548,10 +550,12 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   const prompt = applyTemplate(promptTemplate, templateVars);
 
   // AI生成
+  console.log(`[CareProcedure] AI生成開始 (アセスメント: ${assessmentFileUrls.length}件)`);
   const res = assessmentFileUrls.length > 0
     ? await generateWithFiles(prompt, assessmentFileUrls, systemInstruction)
     : await generateText(prompt, systemInstruction);
 
+  console.log(`[CareProcedure] AI応答受信: error=${res.error || 'なし'}, textLength=${res.text?.length || 0}`);
   if (res.error) throw new Error(`AI生成エラー: ${res.error}`);
   if (!res.text) throw new Error('AIからの応答が空です。');
 
