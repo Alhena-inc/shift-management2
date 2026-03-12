@@ -692,15 +692,77 @@ export async function executeCatchUpGeneration(
     return { success: false, error: '生成する書類がありません' };
   }
 
-  onProgress?.(`${client.name}: ${contractStart}～${todayStr} の全${steps.length}件を生成します`);
+  // 既存書類を確認して、作成済みのステップをスキップする
+  onProgress?.('既存書類を確認中...');
+  const existingPlanYMs = new Set<string>();
+  const existingTejunshoYMs = new Set<string>();
+  const existingMonitoringYMs = new Set<string>();
+
+  try {
+    const [carePlanDocs, tejunshoDocs, monitoringDocs] = await Promise.all([
+      loadShogaiCarePlanDocuments(client.id).catch(() => []),
+      loadShogaiDocuments(client.id, 'tejunsho').catch(() => []),
+      loadShogaiDocuments(client.id, 'monitoring').catch(() => []),
+    ]);
+
+    // ファイル名から年月を抽出する (例: "居宅介護計画書_佐々木奈緒_2025年11月.xlsx" → "2025-11")
+    const extractYM = (fileName: string): string | null => {
+      const m = fileName.match(/(\d{4})年(\d{1,2})月/);
+      if (m) return `${m[1]}-${m[2].padStart(2, '0')}`;
+      return null;
+    };
+
+    for (const doc of carePlanDocs) {
+      const ym = extractYM(doc.fileName || '');
+      if (ym) existingPlanYMs.add(ym);
+    }
+    for (const doc of tejunshoDocs) {
+      const ym = extractYM(doc.fileName || '');
+      if (ym) existingTejunshoYMs.add(ym);
+    }
+    for (const doc of monitoringDocs) {
+      const ym = extractYM(doc.fileName || '');
+      if (ym) existingMonitoringYMs.add(ym);
+    }
+    console.log(`[CatchUp] 既存書類: 計画書${existingPlanYMs.size}件, 手順書${existingTejunshoYMs.size}件, モニタリング${existingMonitoringYMs.size}件`);
+  } catch (err) {
+    console.warn('[CatchUp] 既存書類確認失敗（全件生成します）:', err);
+  }
+
+  // 既存書類があるステップをフィルタリング
+  const filteredSteps: CatchUpStep[] = [];
+  for (const step of steps) {
+    const ym = `${step.year}-${String(step.month).padStart(2, '0')}`;
+    if (step.type === 'plan') {
+      const hasPlan = existingPlanYMs.has(ym);
+      const hasTejunsho = existingTejunshoYMs.has(ym);
+      if (hasPlan && hasTejunsho) {
+        console.log(`[CatchUp] スキップ: ${step.label}（計画書・手順書ともに作成済み）`);
+        continue;
+      }
+    } else if (step.type === 'monitoring') {
+      if (existingMonitoringYMs.has(ym)) {
+        console.log(`[CatchUp] スキップ: ${step.label}（モニタリング作成済み）`);
+        continue;
+      }
+    }
+    filteredSteps.push(step);
+  }
+
+  if (filteredSteps.length === 0) {
+    return { success: true, error: '全ての書類が作成済みです' };
+  }
+
+  const skippedCount = steps.length - filteredSteps.length;
+  onProgress?.(`${client.name}: ${filteredSteps.length}件を生成します（${skippedCount}件は作成済みのためスキップ）`);
 
   let successCount = 0;
   let lastError = '';
   const batchId = crypto.randomUUID();
 
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i];
-    onProgress?.(`[${i + 1}/${steps.length}] ${step.label} を生成中...`);
+  for (let i = 0; i < filteredSteps.length; i++) {
+    const step = filteredSteps[i];
+    onProgress?.(`[${i + 1}/${filteredSteps.length}] ${step.label} を生成中...`);
 
     try {
       const ctx = await buildContext(client, step.year, step.month, hiddenDiv);
@@ -724,7 +786,7 @@ export async function executeCatchUpGeneration(
         const { generate: generatePlan } = await import('./documentGenerators/carePlanGenerator');
         const planResult = await generatePlan(ctx);
         const generatedAt = new Date().toISOString();
-        onProgress?.(`[${i + 1}/${steps.length}] 計画書AI生成完了`);
+        onProgress?.(`[${i + 1}/${filteredSteps.length}] 計画書AI生成完了`);
 
         // GoalPeriod保存（失敗しても続行）
         try {
@@ -772,7 +834,7 @@ export async function executeCatchUpGeneration(
         }
 
         // === 手順書生成 ===
-        onProgress?.(`[${i + 1}/${steps.length}] 手順書を生成中...`);
+        onProgress?.(`[${i + 1}/${filteredSteps.length}] 手順書を生成中...`);
         try {
           const procPrompt = await loadAiPrompt('care-procedure').catch(() => null);
           if (procPrompt) {
@@ -798,10 +860,10 @@ export async function executeCatchUpGeneration(
           } catch (e) {
             console.warn('[CatchUp] 手順書スケジュール保存失敗:', e);
           }
-          onProgress?.(`[${i + 1}/${steps.length}] 手順書の生成完了`);
+          onProgress?.(`[${i + 1}/${filteredSteps.length}] 手順書の生成完了`);
         } catch (tejunshoErr: any) {
           console.error('[CatchUp] 手順書生成失敗:', tejunshoErr);
-          onProgress?.(`[${i + 1}/${steps.length}] ⚠ 手順書の生成に失敗: ${tejunshoErr.message || tejunshoErr}`);
+          onProgress?.(`[${i + 1}/${filteredSteps.length}] ⚠ 手順書の生成に失敗: ${tejunshoErr.message || tejunshoErr}`);
         }
 
         // === モニタリング次回日設定（失敗しても続行） ===
@@ -836,7 +898,7 @@ export async function executeCatchUpGeneration(
         // モニタリング結果に基づいて計画書再作成が必要か判定
         if (result.planRevisionNeeded === 'あり') {
           const revisionDate = addDays(toDateString(new Date(step.year, step.month - 1, 15)), 1);
-          onProgress?.(`[${i + 1}/${steps.length}] モニタリング結果: 計画変更が必要 → 計画書+手順書を再作成します`);
+          onProgress?.(`[${i + 1}/${filteredSteps.length}] モニタリング結果: 計画変更が必要 → 計画書+手順書を再作成します`);
 
           const newPlanStep: CatchUpStep = {
             type: 'plan',
@@ -847,9 +909,9 @@ export async function executeCatchUpGeneration(
             planCreationDate: revisionDate,
             revisionReason: `モニタリング(${step.year}年${step.month}月)により計画変更が必要と判定`,
           };
-          steps.splice(i + 1, 0, newPlanStep);
+          filteredSteps.splice(i + 1, 0, newPlanStep);
         } else {
-          onProgress?.(`[${i + 1}/${steps.length}] モニタリング結果: 計画変更不要 → 現行計画を継続`);
+          onProgress?.(`[${i + 1}/${filteredSteps.length}] モニタリング結果: 計画変更不要 → 現行計画を継続`);
         }
 
         try {
@@ -869,19 +931,19 @@ export async function executeCatchUpGeneration(
     } catch (error: any) {
       console.error(`[CatchUp] ${step.label} 生成失敗:`, error);
       lastError = `${step.label}: ${error.message || String(error)}`;
-      onProgress?.(`[${i + 1}/${steps.length}] ⚠ ${step.label} 生成失敗: ${error.message || String(error)}`);
+      onProgress?.(`[${i + 1}/${filteredSteps.length}] ⚠ ${step.label} 生成失敗: ${error.message || String(error)}`);
     }
   }
 
   await runPostGenerationValidation(client);
 
-  onProgress?.(`完了: ${successCount}/${steps.length}件の書類を生成しました`);
+  onProgress?.(`完了: ${successCount}/${filteredSteps.length}件の書類を生成しました`);
 
   if (successCount === 0) {
     return { success: false, error: `全ての書類生成に失敗しました: ${lastError}` };
   }
-  if (successCount < steps.length) {
-    return { success: true, error: `${steps.length - successCount}件が失敗: ${lastError}` };
+  if (successCount < filteredSteps.length) {
+    return { success: true, error: `${filteredSteps.length - successCount}件が失敗: ${lastError}` };
   }
   return { success: true };
 }
