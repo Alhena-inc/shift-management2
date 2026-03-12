@@ -771,7 +771,11 @@ function checkService(
       return { checked: true, hours: supplyH[k] };
     }
   }
-  // 実績データのサービス種別からフォールバック（時間数なし）
+  // 契約支給量データがある場合はそちらのみで判定（実績フォールバックしない）
+  if (Object.keys(supplyH).length > 0) {
+    return { checked: false, hours: '' };
+  }
+  // 契約支給量データが一切ない場合のみ、実績データのサービス種別からフォールバック
   for (const k of keys) {
     for (const st of serviceTypes) {
       if (st === k || st.includes(k)) return { checked: true, hours: '' };
