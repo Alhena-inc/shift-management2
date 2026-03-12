@@ -714,34 +714,67 @@ function buildSupplyAmountsText(supplyAmounts: ShogaiSupplyAmount[], clientId: s
   ).join('\n');
 }
 
+/**
+ * 契約支給量からサービス種類ごとの時間数マップを構築。
+ * キーはサービス種類の正規化名（「身体介護」「家事援助」「重度訪問介護」等）。
+ */
 function getSupplyHours(supplyAmounts: ShogaiSupplyAmount[], clientId: string): Record<string, string> {
   const result: Record<string, string> = {};
   const clientSupply = supplyAmounts.filter(s => s.careClientId === clientId);
   for (const s of clientSupply) {
-    // serviceCategory（例: "居宅介護"）とserviceContent（例: "居宅介護身体介護決定"）の
-    // 両方をキーとして登録し、checkServiceでマッチしやすくする
-    const combined = `${s.serviceCategory || ''} ${s.serviceContent || ''}`.trim();
-    if (combined) {
-      result[combined] = s.supplyAmount || '';
+    const cat = s.serviceCategory || '';
+    const content = s.serviceContent || '';
+
+    // サービス種類が「居宅介護」の場合、serviceContentから細分類を判定
+    if (cat === '居宅介護') {
+      if (content.includes('身体介護') && !content.includes('通院')) {
+        result['身体介護'] = s.supplyAmount || '';
+      } else if (content.includes('家事援助') || content.includes('生活援助')) {
+        result['家事援助'] = s.supplyAmount || '';
+      } else if (content.includes('通院') && content.includes('伴う') && !content.includes('伴わない')) {
+        result['通院等介助(身体介護を伴う)'] = s.supplyAmount || '';
+      } else if (content.includes('通院') && content.includes('伴わない')) {
+        result['通院等介助(身体介護を伴わない)'] = s.supplyAmount || '';
+      } else if (content.includes('乗降')) {
+        result['通院等乗降介助'] = s.supplyAmount || '';
+      } else {
+        // 判別できない場合はserviceContentそのまま
+        result[content || cat] = s.supplyAmount || '';
+      }
+    } else if (cat === '重度訪問介護') {
+      result['重度訪問介護'] = s.supplyAmount || '';
+    } else if (cat === '同行援護') {
+      result['同行援護'] = s.supplyAmount || '';
+    } else if (cat === '行動援護') {
+      result['行動援護'] = s.supplyAmount || '';
+    } else {
+      // その他はそのまま
+      result[cat || content] = s.supplyAmount || '';
     }
   }
   return result;
 }
 
 // ==================== チェックボックス ====================
+/**
+ * 正規化済みのキーで完全一致検索。
+ * supplyHoursのキーは「身体介護」「重度訪問介護」等の正規化名。
+ */
 function checkService(
   keys: string[],
   supplyH: Record<string, string>,
   serviceTypes: string[],
 ): { checked: boolean; hours: string } {
+  // 契約支給量から完全一致で検索
   for (const k of keys) {
-    for (const [cat, amt] of Object.entries(supplyH)) {
-      if (cat.includes(k)) return { checked: true, hours: amt };
+    if (supplyH[k] !== undefined) {
+      return { checked: true, hours: supplyH[k] };
     }
   }
+  // 実績データのサービス種別からフォールバック（時間数なし）
   for (const k of keys) {
     for (const st of serviceTypes) {
-      if (st.includes(k)) return { checked: true, hours: '' };
+      if (st === k || st.includes(k)) return { checked: true, hours: '' };
     }
   }
   return { checked: false, hours: '' };
@@ -1110,14 +1143,14 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
   setWrapText(goalCell14);
 
   // サービス内容チェックボックス
-  const bodyCheck = checkService(['身体介護', '身体'], supplyHours, serviceTypes);
-  const houseCheck = checkService(['家事援助', '家事'], supplyHours, serviceTypes);
-  const heavyCheck = checkService(['重度訪問', '重度'], supplyHours, serviceTypes);
-  const visitWithBody = checkService(['通院等介助(身体介護を伴う)', '通院介助（身体あり）'], supplyHours, serviceTypes);
-  const visitWithoutBody = checkService(['通院等介助(身体介護を伴わない)', '通院介助（身体なし）'], supplyHours, serviceTypes);
-  const rideCheck = checkService(['通院等乗降', '乗降'], supplyHours, serviceTypes);
-  const accompanyCheck = checkService(['同行援護', '同行'], supplyHours, serviceTypes);
-  const behaviorCheck = checkService(['行動援護', '行動'], supplyHours, serviceTypes);
+  const bodyCheck = checkService(['身体介護'], supplyHours, serviceTypes);
+  const houseCheck = checkService(['家事援助'], supplyHours, serviceTypes);
+  const heavyCheck = checkService(['重度訪問介護'], supplyHours, serviceTypes);
+  const visitWithBody = checkService(['通院等介助(身体介護を伴う)'], supplyHours, serviceTypes);
+  const visitWithoutBody = checkService(['通院等介助(身体介護を伴わない)'], supplyHours, serviceTypes);
+  const rideCheck = checkService(['通院等乗降介助'], supplyHours, serviceTypes);
+  const accompanyCheck = checkService(['同行援護'], supplyHours, serviceTypes);
+  const behaviorCheck = checkService(['行動援護'], supplyHours, serviceTypes);
 
   const checkboxAlignment: Partial<ExcelJS.Alignment> = { vertical: 'middle', wrapText: true };
   ws0.getCell('D16').value = checkboxText('身体介護', bodyCheck);
