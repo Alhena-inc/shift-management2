@@ -270,17 +270,25 @@ export async function executeScheduleAction(
 
       // 手順書も生成
       onProgress?.('手順書を生成中...');
-      const procedurePromptData = await loadAiPrompt('care-procedure').catch(() => null);
-      if (procedurePromptData) {
-        ctx.customPrompt = procedurePromptData.prompt;
-        ctx.customSystemInstruction = procedurePromptData.system_instruction;
-      } else {
-        delete ctx.customPrompt;
-        delete ctx.customSystemInstruction;
-      }
+      try {
+        const procedurePromptData = await loadAiPrompt('care-procedure').catch(() => null);
+        if (procedurePromptData) {
+          ctx.customPrompt = procedurePromptData.prompt;
+          ctx.customSystemInstruction = procedurePromptData.system_instruction;
+        } else {
+          ctx.customPrompt = undefined;
+          ctx.customSystemInstruction = undefined;
+        }
 
-      const { generate: generateProcedure } = await import('./documentGenerators/careProcedureGenerator');
-      await generateProcedure(ctx);
+        const { generate: generateProcedure } = await import('./documentGenerators/careProcedureGenerator');
+        console.log('[Executor] 手順書生成を開始します');
+        await generateProcedure(ctx);
+        console.log('[Executor] 手順書生成完了');
+      } catch (tejunshoErr: any) {
+        console.error('[Executor] 手順書生成に失敗しました:', tejunshoErr);
+        onProgress?.(`⚠ 手順書の生成に失敗: ${tejunshoErr.message || tejunshoErr}`);
+        // 手順書が失敗しても計画書生成は成功扱いにする
+      }
 
       // 手順書スケジュール更新（定期周期なし: nextDueDate = null）
       await saveDocumentSchedule({
@@ -790,18 +798,22 @@ export async function executeCatchUpGeneration(
 
         if (tejunshoNeeded) {
           try {
+            console.log(`[CatchUp] 手順書生成開始: ${client.name}, tejunshoNeeded=${tejunshoNeeded}, trigger=${tejunshoTrigger}`);
             onProgress?.(`[${i + 1}/${steps.length}] ${step.label} - 手順書を生成中（${tejunshoTrigger}: ${tejunshoReason}）...`);
             const procPrompt = await loadAiPrompt('care-procedure').catch(() => null);
+            console.log(`[CatchUp] 手順書カスタムプロンプト: ${procPrompt ? 'あり' : 'なし'}`);
             if (procPrompt) {
               ctx.customPrompt = procPrompt.prompt;
               ctx.customSystemInstruction = procPrompt.system_instruction;
             } else {
-              delete ctx.customPrompt;
-              delete ctx.customSystemInstruction;
+              ctx.customPrompt = undefined;
+              ctx.customSystemInstruction = undefined;
             }
 
             const { generate: generateProcedure } = await import('./documentGenerators/careProcedureGenerator');
+            console.log(`[CatchUp] careProcedureGenerator.generate を呼び出します`);
             await generateProcedure(ctx);
+            console.log(`[CatchUp] 手順書AI生成完了、スケジュール保存中...`);
 
             await saveDocumentSchedule({
               careClientId: client.id, docType: 'tejunsho',
@@ -812,9 +824,11 @@ export async function executeCatchUpGeneration(
               periodStart: step.periodStart, periodEnd: planDates.nextDueDate,
               planRevisionReason: `${tejunshoTrigger}: ${tejunshoReason}`,
             });
+            console.log(`[CatchUp] 手順書スケジュール保存完了`);
             onProgress?.(`[${i + 1}/${steps.length}] 手順書の生成完了`);
           } catch (tejunshoErr: any) {
             console.error('[CatchUp] 手順書生成失敗:', tejunshoErr);
+            console.error('[CatchUp] 手順書生成失敗スタックトレース:', tejunshoErr?.stack);
             onProgress?.(`[${i + 1}/${steps.length}] ⚠ 手順書の生成に失敗: ${tejunshoErr.message || tejunshoErr}`);
             // 手順書が失敗しても計画書は成功扱いにする
           }
