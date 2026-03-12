@@ -3,7 +3,36 @@ import type { ShogaiSupplyAmount } from '../../types';
 import { saveShogaiSupplyAmount, deleteShogaiSupplyAmount } from '../../services/dataService';
 
 const SERVICE_CATEGORY_OPTIONS = ['居宅介護', '重度訪問介護', '同行援護', '行動援護', '移動支援'];
-const SERVICE_CONTENT_OPTIONS = ['居宅介護身体介護決定', '居宅介護家事援助決定', '居宅介護通院介助（身体介護伴う）決定', '居宅介護通院介助（身体介護伴わない）決定', '居宅介護通院等乗降介助決定', '居宅介護加算特別地域加算対象者'];
+
+const SERVICE_CONTENT_MAP: Record<string, string[]> = {
+  '居宅介護': [
+    '居宅介護身体介護決定',
+    '居宅介護家事援助決定',
+    '居宅介護通院介助（身体介護伴う）決定',
+    '居宅介護通院介助（身体介護伴わない）決定',
+    '居宅介護通院等乗降介助決定',
+    '居宅介護加算特別地域加算対象者',
+  ],
+  '重度訪問介護': [
+    '重度訪問介護重度障害者等包括支援対象者決定',
+    '重度訪問介護障害支援区分６該当者決定',
+    '重度訪問介護その他決定',
+    '重度訪問介護加算移動介護',
+    '重度訪問介護加算特別地域加算対象者',
+  ],
+  '行動援護': [
+    '行動援護基本決定',
+    '行動援護加算特別地域加算対象者',
+  ],
+  '同行援護': [
+    '同行援護基本決定',
+    '同行援護基本（盲ろう者）決定',
+    '同行援護加算特別地域加算対象者',
+  ],
+  '移動支援': [
+    '移動支援基本決定',
+  ],
+};
 const OFFICE_OPTIONS = ['訪問介護事業所のあ'];
 
 interface Props {
@@ -119,7 +148,7 @@ const ShogaiSupplyAmountList: React.FC<Props> = ({ careClientId, contractItems, 
         <div className="space-y-5">
           <div className="flex items-center gap-4">
             <label className="text-sm font-medium text-gray-700 w-36 text-right shrink-0">サービス種類</label>
-            <select value={formData.serviceCategory} onChange={(e) => setFormData({ ...formData, serviceCategory: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-sm">
+            <select value={formData.serviceCategory} onChange={(e) => setFormData({ ...formData, serviceCategory: e.target.value, serviceContent: '' })} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-sm">
               <option value="">選択してください</option>
               {SERVICE_CATEGORY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
             </select>
@@ -128,7 +157,7 @@ const ShogaiSupplyAmountList: React.FC<Props> = ({ careClientId, contractItems, 
             <label className="text-sm font-medium text-gray-700 w-36 text-right shrink-0">サービス内容</label>
             <select value={formData.serviceContent} onChange={(e) => setFormData({ ...formData, serviceContent: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-sm">
               <option value="">選択してください</option>
-              {SERVICE_CONTENT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+              {(SERVICE_CONTENT_MAP[formData.serviceCategory] || []).map(o => <option key={o} value={o}>{o}</option>)}
             </select>
           </div>
           {isContract && (
