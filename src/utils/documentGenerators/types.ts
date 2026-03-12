@@ -26,6 +26,8 @@ export interface GeneratorContext {
   planCreationDate?: string;
   /** モニタリング後の計画書再作成理由 */
   planRevisionReason?: string;
+  /** true: 短期目標のみ変更・パターン変更なし → サービス内容を前版から引き継ぐ */
+  inheritServiceContent?: boolean;
 }
 
 export type GenerateFunction = (ctx: GeneratorContext) => Promise<void>;

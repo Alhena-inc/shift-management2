@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import { generateWithFiles, generateText } from '../../services/geminiService';
-import { loadShogaiDocuments, loadBillingRecordsForMonth, uploadCarePlanFile, saveShogaiCarePlanDocument, loadGoalPeriods } from '../../services/dataService';
+import { loadShogaiDocuments, loadShogaiCarePlanDocuments, loadBillingRecordsForMonth, uploadCarePlanFile, saveShogaiCarePlanDocument, loadGoalPeriods } from '../../services/dataService';
 import type { GeneratorContext } from './types';
 import type { CareClient, BillingRecord, ShogaiSupplyAmount } from '../../types';
 
@@ -1006,6 +1006,22 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
       + previousGoalsNote,
   };
 
+  // inheritServiceContent: 短期目標のみ変更・パターン変更なしの場合
+  // AIには前版のサービス内容をそのまま返すよう指示
+  if (ctx.inheritServiceContent) {
+    templateVars.assessment_note += `
+
+【重要：サービス内容引き継ぎモード】
+今回は短期目標の期間更新のみです。週間介入パターンに変更はありません。
+以下の項目は前回と同じ内容をそのまま返してください：
+- 援助項目（item）
+- サービスの内容（content）
+- 留意事項（note）
+- 週間サービス計画の内容
+変更してよいのは短期目標の文言と期間のみです。
+長期目標が継続中の場合は前回と同じ文言・期間を返してください。`;
+  }
+
   const prompt = applyTemplate(promptTemplate, templateVars);
 
   // AI生成
@@ -1261,6 +1277,63 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
       const c = ws0.getCell(ref);
       c.value = val;
       c.alignment = { vertical: 'middle', wrapText: true };
+    }
+  }
+
+  // === サービス内容引き継ぎ: 前版Excelからサービス内容セルをコピー ===
+  if (ctx.inheritServiceContent) {
+    try {
+      const prevDocs = await loadShogaiCarePlanDocuments(client.id, 'kyotaku');
+      // 最新の前版を取得（createdAt降順で最初）
+      const prevDoc = prevDocs.sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
+      if (prevDoc?.fileUrl) {
+        console.log('[CarePlan] サービス内容引き継ぎ: 前版を読み込み中...');
+        const prevResponse = await fetch(prevDoc.fileUrl);
+        if (prevResponse.ok) {
+          const prevBuffer = await prevResponse.arrayBuffer();
+          const prevWorkbook = new ExcelJS.Workbook();
+          await prevWorkbook.xlsx.load(prevBuffer);
+          const prevWs = prevWorkbook.getWorksheet('居宅介護計画書（表）') || prevWorkbook.worksheets[0];
+
+          if (prevWs) {
+            // サービス内容セル（Row76-125）を前版からコピー
+            const serviceCellRefs: string[] = [];
+            for (const block of serviceBlocks) {
+              for (let row = block.dataStartRow; row <= block.dataEndRow; row++) {
+                serviceCellRefs.push(`B${row}`, `F${row}`, `J${row}`);
+              }
+              // チェックボックス行もコピー
+              for (let offset = 0; offset < 3; offset++) {
+                const chkRow = block.chkStartRow + offset;
+                serviceCellRefs.push(`B${chkRow}`, `F${chkRow}`, `H${chkRow}`);
+              }
+            }
+            // 週間サービス計画表（Row21-68）もコピー
+            for (let row = 21; row <= 68; row++) {
+              for (const col of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']) {
+                serviceCellRefs.push(`${col}${row}`);
+              }
+            }
+
+            let copiedCount = 0;
+            for (const ref of serviceCellRefs) {
+              const prevCell = prevWs.getCell(ref);
+              if (prevCell.value !== null && prevCell.value !== undefined) {
+                const newCell = ws0.getCell(ref);
+                newCell.value = prevCell.value;
+                if (prevCell.alignment) newCell.alignment = prevCell.alignment;
+                copiedCount++;
+              }
+            }
+            console.log(`[CarePlan] サービス内容引き継ぎ完了: ${copiedCount}セルコピー`);
+
+            // 矛盾検出: AIが生成したサービス内容と前版を比較
+            // （AI指示で同じ内容を返すよう求めているが、念のため前版を強制適用済み）
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[CarePlan] サービス内容引き継ぎに失敗（新規生成内容を使用）:', err);
     }
   }
 

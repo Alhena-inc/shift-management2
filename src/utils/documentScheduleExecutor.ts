@@ -137,6 +137,7 @@ async function buildContext(
     customSystemInstruction: undefined as string | undefined,
     planCreationDate: undefined as string | undefined,
     planRevisionReason: undefined as string | undefined,
+    inheritServiceContent: undefined as boolean | undefined,
   };
 }
 
@@ -844,6 +845,7 @@ export async function executeCatchUpGeneration(
       const ctx = await buildContext(client, step.year, step.month, hiddenDiv);
       if (step.planCreationDate) ctx.planCreationDate = step.planCreationDate;
       if (step.revisionReason) ctx.planRevisionReason = step.revisionReason;
+      if (step.skipTejunsho) ctx.inheritServiceContent = true;
 
       if (step.type === 'plan') {
         // === 計画書 + 手順書 ===
