@@ -724,8 +724,9 @@ export async function executeCatchUpGeneration(
         const { generate: generatePlan } = await import('./documentGenerators/carePlanGenerator');
         const planResult = await generatePlan(ctx);
         const generatedAt = new Date().toISOString();
+        onProgress?.(`[${i + 1}/${steps.length}] 計画書AI生成完了`);
 
-        // GoalPeriod保存
+        // GoalPeriod保存（失敗しても続行）
         try {
           const existingGoals = await loadGoalPeriods(client.id);
           for (const g of existingGoals) {
@@ -751,102 +752,70 @@ export async function executeCatchUpGeneration(
           console.warn('[CatchUp] GoalPeriod保存失敗:', err);
         }
 
+        // スケジュール保存（失敗しても手順書・モニタリングに進む）
         const planDates = computeNextDates(generatedAt, planCycle, schedule.alertDaysBefore);
-        const savedPlan = await saveDocumentSchedule({
-          ...schedule,
-          status: 'active',
-          lastGeneratedAt: generatedAt,
-          nextDueDate: planDates.nextDueDate,
-          alertDate: planDates.alertDate,
-          expiryDate: planDates.expiryDate,
-          planRevisionNeeded: step.revisionReason ? 'あり' : null,
-          planRevisionReason: step.revisionReason || null,
-          generationBatchId: batchId,
-          planCreationDate: step.planCreationDate || step.periodStart,
-          periodStart: step.periodStart,
-          periodEnd: planDates.nextDueDate,
-        });
-
-        // 手順書: 初回は必ず作成、2回目以降はAI判定
-        const isInitialPlan = i === 0 || !step.revisionReason;
-        let tejunshoNeeded = isInitialPlan;
-        let tejunshoTrigger = isInitialPlan ? 'initial' : '';
-        let tejunshoReason = isInitialPlan ? '初回作成' : '';
-
-        if (!isInitialPlan) {
-          // 既存の手順書の最終作成日を取得
-          const existingScheds = await loadDocumentSchedules(client.id);
-          const tejunshoSched = existingScheds.find((s: any) => s.docType === 'tejunsho');
-          const lastTejunshoDate = tejunshoSched?.lastGeneratedAt
-            ? toDateString(new Date(tejunshoSched.lastGeneratedAt))
-            : null;
-
-          // サービス種別を実績から取得
-          const svcTypes = [...new Set(ctx.billingRecords.filter(r => r.clientName === client.name).map(r => r.serviceCode))].filter(Boolean).join('、');
-
-          onProgress?.(`[${i + 1}/${steps.length}] ${step.label} - 手順書の再作成要否を判定中...`);
-          const judgment = await judgeTejunshoRenewal(
-            client, step.year, step.month,
-            step.revisionReason ? 'あり' : 'なし',
-            step.revisionReason || '',
-            lastTejunshoDate,
-            svcTypes || '居宅介護',
-          );
-
-          tejunshoNeeded = judgment.needed;
-          tejunshoTrigger = judgment.trigger;
-          tejunshoReason = judgment.reason;
+        let savedPlanId: string | null = null;
+        try {
+          const savedPlan = await saveDocumentSchedule({
+            ...schedule,
+            status: 'active',
+            lastGeneratedAt: generatedAt,
+            nextDueDate: planDates.nextDueDate,
+            alertDate: planDates.alertDate,
+            expiryDate: planDates.expiryDate,
+            planRevisionNeeded: step.revisionReason ? 'あり' : null,
+            planRevisionReason: step.revisionReason || null,
+          });
+          savedPlanId = savedPlan?.id || null;
+        } catch (schedErr: any) {
+          console.warn('[CatchUp] 計画書スケジュール保存失敗（書類生成は成功）:', schedErr.message);
         }
 
-        if (tejunshoNeeded) {
+        // === 手順書生成 ===
+        onProgress?.(`[${i + 1}/${steps.length}] 手順書を生成中...`);
+        try {
+          const procPrompt = await loadAiPrompt('care-procedure').catch(() => null);
+          if (procPrompt) {
+            ctx.customPrompt = procPrompt.prompt;
+            ctx.customSystemInstruction = procPrompt.system_instruction;
+          } else {
+            ctx.customPrompt = undefined;
+            ctx.customSystemInstruction = undefined;
+          }
+
+          const { generate: generateProcedure } = await import('./documentGenerators/careProcedureGenerator');
+          console.log(`[CatchUp] 手順書生成開始: ${client.name}`);
+          await generateProcedure(ctx);
+          console.log(`[CatchUp] 手順書AI生成完了`);
+
           try {
-            console.log(`[CatchUp] 手順書生成開始: ${client.name}, tejunshoNeeded=${tejunshoNeeded}, trigger=${tejunshoTrigger}`);
-            onProgress?.(`[${i + 1}/${steps.length}] ${step.label} - 手順書を生成中（${tejunshoTrigger}: ${tejunshoReason}）...`);
-            const procPrompt = await loadAiPrompt('care-procedure').catch(() => null);
-            console.log(`[CatchUp] 手順書カスタムプロンプト: ${procPrompt ? 'あり' : 'なし'}`);
-            if (procPrompt) {
-              ctx.customPrompt = procPrompt.prompt;
-              ctx.customSystemInstruction = procPrompt.system_instruction;
-            } else {
-              ctx.customPrompt = undefined;
-              ctx.customSystemInstruction = undefined;
-            }
-
-            const { generate: generateProcedure } = await import('./documentGenerators/careProcedureGenerator');
-            console.log(`[CatchUp] careProcedureGenerator.generate を呼び出します`);
-            await generateProcedure(ctx);
-            console.log(`[CatchUp] 手順書AI生成完了、スケジュール保存中...`);
-
             await saveDocumentSchedule({
               careClientId: client.id, docType: 'tejunsho',
               status: 'active', lastGeneratedAt: generatedAt,
               nextDueDate: null, alertDate: null, expiryDate: null,
               cycleMonths: 0, alertDaysBefore: schedule.alertDaysBefore,
-              generationBatchId: batchId, linkedPlanScheduleId: savedPlan.id,
-              periodStart: step.periodStart, periodEnd: planDates.nextDueDate,
-              planRevisionReason: `${tejunshoTrigger}: ${tejunshoReason}`,
             });
-            console.log(`[CatchUp] 手順書スケジュール保存完了`);
-            onProgress?.(`[${i + 1}/${steps.length}] 手順書の生成完了`);
-          } catch (tejunshoErr: any) {
-            console.error('[CatchUp] 手順書生成失敗:', tejunshoErr);
-            console.error('[CatchUp] 手順書生成失敗スタックトレース:', tejunshoErr?.stack);
-            onProgress?.(`[${i + 1}/${steps.length}] ⚠ 手順書の生成に失敗: ${tejunshoErr.message || tejunshoErr}`);
-            // 手順書が失敗しても計画書は成功扱いにする
+          } catch (e) {
+            console.warn('[CatchUp] 手順書スケジュール保存失敗:', e);
           }
-        } else {
-          onProgress?.(`[${i + 1}/${steps.length}] ${step.label} - 手順書: 再作成不要（${tejunshoReason}）`);
+          onProgress?.(`[${i + 1}/${steps.length}] 手順書の生成完了`);
+        } catch (tejunshoErr: any) {
+          console.error('[CatchUp] 手順書生成失敗:', tejunshoErr);
+          onProgress?.(`[${i + 1}/${steps.length}] ⚠ 手順書の生成に失敗: ${tejunshoErr.message || tejunshoErr}`);
         }
 
-        // モニタリング次回日設定
-        const monDates = computeNextDates(generatedAt, monitoringCycle, schedule.alertDaysBefore);
-        await saveDocumentSchedule({
-          careClientId: client.id, docType: 'monitoring',
-          status: 'active',
-          nextDueDate: monDates.nextDueDate, alertDate: monDates.alertDate, expiryDate: monDates.expiryDate,
-          cycleMonths: monitoringCycle, alertDaysBefore: schedule.alertDaysBefore,
-          linkedPlanScheduleId: savedPlan.id,
-        });
+        // === モニタリング次回日設定（失敗しても続行） ===
+        try {
+          const monDates = computeNextDates(generatedAt, monitoringCycle, schedule.alertDaysBefore);
+          await saveDocumentSchedule({
+            careClientId: client.id, docType: 'monitoring',
+            status: 'active',
+            nextDueDate: monDates.nextDueDate, alertDate: monDates.alertDate, expiryDate: monDates.expiryDate,
+            cycleMonths: monitoringCycle, alertDaysBefore: schedule.alertDaysBefore,
+          });
+        } catch (e) {
+          console.warn('[CatchUp] モニタリングスケジュール保存失敗:', e);
+        }
 
         successCount++;
 
@@ -866,11 +835,9 @@ export async function executeCatchUpGeneration(
 
         // モニタリング結果に基づいて計画書再作成が必要か判定
         if (result.planRevisionNeeded === 'あり') {
-          // 計画書の再作成が必要 → 次のステップとして動的に追加
           const revisionDate = addDays(toDateString(new Date(step.year, step.month - 1, 15)), 1);
           onProgress?.(`[${i + 1}/${steps.length}] モニタリング結果: 計画変更が必要 → 計画書+手順書を再作成します`);
 
-          // モニタリング後の計画書再作成ステップを挿入
           const newPlanStep: CatchUpStep = {
             type: 'plan',
             year: step.year,
@@ -880,19 +847,22 @@ export async function executeCatchUpGeneration(
             planCreationDate: revisionDate,
             revisionReason: `モニタリング(${step.year}年${step.month}月)により計画変更が必要と判定`,
           };
-          // 現在位置の次に挿入
           steps.splice(i + 1, 0, newPlanStep);
         } else {
           onProgress?.(`[${i + 1}/${steps.length}] モニタリング結果: 計画変更不要 → 現行計画を継続`);
         }
 
-        await saveDocumentSchedule({
-          careClientId: client.id, docType: 'monitoring',
-          status: 'active', lastGeneratedAt: generatedAt,
-          nextDueDate: monDates.nextDueDate, alertDate: monDates.alertDate, expiryDate: monDates.expiryDate,
-          cycleMonths: effectiveCycle, alertDaysBefore: schedule.alertDaysBefore,
-          planRevisionNeeded: result.planRevisionNeeded,
-        });
+        try {
+          await saveDocumentSchedule({
+            careClientId: client.id, docType: 'monitoring',
+            status: 'active', lastGeneratedAt: generatedAt,
+            nextDueDate: monDates.nextDueDate, alertDate: monDates.alertDate, expiryDate: monDates.expiryDate,
+            cycleMonths: effectiveCycle, alertDaysBefore: schedule.alertDaysBefore,
+            planRevisionNeeded: result.planRevisionNeeded,
+          });
+        } catch (e) {
+          console.warn('[CatchUp] モニタリングスケジュール保存失敗:', e);
+        }
 
         successCount++;
       }
