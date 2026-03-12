@@ -511,7 +511,7 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
   if (clientRecords.length > 0) {
     console.log(`[CareProcedure] 実績例:`, clientRecords.slice(0, 3).map(r => `${r.serviceDate} ${r.startTime}-${r.endTime} ${r.serviceCode}`));
   } else {
-    throw new Error(`${year}年${month}月の実績記録がありません。先に実績データを取り込んでください。`);
+    console.warn(`[CareProcedure] ${year}年${month}月の実績記録がありません。アセスメント・利用者情報から手順書を生成します。`);
   }
 
   const serviceTypes = getServiceTypesFromBilling(clientRecords);
