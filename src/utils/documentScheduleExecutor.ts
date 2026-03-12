@@ -119,6 +119,7 @@ async function buildContext(
     loadBillingRecordsForMonth(year, month),
     loadShogaiSupplyAmounts(client.id).catch(() => []),
   ]);
+  console.log(`[buildContext] ${client.name}: 契約支給量 ${supplyAmounts.length}件ロード`, supplyAmounts.map((s: any) => `${s.serviceCategory}:${s.supplyAmount}`));
 
   return {
     helpers,
