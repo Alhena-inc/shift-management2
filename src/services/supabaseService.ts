@@ -2881,6 +2881,7 @@ export const loadDocumentSchedules = async (careClientId?: string): Promise<any[
 
 export const saveDocumentSchedule = async (item: any): Promise<any> => {
   try {
+    // 基本カラム（確実に存在するもの）
     const saveData: any = {
       care_client_id: item.careClientId,
       doc_type: item.docType,
@@ -2898,21 +2899,40 @@ export const saveDocumentSchedule = async (item: any): Promise<any> => {
       auto_generate: item.autoGenerate ?? false,
       notes: item.notes || null,
       updated_at: new Date().toISOString(),
+    };
+    if (item.id) {
+      saveData.id = item.id;
+    }
+
+    // 拡張カラム（存在しない場合はフォールバック）
+    const extendedData: any = {
+      ...saveData,
       linked_plan_schedule_id: item.linkedPlanScheduleId || null,
       generation_batch_id: item.generationBatchId || null,
       plan_creation_date: item.planCreationDate || null,
       period_start: item.periodStart || null,
       period_end: item.periodEnd || null,
     };
-    if (item.id) {
-      saveData.id = item.id;
-    }
-    const { data, error } = await supabase
+
+    // まず拡張カラム付きで試行
+    let result = await supabase
       .from('document_schedules')
-      .upsert(saveData, { onConflict: 'care_client_id,doc_type' })
+      .upsert(extendedData, { onConflict: 'care_client_id,doc_type' })
       .select()
       .single();
-    if (error) throw error;
+
+    // 拡張カラムでエラーの場合、基本カラムのみでリトライ
+    if (result.error) {
+      console.warn('書類スケジュール保存: 拡張カラムでエラー、基本カラムでリトライ:', result.error.message);
+      result = await supabase
+        .from('document_schedules')
+        .upsert(saveData, { onConflict: 'care_client_id,doc_type' })
+        .select()
+        .single();
+    }
+
+    if (result.error) throw result.error;
+    const data = result.data;
     return {
       id: data.id,
       careClientId: data.care_client_id,
