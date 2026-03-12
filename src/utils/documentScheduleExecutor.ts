@@ -1,6 +1,6 @@
 import type { ScheduleAction, MonitoringScheduleItem, DocumentSchedule } from '../types/documentSchedule';
 import type { CareClient } from '../types';
-import { saveDocumentSchedule, saveMonitoringSchedule, saveDocumentValidation, loadBillingRecordsForMonth, loadShiftsForMonth, loadHelpers, loadCareClients, loadAiPrompt, loadDocumentSchedules, loadShogaiDocuments, loadShogaiCarePlanDocuments, saveGoalPeriod, loadGoalPeriods } from '../services/dataService';
+import { saveDocumentSchedule, saveMonitoringSchedule, saveDocumentValidation, loadBillingRecordsForMonth, loadShiftsForMonth, loadHelpers, loadCareClients, loadAiPrompt, loadDocumentSchedules, loadShogaiDocuments, loadShogaiCarePlanDocuments, saveGoalPeriod, loadGoalPeriods, loadShogaiSupplyAmounts } from '../services/dataService';
 import { computeNextDates, toDateString, addMonths, addDays } from './documentScheduleChecker';
 import { validateClientDocuments } from './documentValidation';
 
@@ -112,11 +112,12 @@ async function buildContext(
   month: number,
   hiddenDiv: HTMLDivElement
 ) {
-  const [helpers, careClients, shifts, billingRecords] = await Promise.all([
+  const [helpers, careClients, shifts, billingRecords, supplyAmounts] = await Promise.all([
     loadHelpers(),
     loadCareClients(),
     loadShiftsForMonth(year, month),
     loadBillingRecordsForMonth(year, month),
+    loadShogaiSupplyAmounts(client.id).catch(() => []),
   ]);
 
   return {
@@ -124,7 +125,7 @@ async function buildContext(
     careClients,
     shifts,
     billingRecords,
-    supplyAmounts: [] as any[],
+    supplyAmounts,
     year,
     month,
     officeInfo: getDefaultOfficeInfo(),
