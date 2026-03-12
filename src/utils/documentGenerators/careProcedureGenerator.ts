@@ -231,9 +231,10 @@ function createProcedureSheet(
   officeInfo: { name: string; serviceManager: string },
   sheetIndex: number,
 ): void {
-  const sheetName = block.visit_label.length > 31
+  const sanitized = block.visit_label.replace(/[*?:\\/\[\]]/g, '');
+  const sheetName = sanitized.length > 31 || sanitized.length === 0
     ? `手順書${sheetIndex + 1}`
-    : block.visit_label.substring(0, 31);
+    : sanitized.substring(0, 31);
   const ws = workbook.addWorksheet(sheetName);
 
   // 列幅設定
