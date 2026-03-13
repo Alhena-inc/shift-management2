@@ -627,38 +627,53 @@ function fillScheduleFromBilling(ws: ExcelJS.Worksheet, records: BillingRecord[]
   }
 
   // ========== STEP 3: サービスブロック再描画 ==========
-  // 重要: ExcelJSではthin罫線を使うと隣接セルにも伝播して太い黒線が出る。
-  // サービスブロックの罫線はhairのまま（テンプレートと同じ細さ）にして、
-  // 結合セルの値とフォントでブロックを視覚的に区別する。
+  // 複数サービス種別がある場合は行を分割して別々のセルに描画
   const planFont: Partial<ExcelJS.Font> = { name: 'HG正楷書体-PRO', size: 12 };
 
   for (const p of merged) {
     const col = DAY_TO_COL[p.dayName];
     if (!col) continue;
     const colNum = colToNum(col);
-
-    // セル結合（2行以上の場合のみ結合、1行の場合は単一セルに書き込み）
-    if (p.endRow > p.startRow) {
-      ws.mergeCells(p.startRow, colNum, p.endRow, colNum);
-    }
-
-    // ラベルを結合（複数サービスがある場合は改行区切り）
-    const labelText = [...p.labels].join('\n');
-
-    // マスターセル（結合の先頭 or 単一セル）にラベル・スタイル・罫線を設定
-    // 罫線はhair（テンプレートの元の細線と同じ）→ 太い黒線は出ない
-    const cell = ws.getCell(`${col}${p.startRow}`);
-    cell.value = labelText;
-    cell.font = planFont;
-    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
     const isLeftEdge = (colNum === minCol);
     const isRightEdge = (colNum === maxCol);
-    cell.border = {
+    const blockBorder = {
       top: hairBorder,
       bottom: hairBorder,
       left: isLeftEdge ? undefined : hairBorder,
       right: isRightEdge ? undefined : hairBorder,
     };
+
+    const labels = [...p.labels];
+    const totalRows = p.endRow - p.startRow + 1;
+
+    if (labels.length <= 1 || totalRows < 2) {
+      // 単一サービス or 行数不足 → 従来通り1ブロック
+      if (p.endRow > p.startRow) {
+        ws.mergeCells(p.startRow, colNum, p.endRow, colNum);
+      }
+      const cell = ws.getCell(`${col}${p.startRow}`);
+      cell.value = labels.join('\n');
+      cell.font = planFont;
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      cell.border = blockBorder;
+    } else {
+      // 複数サービス → 行を種別ごとに均等分割して別セルに描画
+      const rowsPerLabel = Math.floor(totalRows / labels.length);
+      let currentRow = p.startRow;
+      for (let i = 0; i < labels.length; i++) {
+        const isLast = (i === labels.length - 1);
+        const blockEnd = isLast ? p.endRow : currentRow + rowsPerLabel - 1;
+        if (blockEnd > currentRow) {
+          ws.mergeCells(currentRow, colNum, blockEnd, colNum);
+        }
+        const cell = ws.getCell(`${col}${currentRow}`);
+        cell.value = labels[i];
+        cell.font = planFont;
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        cell.border = blockBorder;
+        currentRow = blockEnd + 1;
+      }
+    }
   }
 }
 
