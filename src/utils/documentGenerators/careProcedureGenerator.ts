@@ -329,10 +329,14 @@ function createProcedureSheet(
   ws.getCell('F4').alignment = { horizontal: 'center', vertical: 'middle' };
 
   ws.mergeCells('G4:H4');
-  ws.getCell('G4').value = client.careLevel || '';
+  const careLevelText = client.careLevel || '未設定';
+  ws.getCell('G4').value = careLevelText;
   ws.getCell('G4').font = dataFont;
   ws.getCell('G4').border = allBorders;
   ws.getCell('G4').alignment = { vertical: 'middle' };
+  if (!client.careLevel) {
+    console.warn('[CareProcedure] ⚠ 障害支援区分が未設定です。利用者情報に区分を登録してください。');
+  }
 
   // Row 5: サービス種別 / 訪問曜日・時間帯
   ws.mergeCells('A5:B5');
