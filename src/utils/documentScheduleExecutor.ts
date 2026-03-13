@@ -646,17 +646,16 @@ async function judgeTejunshoRenewal(
 // ========== 実績パターン比較 ==========
 
 /**
- * 実績記録から週間パターン（曜日×時間帯のセット）を抽出する。
- * 例: Set{"月-09:00~10:00", "水-09:00~10:00", "金-14:00~15:00"}
+ * 実績記録からサービスパターン（時間帯×サービス種別のセット）を抽出する。
+ * 曜日は月によってずれるため比較対象に含めない。
+ * 例: Set{"09:00~10:00-身体介護", "14:00~15:00-家事援助"}
  */
 function extractWeeklyPattern(records: BillingRecord[]): Set<string> {
-  const WEEKDAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
   const pattern = new Set<string>();
   for (const r of records) {
-    if (!r.startTime || !r.endTime || !r.serviceDate) continue;
-    const d = new Date(r.serviceDate);
-    const dayName = WEEKDAY_NAMES[d.getDay()];
-    pattern.add(`${dayName}-${r.startTime}~${r.endTime}`);
+    if (!r.startTime || !r.endTime) continue;
+    const serviceType = r.serviceCode || '';
+    pattern.add(`${r.startTime}~${r.endTime}-${serviceType}`);
   }
   return pattern;
 }

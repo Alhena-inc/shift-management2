@@ -315,23 +315,10 @@ const BillingImportPage: React.FC = () => {
         const lastDay = new Date(target.year, target.month, 0).getDate();
 
         const copied = novRecords.map((r: BillingRecord) => {
-          // 元の日付から曜日と「第何週目か」を算出
-          const origDate = new Date(r.serviceDate);
-          const origDay = origDate.getDate();
-          const origDow = origDate.getDay(); // 0=日,1=月,...,6=土
-          const weekIndex = Math.floor((origDay - 1) / 7); // 0始まりの週番号
-
-          // ターゲット月で同じ曜日の最初の日を求める
-          const targetFirst = new Date(target.year, target.month - 1, 1);
-          const targetFirstDow = targetFirst.getDay();
-          let firstSameDow = 1 + (origDow - targetFirstDow + 7) % 7;
-          // 同じ週番号の同じ曜日
-          let newDay = firstSameDow + weekIndex * 7;
-          // 月末を超える場合は1週間前にずらす
-          if (newDay > lastDay) newDay -= 7;
-
+          const origDay = r.serviceDate.split('-')[2];
+          const day = Math.min(parseInt(origDay), lastDay);
           return {
-            service_date: `${target.year}-${String(target.month).padStart(2, '0')}-${String(newDay).padStart(2, '0')}`,
+            service_date: `${target.year}-${String(target.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
             start_time: r.startTime + ':00',
             end_time: r.endTime + ':00',
             helper_name: r.helperName,
