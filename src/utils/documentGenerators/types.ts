@@ -28,6 +28,8 @@ export interface GeneratorContext {
   planRevisionReason?: string;
   /** true: 短期目標のみ変更・パターン変更なし → サービス内容を前版から引き継ぐ */
   inheritServiceContent?: boolean;
+  /** true: 実績記録の週間パターンが前月と変化している（モニタリング時の④サービス変更判定用） */
+  billingPatternChanged?: boolean;
 }
 
 export type GenerateFunction = (ctx: GeneratorContext) => Promise<void>;

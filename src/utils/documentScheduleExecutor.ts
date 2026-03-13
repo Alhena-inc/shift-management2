@@ -138,6 +138,7 @@ async function buildContext(
     planCreationDate: undefined as string | undefined,
     planRevisionReason: undefined as string | undefined,
     inheritServiceContent: undefined as boolean | undefined,
+    billingPatternChanged: undefined as boolean | undefined,
   };
 }
 
@@ -352,6 +353,23 @@ export async function executeScheduleAction(
 
       const ctx = await buildContext(client, year, month, hiddenDiv);
 
+      // 前月との実績パターン比較 → ④サービス変更判定に使用
+      try {
+        const prevMonth = month === 1 ? 12 : month - 1;
+        const prevYear = month === 1 ? year - 1 : year;
+        const prevRecords = await loadBillingRecordsForMonth(prevYear, prevMonth);
+        const prevClientRecords = prevRecords.filter(r => r.clientName === client.name);
+        const currClientRecords = ctx.billingRecords.filter(r => r.clientName === client.name);
+        if (prevClientRecords.length > 0 && currClientRecords.length > 0) {
+          const prevPattern = extractWeeklyPattern(prevClientRecords);
+          const currPattern = extractWeeklyPattern(currClientRecords);
+          ctx.billingPatternChanged = hasPatternChanged(prevPattern, currPattern);
+          if (ctx.billingPatternChanged) {
+            console.log(`[Executor] 実績パターン変更検知 → モニタリング④に反映`);
+          }
+        }
+      } catch { /* skip */ }
+
       const promptData = await loadAiPrompt('monitoring').catch(() => null);
       if (promptData) {
         ctx.customPrompt = promptData.prompt;
@@ -445,6 +463,23 @@ export async function executeMonitoringScheduleAction(
     });
 
     const ctx = await buildContext(client, year, month, hiddenDiv);
+
+    // 前月との実績パターン比較 → ④サービス変更判定に使用
+    try {
+      const prevMonth = month === 1 ? 12 : month - 1;
+      const prevYear = month === 1 ? year - 1 : year;
+      const prevRecords = await loadBillingRecordsForMonth(prevYear, prevMonth);
+      const prevClientRecords = prevRecords.filter(r => r.clientName === client.name);
+      const currClientRecords = ctx.billingRecords.filter(r => r.clientName === client.name);
+      if (prevClientRecords.length > 0 && currClientRecords.length > 0) {
+        const prevPattern = extractWeeklyPattern(prevClientRecords);
+        const currPattern = extractWeeklyPattern(currClientRecords);
+        ctx.billingPatternChanged = hasPatternChanged(prevPattern, currPattern);
+        if (ctx.billingPatternChanged) {
+          console.log(`[v2Monitoring] 実績パターン変更検知 → モニタリング④に反映`);
+        }
+      }
+    } catch { /* skip */ }
 
     const promptData = await loadAiPrompt('monitoring').catch(() => null);
     if (promptData) {
@@ -972,6 +1007,38 @@ export async function executeCatchUpGeneration(
 
       } else {
         // === モニタリング ===
+
+        // 実績パターン変更チェック（前月との比較）
+        const currentRecords = ctx.billingRecords.filter(r => r.clientName === client.name);
+        const currentPattern = extractWeeklyPattern(currentRecords);
+        let patternChanged = lastWeeklyPattern.size > 0 && hasPatternChanged(lastWeeklyPattern, currentPattern);
+
+        // 前月の実績も取得して比較（lastWeeklyPatternがない場合のフォールバック）
+        if (!patternChanged && lastWeeklyPattern.size === 0) {
+          try {
+            let prevYear = step.year;
+            let prevMonth = step.month - 1;
+            if (prevMonth === 0) { prevMonth = 12; prevYear--; }
+            const prevRecords = await loadBillingRecordsForMonth(prevYear, prevMonth);
+            const prevClientRecords = prevRecords.filter(r => r.clientName === client.name);
+            if (prevClientRecords.length > 0) {
+              const prevPattern = extractWeeklyPattern(prevClientRecords);
+              patternChanged = hasPatternChanged(prevPattern, currentPattern);
+              if (patternChanged) {
+                console.log(`[CatchUp] 前月(${prevYear}年${prevMonth}月)との実績パターン比較 → 変更あり`);
+              }
+            }
+          } catch { /* skip */ }
+        }
+
+        if (patternChanged) {
+          console.log(`[CatchUp] T-008: 週間パターン変更を検出（前回${lastWeeklyPattern.size}→今回${currentPattern.size}パターン）`);
+          onProgress?.(`[${successCount + 1}] 週間パターン変更を検出 → サービス変更あり`);
+        }
+
+        // 実績パターン変更をctxに設定（モニタリング生成時の④判定に使用）
+        ctx.billingPatternChanged = patternChanged;
+
         const promptData = await loadAiPrompt('monitoring').catch(() => null);
         if (promptData) {
           ctx.customPrompt = promptData.prompt;
@@ -981,15 +1048,6 @@ export async function executeCatchUpGeneration(
         const { generate: generateMonitoring } = await import('./documentGenerators/monitoringReportGenerator');
         const result = await generateMonitoring(ctx);
         const generatedAt = new Date().toISOString();
-
-        // 実績パターン変更チェック（T-008）
-        const currentRecords = ctx.billingRecords.filter(r => r.clientName === client.name);
-        const currentPattern = extractWeeklyPattern(currentRecords);
-        const patternChanged = lastWeeklyPattern.size > 0 && hasPatternChanged(lastWeeklyPattern, currentPattern);
-        if (patternChanged) {
-          console.log(`[CatchUp] T-008: 週間パターン変更を検出（前回${lastWeeklyPattern.size}→今回${currentPattern.size}パターン）`);
-          onProgress?.(`[${successCount + 1}] 週間パターン変更を検出 → 手順書も再作成します`);
-        }
 
         try {
           const monDates = computeNextDates(generatedAt, currentShortTermMonths, schedule.alertDaysBefore);

@@ -873,6 +873,17 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     procedure_check: (rawJson.procedure_check as string) || '手順書の内容を確認した結果、変更は不要と判断した。',
   };
 
+  // 実績パターン変更が検知されている場合: ④サービス変更の必要性を強制的に「変更あり」にする
+  if (ctx.billingPatternChanged) {
+    const aiSaidNoChange = result.service_change === 1;
+    result.service_change = 2;
+    if (aiSaidNoChange || !result.service_change_reason) {
+      result.service_change_reason = 'サービス実績記録の週間パターン（訪問曜日・時間帯）に変更が確認されたため、居宅介護計画の見直しが必要と判断した。';
+    }
+    result.procedure_check = '手順書の内容を確認した結果、サービスパターンの変更に伴い手順書の更新が必要と判断した。';
+    console.log(`[Monitoring] 実績パターン変更検知 → ④サービス変更=2（変更あり）に強制設定`);
+  }
+
   console.log(`[Monitoring] AI結果: サービス実施=${result.service_status}, 満足度=${result.satisfaction}, 心身変化=${result.condition_change}, 変更要否=${result.service_change}`);
 
   // Excel作成（テンプレート記入）
