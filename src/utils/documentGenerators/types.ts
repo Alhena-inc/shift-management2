@@ -30,6 +30,8 @@ export interface GeneratorContext {
   inheritServiceContent?: boolean;
   /** true: 実績記録の週間パターンが前月と変化している（モニタリング時の④サービス変更判定用） */
   billingPatternChanged?: boolean;
+  /** true: 長期目標が期間内のため前版から引き継ぐ（短期目標モニタリング後の計画再作成時） */
+  inheritLongTermGoal?: boolean;
 }
 
 export type GenerateFunction = (ctx: GeneratorContext) => Promise<void>;

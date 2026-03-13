@@ -1006,6 +1006,15 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
       + previousGoalsNote,
   };
 
+  // inheritLongTermGoal: 長期目標が期間内のため前版から引き継ぐ
+  if (ctx.inheritLongTermGoal) {
+    templateVars.assessment_note += `
+
+【重要：長期目標の引き継ぎ】
+長期目標はまだ期間内のため、前回と同じ文言・期間（long_term_goal_months）を返してください。
+長期目標の文言や期間を変更してはいけません。変更してよいのは短期目標のみです。`;
+  }
+
   // inheritServiceContent: 短期目標のみ変更・パターン変更なしの場合
   // AIには前版のサービス内容をそのまま返すよう指示
   if (ctx.inheritServiceContent) {
@@ -1018,8 +1027,7 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
 - サービスの内容（content）
 - 留意事項（note）
 - 週間サービス計画の内容
-変更してよいのは短期目標の文言と期間のみです。
-長期目標が継続中の場合は前回と同じ文言・期間を返してください。`;
+変更してよいのは短期目標の文言と期間のみです。`;
   }
 
   const prompt = applyTemplate(promptTemplate, templateVars);
@@ -1044,6 +1052,27 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
 
   // 新旧フォーマット両対応で正規化
   const plan = normalizeCarePlan(rawJson);
+
+  // 長期目標引き継ぎ: 前版の長期目標を強制適用（AIが変更しても上書き）
+  if (ctx.inheritLongTermGoal) {
+    try {
+      const prevGoals = await loadGoalPeriods(client.id);
+      const activeLongTerm = prevGoals.find((g: any) => g.isActive && g.goalType === 'long_term');
+      if (activeLongTerm?.goalText) {
+        console.log(`[CarePlan] 長期目標引き継ぎ: "${activeLongTerm.goalText}"`);
+        plan.goal_long = activeLongTerm.goalText;
+        // 長期目標期間も前版から算出して引き継ぐ
+        if (activeLongTerm.startDate && activeLongTerm.endDate) {
+          const start = new Date(activeLongTerm.startDate);
+          const end = new Date(activeLongTerm.endDate);
+          const diffMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+          if (diffMonths > 0) plan.long_term_goal_months = diffMonths;
+        }
+      }
+    } catch (err) {
+      console.warn('[CarePlan] 長期目標引き継ぎ取得失敗:', err);
+    }
+  }
 
   console.log(`[CarePlan] AI応答 - service1: ${plan.service1?.steps.length || 0}件 (${plan.service1?.service_type || '未判定'}), service2: ${plan.service2?.steps.length || 0}件 (${plan.service2?.service_type || '未判定'})`);
   console.log(`[CarePlan] 目標期間判定 - 重度度: ${plan.severity_level}, 短期: ${plan.short_term_goal_months}ヶ月, 長期: ${plan.long_term_goal_months}ヶ月`);

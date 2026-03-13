@@ -139,6 +139,7 @@ async function buildContext(
     planRevisionReason: undefined as string | undefined,
     inheritServiceContent: undefined as boolean | undefined,
     billingPatternChanged: undefined as boolean | undefined,
+    inheritLongTermGoal: undefined as boolean | undefined,
   };
 }
 
@@ -1056,6 +1057,27 @@ export async function executeCatchUpGeneration(
       if (step.skipTejunsho) ctx.inheritServiceContent = true;
 
       if (step.type === 'plan') {
+        // === 長期目標の期間内チェック ===
+        // 短期目標モニタリング後の計画再作成時、長期目標がまだ期間内なら引き継ぐ
+        let longTermStillActive = false;
+        if (step.revisionReason) {
+          try {
+            const existingGoals = await loadGoalPeriods(client.id);
+            const activeLongTerm = existingGoals.find((g: any) => g.isActive && g.goalType === 'long_term');
+            if (activeLongTerm?.endDate) {
+              const stepDate = new Date(step.periodStart + 'T00:00:00');
+              const longTermEnd = new Date(activeLongTerm.endDate + 'T00:00:00');
+              if (stepDate < longTermEnd) {
+                longTermStillActive = true;
+                ctx.inheritLongTermGoal = true;
+                console.log(`[CatchUp] 長期目標は期間内(${activeLongTerm.endDate}まで) → 引き継ぎ`);
+              } else {
+                console.log(`[CatchUp] 長期目標期間到来(${activeLongTerm.endDate}) → 新規設定`);
+              }
+            }
+          } catch { /* skip */ }
+        }
+
         // === 計画書 + 手順書 ===
         const promptData = await loadAiPrompt('care-plan').catch(() => null);
         if (promptData) {
@@ -1078,9 +1100,9 @@ export async function executeCatchUpGeneration(
         // GoalPeriod保存
         try {
           const existingGoals = await loadGoalPeriods(client.id);
-          for (const g of existingGoals) {
-            if (g.isActive) await saveGoalPeriod({ ...g, isActive: false });
-          }
+          // 短期目標: 常に新規作成
+          const activeShortTerm = existingGoals.find((g: any) => g.isActive && g.goalType === 'short_term');
+          if (activeShortTerm) await saveGoalPeriod({ ...activeShortTerm, isActive: false });
           await saveGoalPeriod({
             careClientId: client.id, goalType: 'short_term', goalIndex: 0,
             goalText: planResult.goal_short_text || null,
@@ -1089,14 +1111,19 @@ export async function executeCatchUpGeneration(
             linkedPlanId: null, isActive: true,
             achievementStatus: null, achievementNote: null, achievementSetBy: null,
           });
-          await saveGoalPeriod({
-            careClientId: client.id, goalType: 'long_term', goalIndex: 0,
-            goalText: planResult.goal_long_text || null,
-            startDate: step.periodStart,
-            endDate: addMonths(step.periodStart, currentLongTermMonths),
-            linkedPlanId: null, isActive: true,
-            achievementStatus: null, achievementNote: null, achievementSetBy: null,
-          });
+          // 長期目標: 期間内なら既存を維持、期間到来なら新規作成
+          if (!longTermStillActive) {
+            const activeLongTerm = existingGoals.find((g: any) => g.isActive && g.goalType === 'long_term');
+            if (activeLongTerm) await saveGoalPeriod({ ...activeLongTerm, isActive: false });
+            await saveGoalPeriod({
+              careClientId: client.id, goalType: 'long_term', goalIndex: 0,
+              goalText: planResult.goal_long_text || null,
+              startDate: step.periodStart,
+              endDate: addMonths(step.periodStart, currentLongTermMonths),
+              linkedPlanId: null, isActive: true,
+              achievementStatus: null, achievementNote: null, achievementSetBy: null,
+            });
+          }
         } catch (err) {
           console.warn('[CatchUp] GoalPeriod保存失敗:', err);
         }
