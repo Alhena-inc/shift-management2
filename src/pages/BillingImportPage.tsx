@@ -309,14 +309,28 @@ const BillingImportPage: React.FC = () => {
       ];
 
       let totalInserted = 0;
+      // 11月1日の曜日を基準にする
+      const novFirstDow = new Date(2025, 10, 1).getDay(); // 11月1日の曜日 (0=日,1=月,...,6=土)
+
       for (const target of targetMonths) {
         const batchId = crypto.randomUUID();
+        const targetFirstDow = new Date(target.year, target.month - 1, 1).getDay();
+        // 曜日のオフセット: ターゲット月の同じ曜日にするための日数差
+        // 例: 11月1日=土(6), 12月1日=月(1) → offset = 6-1 = 5 → 12月1日+5 = 12月6日(土)
+        let dowOffset = novFirstDow - targetFirstDow;
+        if (dowOffset < 0) dowOffset += 7;
+        const lastDay = new Date(target.year, target.month, 0).getDate();
+
         const copied = novRecords.map((r: BillingRecord) => {
-          const origDay = r.serviceDate.split('-')[2];
-          const lastDay = new Date(target.year, target.month, 0).getDate();
-          const day = Math.min(parseInt(origDay), lastDay);
+          const origDay = parseInt(r.serviceDate.split('-')[2]);
+          // 元の日にオフセットを足して曜日を合わせる
+          let newDay = origDay + dowOffset;
+          // 月末を超える場合は1週間前にずらす
+          if (newDay > lastDay) newDay -= 7;
+          // 1日未満になる場合は1週間後にずらす
+          if (newDay < 1) newDay += 7;
           return {
-            service_date: `${target.year}-${String(target.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+            service_date: `${target.year}-${String(target.month).padStart(2, '0')}-${String(newDay).padStart(2, '0')}`,
             start_time: r.startTime + ':00',
             end_time: r.endTime + ':00',
             helper_name: r.helperName,
