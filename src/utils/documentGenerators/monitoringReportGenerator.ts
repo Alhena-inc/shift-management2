@@ -441,7 +441,21 @@ async function fillTemplateWorkbook(
 
   // === ⑤ 目標達成状況の評価 (Row 20-24) ===
   if (templateLoaded) {
-    // テンプレート使用時: 既存行の後に追記
+    // テンプレート使用時: Row 20-21の既存マージを全て解除してから追記
+    const mergesObj = (ws as unknown as { _merges: Record<string, { model: { top: number; left: number; bottom: number; right: number }; range: string }> })._merges || {};
+    const rangesToRemove: string[] = [];
+    for (const key of Object.keys(mergesObj)) {
+      const merge = mergesObj[key];
+      if (!merge?.model) continue;
+      const { top } = merge.model;
+      if (top >= 20 && top <= 21) {
+        rangesToRemove.push(merge.range);
+      }
+    }
+    for (const range of rangesToRemove) {
+      try { ws.unMergeCells(range); } catch { /* skip */ }
+    }
+
     ws.mergeCells('A20:B20');
     ws.getCell('A20').value = '⑤ 目標達成状況の評価';
     ws.getCell('A20').font = { name: 'MS ゴシック', size: 9, bold: true };
