@@ -310,15 +310,31 @@ const BillingImportPage: React.FC = () => {
 
       let totalInserted = 0;
 
+      // 11月の各レコードに「曜日」と「その曜日の第何回目か」を付与
+      // 例: 11月1日(土)=第1土曜, 11月3日(月)=第1月曜, 11月8日(土)=第2土曜
+      const novWithDow = novRecords.map((r: BillingRecord) => {
+        const d = new Date(r.serviceDate);
+        const dow = d.getDay(); // 0=日,...,6=土
+        const dayOfMonth = d.getDate();
+        const nthOccurrence = Math.floor((dayOfMonth - 1) / 7); // 0始まり: 第何回目のその曜日か
+        return { record: r, dow, nthOccurrence };
+      });
+
       for (const target of targetMonths) {
         const batchId = crypto.randomUUID();
         const lastDay = new Date(target.year, target.month, 0).getDate();
+        const targetFirstDow = new Date(target.year, target.month - 1, 1).getDay();
 
-        const copied = novRecords.map((r: BillingRecord) => {
-          const origDay = r.serviceDate.split('-')[2];
-          const day = Math.min(parseInt(origDay), lastDay);
+        const copied = novWithDow.map(({ record: r, dow, nthOccurrence }) => {
+          // ターゲット月でその曜日が最初に現れる日
+          let firstDowDay = 1 + (dow - targetFirstDow + 7) % 7;
+          // 第N回目のその曜日
+          let newDay = firstDowDay + nthOccurrence * 7;
+          // 月末を超える場合は1週間前にずらす
+          if (newDay > lastDay) newDay -= 7;
+
           return {
-            service_date: `${target.year}-${String(target.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+            service_date: `${target.year}-${String(target.month).padStart(2, '0')}-${String(newDay).padStart(2, '0')}`,
             start_time: r.startTime + ':00',
             end_time: r.endTime + ':00',
             helper_name: r.helperName,
