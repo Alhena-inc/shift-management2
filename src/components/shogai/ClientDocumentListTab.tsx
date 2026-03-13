@@ -12,6 +12,7 @@ const ALL_DOC_TYPES = [
   'chiiki_idou_keikaku','chiiki_shien_keika','chiiki_assessment','chiiki_monitoring','chiiki_tejunsho',
   'kaigo_houmon_keikaku','kaigo_tuusho_keikaku','kaigo_shien_keika','kaigo_assessment','kaigo_monitoring','kaigo_tejunsho',
   'jihi_tejunsho',
+  'generation_log',
 ] as const;
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -31,6 +32,7 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   kaigo_monitoring: '介護モニタリング',
   kaigo_tejunsho: '介護手順書',
   jihi_tejunsho: '自費手順書',
+  generation_log: '書類作成経緯書',
   // CarePlanDocument categories
   kyotaku: '居宅介護計画書',
   judo: '重度訪問介護計画書',

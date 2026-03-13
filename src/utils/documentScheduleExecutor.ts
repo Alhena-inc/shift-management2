@@ -1,6 +1,6 @@
 import type { ScheduleAction, MonitoringScheduleItem, DocumentSchedule } from '../types/documentSchedule';
 import type { CareClient } from '../types';
-import { saveDocumentSchedule, saveMonitoringSchedule, saveDocumentValidation, loadBillingRecordsForMonth, loadShiftsForMonth, loadHelpers, loadCareClients, loadAiPrompt, loadDocumentSchedules, loadShogaiDocuments, loadShogaiCarePlanDocuments, saveGoalPeriod, loadGoalPeriods, loadShogaiSupplyAmounts } from '../services/dataService';
+import { saveDocumentSchedule, saveMonitoringSchedule, saveDocumentValidation, loadBillingRecordsForMonth, loadShiftsForMonth, loadHelpers, loadCareClients, loadAiPrompt, loadDocumentSchedules, loadShogaiDocuments, loadShogaiCarePlanDocuments, saveGoalPeriod, loadGoalPeriods, loadShogaiSupplyAmounts, uploadShogaiDocFile, saveShogaiDocument } from '../services/dataService';
 import { computeNextDates, toDateString, addMonths, addDays } from './documentScheduleChecker';
 import { validateClientDocuments } from './documentValidation';
 import type { BillingRecord } from '../types';
@@ -672,6 +672,154 @@ function hasPatternChanged(oldPattern: Set<string>, newPattern: Set<string>): bo
   return false;
 }
 
+// ========== 書類作成経緯ログ ==========
+
+interface GenerationLogEntry {
+  order: number;
+  docType: string;
+  fileName: string;
+  year: number;
+  month: number;
+  reason: string;
+  status: '生成' | 'スキップ（作成済み）' | '失敗';
+}
+
+async function saveGenerationLog(
+  client: CareClient,
+  logEntries: GenerationLogEntry[],
+  contractStart: string,
+): Promise<void> {
+  if (logEntries.length === 0) return;
+
+  try {
+    const ExcelJS = (await import('exceljs')).default;
+    const workbook = new ExcelJS.Workbook();
+    const ws = workbook.addWorksheet('書類作成経緯');
+
+    // 列幅
+    ws.getColumn(1).width = 6;   // No
+    ws.getColumn(2).width = 20;  // 書類種別
+    ws.getColumn(3).width = 45;  // ファイル名
+    ws.getColumn(4).width = 14;  // ステータス
+    ws.getColumn(5).width = 60;  // 作成理由
+
+    // 印刷設定
+    ws.pageSetup = {
+      paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+      margins: { left: 0.5, right: 0.5, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 },
+    };
+
+    const headerFont = { name: 'MS ゴシック', size: 12, bold: true };
+    const dataFont = { name: 'MS ゴシック', size: 9 };
+    const thin = { style: 'thin' as const };
+    const allBorders = { top: thin, bottom: thin, left: thin, right: thin };
+
+    // Row 1: タイトル
+    ws.mergeCells('A1:E1');
+    ws.getCell('A1').value = '書類作成経緯書';
+    ws.getCell('A1').font = headerFont;
+    ws.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+    ws.getRow(1).height = 28;
+
+    // Row 2: 利用者情報
+    ws.mergeCells('A2:E2');
+    const reiwaYear = new Date().getFullYear() - 2018;
+    const today = new Date();
+    const displayName = client.childName ? `${client.name}（${client.childName}）` : client.name;
+    ws.getCell('A2').value = `利用者: ${displayName}　　契約開始日: ${contractStart}　　作成日: 令和${reiwaYear}年${today.getMonth() + 1}月${today.getDate()}日`;
+    ws.getCell('A2').font = dataFont;
+    ws.getCell('A2').alignment = { vertical: 'middle' };
+    ws.getRow(2).height = 20;
+
+    // Row 3: 空行
+    ws.getRow(3).height = 6;
+
+    // Row 4: ヘッダー
+    const headers = ['No', '書類種別', 'ファイル名', 'ステータス', '作成理由'];
+    const headerBg = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FF4472C4' } };
+    const headerFontWhite = { name: 'MS ゴシック', size: 9, bold: true, color: { argb: 'FFFFFFFF' } };
+    for (let c = 0; c < headers.length; c++) {
+      const cell = ws.getCell(4, c + 1);
+      cell.value = headers[c];
+      cell.font = headerFontWhite;
+      cell.fill = headerBg;
+      cell.border = allBorders;
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    }
+    ws.getRow(4).height = 22;
+
+    // データ行
+    for (let i = 0; i < logEntries.length; i++) {
+      const entry = logEntries[i];
+      const row = 5 + i;
+      const isEven = i % 2 === 1;
+      const rowFill = isEven
+        ? { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFF2F7FC' } }
+        : undefined;
+
+      // No
+      ws.getCell(row, 1).value = entry.order;
+      ws.getCell(row, 1).font = dataFont;
+      ws.getCell(row, 1).border = allBorders;
+      ws.getCell(row, 1).alignment = { horizontal: 'center', vertical: 'middle' };
+      if (rowFill) ws.getCell(row, 1).fill = rowFill;
+
+      // 書類種別
+      ws.getCell(row, 2).value = entry.docType;
+      ws.getCell(row, 2).font = { ...dataFont, bold: true };
+      ws.getCell(row, 2).border = allBorders;
+      ws.getCell(row, 2).alignment = { horizontal: 'center', vertical: 'middle' };
+      if (rowFill) ws.getCell(row, 2).fill = rowFill;
+
+      // ファイル名
+      ws.getCell(row, 3).value = entry.fileName;
+      ws.getCell(row, 3).font = dataFont;
+      ws.getCell(row, 3).border = allBorders;
+      ws.getCell(row, 3).alignment = { vertical: 'middle' };
+      if (rowFill) ws.getCell(row, 3).fill = rowFill;
+
+      // ステータス
+      ws.getCell(row, 4).value = entry.status;
+      ws.getCell(row, 4).font = dataFont;
+      ws.getCell(row, 4).border = allBorders;
+      ws.getCell(row, 4).alignment = { horizontal: 'center', vertical: 'middle' };
+      if (rowFill) ws.getCell(row, 4).fill = rowFill;
+      if (entry.status === 'スキップ（作成済み）') {
+        ws.getCell(row, 4).font = { ...dataFont, color: { argb: 'FF888888' } };
+      }
+
+      // 作成理由
+      ws.getCell(row, 5).value = entry.reason;
+      ws.getCell(row, 5).font = dataFont;
+      ws.getCell(row, 5).border = allBorders;
+      ws.getCell(row, 5).alignment = { vertical: 'middle', wrapText: true };
+      if (rowFill) ws.getCell(row, 5).fill = rowFill;
+
+      ws.getRow(row).height = entry.reason.length > 40 ? 36 : 22;
+    }
+
+    const outputBuffer = await workbook.xlsx.writeBuffer();
+    const fileName = `書類作成経緯書_${client.name}.xlsx`;
+    const file = new File([outputBuffer], fileName, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const { url: fileUrl } = await uploadShogaiDocFile(client.id, 'generation_log', file);
+    await saveShogaiDocument({
+      id: '',
+      careClientId: client.id,
+      docType: 'generation_log' as any,
+      fileName,
+      fileUrl,
+      fileSize: file.size,
+      notes: `書類一括生成の経緯書（自動生成）`,
+      sortOrder: 0,
+    });
+    console.log('[CatchUp] 書類作成経緯書を保存しました');
+  } catch (err) {
+    console.warn('[CatchUp] 書類作成経緯書の保存に失敗:', err);
+  }
+}
+
 // ========== 一括キャッチアップ生成 ==========
 
 interface CatchUpStep {
@@ -756,6 +904,7 @@ export async function executeCatchUpGeneration(
   let skippedCount = 0;
   let totalSteps = 0;
   let lastError = '';
+  const generationLog: GenerationLogEntry[] = [];
 
   // 現在の目標期間を追跡
   let currentShortTermMonths = 3; // デフォルト（初回計画書で上書きされる）
@@ -871,6 +1020,12 @@ export async function executeCatchUpGeneration(
     if (step.type === 'plan') {
       if (existingPlanYMs.has(ym)) {
         console.log(`[CatchUp] スキップ: ${step.label}（計画書${ym}作成済み）`);
+        generationLog.push({
+          order: generationLog.length + 1, docType: '居宅介護計画書',
+          fileName: `居宅介護計画書_${client.name}_${step.year}年${step.month}月.xlsx`,
+          year: step.year, month: step.month, status: 'スキップ（作成済み）',
+          reason: `${step.year}年${step.month}月分の計画書は作成済みのためスキップ`,
+        });
         skippedCount++;
         // スキップしても次のモニタリングステップは追加する
         scheduleNextMonitoring(queue, step, currentShortTermMonths, currentLongTermMonths, currentPlanStart, currentYM, baseMonitoringCycleMonths);
@@ -879,6 +1034,12 @@ export async function executeCatchUpGeneration(
     } else if (step.type === 'monitoring') {
       if (existingMonitoringYMs.has(ym)) {
         console.log(`[CatchUp] スキップ: ${step.label}（モニタリング${ym}作成済み）`);
+        generationLog.push({
+          order: generationLog.length + 1, docType: 'モニタリング表',
+          fileName: `モニタリングシート_${client.name}_${step.year}年${step.month}月.xlsx`,
+          year: step.year, month: step.month, status: 'スキップ（作成済み）',
+          reason: `${step.year}年${step.month}月分のモニタリングは作成済みのためスキップ`,
+        });
         skippedCount++;
         // モニタリングスキップ後も次の計画書ステップを追加
         schedulePostMonitoringPlan(queue, step, currentYM);
@@ -989,9 +1150,23 @@ export async function executeCatchUpGeneration(
               console.warn('[CatchUp] 手順書スケジュール保存失敗:', e);
             }
             onProgress?.(`[${successCount + 1}] 手順書の生成完了`);
+            generationLog.push({
+              order: generationLog.length + 1, docType: '訪問介護手順書',
+              fileName: `訪問介護手順書_${client.name}_${step.year}年${step.month}月.xlsx`,
+              year: step.year, month: step.month, status: '生成',
+              reason: step.revisionReason
+                ? `モニタリング後の計画更新に伴い、サービスパターン変更のため手順書を再作成`
+                : `初回計画書に基づく手順書の作成（訪問の具体的な援助手順を記載）`,
+            });
           } catch (tejunshoErr: any) {
             console.error('[CatchUp] 手順書生成失敗:', tejunshoErr);
             onProgress?.(`[${successCount + 1}] ⚠ 手順書の生成に失敗: ${tejunshoErr.message || tejunshoErr}`);
+            generationLog.push({
+              order: generationLog.length + 1, docType: '訪問介護手順書',
+              fileName: `訪問介護手順書_${client.name}_${step.year}年${step.month}月.xlsx`,
+              year: step.year, month: step.month, status: '失敗',
+              reason: `手順書生成に失敗: ${tejunshoErr.message || tejunshoErr}`,
+            });
           }
         } else {
           console.log(`[CatchUp] 手順書スキップ: パターン変更なし`);
@@ -999,6 +1174,16 @@ export async function executeCatchUpGeneration(
           const clientRecords = ctx.billingRecords.filter(r => r.clientName === client.name);
           lastWeeklyPattern = extractWeeklyPattern(clientRecords);
         }
+
+        // 計画書のログ記録
+        generationLog.push({
+          order: generationLog.length + 1, docType: '居宅介護計画書',
+          fileName: `居宅介護計画書_${client.name}_${step.year}年${step.month}月.xlsx`,
+          year: step.year, month: step.month, status: '生成',
+          reason: step.revisionReason
+            ? `${step.revisionReason}。モニタリング結果を踏まえ目標・支援内容を見直し（短期目標${currentShortTermMonths}ヶ月/長期目標${currentLongTermMonths}ヶ月）`
+            : `契約開始に伴う初回計画書の作成。アセスメントに基づき短期目標（${currentShortTermMonths}ヶ月）・長期目標（${currentLongTermMonths}ヶ月）を設定`,
+        });
 
         successCount++;
 
@@ -1062,6 +1247,17 @@ export async function executeCatchUpGeneration(
           console.warn('[CatchUp] モニタリングスケジュール保存失敗:', e);
         }
 
+        // モニタリングのログ記録
+        const monReason = patternChanged
+          ? `短期目標期限到来に伴うモニタリング実施。実績パターンに変更あり → ④サービス変更の必要性「変更あり」→ 計画書・手順書の再作成が必要`
+          : `短期目標期限到来に伴うモニタリング実施（①サービス実施状況・②満足度・③心身変化・④サービス変更の必要性を評価）`;
+        generationLog.push({
+          order: generationLog.length + 1, docType: 'モニタリング表',
+          fileName: `モニタリングシート_${client.name}_${step.year}年${step.month}月.xlsx`,
+          year: step.year, month: step.month, status: '生成',
+          reason: monReason,
+        });
+
         successCount++;
 
         // モニタリング後 → 計画書を作成（手順書はパターン変更時のみ）
@@ -1076,10 +1272,23 @@ export async function executeCatchUpGeneration(
       console.error(`[CatchUp] ${step.label} 生成失敗:`, error);
       lastError = `${step.label}: ${error.message || String(error)}`;
       onProgress?.(`⚠ ${step.label} 生成失敗: ${error.message || String(error)}`);
+      generationLog.push({
+        order: generationLog.length + 1,
+        docType: step.type === 'plan' ? '居宅介護計画書' : 'モニタリング表',
+        fileName: step.label,
+        year: step.year, month: step.month, status: '失敗',
+        reason: `生成に失敗: ${error.message || String(error)}`,
+      });
     }
   }
 
   await runPostGenerationValidation(client);
+
+  // 書類作成経緯書を保存（生成があった場合のみ）
+  if (generationLog.length > 0) {
+    onProgress?.('書類作成経緯書を保存中...');
+    await saveGenerationLog(client, generationLog, contractStart);
+  }
 
   const totalGenerated = successCount;
   if (totalGenerated > 0) {
