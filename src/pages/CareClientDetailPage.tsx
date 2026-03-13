@@ -476,6 +476,20 @@ const CareClientDetailPage: React.FC = () => {
                 </FormRow>
               </div>
 
+              {/* 家族の有無 */}
+              <FormRow label="家族の有無">
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input type="radio" name="hasFamily" checked={client.hasFamily !== false} onChange={() => updateField('hasFamily', true)} className="accent-green-600" />
+                    <span className="text-sm text-gray-700">あり</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input type="radio" name="hasFamily" checked={client.hasFamily === false} onChange={() => updateField('hasFamily', false)} className="accent-green-600" />
+                    <span className="text-sm text-gray-700">なし</span>
+                  </label>
+                </div>
+              </FormRow>
+
               {/* 契約期間 / 終了理由 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormRow label="契約期間">

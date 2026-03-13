@@ -400,6 +400,7 @@ export interface CareClient {
   emergencyContact3Phone?: string;
   careLevel?: string;
   area?: string;           // シフト地域（例: 渋谷区）
+  hasFamily?: boolean;     // 家族の有無（false=家族なし→計画書の家族希望を空欄）
   // 児童情報
   childName?: string;
   childNameKana?: string;
