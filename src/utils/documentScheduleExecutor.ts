@@ -728,6 +728,15 @@ export async function executeCatchUpGeneration(
   let currentPlanStart = contractStart; // 現在の計画の起点
   let lastWeeklyPattern: Set<string> = new Set(); // 前回の手順書作成時の週間パターン
 
+  // モニタリング周期を区分から事前取得（短期目標期間が長くてもモニタリングが入るようにする）
+  let baseMonitoringCycleMonths: number | undefined;
+  try {
+    const { getMonitoringCycleMonths, getClientSupportCategory } = await import('./documentGenerators/monitoringReportGenerator');
+    const supportCat = await getClientSupportCategory(client.id);
+    baseMonitoringCycleMonths = getMonitoringCycleMonths(supportCat || client.careLevel || '');
+    console.log(`[CatchUp] モニタリング周期: ${baseMonitoringCycleMonths}ヶ月（区分: ${supportCat || client.careLevel || '不明'}）`);
+  } catch { /* skip */ }
+
   // 契約開始日の情報
   const contractDateObj = new Date(contractStart + 'T00:00:00');
   const dayBeforeContract = new Date(contractDateObj);
@@ -794,17 +803,20 @@ export async function executeCatchUpGeneration(
     skippedCount++;
     console.log(`[CatchUp] スキップ: 初回計画書+手順書（作成済み）`);
 
-    // 短期目標の期限でモニタリングを追加
-    const shortEnd = addMonths(contractStart, currentShortTermMonths);
-    const shortDate = new Date(shortEnd + 'T00:00:00');
-    const shortYM = shortDate.getFullYear() * 100 + (shortDate.getMonth() + 1);
-    if (shortYM <= currentYM) {
+    // モニタリング周期と短期目標期間の短い方でモニタリングを追加
+    const effectiveMonths = baseMonitoringCycleMonths
+      ? Math.min(currentShortTermMonths, baseMonitoringCycleMonths)
+      : currentShortTermMonths;
+    const monEnd = addMonths(contractStart, effectiveMonths);
+    const monDate = new Date(monEnd + 'T00:00:00');
+    const monYM = monDate.getFullYear() * 100 + (monDate.getMonth() + 1);
+    if (monYM <= currentYM) {
       queue.push({
         type: 'monitoring',
-        year: shortDate.getFullYear(),
-        month: shortDate.getMonth() + 1,
-        label: `モニタリング・短期目標(${shortDate.getFullYear()}年${shortDate.getMonth() + 1}月)`,
-        periodStart: shortEnd,
+        year: monDate.getFullYear(),
+        month: monDate.getMonth() + 1,
+        label: `モニタリング・定期(${monDate.getFullYear()}年${monDate.getMonth() + 1}月)`,
+        periodStart: monEnd,
         monitoringType: 'short_term',
       });
     }
@@ -826,7 +838,7 @@ export async function executeCatchUpGeneration(
         console.log(`[CatchUp] スキップ: ${step.label}（作成済み）`);
         skippedCount++;
         // スキップしても次のモニタリングステップは追加する
-        scheduleNextMonitoring(queue, step, currentShortTermMonths, currentLongTermMonths, currentPlanStart, currentYM);
+        scheduleNextMonitoring(queue, step, currentShortTermMonths, currentLongTermMonths, currentPlanStart, currentYM, baseMonitoringCycleMonths);
         continue;
       }
     } else if (step.type === 'monitoring') {
@@ -955,8 +967,8 @@ export async function executeCatchUpGeneration(
 
         successCount++;
 
-        // 次のモニタリングステップを動的に追加（短期目標の期限）
-        scheduleNextMonitoring(queue, step, currentShortTermMonths, currentLongTermMonths, currentPlanStart, currentYM);
+        // 次のモニタリングステップを動的に追加
+        scheduleNextMonitoring(queue, step, currentShortTermMonths, currentLongTermMonths, currentPlanStart, currentYM, baseMonitoringCycleMonths);
 
       } else {
         // === モニタリング ===
@@ -1026,7 +1038,7 @@ export async function executeCatchUpGeneration(
   return { success: true };
 }
 
-/** 計画書の後に、短期目標期限でモニタリングをキューに追加 */
+/** 計画書の後に、モニタリングをキューに追加（短期目標期限またはモニタリング周期の短い方） */
 function scheduleNextMonitoring(
   queue: Array<{ type: 'plan' | 'monitoring'; year: number; month: number; label: string; periodStart: string; monitoringType?: string; planCreationDate?: string; revisionReason?: string; skipTejunsho?: boolean }>,
   planStep: { periodStart: string },
@@ -1034,24 +1046,33 @@ function scheduleNextMonitoring(
   longTermMonths: number,
   planStart: string,
   currentYM: number,
+  monitoringCycleMonths?: number,
 ) {
-  // 短期目標の期限でモニタリング
-  const shortEnd = addMonths(planStart, shortTermMonths);
-  const shortDate = new Date(shortEnd + 'T00:00:00');
-  const shortYM = shortDate.getFullYear() * 100 + (shortDate.getMonth() + 1);
+  // モニタリング周期（区分ベース）と短期目標期間の短い方を使う
+  // これにより、短期目標が6ヶ月でもモニタリング周期が3ヶ月なら3ヶ月でモニタリングが入る
+  const effectiveMonths = monitoringCycleMonths
+    ? Math.min(shortTermMonths, monitoringCycleMonths)
+    : shortTermMonths;
 
-  if (shortYM <= currentYM) {
+  const monEnd = addMonths(planStart, effectiveMonths);
+  const monDate = new Date(monEnd + 'T00:00:00');
+  const monYM = monDate.getFullYear() * 100 + (monDate.getMonth() + 1);
+
+  if (monYM <= currentYM) {
     // 同じ年月のステップが既にキューにないか確認
     const exists = queue.some(s =>
-      s.type === 'monitoring' && s.year === shortDate.getFullYear() && s.month === shortDate.getMonth() + 1
+      s.type === 'monitoring' && s.year === monDate.getFullYear() && s.month === monDate.getMonth() + 1
     );
     if (!exists) {
+      const isShortTermTrigger = effectiveMonths === shortTermMonths;
       queue.push({
         type: 'monitoring',
-        year: shortDate.getFullYear(),
-        month: shortDate.getMonth() + 1,
-        label: `モニタリング・短期目標(${shortDate.getFullYear()}年${shortDate.getMonth() + 1}月)`,
-        periodStart: shortEnd,
+        year: monDate.getFullYear(),
+        month: monDate.getMonth() + 1,
+        label: isShortTermTrigger
+          ? `モニタリング・短期目標(${monDate.getFullYear()}年${monDate.getMonth() + 1}月)`
+          : `モニタリング・定期(${monDate.getFullYear()}年${monDate.getMonth() + 1}月)`,
+        periodStart: monEnd,
         monitoringType: 'short_term',
       });
     }
