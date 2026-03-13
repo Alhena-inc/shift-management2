@@ -808,7 +808,7 @@ export async function executeCatchUpGeneration(
 
   // 既存の計画書がある場合、GoalPeriodから目標期間を取得して初回をスキップ
   const contractYM = `${contractDateObj.getFullYear()}-${String(contractDateObj.getMonth() + 1).padStart(2, '0')}`;
-  const hasExistingInitialPlan = existingPlanYMs.has(contractYM) && existingTejunshoYMs.has(contractYM);
+  const hasExistingInitialPlan = existingPlanYMs.has(contractYM);
 
   if (hasExistingInitialPlan) {
     // 既存計画書がある場合、GoalPeriodから目標期間を読み取る
@@ -867,10 +867,10 @@ export async function executeCatchUpGeneration(
 
     const ym = `${step.year}-${String(step.month).padStart(2, '0')}`;
 
-    // 既存書類チェック
+    // 既存書類チェック（作成済みの書類はスキップして重複を防ぐ）
     if (step.type === 'plan') {
-      if (existingPlanYMs.has(ym) && existingTejunshoYMs.has(ym)) {
-        console.log(`[CatchUp] スキップ: ${step.label}（作成済み）`);
+      if (existingPlanYMs.has(ym)) {
+        console.log(`[CatchUp] スキップ: ${step.label}（計画書${ym}作成済み）`);
         skippedCount++;
         // スキップしても次のモニタリングステップは追加する
         scheduleNextMonitoring(queue, step, currentShortTermMonths, currentLongTermMonths, currentPlanStart, currentYM, baseMonitoringCycleMonths);
@@ -878,7 +878,7 @@ export async function executeCatchUpGeneration(
       }
     } else if (step.type === 'monitoring') {
       if (existingMonitoringYMs.has(ym)) {
-        console.log(`[CatchUp] スキップ: ${step.label}（作成済み）`);
+        console.log(`[CatchUp] スキップ: ${step.label}（モニタリング${ym}作成済み）`);
         skippedCount++;
         // モニタリングスキップ後も次の計画書ステップを追加
         schedulePostMonitoringPlan(queue, step, currentYM);
@@ -1082,10 +1082,14 @@ export async function executeCatchUpGeneration(
   await runPostGenerationValidation(client);
 
   const totalGenerated = successCount;
-  onProgress?.(`完了: ${totalGenerated}件生成、${skippedCount}件スキップ（作成済み）`);
+  if (totalGenerated > 0) {
+    onProgress?.(`完了: ${totalGenerated}件生成、${skippedCount}件スキップ（作成済み）`);
+  } else {
+    onProgress?.('書類は最新の状態です');
+  }
 
   if (totalGenerated === 0 && skippedCount > 0) {
-    return { success: true, error: '全ての書類が作成済みです' };
+    return { success: true, error: '書類は最新の状態です。追加で作成が必要な書類はありません。' };
   }
   if (totalGenerated === 0) {
     return { success: false, error: `全ての書類生成に失敗しました: ${lastError}` };
