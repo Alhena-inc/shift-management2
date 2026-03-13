@@ -309,26 +309,27 @@ const BillingImportPage: React.FC = () => {
       ];
 
       let totalInserted = 0;
-      // 11月1日の曜日を基準にする
-      const novFirstDow = new Date(2025, 10, 1).getDay(); // 11月1日の曜日 (0=日,1=月,...,6=土)
 
       for (const target of targetMonths) {
         const batchId = crypto.randomUUID();
-        const targetFirstDow = new Date(target.year, target.month - 1, 1).getDay();
-        // 曜日のオフセット: ターゲット月の同じ曜日にするための日数差
-        // 例: 11月1日=土(6), 12月1日=月(1) → offset = 6-1 = 5 → 12月1日+5 = 12月6日(土)
-        let dowOffset = novFirstDow - targetFirstDow;
-        if (dowOffset < 0) dowOffset += 7;
         const lastDay = new Date(target.year, target.month, 0).getDate();
 
         const copied = novRecords.map((r: BillingRecord) => {
-          const origDay = parseInt(r.serviceDate.split('-')[2]);
-          // 元の日にオフセットを足して曜日を合わせる
-          let newDay = origDay + dowOffset;
+          // 元の日付から曜日と「第何週目か」を算出
+          const origDate = new Date(r.serviceDate);
+          const origDay = origDate.getDate();
+          const origDow = origDate.getDay(); // 0=日,1=月,...,6=土
+          const weekIndex = Math.floor((origDay - 1) / 7); // 0始まりの週番号
+
+          // ターゲット月で同じ曜日の最初の日を求める
+          const targetFirst = new Date(target.year, target.month - 1, 1);
+          const targetFirstDow = targetFirst.getDay();
+          let firstSameDow = 1 + (origDow - targetFirstDow + 7) % 7;
+          // 同じ週番号の同じ曜日
+          let newDay = firstSameDow + weekIndex * 7;
           // 月末を超える場合は1週間前にずらす
           if (newDay > lastDay) newDay -= 7;
-          // 1日未満になる場合は1週間後にずらす
-          if (newDay < 1) newDay += 7;
+
           return {
             service_date: `${target.year}-${String(target.month).padStart(2, '0')}-${String(newDay).padStart(2, '0')}`,
             start_time: r.startTime + ':00',
