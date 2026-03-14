@@ -107,6 +107,22 @@ function getDefaultOfficeInfo() {
   };
 }
 
+/** 年末年始（12/30〜1/4）を避けて日付を前にずらす */
+function avoidNewYear(date: Date): Date {
+  const d = new Date(date);
+  const m = d.getMonth() + 1; // 1-12
+  const day = d.getDate();
+  // 12/30〜12/31 → 12/29にずらす
+  if (m === 12 && day >= 30) {
+    d.setMonth(11, 29); // 12月29日
+  }
+  // 1/1〜1/4 → 12/29（前年）にずらす
+  if (m === 1 && day <= 4) {
+    d.setFullYear(d.getFullYear() - 1, 11, 29); // 前年12月29日
+  }
+  return d;
+}
+
 async function buildContext(
   client: CareClient,
   year: number,
@@ -146,6 +162,7 @@ async function buildContext(
       visit_label: string;
       steps: Array<{ item: string; content: string; note: string; category?: string }>;
     }> | undefined,
+    monitoringType: undefined as ('short_term' | 'long_term') | undefined,
   };
 }
 
@@ -258,10 +275,12 @@ export async function executeScheduleAction(
       const today = toDateString(new Date());
       let planCreationDate = today;
       if (action.type === 'generate_plan' && !schedule.lastGeneratedAt && client.contractStart) {
-        const dayBefore = new Date(client.contractStart + 'T00:00:00');
-        dayBefore.setDate(dayBefore.getDate() - 1);
-        const dayBeforeStr = toDateString(dayBefore);
-        planCreationDate = dayBeforeStr < today ? dayBeforeStr : today;
+        const daysBefore = Math.floor(Math.random() * 3) + 2; // 2, 3, or 4
+        let beforeContract = new Date(client.contractStart + 'T00:00:00');
+        beforeContract.setDate(beforeContract.getDate() - daysBefore);
+        beforeContract = avoidNewYear(beforeContract);
+        const beforeContractStr = toDateString(beforeContract);
+        planCreationDate = beforeContractStr < today ? beforeContractStr : today;
       }
 
       // 計画書スケジュール更新
@@ -487,6 +506,11 @@ export async function executeMonitoringScheduleAction(
         }
       }
     } catch { /* skip */ }
+
+    // モニタリングのトリガー種別をctxに設定
+    if (schedule.monitoringType === 'short_term' || schedule.monitoringType === 'long_term') {
+      ctx.monitoringType = schedule.monitoringType;
+    }
 
     const promptData = await loadAiPrompt('monitoring').catch(() => null);
     if (promptData) {
@@ -946,13 +970,17 @@ export async function executeCatchUpGeneration(
     monitoringType?: 'short_term' | 'long_term';
     /** trueの場合、手順書の再生成をスキップ（パターン変更なし等） */
     skipTejunsho?: boolean;
+    /** trueの場合、モニタリングで「目標継続」と判定 → 短期目標を引き継ぐ */
+    goalContinuation?: boolean;
   }
 
   const queue: DynamicStep[] = [];
 
-  // 初回計画書+手順書
-  const initialCreationDate = new Date(contractDateObj);
-  initialCreationDate.setDate(initialCreationDate.getDate() - 2);
+  // 初回計画書+手順書（作成日は契約日の2〜4日前でランダム、年末年始を避ける）
+  let initialCreationDate = new Date(contractDateObj);
+  const daysBeforeContract = Math.floor(Math.random() * 3) + 2; // 2, 3, or 4
+  initialCreationDate.setDate(initialCreationDate.getDate() - daysBeforeContract);
+  initialCreationDate = avoidNewYear(initialCreationDate);
   queue.push({
     type: 'plan',
     year: contractDateObj.getFullYear(),
@@ -994,10 +1022,8 @@ export async function executeCatchUpGeneration(
     skippedCount++;
     console.log(`[CatchUp] スキップ: 初回計画書+手順書（作成済み）`);
 
-    // モニタリング周期と短期目標期間の短い方でモニタリングを追加
-    const effectiveMonths = baseMonitoringCycleMonths
-      ? Math.min(currentShortTermMonths, baseMonitoringCycleMonths)
-      : currentShortTermMonths;
+    // モニタリングは短期目標期間の満了ごとに実施
+    const effectiveMonths = currentShortTermMonths;
     const monEnd = addMonths(contractStart, effectiveMonths);
     const monDate = new Date(monEnd + 'T00:00:00');
     const monYM = monDate.getFullYear() * 100 + (monDate.getMonth() + 1);
@@ -1062,7 +1088,11 @@ export async function executeCatchUpGeneration(
       if (step.revisionReason) ctx.planRevisionReason = step.revisionReason;
       if (step.skipTejunsho) {
         ctx.inheritServiceContent = true;
-        ctx.inheritShortTermGoal = true; // モニタリング後パターン変更なし → 短期目標も継続
+      }
+      // モニタリングで「目標継続」と判定された場合、短期目標を引き継ぐ
+      if (step.goalContinuation) {
+        ctx.inheritShortTermGoal = true;
+        console.log(`[CatchUp] モニタリングで目標継続判定 → inheritShortTermGoal=true`);
       }
 
       if (step.type === 'plan') {
@@ -1155,6 +1185,7 @@ export async function executeCatchUpGeneration(
         }
 
         // === 手順書生成（skipTejunshoでない場合のみ） ===
+        let tejunshoLogEntry: GenerationLogEntry | null = null;
         if (!step.skipTejunsho) {
           onProgress?.(`[${successCount + 1}] 手順書を生成中（計画書のサービス内容に基づいて作成）...`);
           try {
@@ -1189,23 +1220,23 @@ export async function executeCatchUpGeneration(
               console.warn('[CatchUp] 手順書スケジュール保存失敗:', e);
             }
             onProgress?.(`[${successCount + 1}] 手順書の生成完了`);
-            generationLog.push({
-              order: generationLog.length + 1, docType: '訪問介護手順書',
+            tejunshoLogEntry = {
+              order: 0, docType: '訪問介護手順書',
               fileName: `訪問介護手順書_${client.name}_${step.year}年${step.month}月.xlsx`,
               year: step.year, month: step.month, status: '生成',
               reason: step.revisionReason
                 ? `モニタリング後の計画更新に伴い、サービスパターン変更のため手順書を再作成`
-                : `初回計画書に基づく手順書の作成（訪問の具体的な援助手順を記載）`,
-            });
+                : `居宅介護計画書のサービス内容に基づく手順書の作成（訪問の具体的な援助手順を記載）`,
+            };
           } catch (tejunshoErr: any) {
             console.error('[CatchUp] 手順書生成失敗:', tejunshoErr);
             onProgress?.(`[${successCount + 1}] ⚠ 手順書の生成に失敗: ${tejunshoErr.message || tejunshoErr}`);
-            generationLog.push({
-              order: generationLog.length + 1, docType: '訪問介護手順書',
+            tejunshoLogEntry = {
+              order: 0, docType: '訪問介護手順書',
               fileName: `訪問介護手順書_${client.name}_${step.year}年${step.month}月.xlsx`,
               year: step.year, month: step.month, status: '失敗',
               reason: `手順書生成に失敗: ${tejunshoErr.message || tejunshoErr}`,
-            });
+            };
           }
         } else {
           console.log(`[CatchUp] 手順書スキップ: パターン変更なし`);
@@ -1214,7 +1245,7 @@ export async function executeCatchUpGeneration(
           lastWeeklyPattern = extractWeeklyPattern(clientRecords);
         }
 
-        // 計画書のログ記録
+        // 計画書のログ記録（計画書→手順書の順）
         generationLog.push({
           order: generationLog.length + 1, docType: '居宅介護計画書',
           fileName: `居宅介護計画書_${client.name}_${step.year}年${step.month}月.xlsx`,
@@ -1223,6 +1254,11 @@ export async function executeCatchUpGeneration(
             ? `${step.revisionReason}。モニタリング結果を踏まえ目標・支援内容を見直し（短期目標${currentShortTermMonths}ヶ月/長期目標${currentLongTermMonths}ヶ月）`
             : `契約開始に伴う初回計画書の作成。アセスメントに基づき短期目標（${currentShortTermMonths}ヶ月）・長期目標（${currentLongTermMonths}ヶ月）を設定`,
         });
+        // 手順書のログ記録（計画書の後）
+        if (tejunshoLogEntry) {
+          tejunshoLogEntry.order = generationLog.length + 1;
+          generationLog.push(tejunshoLogEntry);
+        }
 
         successCount++;
 
@@ -1262,6 +1298,11 @@ export async function executeCatchUpGeneration(
 
         // 実績パターン変更をctxに設定（モニタリング生成時の④判定に使用）
         ctx.billingPatternChanged = patternChanged;
+
+        // モニタリングのトリガー種別をctxに設定（短期/長期目標期間満了の旨を記載するため）
+        if (step.monitoringType === 'short_term' || step.monitoringType === 'long_term') {
+          ctx.monitoringType = step.monitoringType;
+        }
 
         const promptData = await loadAiPrompt('monitoring').catch(() => null);
         if (promptData) {
@@ -1305,7 +1346,7 @@ export async function executeCatchUpGeneration(
         } else {
           onProgress?.(`[${successCount}] モニタリング完了 → 計画書を再作成します（手順書は変更なしのためスキップ）`);
         }
-        schedulePostMonitoringPlan(queue, step, currentYM, patternChanged);
+        schedulePostMonitoringPlan(queue, step, currentYM, patternChanged, result.goalContinuation);
       }
     } catch (error: any) {
       console.error(`[CatchUp] ${step.label} 生成失敗:`, error);
@@ -1348,9 +1389,9 @@ export async function executeCatchUpGeneration(
   return { success: true };
 }
 
-/** 計画書の後に、モニタリングをキューに追加（短期目標期限またはモニタリング周期の短い方） */
+/** 計画書の後に、モニタリングをキューに追加（短期目標期間満了タイミング） */
 function scheduleNextMonitoring(
-  queue: Array<{ type: 'plan' | 'monitoring'; year: number; month: number; label: string; periodStart: string; monitoringType?: string; planCreationDate?: string; revisionReason?: string; skipTejunsho?: boolean }>,
+  queue: Array<{ type: 'plan' | 'monitoring'; year: number; month: number; label: string; periodStart: string; monitoringType?: string; planCreationDate?: string; revisionReason?: string; skipTejunsho?: boolean; goalContinuation?: boolean }>,
   planStep: { periodStart: string },
   shortTermMonths: number,
   longTermMonths: number,
@@ -1358,11 +1399,9 @@ function scheduleNextMonitoring(
   currentYM: number,
   monitoringCycleMonths?: number,
 ) {
-  // モニタリング周期（区分ベース）と短期目標期間の短い方を使う
-  // これにより、短期目標が6ヶ月でもモニタリング周期が3ヶ月なら3ヶ月でモニタリングが入る
-  const effectiveMonths = monitoringCycleMonths
-    ? Math.min(shortTermMonths, monitoringCycleMonths)
-    : shortTermMonths;
+  // モニタリングは短期目標期間の満了ごとに実施する
+  // 短期目標期間＝モニタリング実施タイミングとして扱う
+  const effectiveMonths = shortTermMonths;
 
   const monEnd = addMonths(planStart, effectiveMonths);
   const monDate = new Date(monEnd + 'T00:00:00');
@@ -1374,14 +1413,11 @@ function scheduleNextMonitoring(
       s.type === 'monitoring' && s.year === monDate.getFullYear() && s.month === monDate.getMonth() + 1
     );
     if (!exists) {
-      const isShortTermTrigger = effectiveMonths === shortTermMonths;
       queue.push({
         type: 'monitoring',
         year: monDate.getFullYear(),
         month: monDate.getMonth() + 1,
-        label: isShortTermTrigger
-          ? `モニタリング・短期目標(${monDate.getFullYear()}年${monDate.getMonth() + 1}月)`
-          : `モニタリング・定期(${monDate.getFullYear()}年${monDate.getMonth() + 1}月)`,
+        label: `モニタリング・短期目標(${monDate.getFullYear()}年${monDate.getMonth() + 1}月)`,
         periodStart: monEnd,
         monitoringType: 'short_term',
       });
@@ -1391,10 +1427,11 @@ function scheduleNextMonitoring(
 
 /** モニタリング後に計画書+手順書をキューに追加 */
 function schedulePostMonitoringPlan(
-  queue: Array<{ type: 'plan' | 'monitoring'; year: number; month: number; label: string; periodStart: string; monitoringType?: string; planCreationDate?: string; revisionReason?: string; skipTejunsho?: boolean }>,
+  queue: Array<{ type: 'plan' | 'monitoring'; year: number; month: number; label: string; periodStart: string; monitoringType?: string; planCreationDate?: string; revisionReason?: string; skipTejunsho?: boolean; goalContinuation?: boolean }>,
   monitoringStep: { year: number; month: number; periodStart: string },
   currentYM: number,
   patternChanged: boolean = false,
+  goalContinuation: boolean = false,
 ) {
   const monYM = monitoringStep.year * 100 + monitoringStep.month;
   if (monYM > currentYM) return;
@@ -1414,9 +1451,10 @@ function schedulePostMonitoringPlan(
         ? `計画書(${monitoringStep.year}年${monitoringStep.month}月・モニタリング後)`
         : `計画書+手順書(${monitoringStep.year}年${monitoringStep.month}月・モニタリング後・パターン変更)`,
       periodStart: monitoringStep.periodStart,
-      planCreationDate: toDateString(new Date(monitoringStep.year, monitoringStep.month - 1, 1)),
+      planCreationDate: toDateString(avoidNewYear(new Date(monitoringStep.year, monitoringStep.month - 1, 1))),
       revisionReason: `モニタリング(${monitoringStep.year}年${monitoringStep.month}月)後の計画更新`,
       skipTejunsho,
+      goalContinuation,
     });
   }
 }

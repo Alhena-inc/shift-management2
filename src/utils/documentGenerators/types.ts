@@ -34,6 +34,8 @@ export interface GeneratorContext {
   inheritLongTermGoal?: boolean;
   /** true: モニタリングで「目標継続」と判定 → 短期目標の文言を前版と完全一致させる */
   inheritShortTermGoal?: boolean;
+  /** モニタリングのトリガー種別（短期目標期間満了 / 長期目標期間満了） */
+  monitoringType?: 'short_term' | 'long_term';
   /** 居宅介護計画書のサービス内容（手順書生成時に計画書と一致させるため） */
   carePlanServiceBlocks?: Array<{
     service_type: string;
