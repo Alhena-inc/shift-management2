@@ -914,6 +914,12 @@ export interface CarePlanGenerationResult {
   severity_level: 'standard' | 'moderate' | 'severe';
   goal_long_text: string;
   goal_short_text: string;
+  /** 手順書生成に引き継ぐサービス内容ブロック */
+  serviceBlocks: Array<{
+    service_type: string;
+    visit_label: string;
+    steps: Array<{ item: string; content: string; note: string; category?: string }>;
+  }>;
 }
 
 export async function generate(ctx: GeneratorContext): Promise<CarePlanGenerationResult> {
@@ -1049,8 +1055,14 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
 - 援助項目（item）
 - サービスの内容（content）
 - 留意事項（note）
-- 週間サービス計画の内容
+- 週間サービス計画の内容`;
+    if (ctx.inheritShortTermGoal) {
+      templateVars.assessment_note += `
+★短期目標も前回と完全に同じ文言を返してください。文言を変更してはいけません。`;
+    } else {
+      templateVars.assessment_note += `
 変更してよいのは短期目標の文言と期間のみです。`;
+    }
   }
 
   const prompt = applyTemplate(promptTemplate, templateVars);
@@ -1094,6 +1106,27 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
       }
     } catch (err) {
       console.warn('[CarePlan] 長期目標引き継ぎ取得失敗:', err);
+    }
+  }
+
+  // 短期目標引き継ぎ: モニタリングで「目標継続」→ 前版の短期目標を強制適用（AIが変更しても上書き）
+  if (ctx.inheritShortTermGoal) {
+    try {
+      const prevGoals = await loadGoalPeriods(client.id);
+      const activeShortTerm = prevGoals.find((g: any) => g.isActive && g.goalType === 'short_term');
+      if (activeShortTerm?.goalText) {
+        console.log(`[CarePlan] 短期目標引き継ぎ（目標継続）: "${activeShortTerm.goalText}"`);
+        plan.goal_short = activeShortTerm.goalText;
+        // 短期目標期間も前版から算出して引き継ぐ
+        if (activeShortTerm.startDate && activeShortTerm.endDate) {
+          const start = new Date(activeShortTerm.startDate);
+          const end = new Date(activeShortTerm.endDate);
+          const diffMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+          if (diffMonths > 0) plan.short_term_goal_months = diffMonths;
+        }
+      }
+    } catch (err) {
+      console.warn('[CarePlan] 短期目標引き継ぎ取得失敗:', err);
     }
   }
 
@@ -1452,5 +1485,11 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
     severity_level: plan.severity_level,
     goal_long_text: goalLongText,
     goal_short_text: goalShortText,
+    // 手順書生成にサービス内容を引き継ぐ
+    serviceBlocks: [plan.service1, plan.service2, plan.service3, plan.service4].filter(Boolean) as Array<{
+      service_type: string;
+      visit_label: string;
+      steps: Array<{ item: string; content: string; note: string; category?: string }>;
+    }>,
   };
 }

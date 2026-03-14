@@ -140,6 +140,12 @@ async function buildContext(
     inheritServiceContent: undefined as boolean | undefined,
     billingPatternChanged: undefined as boolean | undefined,
     inheritLongTermGoal: undefined as boolean | undefined,
+    inheritShortTermGoal: undefined as boolean | undefined,
+    carePlanServiceBlocks: undefined as Array<{
+      service_type: string;
+      visit_label: string;
+      steps: Array<{ item: string; content: string; note: string; category?: string }>;
+    }> | undefined,
   };
 }
 
@@ -1054,7 +1060,10 @@ export async function executeCatchUpGeneration(
       const ctx = await buildContext(client, step.year, step.month, hiddenDiv);
       if (step.planCreationDate) ctx.planCreationDate = step.planCreationDate;
       if (step.revisionReason) ctx.planRevisionReason = step.revisionReason;
-      if (step.skipTejunsho) ctx.inheritServiceContent = true;
+      if (step.skipTejunsho) {
+        ctx.inheritServiceContent = true;
+        ctx.inheritShortTermGoal = true; // モニタリング後パターン変更なし → 短期目標も継続
+      }
 
       if (step.type === 'plan') {
         // === 長期目標の期間内チェック ===
@@ -1147,7 +1156,7 @@ export async function executeCatchUpGeneration(
 
         // === 手順書生成（skipTejunshoでない場合のみ） ===
         if (!step.skipTejunsho) {
-          onProgress?.(`[${successCount + 1}] 手順書を生成中...`);
+          onProgress?.(`[${successCount + 1}] 手順書を生成中（計画書のサービス内容に基づいて作成）...`);
           try {
             const procPrompt = await loadAiPrompt('care-procedure').catch(() => null);
             if (procPrompt) {
@@ -1157,6 +1166,9 @@ export async function executeCatchUpGeneration(
               ctx.customPrompt = undefined;
               ctx.customSystemInstruction = undefined;
             }
+
+            // 計画書のサービス内容を手順書に引き継ぐ
+            ctx.carePlanServiceBlocks = planResult.serviceBlocks;
 
             const { generate: generateProcedure } = await import('./documentGenerators/careProcedureGenerator');
             await generateProcedure(ctx);

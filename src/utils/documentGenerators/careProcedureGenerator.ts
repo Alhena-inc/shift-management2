@@ -556,6 +556,27 @@ export async function generate(ctx: GeneratorContext): Promise<void> {
       : '【アセスメント資料なし】利用者情報・実績データ・契約支給量から推測して、一般的な訪問介護手順書を作成してください。',
   };
 
+  // 計画書のサービス内容が渡されている場合、手順書はその内容に基づいて作成する
+  if (ctx.carePlanServiceBlocks && ctx.carePlanServiceBlocks.length > 0) {
+    const planServiceText = ctx.carePlanServiceBlocks.map((block, i) => {
+      const stepsText = block.steps.map(s => {
+        const cat = s.category ? `[${s.category}]` : '';
+        return `  - ${cat} ${s.item}: ${s.content}（留意: ${s.note}）`;
+      }).join('\n');
+      return `【サービスブロック${i + 1}】${block.service_type}（${block.visit_label}）\n${stepsText}`;
+    }).join('\n\n');
+
+    templateVars.assessment_note += `
+
+【★最重要：居宅介護計画書のサービス内容に基づいて手順書を作成すること】
+以下は居宅介護計画書に記載されたサービス内容です。手順書の援助項目・内容・留意事項は、
+この計画書のサービス内容と一致させてください。計画書にない項目を追加したり、
+計画書にある項目を省略してはいけません。
+手順書ではこの計画書の各ステップをより詳細な時間配分・具体的手順に展開してください。
+
+${planServiceText}`;
+  }
+
   const prompt = applyTemplate(promptTemplate, templateVars);
 
   // AI生成

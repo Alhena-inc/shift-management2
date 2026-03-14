@@ -32,6 +32,14 @@ export interface GeneratorContext {
   billingPatternChanged?: boolean;
   /** true: 長期目標が期間内のため前版から引き継ぐ（短期目標モニタリング後の計画再作成時） */
   inheritLongTermGoal?: boolean;
+  /** true: モニタリングで「目標継続」と判定 → 短期目標の文言を前版と完全一致させる */
+  inheritShortTermGoal?: boolean;
+  /** 居宅介護計画書のサービス内容（手順書生成時に計画書と一致させるため） */
+  carePlanServiceBlocks?: Array<{
+    service_type: string;
+    visit_label: string;
+    steps: Array<{ item: string; content: string; note: string; category?: string }>;
+  }>;
 }
 
 export type GenerateFunction = (ctx: GeneratorContext) => Promise<void>;
