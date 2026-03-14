@@ -3194,30 +3194,20 @@ export const deleteMonitoringSchedule = async (id: string): Promise<void> => {
 
 export const saveDocumentValidation = async (result: any): Promise<void> => {
   try {
+    // care_client_idにユニーク制約がないため、既存レコードを削除してから挿入
+    await supabase
+      .from('document_validations')
+      .delete()
+      .eq('care_client_id', result.careClientId);
     const { error } = await supabase
       .from('document_validations')
-      .upsert({
+      .insert({
         care_client_id: result.careClientId,
         checked_at: result.checkedAt || new Date().toISOString(),
         is_valid: result.isValid,
         checks: result.checks,
-      }, { onConflict: 'care_client_id' })
-    if (error) {
-      // onConflictが使えない場合（unique制約がない）は削除＋挿入
-      await supabase
-        .from('document_validations')
-        .delete()
-        .eq('care_client_id', result.careClientId);
-      const { error: insertError } = await supabase
-        .from('document_validations')
-        .insert({
-          care_client_id: result.careClientId,
-          checked_at: result.checkedAt || new Date().toISOString(),
-          is_valid: result.isValid,
-          checks: result.checks,
-        });
-      if (insertError) throw insertError;
-    }
+      });
+    if (error) throw error;
   } catch (error) {
     console.error('検証結果保存エラー:', error);
     throw error;
