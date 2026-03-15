@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
+import JSZip from 'jszip';
 import { loadShogaiDocuments, deleteShogaiDocument, loadShogaiCarePlanDocuments, deleteShogaiCarePlanDocument, loadDocumentSchedules, saveDocumentSchedule } from '../../services/dataService';
 import { createInitialSchedules } from '../../utils/documentScheduleChecker';
 import { executeCatchUpGeneration } from '../../utils/documentScheduleExecutor';
@@ -80,6 +81,7 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
   const [viewerDoc, setViewerDoc] = useState<UnifiedDocument | null>(null);
   const [generatingAll, setGeneratingAll] = useState<string | null>(null);
   const [catchUpProgress, setCatchUpProgress] = useState<string>('');
+  const [downloadingAll, setDownloadingAll] = useState<string | null>(null);
   const hiddenDivRef = useRef<HTMLDivElement | null>(null);
 
   const loadClientDocuments = useCallback(async (clientId: string) => {
@@ -252,6 +254,70 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
     }
   }, [careClients, loadClientDocuments]);
 
+  // 利用者ごと全書類一括ダウンロード
+  const handleBulkDownload = useCallback(async (clientId: string) => {
+    const docs = clientDocs[clientId];
+    if (!docs || docs.length === 0) {
+      alert('ダウンロードする書類がありません');
+      return;
+    }
+
+    const clientName = careClients.find(c => c.id === clientId)?.name || clientId;
+    setDownloadingAll(clientId);
+
+    try {
+      const zip = new JSZip();
+      const fileNameCount: Record<string, number> = {};
+
+      for (const doc of docs) {
+        if (!doc.fileUrl) continue;
+        try {
+          const res = await fetch(doc.fileUrl);
+          if (!res.ok) continue;
+          const blob = await res.blob();
+
+          // ファイル名重複を回避
+          let fileName = doc.fileName || `${doc.typeLabel}.unknown`;
+          if (fileNameCount[fileName]) {
+            fileNameCount[fileName]++;
+            const dotIdx = fileName.lastIndexOf('.');
+            if (dotIdx > 0) {
+              fileName = `${fileName.slice(0, dotIdx)}_${fileNameCount[fileName]}${fileName.slice(dotIdx)}`;
+            } else {
+              fileName = `${fileName}_${fileNameCount[fileName]}`;
+            }
+          } else {
+            fileNameCount[fileName] = 1;
+          }
+
+          zip.file(fileName, blob);
+        } catch (err) {
+          console.warn(`ファイル取得失敗: ${doc.fileName}`, err);
+        }
+      }
+
+      if (Object.keys(zip.files).length === 0) {
+        alert('ダウンロードできるファイルがありませんでした');
+        return;
+      }
+
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${clientName}_書類一式.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('一括ダウンロードエラー:', err);
+      alert('一括ダウンロードに失敗しました');
+    } finally {
+      setDownloadingAll(null);
+    }
+  }, [clientDocs, careClients]);
+
   if (careClients.length === 0) {
     return (
       <div className="text-center py-16 text-gray-400 text-sm">利用者が登録されていません</div>
@@ -314,6 +380,16 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
                 {!isLoading && <span className="text-xs text-gray-400">{docs.length}件</span>}
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleBulkDownload(expandedClientId)}
+                  disabled={downloadingAll === expandedClientId || isLoading || docs.length === 0}
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-xs font-medium flex items-center gap-1 shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-sm">
+                    {downloadingAll === expandedClientId ? 'progress_activity' : 'download'}
+                  </span>
+                  {downloadingAll === expandedClientId ? 'ダウンロード中...' : '一括ダウンロード'}
+                </button>
                 <button
                   onClick={() => handleCatchUpGenerateForClient(expandedClientId)}
                   disabled={isGeneratingAll}
