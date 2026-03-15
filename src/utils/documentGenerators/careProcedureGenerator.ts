@@ -628,6 +628,90 @@ ${planServiceText}`;
     console.log(`  ${proc.visit_label}: ${proc.steps.length}ステップ (${proc.service_type})`);
   }
 
+  // === 文字数制約の後処理 ===
+  const MAX_ITEM_LEN = 15;
+  const MAX_DETAIL_LEN = 100;
+  const MIN_DETAIL_LEN = 60;
+  const MAX_NOTE_LEN = 60;
+  const MIN_NOTE_LEN = 40;
+  for (const proc of manual.procedures) {
+    for (const step of proc.steps) {
+      // item: 15文字以内
+      if (step.item && step.item.length > MAX_ITEM_LEN) {
+        step.item = step.item.substring(0, MAX_ITEM_LEN);
+      }
+      // detail: 60〜100文字
+      if (step.detail && step.detail.length > MAX_DETAIL_LEN) {
+        const cut = step.detail.substring(0, MAX_DETAIL_LEN);
+        const lastPeriod = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('、'));
+        step.detail = lastPeriod > MIN_DETAIL_LEN ? cut.substring(0, lastPeriod + 1) : cut;
+      }
+      // note: 40〜60文字
+      if (step.note && step.note.length > MAX_NOTE_LEN) {
+        const cut = step.note.substring(0, MAX_NOTE_LEN);
+        const lastPeriod = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('、'));
+        step.note = lastPeriod > MIN_NOTE_LEN ? cut.substring(0, lastPeriod + 1) : cut;
+      }
+    }
+  }
+
+  // === 種別混在の後処理: 各ブロックはservice_typeに該当する手順のみ ===
+  const BODY_KW = /服薬|排泄|入浴|更衣|整容|移乗|移動介助|バイタル|体調|食事介助|口腔ケア|清拭|体位|見守り|安全確認|血圧|体温/;
+  const HOUSE_KW = /調理|配膳|片付|掃除|洗濯|買い物|環境整備|ゴミ|献立|食材|台所|食器|キッチン|居室整理|シンク|コンロ/;
+  for (const proc of manual.procedures) {
+    const st = (proc.service_type || '').replace(/\s+/g, '');
+    if (st.includes('重度')) continue;
+    const isBody = st.includes('身体');
+    const isHouse = st.includes('家事') || st.includes('生活');
+    if (!isBody && !isHouse) continue;
+
+    const before = proc.steps.length;
+    proc.steps = proc.steps.filter(step => {
+      const text = `${step.item} ${step.detail}`;
+      // 到着・退室系は両方に含めてOK
+      if (/到着|挨拶|退室|訪問開始/.test(step.item)) return true;
+      const hasBodyKW = BODY_KW.test(text);
+      const hasHouseKW = HOUSE_KW.test(text);
+      if (isBody && hasHouseKW && !hasBodyKW) {
+        console.log(`[CareProcedure] 混在除去: 身体介護ブロックから家事項目「${step.item}」を除外`);
+        return false;
+      }
+      if (isHouse && hasBodyKW && !hasHouseKW) {
+        console.log(`[CareProcedure] 混在除去: 家事援助ブロックから身体項目「${step.item}」を除外`);
+        return false;
+      }
+      return true;
+    });
+    if (before !== proc.steps.length) {
+      console.log(`[CareProcedure] ${proc.service_type}: ${before}件→${proc.steps.length}件（混在除去）`);
+    }
+  }
+
+  // === service_type と実際のステップ内容の不一致を検出・修正 ===
+  for (const proc of manual.procedures) {
+    const st = (proc.service_type || '').replace(/\s+/g, '');
+    if (st.includes('重度')) continue;
+    const currentIsBody = st.includes('身体');
+    const currentIsHouse = st.includes('家事') || st.includes('生活');
+    if (!currentIsBody && !currentIsHouse) continue;
+
+    let bodyCount = 0;
+    let houseCount = 0;
+    for (const step of proc.steps) {
+      const text = `${step.item} ${step.detail}`;
+      if (BODY_KW.test(text)) bodyCount++;
+      if (HOUSE_KW.test(text)) houseCount++;
+    }
+
+    if (currentIsBody && houseCount > bodyCount && houseCount > proc.steps.length / 2) {
+      console.log(`[CareProcedure] service_type修正: 「${proc.service_type}」→「家事援助」（身体KW=${bodyCount}, 家事KW=${houseCount}/${proc.steps.length}件）`);
+      proc.service_type = '家事援助';
+    } else if (currentIsHouse && bodyCount > houseCount && bodyCount > proc.steps.length / 2) {
+      console.log(`[CareProcedure] service_type修正: 「${proc.service_type}」→「身体介護」（身体KW=${bodyCount}, 家事KW=${houseCount}/${proc.steps.length}件）`);
+      proc.service_type = '身体介護';
+    }
+  }
+
   // === バイタルチェック必須ステップの後処理 ===
   for (const proc of manual.procedures) {
     const hasVital = proc.steps.some(s =>

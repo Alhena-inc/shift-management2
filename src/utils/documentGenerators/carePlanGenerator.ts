@@ -1159,8 +1159,10 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
   }
 
   // === サービス内容の種別混在を修正（後処理バリデーション） ===
-  const BODY_KEYWORDS = /服薬|排泄|入浴|更衣|整容|移乗|移動介助|バイタル|体調確認|食事介助|口腔ケア|清拭|体位/;
-  const HOUSE_KEYWORDS = /調理|配膳|片付|掃除|洗濯|買い物|環境整備|ゴミ|献立|食材/;
+  // 身体介護として説明可能な項目のキーワード（体調確認・バイタル・服薬等）
+  const BODY_KEYWORDS = /服薬|排泄|入浴|更衣|整容|移乗|移動介助|バイタル|体調確認|体調|食事介助|口腔ケア|清拭|体位|見守り|安全確認|血圧|体温|脈拍|SpO2/;
+  // 家事援助として説明可能な項目のキーワード（調理・掃除・洗濯等）
+  const HOUSE_KEYWORDS = /調理|配膳|片付|掃除|洗濯|買い物|環境整備|ゴミ|献立|食材|台所|食器|キッチン|居室整理|シンク|コンロ/;
   for (let i = 1; i <= 4; i++) {
     const service = plan[`service${i}` as keyof CarePlan] as ServiceBlock | null;
     if (!service || service.steps.length === 0) continue;
@@ -1174,11 +1176,13 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
     const before = service.steps.length;
     service.steps = service.steps.filter(step => {
       const text = `${step.item} ${step.content}`;
-      if (isBodyBlock && HOUSE_KEYWORDS.test(text) && !BODY_KEYWORDS.test(text)) {
+      const hasBodyKW = BODY_KEYWORDS.test(text);
+      const hasHouseKW = HOUSE_KEYWORDS.test(text);
+      if (isBodyBlock && hasHouseKW && !hasBodyKW) {
         console.log(`[CarePlan] 混在除去: 身体介護ブロックから家事項目「${step.item}」を除外`);
         return false;
       }
-      if (isHouseBlock && BODY_KEYWORDS.test(text) && !HOUSE_KEYWORDS.test(text)) {
+      if (isHouseBlock && hasBodyKW && !hasHouseKW) {
         console.log(`[CarePlan] 混在除去: 家事援助ブロックから身体項目「${step.item}」を除外`);
         return false;
       }
@@ -1190,6 +1194,43 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
     }
     if (before !== service.steps.length) {
       console.log(`[CarePlan] サービス${i}(${st}): ${before}件→${service.steps.length}件（混在除去）`);
+    }
+  }
+
+  // === service_type と実際のステップ内容の不一致を検出・修正 ===
+  // AIが service_type を誤って返す場合がある（例: 家事援助内容なのに service_type="身体介護"）
+  // 混在除去後に残ったステップの内容から、ブロックの実際の種別を再判定し、service_type を修正する
+  for (let i = 1; i <= 4; i++) {
+    const service = plan[`service${i}` as keyof CarePlan] as ServiceBlock | null;
+    if (!service || service.steps.length === 0) continue;
+    const st = (service.service_type || '').replace(/\s+/g, '');
+    if (st.includes('重度')) continue;
+
+    // 全ステップのテキストから、身体介護/家事援助のキーワード出現数を集計
+    let bodyCount = 0;
+    let houseCount = 0;
+    for (const step of service.steps) {
+      const text = `${step.item} ${step.content}`;
+      if (BODY_KEYWORDS.test(text)) bodyCount++;
+      if (HOUSE_KEYWORDS.test(text)) houseCount++;
+    }
+
+    const currentIsBody = st.includes('身体');
+    const currentIsHouse = st.includes('家事') || st.includes('生活');
+
+    // ステップの過半数が反対側の種別に該当する場合、service_type を修正
+    if (currentIsBody && houseCount > bodyCount && houseCount > service.steps.length / 2) {
+      console.log(`[CarePlan] service_type修正: サービス${i} 「${service.service_type}」→「家事援助」（身体KW=${bodyCount}, 家事KW=${houseCount}/${service.steps.length}件）`);
+      service.service_type = '家事援助';
+      for (const step of service.steps) {
+        step.category = '家事援助';
+      }
+    } else if (currentIsHouse && bodyCount > houseCount && bodyCount > service.steps.length / 2) {
+      console.log(`[CarePlan] service_type修正: サービス${i} 「${service.service_type}」→「身体介護」（身体KW=${bodyCount}, 家事KW=${houseCount}/${service.steps.length}件）`);
+      service.service_type = '身体介護';
+      for (const step of service.steps) {
+        step.category = '身体介護';
+      }
     }
   }
 
@@ -1228,6 +1269,18 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
       });
       if (before !== service.steps.length) {
         console.log(`[CarePlan] サービス${i}(${st}): ${before}件→${service.steps.length}件（ADL根拠フィルタ）`);
+      }
+    }
+  }
+
+  // === 援助項目(item)の文字数制約: 15文字以内 ===
+  const MAX_ITEM_LEN = 15;
+  for (let i = 1; i <= 4; i++) {
+    const service = plan[`service${i}` as keyof CarePlan] as ServiceBlock | null;
+    if (!service || service.steps.length === 0) continue;
+    for (const step of service.steps) {
+      if (step.item && step.item.length > MAX_ITEM_LEN) {
+        step.item = step.item.substring(0, MAX_ITEM_LEN);
       }
     }
   }
@@ -1545,16 +1598,18 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
     if (steps.length === 0) {
       // 何もしない — 全てfalseのまま
     } else {
-      // 1. service_typeから全種別を判定（最優先）
+      // 1. service_typeから全種別を判定（最優先・最終権限）
       if (service?.service_type) {
         const stFlags = serviceTypeToCheckFlags(service.service_type);
         Object.assign(blockFlags, stFlags);
       }
-      // 2. ステップのcategoryからも補完
-      if (bodySteps.length > 0) blockFlags.body = true;
-      if (houseSteps.length > 0) blockFlags.house = true;
-      // 3. categoryが付いていないステップがある場合、キーワードから推定
-      if (!blockFlags.body && !blockFlags.house && otherSteps.length > 0) {
+      // 2. service_typeがない場合のみ、categoryやキーワードでフォールバック
+      if (!blockFlags.body && !blockFlags.house && !blockFlags.heavy) {
+        if (bodySteps.length > 0) blockFlags.body = true;
+        if (houseSteps.length > 0) blockFlags.house = true;
+      }
+      // 3. categoryもなく、service_typeもない場合のみ、キーワードから推定
+      if (!blockFlags.body && !blockFlags.house && !blockFlags.heavy && otherSteps.length > 0) {
         const allText = steps.map(s => `${s.item} ${s.content}`).join(' ');
         if (/排泄|入浴|移動|更衣|整容|体調|バイタル|介助|服薬|移乗|清拭|体位|口腔/.test(allText)) blockFlags.body = true;
         if (/掃除|洗濯|調理|買い物|配膳|片付|ゴミ|献立|食材|環境整備/.test(allText)) blockFlags.house = true;

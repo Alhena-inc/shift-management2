@@ -1269,7 +1269,7 @@ export async function executeCatchUpGeneration(
           fileName: `居宅介護計画書_${client.name}_${step.year}年${step.month}月.xlsx`,
           year: step.year, month: step.month, status: '生成',
           reason: step.revisionReason
-            ? `${step.revisionReason}。モニタリング結果を踏まえ目標・支援内容を見直し（短期目標${currentShortTermMonths}ヶ月/長期目標${currentLongTermMonths}ヶ月）`
+            ? `${step.revisionReason}（短期目標${currentShortTermMonths}ヶ月/長期目標${currentLongTermMonths}ヶ月）`
             : `契約開始に伴う初回計画書の作成。アセスメントに基づき短期目標（${currentShortTermMonths}ヶ月）・長期目標（${currentLongTermMonths}ヶ月）を設定`,
         });
         // 手順書のログ記録（計画書の後）
@@ -1461,6 +1461,17 @@ function schedulePostMonitoringPlan(
   if (!exists) {
     // 手順書はパターン変更がある場合のみ再作成
     const skipTejunsho = !patternChanged;
+    const planCreationDate = avoidNewYear(new Date(monitoringStep.year, monitoringStep.month - 1, 1));
+    const planCreationDateStr = toDateString(planCreationDate);
+
+    // 年末年始回避で作成日が前月に寄った場合、「モニタリング後」ではなく前倒し作成と説明する
+    const planMonth = planCreationDate.getMonth() + 1;
+    const planYear = planCreationDate.getFullYear();
+    const isShiftedBack = (planYear !== monitoringStep.year || planMonth !== monitoringStep.month);
+    const revisionReason = isShiftedBack
+      ? `短期目標期限到来に伴う計画更新（年末年始回避のため${planYear}年${planMonth}月${planCreationDate.getDate()}日に前倒し作成）`
+      : `モニタリング(${monitoringStep.year}年${monitoringStep.month}月)後の計画更新`;
+
     queue.push({
       type: 'plan',
       year: monitoringStep.year,
@@ -1469,8 +1480,8 @@ function schedulePostMonitoringPlan(
         ? `計画書(${monitoringStep.year}年${monitoringStep.month}月・モニタリング後)`
         : `計画書+手順書(${monitoringStep.year}年${monitoringStep.month}月・モニタリング後・パターン変更)`,
       periodStart: monitoringStep.periodStart,
-      planCreationDate: toDateString(avoidNewYear(new Date(monitoringStep.year, monitoringStep.month - 1, 1))),
-      revisionReason: `モニタリング(${monitoringStep.year}年${monitoringStep.month}月)後の計画更新`,
+      planCreationDate: planCreationDateStr,
+      revisionReason,
       skipTejunsho,
       goalContinuation,
     });

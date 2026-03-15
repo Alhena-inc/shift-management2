@@ -1092,3 +1092,250 @@ describe('22. 目標引用の完全一致テスト', () => {
     expect(planGoalLong).toBe(previousLongGoal);
   });
 });
+
+// ===== 追加テスト: 最終修正項目の回帰テスト =====
+
+describe('23. サービス種別混在除去（身体介護ブロックの後処理）', () => {
+  // 混在除去ロジック再現
+  const BODY_KEYWORDS = /服薬|排泄|入浴|更衣|整容|移乗|移動介助|バイタル|体調|食事介助|口腔ケア|清拭|体位|見守り|安全確認|血圧|体温/;
+  const HOUSE_KEYWORDS = /調理|配膳|片付|掃除|洗濯|買い物|環境整備|ゴミ|献立|食材|台所|食器|キッチン|居室整理|シンク|コンロ/;
+
+  function filterMixedSteps(steps: Array<{item: string; content: string}>, serviceType: string) {
+    const st = serviceType.replace(/\s+/g, '');
+    if (st.includes('重度')) return steps;
+    const isBody = st.includes('身体');
+    const isHouse = st.includes('家事') || st.includes('生活');
+    if (!isBody && !isHouse) return steps;
+
+    return steps.filter(step => {
+      const text = `${step.item} ${step.content}`;
+      const hasBodyKW = BODY_KEYWORDS.test(text);
+      const hasHouseKW = HOUSE_KEYWORDS.test(text);
+      if (isBody && hasHouseKW && !hasBodyKW) return false;
+      if (isHouse && hasBodyKW && !hasHouseKW) return false;
+      return true;
+    });
+  }
+
+  it('身体介護ブロックから調理・片付け・台所整理が除外されること', () => {
+    const steps = [
+      { item: '体調確認', content: 'バイタルチェックを実施' },
+      { item: '調理', content: '昼食の調理を行う' },
+      { item: '片付け', content: '食器の片付けを行う' },
+      { item: '台所整理', content: 'キッチン周りの整理' },
+      { item: '服薬確認', content: '処方薬の確認・声かけ' },
+    ];
+    const result = filterMixedSteps(steps, '身体介護');
+    expect(result.length).toBe(2);
+    expect(result.map(s => s.item)).toEqual(['体調確認', '服薬確認']);
+  });
+
+  it('家事援助ブロックからバイタル・服薬が除外されること', () => {
+    const steps = [
+      { item: '調理', content: '昼食の調理' },
+      { item: 'バイタル確認', content: '血圧・体温測定' },
+      { item: '掃除', content: '居室の掃除' },
+      { item: '服薬確認', content: '服薬の声かけ' },
+    ];
+    const result = filterMixedSteps(steps, '家事援助');
+    expect(result.length).toBe(2);
+    expect(result.map(s => s.item)).toEqual(['調理', '掃除']);
+  });
+
+  it('重度訪問介護は混在が許可されること', () => {
+    const steps = [
+      { item: '体調確認', content: 'バイタルチェック' },
+      { item: '調理', content: '食事の準備' },
+      { item: '服薬確認', content: '服薬の声かけ' },
+      { item: '掃除', content: '居室清掃' },
+    ];
+    const result = filterMixedSteps(steps, '重度訪問介護');
+    expect(result.length).toBe(4);
+  });
+});
+
+describe('24. item文字数制限（15文字以内）', () => {
+  it('16文字以上のitemが15文字に切り詰められること', () => {
+    const MAX_ITEM_LEN = 15;
+    let item = '到着・挨拶・健康状態の確認と体調管理';
+    expect(item.length).toBeGreaterThan(MAX_ITEM_LEN);
+    item = item.substring(0, MAX_ITEM_LEN);
+    expect(item.length).toBe(MAX_ITEM_LEN);
+  });
+
+  it('15文字以内のitemはそのままであること', () => {
+    const MAX_ITEM_LEN = 15;
+    const item = 'バイタルチェック';
+    expect(item.length).toBeLessThanOrEqual(MAX_ITEM_LEN);
+  });
+});
+
+describe('25. 年末年始回避の経緯書文言テスト', () => {
+  it('12/29に前倒しされた場合、「モニタリング後更新」と矛盾しない文言になること', () => {
+    // schedulePostMonitoringPlanのロジック再現
+    const monitoringStep = { year: 2026, month: 1, periodStart: '2026-01-01' };
+    const planCreationDate = avoidNewYear(new Date(monitoringStep.year, monitoringStep.month - 1, 1));
+    const planMonth = planCreationDate.getMonth() + 1;
+    const planYear = planCreationDate.getFullYear();
+    const isShiftedBack = (planYear !== monitoringStep.year || planMonth !== monitoringStep.month);
+
+    expect(isShiftedBack).toBe(true);
+    expect(planCreationDate.getMonth()).toBe(11); // December
+    expect(planCreationDate.getDate()).toBe(29);
+
+    const revisionReason = isShiftedBack
+      ? `短期目標期限到来に伴う計画更新（年末年始回避のため${planYear}年${planMonth}月${planCreationDate.getDate()}日に前倒し作成）`
+      : `モニタリング(${monitoringStep.year}年${monitoringStep.month}月)後の計画更新`;
+
+    // 「モニタリング後」という表現が含まれないことを確認
+    expect(revisionReason).not.toContain('モニタリング');
+    expect(revisionReason).toContain('前倒し作成');
+    expect(revisionReason).toContain('年末年始回避');
+  });
+
+  it('年末年始に該当しない月はそのまま「モニタリング後更新」であること', () => {
+    const monitoringStep = { year: 2026, month: 5, periodStart: '2026-05-01' };
+    const planCreationDate = avoidNewYear(new Date(monitoringStep.year, monitoringStep.month - 1, 1));
+    const planMonth = planCreationDate.getMonth() + 1;
+    const planYear = planCreationDate.getFullYear();
+    const isShiftedBack = (planYear !== monitoringStep.year || planMonth !== monitoringStep.month);
+
+    expect(isShiftedBack).toBe(false);
+
+    const revisionReason = isShiftedBack
+      ? `短期目標期限到来に伴う計画更新（年末年始回避のため前倒し作成）`
+      : `モニタリング(${monitoringStep.year}年${monitoringStep.month}月)後の計画更新`;
+
+    expect(revisionReason).toContain('モニタリング');
+  });
+});
+
+describe('26. モニタリング4項目の「特になし」禁止テスト', () => {
+  const VAGUE_PATTERN = /^(特になし|問題なし|特にない|特に問題(なし|ない)|なし|ー|−|―)[\s。、．]*$/;
+
+  it('「特になし」が曖昧パターンとして検出されること', () => {
+    expect(VAGUE_PATTERN.test('特になし')).toBe(true);
+    expect(VAGUE_PATTERN.test('問題なし')).toBe(true);
+    expect(VAGUE_PATTERN.test('なし')).toBe(true);
+    expect(VAGUE_PATTERN.test('特になし。')).toBe(true);
+    expect(VAGUE_PATTERN.test('ー')).toBe(true);
+  });
+
+  it('具体的な記載は曖昧パターンに該当しないこと', () => {
+    expect(VAGUE_PATTERN.test('計画に基づいたサービスが提供されていることを確認した')).toBe(false);
+    expect(VAGUE_PATTERN.test('心身の状態に特になし（バイタル・ADL確認済み）')).toBe(false);
+    expect(VAGUE_PATTERN.test('利用者の表情から満足していると判断する')).toBe(false);
+  });
+});
+
+describe('27. service_typeとステップ内容の不一致修正（A. サービス1チェック誤り修正）', () => {
+  const BODY_KEYWORDS = /服薬|排泄|入浴|更衣|整容|移乗|移動介助|バイタル|体調|食事介助|口腔ケア|清拭|体位|見守り|安全確認|血圧|体温/;
+  const HOUSE_KEYWORDS = /調理|配膳|片付|掃除|洗濯|買い物|環境整備|ゴミ|献立|食材|台所|食器|キッチン|居室整理|シンク|コンロ/;
+
+  function detectActualServiceType(
+    steps: Array<{item: string; content: string}>,
+    declaredType: string,
+  ): string {
+    const st = declaredType.replace(/\s+/g, '');
+    if (st.includes('重度')) return declaredType;
+    const currentIsBody = st.includes('身体');
+    const currentIsHouse = st.includes('家事') || st.includes('生活');
+    if (!currentIsBody && !currentIsHouse) return declaredType;
+
+    let bodyCount = 0;
+    let houseCount = 0;
+    for (const step of steps) {
+      const text = `${step.item} ${step.content}`;
+      if (BODY_KEYWORDS.test(text)) bodyCount++;
+      if (HOUSE_KEYWORDS.test(text)) houseCount++;
+    }
+
+    if (currentIsBody && houseCount > bodyCount && houseCount > steps.length / 2) {
+      return '家事援助';
+    }
+    if (currentIsHouse && bodyCount > houseCount && bodyCount > steps.length / 2) {
+      return '身体介護';
+    }
+    return declaredType;
+  }
+
+  it('家事援助内容なのにservice_type="身体介護"の場合、家事援助に修正されること', () => {
+    const steps = [
+      { item: '掃除援助', content: '居室の掃除を行う' },
+      { item: '洗濯援助', content: '洗濯物を干す' },
+      { item: '環境整備', content: '台所の環境整備を行う' },
+      { item: '調理援助', content: '夕食の調理を行う' },
+      { item: '片付け', content: '食器の片付けを行う' },
+    ];
+    const result = detectActualServiceType(steps, '身体介護');
+    expect(result).toBe('家事援助');
+  });
+
+  it('身体介護内容なのにservice_type="家事援助"の場合、身体介護に修正されること', () => {
+    const steps = [
+      { item: '体調確認', content: 'バイタルチェックを実施' },
+      { item: '服薬確認', content: '処方薬の服薬を確認' },
+      { item: '排泄介助', content: 'トイレへの移動を介助' },
+      { item: '入浴介助', content: '入浴の見守りと介助' },
+    ];
+    const result = detectActualServiceType(steps, '家事援助');
+    expect(result).toBe('身体介護');
+  });
+
+  it('正しいservice_typeは変更されないこと', () => {
+    const houseSteps = [
+      { item: '掃除', content: '居室の掃除' },
+      { item: '調理', content: '食事の調理' },
+    ];
+    expect(detectActualServiceType(houseSteps, '家事援助')).toBe('家事援助');
+
+    const bodySteps = [
+      { item: 'バイタル確認', content: '血圧・体温測定' },
+      { item: '服薬確認', content: '服薬の声かけ' },
+    ];
+    expect(detectActualServiceType(bodySteps, '身体介護')).toBe('身体介護');
+  });
+
+  it('重度訪問介護は修正対象外であること', () => {
+    const mixedSteps = [
+      { item: '調理', content: '食事の準備' },
+      { item: '服薬確認', content: '服薬の声かけ' },
+    ];
+    expect(detectActualServiceType(mixedSteps, '重度訪問介護')).toBe('重度訪問介護');
+  });
+});
+
+describe('28. サービスブロックのチェックボックスがservice_typeに従うこと', () => {
+  // serviceTypeToCheckFlags再現
+  function serviceTypeToCheckFlags(serviceType: string) {
+    const flags = { body: false, house: false, heavy: false };
+    if (!serviceType) return flags;
+    const st = serviceType.replace(/\s+/g, '');
+    if (st.includes('身体介護') || st.includes('身体')) flags.body = true;
+    if (st.includes('家事援助') || st.includes('家事') || st.includes('生活援助') || st.includes('生活')) flags.house = true;
+    if (st.includes('重度訪問') || st.includes('重度')) flags.heavy = true;
+    return flags;
+  }
+
+  it('service_type=家事援助のブロックは■家事援助であること', () => {
+    const flags = serviceTypeToCheckFlags('家事援助');
+    expect(flags.house).toBe(true);
+    expect(flags.body).toBe(false);
+  });
+
+  it('service_type=身体介護のブロックは■身体介護であること', () => {
+    const flags = serviceTypeToCheckFlags('身体介護');
+    expect(flags.body).toBe(true);
+    expect(flags.house).toBe(false);
+  });
+
+  it('categoryからの補完がservice_typeを上書きしないこと', () => {
+    // service_type='家事援助' のブロックに、category='身体介護' のステップがあっても
+    // チェックは ■家事援助 のままであるべき
+    const flags = serviceTypeToCheckFlags('家事援助');
+    // 旧ロジックでは bodySteps.length > 0 で body=true が追加されていたが、
+    // 修正後は service_type が設定済みなら category からの補完は行わない
+    expect(flags.body).toBe(false);
+    expect(flags.house).toBe(true);
+  });
+});

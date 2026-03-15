@@ -895,6 +895,22 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     procedure_check: (rawJson.procedure_check as string) || '手順書の内容を確認した結果、変更は不要と判断した。',
   };
 
+  // === 「特になし」「問題なし」のみの記載を後処理で具体化 ===
+  const VAGUE_PATTERN = /^(特になし|問題なし|特にない|特に問題(なし|ない)|なし|ー|−|―)[\s。、．]*$/;
+  const reasonFields: Array<{ key: keyof MonitoringResult; fallback: string }> = [
+    { key: 'service_reason', fallback: '計画に基づいたサービスが各曜日に提供されていることを確認した。' },
+    { key: 'satisfaction_reason', fallback: '利用者の表情・言動等から、提供サービスに対し満足していると判断する。' },
+    { key: 'condition_detail', fallback: '身体状況・精神状態について確認し、前回モニタリング時と比較して著変なし。' },
+    { key: 'service_change_reason', fallback: '確認した結果、現行サービス内容で対応可能であり変更なし。' },
+  ];
+  for (const { key, fallback } of reasonFields) {
+    const val = result[key] as string;
+    if (!val || VAGUE_PATTERN.test(val.trim())) {
+      console.log(`[Monitoring] 後処理: ${key}が曖昧（"${val}"）→ 具体的な文言に補正`);
+      (result as unknown as Record<string, unknown>)[key] = fallback;
+    }
+  }
+
   // 実績パターン変更が検知されている場合: ④サービス変更の必要性を強制的に「変更あり」にする
   if (ctx.billingPatternChanged) {
     const aiSaidNoChange = result.service_change === 1;
