@@ -895,6 +895,27 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     procedure_check: (rawJson.procedure_check as string) || '手順書の内容を確認した結果、変更は不要と判断した。',
   };
 
+  // === AI生成文の誤字修正 ===
+  const TYPO_FIXES: Array<[RegExp, string]> = [
+    [/臨機応援/g, '臨機応変'],
+    [/臨機応編/g, '臨機応変'],
+  ];
+  const textFields: Array<keyof MonitoringResult> = [
+    'service_reason', 'satisfaction_reason', 'condition_detail',
+    'service_change_reason', 'goal_evaluation', 'procedure_check',
+  ];
+  for (const field of textFields) {
+    let val = result[field] as string;
+    if (!val) continue;
+    for (const [pattern, replacement] of TYPO_FIXES) {
+      if (pattern.test(val)) {
+        console.log(`[Monitoring] 誤字修正: ${field} "${val.match(pattern)?.[0]}" → "${replacement}"`);
+        val = val.replace(pattern, replacement);
+        (result as unknown as Record<string, unknown>)[field] = val;
+      }
+    }
+  }
+
   // === 「特になし」「問題なし」のみの記載を後処理で具体化 ===
   const VAGUE_PATTERN = /^(特になし|問題なし|特にない|特に問題(なし|ない)|なし|ー|−|―)[\s。、．]*$/;
   const reasonFields: Array<{ key: keyof MonitoringResult; fallback: string }> = [
@@ -922,30 +943,63 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     console.log(`[Monitoring] 実績パターン変更検知 → ④サービス変更=2（変更あり）に強制設定`);
   }
 
-  // 目標文言の引用検証: goal_evaluationに計画書の目標文言が含まれているか確認
-  // 含まれていなければ強制的に計画書の目標文言で書き換える
+  // 目標文言の引用検証: goal_evaluationが直前計画書の目標を正確に引用しているか確認
+  // 不一致の場合は強制的に正しい目標文言で再構築する
   try {
     const goalPeriods = await loadGoalPeriods(client.id);
     const activeShort = goalPeriods.find((g: any) => g.isActive && g.goalType === 'short_term' && g.goalText);
     const activeLong = goalPeriods.find((g: any) => g.isActive && g.goalType === 'long_term' && g.goalText);
     let goalEval = result.goal_evaluation;
-    if (activeShort?.goalText && !goalEval.includes(activeShort.goalText)) {
-      console.warn(`[Monitoring] ⚠ goal_evaluationに計画書の短期目標文言が含まれていません。強制修正します。`);
-      console.warn(`[Monitoring]   計画書短期目標: "${activeShort.goalText}"`);
-      // AI出力の『…』部分を計画書の目標文言に置換
-      goalEval = goalEval.replace(/短期目標『[^』]*』/, `短期目標『${activeShort.goalText}』`);
-      // それでも含まれない場合は冒頭に追加
+
+    // 短期目標の引用修正
+    if (activeShort?.goalText) {
       if (!goalEval.includes(activeShort.goalText)) {
-        goalEval = `短期目標『${activeShort.goalText}』について、${goalEval}`;
+        console.warn(`[Monitoring] ⚠ goal_evaluationに計画書の短期目標文言が含まれていません。強制修正します。`);
+        console.warn(`[Monitoring]   計画書短期目標: "${activeShort.goalText}"`);
+        // Step 1: 『…』形式の引用を置換（引用符バリエーションに対応）
+        let replaced = goalEval.replace(/短期目標[『「「][^』」」]*[』」」]/, `短期目標『${activeShort.goalText}』`);
+        if (!replaced.includes(activeShort.goalText)) {
+          // Step 2: 「短期目標…について」等のパターンも試行
+          replaced = goalEval.replace(/短期目標[^。、]*?について/, `短期目標『${activeShort.goalText}』について`);
+        }
+        if (replaced.includes(activeShort.goalText)) {
+          goalEval = replaced;
+        } else {
+          // Step 3: AI出力から短期目標の評価部分を抽出して再構築
+          const shortEvalBody = goalEval.match(/短期[^。]*?(継続|達成|維持|安定|変更)[^。]*。/)?.[0] || '';
+          const shortVerdict = /達成/.test(shortEvalBody) ? '達成' : /変更/.test(shortEvalBody) ? '変更' : '継続';
+          const shortReasoning = shortEvalBody
+            ? shortEvalBody.replace(/短期目標[^、。]*?について[、,]?\s*/, '')
+            : '現在のサービス提供により安定した状態が維持されている。';
+          goalEval = goalEval.replace(/短期[^。]*?(継続する|達成した|変更する)[^。]*。/, '').trim();
+          const shortSection = shortVerdict === '継続'
+            ? `短期目標『${activeShort.goalText}』について、${shortReasoning.replace(/。$/, '')}ため、目標を継続する。`
+            : `短期目標『${activeShort.goalText}』について、${shortReasoning}`;
+          goalEval = shortSection + (goalEval ? ' ' + goalEval : '');
+        }
       }
     }
-    if (activeLong?.goalText && !goalEval.includes(activeLong.goalText)) {
-      console.warn(`[Monitoring] ⚠ goal_evaluationに計画書の長期目標文言が含まれていません。強制修正します。`);
-      goalEval = goalEval.replace(/長期目標『[^』]*』/, `長期目標『${activeLong.goalText}』`);
+
+    // 長期目標の引用修正
+    if (activeLong?.goalText) {
       if (!goalEval.includes(activeLong.goalText)) {
-        goalEval += ` 長期目標『${activeLong.goalText}』について、現状維持で継続する。`;
+        console.warn(`[Monitoring] ⚠ goal_evaluationに計画書の長期目標文言が含まれていません。強制修正します。`);
+        // Step 1: 『…』形式の引用を置換
+        let replaced = goalEval.replace(/長期目標[『「「][^』」」]*[』」」]/, `長期目標『${activeLong.goalText}』`);
+        if (!replaced.includes(activeLong.goalText)) {
+          replaced = goalEval.replace(/長期目標[^。、]*?について/, `長期目標『${activeLong.goalText}』について`);
+        }
+        if (replaced.includes(activeLong.goalText)) {
+          goalEval = replaced;
+        } else {
+          // 長期目標の評価を末尾に追加
+          const longEvalBody = goalEval.match(/長期[^。]*?(継続|達成|維持|安定|変更)[^。]*。/)?.[0] || '';
+          goalEval = goalEval.replace(/長期[^。]*?(継続する|達成した|変更する)[^。]*。/, '').trim();
+          goalEval += ` 長期目標『${activeLong.goalText}』について、長期的な視点で支援を継続しており、現状維持で目標を継続する。`;
+        }
       }
     }
+
     result.goal_evaluation = goalEval;
   } catch (err) {
     console.warn('[Monitoring] 目標引用検証に失敗:', err);

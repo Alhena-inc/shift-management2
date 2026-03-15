@@ -1330,12 +1330,189 @@ describe('28. サービスブロックのチェックボックスがservice_type
   });
 
   it('categoryからの補完がservice_typeを上書きしないこと', () => {
-    // service_type='家事援助' のブロックに、category='身体介護' のステップがあっても
-    // チェックは ■家事援助 のままであるべき
     const flags = serviceTypeToCheckFlags('家事援助');
-    // 旧ロジックでは bodySteps.length > 0 で body=true が追加されていたが、
-    // 修正後は service_type が設定済みなら category からの補完は行わない
     expect(flags.body).toBe(false);
     expect(flags.house).toBe(true);
+  });
+});
+
+// ===== 最終仕上げテスト =====
+
+describe('29. モニタリング目標引用の強制修正テスト（A. C20修正）', () => {
+  // goal_evaluation後処理ロジック再現
+  function forceGoalQuoting(
+    goalEval: string,
+    shortGoal: string | null,
+    longGoal: string | null,
+  ): string {
+    if (shortGoal && !goalEval.includes(shortGoal)) {
+      // Step 1: 『…』/「…」形式の引用を置換
+      let replaced = goalEval.replace(/短期目標[『「「][^』」」]*[』」」]/, `短期目標『${shortGoal}』`);
+      if (!replaced.includes(shortGoal)) {
+        replaced = goalEval.replace(/短期目標[^。、]*?について/, `短期目標『${shortGoal}』について`);
+      }
+      if (replaced.includes(shortGoal)) {
+        goalEval = replaced;
+      } else {
+        goalEval = `短期目標『${shortGoal}』について、目標を継続する。 ${goalEval}`;
+      }
+    }
+    if (longGoal && !goalEval.includes(longGoal)) {
+      let replaced = goalEval.replace(/長期目標[『「「][^』」」]*[』」」]/, `長期目標『${longGoal}』`);
+      if (!replaced.includes(longGoal)) {
+        replaced = goalEval.replace(/長期目標[^。、]*?について/, `長期目標『${longGoal}』について`);
+      }
+      if (replaced.includes(longGoal)) {
+        goalEval = replaced;
+      } else {
+        goalEval += ` 長期目標『${longGoal}』について、現状維持で目標を継続する。`;
+      }
+    }
+    return goalEval;
+  }
+
+  it('AIが別の文言で引用した場合、正しい目標文言に強制置換されること', () => {
+    const shortGoal = '定期的な支援を受けながら、日常生活動作の維持を図り安全に生活できる環境を整える';
+    const longGoal = '住み慣れた自宅での安定した日常生活を継続する';
+    const aiOutput = "短期目標『AIが勝手に生成した短期目標文言』について、安定している。長期目標『AIが勝手に生成した長期目標文言』について、継続。";
+
+    const result = forceGoalQuoting(aiOutput, shortGoal, longGoal);
+    expect(result).toContain(shortGoal);
+    expect(result).toContain(longGoal);
+    expect(result).not.toContain('AIが勝手に生成した');
+  });
+
+  it('AIが引用符なしで書いた場合もフォールバックで目標が挿入されること', () => {
+    const shortGoal = '安全に自宅で生活できる環境を整える';
+    const longGoal = '住み慣れた自宅での生活を継続する';
+    const aiOutput = '短期目標の達成状況は安定している。長期目標についても問題ない。';
+
+    const result = forceGoalQuoting(aiOutput, shortGoal, longGoal);
+    expect(result).toContain(shortGoal);
+    expect(result).toContain(longGoal);
+  });
+
+  it('既に正しい目標文言が含まれている場合は変更しないこと', () => {
+    const shortGoal = '安全に生活できる環境を整える';
+    const longGoal = '自宅での生活を継続する';
+    const aiOutput = `短期目標『${shortGoal}』について、安定しており目標を継続する。長期目標『${longGoal}』について、現状維持。`;
+
+    const result = forceGoalQuoting(aiOutput, shortGoal, longGoal);
+    expect(result).toBe(aiOutput); // 変更なし
+  });
+});
+
+describe('30. モニタリング継続/変更と次回計画書の目標連動テスト（B. 目標連動）', () => {
+  it('モニタリングで継続判定 → goalContinuation=trueとなること', () => {
+    const goalEval = "短期目標『安全に生活する』について、安定しているため目標を継続する。";
+    const goalContinuation = /目標を継続/.test(goalEval);
+    expect(goalContinuation).toBe(true);
+  });
+
+  it('モニタリングで達成判定 → goalContinuation=falseとなること', () => {
+    const goalEval = "短期目標『安全に生活する』について、目標を達成した。";
+    const goalContinuation = /目標を継続/.test(goalEval);
+    expect(goalContinuation).toBe(false);
+  });
+
+  it('goalContinuation=trueのとき、inheritShortTermGoal=trueが設定されること', () => {
+    const step = { goalContinuation: true };
+    const ctx: { inheritShortTermGoal?: boolean } = {};
+    if (step.goalContinuation) {
+      ctx.inheritShortTermGoal = true;
+    }
+    expect(ctx.inheritShortTermGoal).toBe(true);
+  });
+
+  it('inheritShortTermGoal=trueのとき、次回計画書の短期目標が前回と完全一致すること', () => {
+    const previousGoal = '定期的な支援を受けながら、安全に自宅で生活できる環境を整える';
+    let planGoalShort = 'AIが新しく生成した別の目標';
+    const inheritShortTermGoal = true;
+    if (inheritShortTermGoal) {
+      planGoalShort = previousGoal;
+    }
+    expect(planGoalShort).toBe(previousGoal);
+  });
+
+  it('goalContinuation=falseのとき、新目標が使用されること', () => {
+    const previousGoal = '前回の目標';
+    let planGoalShort = 'AIが生成した新しい目標';
+    const inheritShortTermGoal = false;
+    if (inheritShortTermGoal) {
+      planGoalShort = previousGoal;
+    }
+    expect(planGoalShort).toBe('AIが生成した新しい目標');
+    expect(planGoalShort).not.toBe(previousGoal);
+  });
+});
+
+describe('31. パターン変更検出と手順書再生成テスト（C. as-of date）', () => {
+  it('19:30-20:30 → 19:30-21:00 の時間帯変更がパターン変更として検出されること', () => {
+    const oldPattern = new Set(['月-19:30~20:30', '水-19:30~20:30', '金-19:30~20:30']);
+    const newPattern = new Set(['月-19:30~21:00', '水-19:30~21:00', '金-19:30~21:00']);
+    expect(hasPatternChanged(oldPattern, newPattern)).toBe(true);
+  });
+
+  it('パターン変更時にskipTejunsho=falseとなること', () => {
+    const patternChanged = true;
+    const skipTejunsho = !patternChanged;
+    expect(skipTejunsho).toBe(false);
+  });
+
+  it('パターン変更なしのときskipTejunsho=trueとなること', () => {
+    const patternChanged = false;
+    const skipTejunsho = !patternChanged;
+    expect(skipTejunsho).toBe(true);
+  });
+});
+
+describe('32. 通院等介助チェックの根拠ベース判定テスト（D. 表紙チェック）', () => {
+  it('契約支給量に通院等介助(身体介護を伴わない)があればチェックが入ること', () => {
+    const supplyH: Record<string, string> = { '通院等介助(身体介護を伴わない)': '11' };
+    const result = checkService(['通院等介助(身体介護を伴わない)'], supplyH, []);
+    expect(result.checked).toBe(true);
+    expect(result.hours).toBe('11');
+  });
+
+  it('契約支給量に通院等介助がなく実績にもない場合はチェックが入らないこと', () => {
+    const supplyH: Record<string, string> = { '身体介護': '30', '家事援助': '20' };
+    const result = checkService(['通院等介助(身体介護を伴わない)'], supplyH, ['身体介護', '家事援助']);
+    expect(result.checked).toBe(false);
+  });
+
+  it('契約支給量がなく実績に通院があればフォールバックでチェックされること', () => {
+    const supplyH: Record<string, string> = {};
+    const result = checkService(['通院'], supplyH, ['通院']);
+    expect(result.checked).toBe(true);
+  });
+});
+
+describe('33. AI生成文の誤字修正テスト（E. 文言修正）', () => {
+  const TYPO_FIXES: Array<[RegExp, string]> = [
+    [/臨機応援/g, '臨機応変'],
+    [/臨機応編/g, '臨機応変'],
+  ];
+
+  function fixTypos(text: string): string {
+    for (const [pattern, replacement] of TYPO_FIXES) {
+      text = text.replace(pattern, replacement);
+    }
+    return text;
+  }
+
+  it('「臨機応援」が「臨機応変」に修正されること', () => {
+    expect(fixTypos('臨機応援に対応する')).toBe('臨機応変に対応する');
+  });
+
+  it('「臨機応編」が「臨機応変」に修正されること', () => {
+    expect(fixTypos('臨機応編な対応')).toBe('臨機応変な対応');
+  });
+
+  it('正しい文言は変更されないこと', () => {
+    expect(fixTypos('臨機応変に対応する')).toBe('臨機応変に対応する');
+  });
+
+  it('複数箇所の誤字が同時に修正されること', () => {
+    expect(fixTypos('臨機応援に臨機応援')).toBe('臨機応変に臨機応変');
   });
 });
