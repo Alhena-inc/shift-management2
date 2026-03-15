@@ -1172,6 +1172,29 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
     }
   }
 
+  // === サービス内容(content)・留意事項(note)の文字数制約: 40〜60字 ===
+  const MIN_CONTENT_LEN = 40;
+  const MAX_CONTENT_LEN = 60;
+  for (let i = 1; i <= 4; i++) {
+    const service = plan[`service${i}` as keyof CarePlan] as ServiceBlock | null;
+    if (!service || service.steps.length === 0) continue;
+    for (const step of service.steps) {
+      // content: 長すぎる場合は末尾を句点で切る、短すぎる場合は補足
+      if (step.content && step.content.length > MAX_CONTENT_LEN) {
+        // 句点で区切れるところで切る
+        const cut = step.content.substring(0, MAX_CONTENT_LEN);
+        const lastPeriod = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('、'));
+        step.content = lastPeriod > MIN_CONTENT_LEN ? cut.substring(0, lastPeriod + 1) : cut;
+      }
+      // note: 同様に制約
+      if (step.note && step.note.length > MAX_CONTENT_LEN) {
+        const cut = step.note.substring(0, MAX_CONTENT_LEN);
+        const lastPeriod = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('、'));
+        step.note = lastPeriod > MIN_CONTENT_LEN ? cut.substring(0, lastPeriod + 1) : cut;
+      }
+    }
+  }
+
   console.log(`[CarePlan] AI応答 - service1: ${plan.service1?.steps.length || 0}件 (${plan.service1?.service_type || '未判定'}), service2: ${plan.service2?.steps.length || 0}件 (${plan.service2?.service_type || '未判定'})`);
   console.log(`[CarePlan] 目標期間判定 - 重度度: ${plan.severity_level}, 短期: ${plan.short_term_goal_months}ヶ月, 長期: ${plan.long_term_goal_months}ヶ月`);
   console.log(`[CarePlan] 期間設定根拠: ${plan.period_reasoning}`);
@@ -1335,7 +1358,9 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
   const hasHouse = billingHasHouse || !!houseHours || planHasHouse;
   const hasHeavy = billingHasHeavy || !!heavyHours || allSvcTypes.some(st => st.includes('重度'));
   const hasVisitBody = !!visitBodyHours || billingHasVisit || allSvcTypes.some(st => st.includes('通院') && !st.includes('伴わない'));
-  const hasVisitNoBody = !!visitNoBodyHours || allSvcTypes.some(st => st.includes('通院') && st.includes('伴わない'));
+  // 通院等介助(身体介護を伴わない): 支給量があるか、実績にある場合のみチェック
+  // AI出力だけでは根拠不十分なのでチェックしない
+  const hasVisitNoBody = !!visitNoBodyHours || (billingHasVisit && allSvcTypes.some(st => st.includes('通院') && st.includes('伴わない')));
   const hasRide = !!rideHours || allSvcTypes.some(st => st.includes('乗降'));
   const hasAccompany = billingHasAccompany || !!accompanyHours || allSvcTypes.some(st => st.includes('同行'));
   const hasBehavior = billingHasBehavior || !!behaviorHours || allSvcTypes.some(st => st.includes('行動'));
@@ -1447,30 +1472,42 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
       visitBody: false, visitNoBody: false,
       ride: false, behavior: false, accompany: false,
     };
-    // service_typeから全種別を判定（身体/家事含む）
-    if (service?.service_type) {
-      const stFlags = serviceTypeToCheckFlags(service.service_type);
-      blockFlags.body = stFlags.body;
-      blockFlags.house = stFlags.house;
-      blockFlags.heavy = stFlags.heavy;
-      blockFlags.visitBody = stFlags.visitBody;
-      blockFlags.visitNoBody = stFlags.visitNoBody;
-      blockFlags.ride = stFlags.ride;
-      blockFlags.accompany = stFlags.accompany;
-      blockFlags.behavior = stFlags.behavior;
+
+    // 未使用ブロック（ステップなし）はチェック全て未選択のまま
+    if (steps.length === 0) {
+      // 何もしない — 全てfalseのまま
+    } else {
+      // 1. service_typeから全種別を判定（最優先）
+      if (service?.service_type) {
+        const stFlags = serviceTypeToCheckFlags(service.service_type);
+        Object.assign(blockFlags, stFlags);
+      }
+      // 2. ステップのcategoryからも補完
+      if (bodySteps.length > 0) blockFlags.body = true;
+      if (houseSteps.length > 0) blockFlags.house = true;
+      // 3. categoryが付いていないステップがある場合、キーワードから推定
+      if (!blockFlags.body && !blockFlags.house && otherSteps.length > 0) {
+        const allText = steps.map(s => `${s.item} ${s.content}`).join(' ');
+        if (/排泄|入浴|移動|更衣|整容|体調|バイタル|介助|服薬|移乗|清拭|体位|口腔/.test(allText)) blockFlags.body = true;
+        if (/掃除|洗濯|調理|買い物|配膳|片付|ゴミ|献立|食材|環境整備/.test(allText)) blockFlags.house = true;
+      }
+      // 4. それでもフラグが立たない場合、ステップがあるなら身体介護をデフォルトとする
+      if (!blockFlags.body && !blockFlags.house && !blockFlags.heavy && steps.length > 0) {
+        blockFlags.body = true;
+        console.warn(`[CarePlan] サービス${blockIdx + 1}: 種別判定不能のためデフォルト身体介護`);
+      }
+      // 5. 混在禁止: 重度訪問介護以外は身体/家事の一方のみ
+      if (!blockFlags.heavy && blockFlags.body && blockFlags.house) {
+        // service_typeに基づいて片方を優先
+        const st = (service?.service_type || '').replace(/\s+/g, '');
+        if (st.includes('家事') || st.includes('生活')) {
+          blockFlags.body = false;
+        } else {
+          blockFlags.house = false;
+        }
+      }
     }
-    // ステップのcategoryからも補完
-    if (bodySteps.length > 0) blockFlags.body = true;
-    if (houseSteps.length > 0) blockFlags.house = true;
-    // categoryが付いていないステップがある場合、service_typeでも身体/家事が判定できなければ
-    // ステップの内容から推定する
-    if (!blockFlags.body && !blockFlags.house && otherSteps.length > 0 && service?.service_type) {
-      // service_typeに「身体」「家事」が含まれていなくてもステップがあるなら
-      // ステップ内容のキーワードで推定
-      const allText = otherSteps.map(s => `${s.item} ${s.content}`).join(' ');
-      if (/排泄|入浴|移動|更衣|整容|体調|バイタル|介助/.test(allText)) blockFlags.body = true;
-      if (/掃除|洗濯|調理|買い物|配膳|片付|ゴミ/.test(allText)) blockFlags.house = true;
-    }
+    console.log(`[CarePlan] サービス${blockIdx + 1}チェック: body=${blockFlags.body}, house=${blockFlags.house}, heavy=${blockFlags.heavy}, visitBody=${blockFlags.visitBody}, visitNoBody=${blockFlags.visitNoBody}`);
 
     const chk = block.chkStartRow;
     const chkFont = { name: 'ＭＳ Ｐゴシック', size: 9 };

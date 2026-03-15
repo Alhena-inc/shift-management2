@@ -116,6 +116,80 @@ const DAY_TO_COL: Record<string, string> = {
 const BODY_KEYWORDS = /服薬|排泄|入浴|更衣|整容|移乗|移動介助|バイタル|体調確認|食事介助|口腔ケア|清拭|体位/;
 const HOUSE_KEYWORDS = /調理|配膳|片付|掃除|洗濯|買い物|環境整備|ゴミ|献立|食材/;
 
+// ---- serviceTypeToCheckFlags ----
+interface CheckFlags {
+  body: boolean; house: boolean; heavy: boolean;
+  visitBody: boolean; visitNoBody: boolean;
+  ride: boolean; behavior: boolean; accompany: boolean;
+}
+function serviceTypeToCheckFlags(serviceType: string): CheckFlags {
+  const flags: CheckFlags = {
+    body: false, house: false, heavy: false,
+    visitBody: false, visitNoBody: false,
+    ride: false, behavior: false, accompany: false,
+  };
+  if (!serviceType) return flags;
+  const st = serviceType.replace(/\s+/g, '');
+  if (st.includes('身体介護') || st.includes('身体')) flags.body = true;
+  if (st.includes('家事援助') || st.includes('家事') || st.includes('生活援助') || st.includes('生活')) flags.house = true;
+  if (st.includes('重度訪問') || st.includes('重度')) flags.heavy = true;
+  if (st.includes('通院') && st.includes('伴う')) flags.visitBody = true;
+  if (st.includes('通院') && st.includes('伴わない')) flags.visitNoBody = true;
+  if (st.includes('通院') && !st.includes('伴う') && !st.includes('伴わない')) flags.visitBody = true;
+  if (st.includes('乗降')) flags.ride = true;
+  if (st.includes('同行')) flags.accompany = true;
+  if (st.includes('行動')) flags.behavior = true;
+  return flags;
+}
+
+// ---- blockCheckboxFlags (new logic matching carePlanGenerator) ----
+interface ServiceStep {
+  item: string; content: string; note: string; category?: string;
+}
+function computeBlockFlags(serviceType: string | undefined, steps: ServiceStep[]): CheckFlags {
+  const blockFlags: CheckFlags = {
+    body: false, house: false, heavy: false,
+    visitBody: false, visitNoBody: false,
+    ride: false, behavior: false, accompany: false,
+  };
+  if (steps.length === 0) return blockFlags;
+
+  if (serviceType) {
+    const stFlags = serviceTypeToCheckFlags(serviceType);
+    Object.assign(blockFlags, stFlags);
+  }
+  const bodySteps = steps.filter(s => s.category === '身体介護');
+  const houseSteps = steps.filter(s => s.category === '家事援助');
+  const otherSteps = steps.filter(s => s.category !== '身体介護' && s.category !== '家事援助');
+  if (bodySteps.length > 0) blockFlags.body = true;
+  if (houseSteps.length > 0) blockFlags.house = true;
+  if (!blockFlags.body && !blockFlags.house && otherSteps.length > 0) {
+    const allText = steps.map(s => `${s.item} ${s.content}`).join(' ');
+    if (/排泄|入浴|移動|更衣|整容|体調|バイタル|介助|服薬|移乗|清拭|体位|口腔/.test(allText)) blockFlags.body = true;
+    if (/掃除|洗濯|調理|買い物|配膳|片付|ゴミ|献立|食材|環境整備/.test(allText)) blockFlags.house = true;
+  }
+  if (!blockFlags.body && !blockFlags.house && !blockFlags.heavy && steps.length > 0) {
+    blockFlags.body = true;
+  }
+  if (!blockFlags.heavy && blockFlags.body && blockFlags.house) {
+    const st = (serviceType || '').replace(/\s+/g, '');
+    if (st.includes('家事') || st.includes('生活')) {
+      blockFlags.body = false;
+    } else {
+      blockFlags.house = false;
+    }
+  }
+  return blockFlags;
+}
+
+// ---- content/note length truncation ----
+function truncateToLimit(text: string, maxLen: number, minLen: number): string {
+  if (!text || text.length <= maxLen) return text;
+  const cut = text.substring(0, maxLen);
+  const lastPeriod = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('、'));
+  return lastPeriod > minLen ? cut.substring(0, lastPeriod + 1) : cut;
+}
+
 // ==================== テスト ====================
 
 describe('1. チェックボックス判定', () => {
@@ -623,5 +697,195 @@ describe('15. 実績パターン比較', () => {
     ];
     const pattern = extractWeeklyPattern(records);
     expect(pattern.size).toBe(0);
+  });
+});
+
+describe('16. サービスブロック個別チェックボックス', () => {
+  it('service_type=身体介護のブロック → bodyのみチェック', () => {
+    const flags = computeBlockFlags('身体介護', [
+      { item: '体調確認', content: 'バイタルチェック', note: '', category: '身体介護' },
+    ]);
+    expect(flags.body).toBe(true);
+    expect(flags.house).toBe(false);
+  });
+
+  it('service_type=家事援助のブロック → houseのみチェック', () => {
+    const flags = computeBlockFlags('家事援助', [
+      { item: '掃除', content: '居室の掃除', note: '', category: '家事援助' },
+    ]);
+    expect(flags.house).toBe(true);
+    expect(flags.body).toBe(false);
+  });
+
+  it('service_typeなし＋categoryなし＋身体キーワード → bodyチェック', () => {
+    const flags = computeBlockFlags(undefined, [
+      { item: '排泄介助', content: 'トイレ移動の介助', note: '' },
+    ]);
+    expect(flags.body).toBe(true);
+  });
+
+  it('service_typeなし＋categoryなし＋家事キーワード → houseチェック', () => {
+    const flags = computeBlockFlags(undefined, [
+      { item: '掃除', content: '居室の掃除', note: '' },
+    ]);
+    expect(flags.house).toBe(true);
+  });
+
+  it('ステップなし → 全てfalse', () => {
+    const flags = computeBlockFlags('身体介護', []);
+    expect(flags.body).toBe(false);
+    expect(flags.house).toBe(false);
+    expect(flags.heavy).toBe(false);
+  });
+
+  it('キーワードも種別もなし → デフォルトで身体介護', () => {
+    const flags = computeBlockFlags(undefined, [
+      { item: '生活支援', content: '一般的な支援', note: '' },
+    ]);
+    expect(flags.body).toBe(true);
+  });
+
+  it('重度訪問介護 → 混在許可', () => {
+    const flags = computeBlockFlags('重度訪問介護', [
+      { item: '体調確認', content: 'バイタルチェック', note: '', category: '身体介護' },
+      { item: '掃除', content: '居室の掃除', note: '', category: '家事援助' },
+    ]);
+    expect(flags.heavy).toBe(true);
+    expect(flags.body).toBe(true);
+    expect(flags.house).toBe(true);
+  });
+
+  it('非重度で身体/家事混在 → service_type優先で片方のみ', () => {
+    const flags = computeBlockFlags('家事援助', [
+      { item: '体調確認', content: 'バイタルチェック', note: '', category: '身体介護' },
+      { item: '掃除', content: '居室の掃除', note: '', category: '家事援助' },
+    ]);
+    expect(flags.house).toBe(true);
+    expect(flags.body).toBe(false); // 家事ブロックなので身体は除去
+  });
+
+  it('松尾光雅サンプル: サービス1=家事援助, サービス2=身体介護', () => {
+    // サービス1: 家事援助
+    const flags1 = computeBlockFlags('家事援助', [
+      { item: '掃除', content: '居室の掃除機がけ', note: '', category: '家事援助' },
+      { item: '洗濯', content: '洗濯物の取り込み・たたみ', note: '', category: '家事援助' },
+    ]);
+    expect(flags1.house).toBe(true);
+    expect(flags1.body).toBe(false);
+
+    // サービス2: 身体介護
+    const flags2 = computeBlockFlags('身体介護', [
+      { item: '排泄介助', content: 'トイレへの移動介助', note: '', category: '身体介護' },
+      { item: '入浴介助', content: '入浴の見守り・介助', note: '', category: '身体介護' },
+    ]);
+    expect(flags2.body).toBe(true);
+    expect(flags2.house).toBe(false);
+  });
+});
+
+describe('17. バイタルチェック必須ステップ', () => {
+  it('バイタルチェックが含まれていない場合、自動挿入される', () => {
+    const steps = [
+      { time: '09:00', item: '到着・挨拶', detail: '訪問し体調確認', note: '' },
+      { time: '09:10', item: '排泄介助', detail: 'トイレ移動の介助', note: '' },
+    ];
+    const hasVital = steps.some(s => /バイタル|血圧|体温|脈拍|SpO2/.test(`${s.item} ${s.detail}`));
+    expect(hasVital).toBe(false);
+
+    if (!hasVital) {
+      const greetIdx = steps.findIndex(s => /到着|挨拶|訪問/.test(s.item));
+      steps.splice(greetIdx >= 0 ? greetIdx + 1 : 0, 0, {
+        time: '09:05',
+        item: 'バイタルチェック',
+        detail: '血圧・体温・脈拍を測定',
+        note: '測定値を記録',
+      });
+    }
+    expect(steps.length).toBe(3);
+    expect(steps[1].item).toBe('バイタルチェック');
+  });
+
+  it('バイタルチェックが既に含まれている場合、追加しない', () => {
+    const steps = [
+      { time: '09:00', item: '到着・挨拶', detail: '訪問し体調確認', note: '' },
+      { time: '09:05', item: 'バイタルチェック', detail: '血圧測定', note: '' },
+      { time: '09:10', item: '排泄介助', detail: 'トイレ移動の介助', note: '' },
+    ];
+    const hasVital = steps.some(s => /バイタル|血圧|体温|脈拍|SpO2/.test(`${s.item} ${s.detail}`));
+    expect(hasVital).toBe(true);
+    expect(steps.length).toBe(3);
+  });
+
+  it('血圧が詳細に含まれている場合もバイタル有りと判定', () => {
+    const steps = [
+      { time: '09:00', item: '到着・健康チェック', detail: '血圧・体温を測定する', note: '' },
+    ];
+    const hasVital = steps.some(s => /バイタル|血圧|体温|脈拍|SpO2/.test(`${s.item} ${s.detail}`));
+    expect(hasVital).toBe(true);
+  });
+});
+
+describe('18. content/note文字数制約', () => {
+  it('60字を超えるcontentは切り詰められること', () => {
+    const longText = 'あいうえおかきくけこ'.repeat(7); // 70字
+    const result = truncateToLimit(longText, 60, 40);
+    expect(result.length).toBeLessThanOrEqual(60);
+  });
+
+  it('句点の位置で切れること', () => {
+    const text = 'あ'.repeat(45) + '。' + 'い'.repeat(20); // 66字, 句点は46文字目
+    const result = truncateToLimit(text, 60, 40);
+    expect(result.endsWith('。')).toBe(true);
+    expect(result.length).toBe(46);
+  });
+
+  it('60字以下のテキストは変更されないこと', () => {
+    const text = 'バイタルチェックを行い、体調を確認する。';
+    const result = truncateToLimit(text, 60, 40);
+    expect(result).toBe(text);
+  });
+
+  it('句点が40字より前にしかない場合、60字で切る', () => {
+    const text = 'あ'.repeat(30) + '。' + 'い'.repeat(40); // 71字, 句点は31文字目（< 40）
+    const result = truncateToLimit(text, 60, 40);
+    expect(result.length).toBe(60);
+  });
+
+  it('空テキストはそのまま返す', () => {
+    expect(truncateToLimit('', 60, 40)).toBe('');
+  });
+});
+
+describe('19. 通院等介助(身体介護を伴わない)チェック判定', () => {
+  it('支給量にある場合はチェックON', () => {
+    const visitNoBodyHours = '5';
+    const billingHasVisit = false;
+    const allSvcTypes = ['身体介護'];
+    const hasVisitNoBody = !!visitNoBodyHours || (billingHasVisit && allSvcTypes.some(st => st.includes('通院') && st.includes('伴わない')));
+    expect(hasVisitNoBody).toBe(true);
+  });
+
+  it('支給量なし＋AI出力だけではチェックOFF', () => {
+    const visitNoBodyHours = '';
+    const billingHasVisit = false;
+    const allSvcTypes = ['通院等介助(身体介護を伴わない)'];
+    const hasVisitNoBody = !!visitNoBodyHours || (billingHasVisit && allSvcTypes.some(st => st.includes('通院') && st.includes('伴わない')));
+    expect(hasVisitNoBody).toBe(false);
+  });
+
+  it('支給量なし＋実績にある＋AI出力にもある場合はチェックON', () => {
+    const visitNoBodyHours = '';
+    const billingHasVisit = true;
+    const allSvcTypes = ['通院等介助(身体介護を伴わない)'];
+    const hasVisitNoBody = !!visitNoBodyHours || (billingHasVisit && allSvcTypes.some(st => st.includes('通院') && st.includes('伴わない')));
+    expect(hasVisitNoBody).toBe(true);
+  });
+
+  it('実績のみでAI出力に伴わないがない場合はチェックOFF', () => {
+    const visitNoBodyHours = '';
+    const billingHasVisit = true;
+    const allSvcTypes = ['身体介護', '家事援助'];
+    const hasVisitNoBody = !!visitNoBodyHours || (billingHasVisit && allSvcTypes.some(st => st.includes('通院') && st.includes('伴わない')));
+    expect(hasVisitNoBody).toBe(false);
   });
 });

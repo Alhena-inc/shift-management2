@@ -628,6 +628,26 @@ ${planServiceText}`;
     console.log(`  ${proc.visit_label}: ${proc.steps.length}ステップ (${proc.service_type})`);
   }
 
+  // === バイタルチェック必須ステップの後処理 ===
+  for (const proc of manual.procedures) {
+    const hasVital = proc.steps.some(s =>
+      /バイタル|血圧|体温|脈拍|SpO2/.test(`${s.item} ${s.detail}`)
+    );
+    if (!hasVital) {
+      console.log(`[CareProcedure] ${proc.visit_label}: バイタルチェックが不足 → 挿入`);
+      // 到着・挨拶の直後（2番目）に挿入
+      const vitalStep: ProcedureStep = {
+        time: proc.steps.length > 1 ? proc.steps[1]?.time || proc.start_time : proc.start_time,
+        item: 'バイタルチェック',
+        detail: '血圧・体温・脈拍を測定し、体調を確認する。異常値がある場合はサービス提供責任者に報告する。',
+        note: '測定値は記録用紙に記入。普段の数値と比較し変動があれば報告。',
+      };
+      // 挨拶ステップの後に挿入
+      const greetIdx = proc.steps.findIndex(s => /到着|挨拶|訪問/.test(s.item));
+      proc.steps.splice(greetIdx >= 0 ? greetIdx + 1 : 0, 0, vitalStep);
+    }
+  }
+
   // === Excel作成 ===
   const workbook = new ExcelJS.Workbook();
   workbook.creator = officeInfo.name || '';
