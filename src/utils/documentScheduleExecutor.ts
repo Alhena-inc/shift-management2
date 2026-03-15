@@ -1060,6 +1060,15 @@ export async function executeCatchUpGeneration(
           reason: `${step.year}年${step.month}月分の計画書は作成済みのためスキップ`,
         });
         skippedCount++;
+        // スキップしても週間パターンは記録する（次回モニタリングの比較ベースとして使用）
+        try {
+          const skipRecords = await loadBillingRecordsForMonth(step.year, step.month);
+          const skipClientRecords = skipRecords.filter(r => r.clientName === client.name);
+          if (skipClientRecords.length > 0) {
+            lastWeeklyPattern = extractWeeklyPattern(skipClientRecords);
+            console.log(`[CatchUp] スキップ時パターン記録: ${lastWeeklyPattern.size}パターン (${step.year}年${step.month}月)`);
+          }
+        } catch { /* skip */ }
         // スキップしても次のモニタリングステップは追加する
         scheduleNextMonitoring(queue, step, currentShortTermMonths, currentLongTermMonths, currentPlanStart, currentYM, baseMonitoringCycleMonths);
         continue;
@@ -1074,6 +1083,15 @@ export async function executeCatchUpGeneration(
           reason: `${step.year}年${step.month}月分のモニタリングは作成済みのためスキップ`,
         });
         skippedCount++;
+        // スキップしても週間パターンを記録する
+        try {
+          const skipRecords = await loadBillingRecordsForMonth(step.year, step.month);
+          const skipClientRecords = skipRecords.filter(r => r.clientName === client.name);
+          if (skipClientRecords.length > 0) {
+            lastWeeklyPattern = extractWeeklyPattern(skipClientRecords);
+            console.log(`[CatchUp] モニタリングスキップ時パターン記録: ${lastWeeklyPattern.size}パターン (${step.year}年${step.month}月)`);
+          }
+        } catch { /* skip */ }
         // モニタリングスキップ後も次の計画書ステップを追加
         schedulePostMonitoringPlan(queue, step, currentYM);
         continue;

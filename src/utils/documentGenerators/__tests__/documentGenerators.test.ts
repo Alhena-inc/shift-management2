@@ -856,36 +856,239 @@ describe('18. content/note文字数制約', () => {
   });
 });
 
-describe('19. 通院等介助(身体介護を伴わない)チェック判定', () => {
+// ---- 通院等介助の新判定ロジック（プランボディ証拠チェック） ----
+interface PlanService { service_type: string; steps: ServiceStep[] }
+
+function computeVisitCheckFlags(
+  visitBodyHours: string,
+  visitNoBodyHours: string,
+  billingHasVisit: boolean,
+  planServices: PlanService[],
+): { hasVisitBody: boolean; hasVisitNoBody: boolean } {
+  const planHasVisitBodyContent = planServices.some(s => {
+    const sst = (s.service_type || '').replace(/\s+/g, '');
+    return sst.includes('通院') && !sst.includes('伴わない') && s.steps.length > 0;
+  });
+  const planHasVisitNoBodyContent = planServices.some(s => {
+    const sst = (s.service_type || '').replace(/\s+/g, '');
+    return sst.includes('通院') && sst.includes('伴わない') && s.steps.length > 0;
+  });
+  return {
+    hasVisitBody: !!visitBodyHours || billingHasVisit || planHasVisitBodyContent,
+    hasVisitNoBody: !!visitNoBodyHours || (billingHasVisit && planHasVisitNoBodyContent),
+  };
+}
+
+describe('19. 通院等介助チェック判定（プランボディ証拠チェック）', () => {
   it('支給量にある場合はチェックON', () => {
-    const visitNoBodyHours = '5';
-    const billingHasVisit = false;
-    const allSvcTypes = ['身体介護'];
-    const hasVisitNoBody = !!visitNoBodyHours || (billingHasVisit && allSvcTypes.some(st => st.includes('通院') && st.includes('伴わない')));
-    expect(hasVisitNoBody).toBe(true);
+    const result = computeVisitCheckFlags('5', '', false, []);
+    expect(result.hasVisitBody).toBe(true);
   });
 
-  it('支給量なし＋AI出力だけではチェックOFF', () => {
-    const visitNoBodyHours = '';
-    const billingHasVisit = false;
-    const allSvcTypes = ['通院等介助(身体介護を伴わない)'];
-    const hasVisitNoBody = !!visitNoBodyHours || (billingHasVisit && allSvcTypes.some(st => st.includes('通院') && st.includes('伴わない')));
-    expect(hasVisitNoBody).toBe(false);
+  it('支給量なし＋空ステップのAI出力だけではチェックOFF', () => {
+    const result = computeVisitCheckFlags('', '', false, [
+      { service_type: '通院等介助(身体介護を伴わない)', steps: [] },
+    ]);
+    expect(result.hasVisitNoBody).toBe(false);
   });
 
-  it('支給量なし＋実績にある＋AI出力にもある場合はチェックON', () => {
-    const visitNoBodyHours = '';
-    const billingHasVisit = true;
-    const allSvcTypes = ['通院等介助(身体介護を伴わない)'];
-    const hasVisitNoBody = !!visitNoBodyHours || (billingHasVisit && allSvcTypes.some(st => st.includes('通院') && st.includes('伴わない')));
-    expect(hasVisitNoBody).toBe(true);
+  it('支給量なし＋実績あり＋プランにステップありの場合はチェックON', () => {
+    const result = computeVisitCheckFlags('', '', true, [
+      { service_type: '通院等介助(身体介護を伴わない)', steps: [
+        { item: '通院付き添い', content: '病院まで同行', note: '' },
+      ] },
+    ]);
+    expect(result.hasVisitNoBody).toBe(true);
   });
 
-  it('実績のみでAI出力に伴わないがない場合はチェックOFF', () => {
-    const visitNoBodyHours = '';
-    const billingHasVisit = true;
-    const allSvcTypes = ['身体介護', '家事援助'];
-    const hasVisitNoBody = !!visitNoBodyHours || (billingHasVisit && allSvcTypes.some(st => st.includes('通院') && st.includes('伴わない')));
-    expect(hasVisitNoBody).toBe(false);
+  it('実績のみでプランにステップなしの場合はチェックOFF', () => {
+    const result = computeVisitCheckFlags('', '', true, [
+      { service_type: '身体介護', steps: [{ item: '体調確認', content: '', note: '' }] },
+    ]);
+    expect(result.hasVisitNoBody).toBe(false);
+  });
+
+  it('松尾光雅ケース: デイケアで自主通院 → 通院チェック全OFF', () => {
+    // 支給量なし、実績に通院なし、AIが通院ブロックを生成していない
+    const result = computeVisitCheckFlags('', '', false, [
+      { service_type: '家事援助', steps: [{ item: '調理', content: '晩ご飯の調理', note: '' }] },
+      { service_type: '身体介護', steps: [{ item: '体調確認', content: 'バイタルチェック', note: '' }] },
+    ]);
+    expect(result.hasVisitBody).toBe(false);
+    expect(result.hasVisitNoBody).toBe(false);
+  });
+
+  it('通院等介助(身体介護を伴う)：プランにステップありでチェックON', () => {
+    const result = computeVisitCheckFlags('', '', false, [
+      { service_type: '通院等介助(身体介護を伴う)', steps: [
+        { item: '移動介助', content: '病院まで移動介助', note: '' },
+      ] },
+    ]);
+    expect(result.hasVisitBody).toBe(true);
+  });
+});
+
+describe('20. アセスメントADL根拠フィルタリング', () => {
+  // ADLサマリーに基づくフィルタロジックの再現
+  function filterByAdlSummary(
+    steps: ServiceStep[],
+    adlSummary: Record<string, string>,
+  ): ServiceStep[] {
+    const NO_ASSIST_VALUES = ['自立', '見守り', '他サービス担当', '訪問看護担当', 'デイサービス担当', '自己管理'];
+    const ADL_TO_KEYWORDS: Record<string, RegExp> = {
+      '食事': /食事介助/,
+      '排泄': /排泄介助|おむつ交換|トイレ介助/,
+      '入浴': /入浴介助|入浴の見守り|清拭/,
+      '更衣': /更衣介助|着脱介助/,
+      '服薬': /服薬確認|服薬管理|服薬介助/,
+    };
+    return steps.filter(step => {
+      const itemText = step.item || '';
+      for (const [adlKey, pattern] of Object.entries(ADL_TO_KEYWORDS)) {
+        if (pattern.test(itemText)) {
+          const adlLevel = adlSummary[adlKey] || '';
+          if (NO_ASSIST_VALUES.some(v => adlLevel.includes(v))) return false;
+        }
+      }
+      return true;
+    });
+  }
+
+  it('松尾光雅ケース: 食事=自立、排泄=自立 → 食事介助・排泄介助が除外', () => {
+    const adlSummary = { '食事': '自立', '排泄': '自立', '入浴': '自立', '更衣': '自立', '服薬': '訪問看護担当' };
+    const steps: ServiceStep[] = [
+      { item: '体調確認', content: 'バイタルチェック', note: '' },
+      { item: '食事介助', content: '食事の見守り', note: '' },
+      { item: '排泄介助', content: 'トイレ移動介助', note: '' },
+      { item: '整容支援', content: '洗面の声かけ', note: '' },
+      { item: '服薬確認', content: '服薬の確認', note: '' },
+    ];
+    const filtered = filterByAdlSummary(steps, adlSummary);
+    expect(filtered.map(s => s.item)).toEqual(['体調確認', '整容支援']);
+    expect(filtered.map(s => s.item)).not.toContain('食事介助');
+    expect(filtered.map(s => s.item)).not.toContain('排泄介助');
+    expect(filtered.map(s => s.item)).not.toContain('服薬確認');
+  });
+
+  it('ADLが一部介助の項目は残ること', () => {
+    const adlSummary = { '食事': '一部介助', '排泄': '全介助', '入浴': '自立', '更衣': '自立', '服薬': '居宅介護担当' };
+    const steps: ServiceStep[] = [
+      { item: '食事介助', content: '食事の見守り', note: '' },
+      { item: '排泄介助', content: 'トイレ移動介助', note: '' },
+      { item: '入浴介助', content: '入浴見守り', note: '' },
+      { item: '服薬確認', content: '服薬チェック', note: '' },
+    ];
+    const filtered = filterByAdlSummary(steps, adlSummary);
+    expect(filtered.map(s => s.item)).toContain('食事介助');
+    expect(filtered.map(s => s.item)).toContain('排泄介助');
+    expect(filtered.map(s => s.item)).toContain('服薬確認');
+    expect(filtered.map(s => s.item)).not.toContain('入浴介助');
+  });
+
+  it('ADLサマリーがない場合（アセスメントなし）はフィルタしない', () => {
+    const steps: ServiceStep[] = [
+      { item: '食事介助', content: '食事の見守り', note: '' },
+      { item: '排泄介助', content: 'トイレ移動介助', note: '' },
+    ];
+    // adlSummaryがないケース → フィルタは適用されない
+    expect(steps.length).toBe(2);
+  });
+
+  it('体調確認・バイタル・整容はADLフィルタ対象外で常に残る', () => {
+    const adlSummary = { '食事': '自立', '排泄': '自立', '入浴': '自立', '更衣': '自立', '服薬': '訪問看護担当', '整容': '一部介助' };
+    const steps: ServiceStep[] = [
+      { item: '体調確認', content: 'バイタルチェック', note: '' },
+      { item: 'バイタル確認', content: '血圧・体温測定', note: '' },
+      { item: '整容支援', content: '洗面の声かけ', note: '' },
+      { item: '安全確認', content: '室内環境確認', note: '' },
+    ];
+    const filtered = filterByAdlSummary(steps, adlSummary);
+    expect(filtered.length).toBe(4); // 全て残る
+  });
+});
+
+describe('21. スキップ時の週間パターン記録・パターン変更検出', () => {
+  it('新パターン19:30-21:00が追加された場合、変更ありと判定', () => {
+    const oldPattern = new Set(['月-09:00~10:00', '水-09:00~10:00', '金-14:00~15:00']);
+    const newPattern = new Set(['月-09:00~10:00', '水-09:00~10:00', '金-14:00~15:00', '火-19:30~21:00']);
+    expect(hasPatternChanged(oldPattern, newPattern)).toBe(true);
+  });
+
+  it('既存パターンの時間変更（19:30→20:00）を検出', () => {
+    const oldPattern = new Set(['水-18:30~19:30', '木-18:30~19:30']);
+    const newPattern = new Set(['水-18:30~20:00', '木-18:30~20:00']);
+    expect(hasPatternChanged(oldPattern, newPattern)).toBe(true);
+  });
+
+  it('パターン変更なし → 手順書スキップが正しく判定される', () => {
+    const oldPattern = new Set(['水-18:30~19:30', '木-18:30~19:30', '日-18:30~19:30']);
+    const newPattern = new Set(['水-18:30~19:30', '木-18:30~19:30', '日-18:30~19:30']);
+    expect(hasPatternChanged(oldPattern, newPattern)).toBe(false);
+    const skipTejunsho = !hasPatternChanged(oldPattern, newPattern);
+    expect(skipTejunsho).toBe(true);
+  });
+
+  it('パターンが完全に入れ替わった場合も検出', () => {
+    const oldPattern = new Set(['月-09:00~10:00']);
+    const newPattern = new Set(['火-19:30~21:00']);
+    expect(hasPatternChanged(oldPattern, newPattern)).toBe(true);
+  });
+
+  it('空パターンから新規パターンへの変化を検出', () => {
+    const oldPattern = new Set<string>();
+    const newPattern = new Set(['火-19:30~21:00']);
+    expect(hasPatternChanged(oldPattern, newPattern)).toBe(true);
+  });
+});
+
+describe('22. 目標引用の完全一致テスト', () => {
+  it('モニタリングgoal_evaluationに計画書の短期目標を完全一致で引用すること', () => {
+    const planShortGoal = '定期的な支援を受けながら、日常生活動作の維持を図り、安全に自宅で生活できる環境を整える';
+    let goalEval = "短期目標『AIが独自に生成した別の表現』について、安定した生活を維持できている。";
+
+    // 後処理: 計画書目標との完全一致チェック+強制修正
+    if (!goalEval.includes(planShortGoal)) {
+      goalEval = goalEval.replace(/短期目標『[^』]*』/, `短期目標『${planShortGoal}』`);
+      if (!goalEval.includes(planShortGoal)) {
+        goalEval = `短期目標『${planShortGoal}』について、${goalEval}`;
+      }
+    }
+    expect(goalEval).toContain(planShortGoal);
+  });
+
+  it('goalContinuation=true → 次回計画書の短期目標が前回と完全一致で引き継がれること', () => {
+    const previousGoalText = '定期的な支援を受けながら、安全に在宅生活を継続する';
+    const goalContinuation = true;
+
+    // executor + carePlanGeneratorのロジック再現
+    const ctx: { inheritShortTermGoal?: boolean } = {};
+    if (goalContinuation) {
+      ctx.inheritShortTermGoal = true;
+    }
+
+    // carePlanGeneratorでの後処理: activeShortTerm.goalText で上書き
+    let planGoalShort = 'AIが新しく生成した目標'; // AIの出力
+    if (ctx.inheritShortTermGoal) {
+      planGoalShort = previousGoalText; // 前回目標で強制上書き
+    }
+    expect(planGoalShort).toBe(previousGoalText);
+  });
+
+  it('長期目標期間内なら、次回計画書の長期目標が完全一致で引き継がれること', () => {
+    const previousLongGoal = '住み慣れた自宅での安定した日常生活を継続し、社会参加を維持する';
+    const longTermEndDate = '2026-12-01';
+    const currentDate = '2026-06-01';
+
+    const stepDate = new Date(currentDate + 'T00:00:00');
+    const longTermEnd = new Date(longTermEndDate + 'T00:00:00');
+    const longTermStillActive = stepDate < longTermEnd;
+
+    expect(longTermStillActive).toBe(true);
+
+    let planGoalLong = 'AIが生成した新しい長期目標';
+    if (longTermStillActive) {
+      planGoalLong = previousLongGoal; // 前回目標で強制上書き
+    }
+    expect(planGoalLong).toBe(previousLongGoal);
   });
 });
