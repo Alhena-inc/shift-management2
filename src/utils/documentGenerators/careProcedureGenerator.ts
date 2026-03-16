@@ -655,9 +655,38 @@ ${planServiceText}`;
     }
   }
 
-  // === 種別混在の後処理: 各ブロックはservice_typeに該当する手順のみ ===
+  // === service_type と実際のステップ内容の不一致を検出・修正 ===
+  // ★重要：混在除去より先にservice_type修正を実行する。
+  // 理由：混在除去がservice_typeに基づいてステップを削除するため、
+  // service_typeが誤っていると正しいステップが除外されてしまう。
   const BODY_KW = /服薬|排泄|入浴|更衣|整容|移乗|移動介助|バイタル|体調|食事介助|口腔ケア|清拭|体位|見守り|安全確認|血圧|体温/;
   const HOUSE_KW = /調理|配膳|片付|掃除|洗濯|買い物|環境整備|ゴミ|献立|食材|台所|食器|キッチン|居室整理|シンク|コンロ/;
+  for (const proc of manual.procedures) {
+    const st = (proc.service_type || '').replace(/\s+/g, '');
+    if (st.includes('重度')) continue;
+    const currentIsBody = st.includes('身体');
+    const currentIsHouse = st.includes('家事') || st.includes('生活');
+    if (!currentIsBody && !currentIsHouse) continue;
+
+    let bodyCount = 0;
+    let houseCount = 0;
+    for (const step of proc.steps) {
+      const text = `${step.item} ${step.detail}`;
+      if (BODY_KW.test(text)) bodyCount++;
+      if (HOUSE_KW.test(text)) houseCount++;
+    }
+
+    if (currentIsBody && houseCount > bodyCount) {
+      console.log(`[CareProcedure] service_type修正: 「${proc.service_type}」→「家事援助」（身体KW=${bodyCount}, 家事KW=${houseCount}/${proc.steps.length}件）`);
+      proc.service_type = '家事援助';
+    } else if (currentIsHouse && bodyCount > houseCount) {
+      console.log(`[CareProcedure] service_type修正: 「${proc.service_type}」→「身体介護」（身体KW=${bodyCount}, 家事KW=${houseCount}/${proc.steps.length}件）`);
+      proc.service_type = '身体介護';
+    }
+  }
+
+  // === 種別混在の後処理: 各ブロックはservice_typeに該当する手順のみ ===
+  // ★service_type修正後に実行するので、正しいservice_typeに基づいて混在除去される
   for (const proc of manual.procedures) {
     const st = (proc.service_type || '').replace(/\s+/g, '');
     if (st.includes('重度')) continue;
@@ -684,31 +713,6 @@ ${planServiceText}`;
     });
     if (before !== proc.steps.length) {
       console.log(`[CareProcedure] ${proc.service_type}: ${before}件→${proc.steps.length}件（混在除去）`);
-    }
-  }
-
-  // === service_type と実際のステップ内容の不一致を検出・修正 ===
-  for (const proc of manual.procedures) {
-    const st = (proc.service_type || '').replace(/\s+/g, '');
-    if (st.includes('重度')) continue;
-    const currentIsBody = st.includes('身体');
-    const currentIsHouse = st.includes('家事') || st.includes('生活');
-    if (!currentIsBody && !currentIsHouse) continue;
-
-    let bodyCount = 0;
-    let houseCount = 0;
-    for (const step of proc.steps) {
-      const text = `${step.item} ${step.detail}`;
-      if (BODY_KW.test(text)) bodyCount++;
-      if (HOUSE_KW.test(text)) houseCount++;
-    }
-
-    if (currentIsBody && houseCount > bodyCount && houseCount > proc.steps.length / 2) {
-      console.log(`[CareProcedure] service_type修正: 「${proc.service_type}」→「家事援助」（身体KW=${bodyCount}, 家事KW=${houseCount}/${proc.steps.length}件）`);
-      proc.service_type = '家事援助';
-    } else if (currentIsHouse && bodyCount > houseCount && bodyCount > proc.steps.length / 2) {
-      console.log(`[CareProcedure] service_type修正: 「${proc.service_type}」→「身体介護」（身体KW=${bodyCount}, 家事KW=${houseCount}/${proc.steps.length}件）`);
-      proc.service_type = '身体介護';
     }
   }
 

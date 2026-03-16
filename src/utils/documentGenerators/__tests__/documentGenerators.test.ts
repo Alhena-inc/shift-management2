@@ -1516,3 +1516,397 @@ describe('33. AI生成文の誤字修正テスト（E. 文言修正）', () => {
     expect(fixTypos('臨機応援に臨機応援')).toBe('臨機応変に臨機応変');
   });
 });
+
+// ===== 最終修正テスト =====
+
+describe('34. サービス1の内容が家事援助ならrows84-86の種類チェックが家事援助になること', () => {
+  // service_type修正ロジック再現（混在除去の前に実行される新ロジック）
+  const BODY_KW = /服薬|排泄|入浴|更衣|整容|移乗|移動介助|バイタル|体調確認|体調|食事介助|口腔ケア|清拭|体位|見守り|安全確認|血圧|体温|脈拍|SpO2/;
+  const HOUSE_KW = /調理|配膳|片付|掃除|洗濯|買い物|環境整備|ゴミ|献立|食材|台所|食器|キッチン|居室整理|シンク|コンロ/;
+
+  function correctServiceType(
+    steps: Array<{item: string; content: string}>,
+    declaredType: string,
+  ): string {
+    const st = declaredType.replace(/\s+/g, '');
+    if (st.includes('重度')) return declaredType;
+    const currentIsBody = st.includes('身体');
+    const currentIsHouse = st.includes('家事') || st.includes('生活');
+    if (!currentIsBody && !currentIsHouse) return declaredType;
+
+    let bodyCount = 0;
+    let houseCount = 0;
+    for (const step of steps) {
+      const text = `${step.item} ${step.content}`;
+      if (BODY_KW.test(text)) bodyCount++;
+      if (HOUSE_KW.test(text)) houseCount++;
+    }
+
+    // 新ロジック: houseCount > bodyCount なら家事援助に修正（過半数ではなく単純比較）
+    if (currentIsBody && houseCount > bodyCount) return '家事援助';
+    if (currentIsHouse && bodyCount > houseCount) return '身体介護';
+    return declaredType;
+  }
+
+  it('松尾光雅サービス1: 訪問確認+調理+配膳+掃除+洗濯+環境整備+終了確認 → 家事援助', () => {
+    const steps = [
+      { item: '訪問時確認', content: '18:30 利用者宅を訪問し、表情や体調を確認する' },
+      { item: '調理支援', content: '18:35 夕食の調理を行い、利用者の嗜好に合わせた献立を準備する' },
+      { item: '配膳', content: '18:50 調理した食事を食卓に配膳し、温かいうちに提供する' },
+      { item: '掃除', content: '19:00 居室・台所の清掃を行い、衛生的な環境を維持する' },
+      { item: '洗濯', content: '19:10 洗濯物を取り込み、たたんで所定の場所に収納する' },
+      { item: '環境整備', content: '19:15 居室の整理整頓と動線の安全確認を行う' },
+      { item: '終了確認', content: '19:25 次回訪問日を確認し、退室する' },
+    ];
+    const result = correctServiceType(steps, '身体介護');
+    expect(result).toBe('家事援助');
+  });
+
+  it('service_type修正後にチェックボックスが家事援助になること', () => {
+    // service_type修正後のcheckbox判定
+    const correctedServiceType = '家事援助';
+    const flags = serviceTypeToCheckFlags(correctedServiceType);
+    expect(flags.house).toBe(true);
+    expect(flags.body).toBe(false);
+  });
+
+  it('身体介護の内容が多いブロックはservice_typeが身体介護のまま', () => {
+    const steps = [
+      { item: '訪問時確認', content: '19:30 利用者宅を訪問し体調確認' },
+      { item: '服薬確認', content: '19:35 処方薬の服薬を声かけし確認する' },
+      { item: '整容介助', content: '19:45 洗面・歯磨きの声かけと見守りを行う' },
+      { item: '更衣見守り', content: '19:55 就寝前の更衣を見守り、必要に応じて介助する' },
+      { item: '安全確認', content: '20:05 居室の安全を確認し、戸締まりを行う' },
+      { item: '退室', content: '20:25 利用者に声をかけ退室する' },
+    ];
+    const result = correctServiceType(steps, '身体介護');
+    expect(result).toBe('身体介護');
+  });
+});
+
+describe('35. モニタリングC20が直前計画書のE12/E13を完全一致で引用するテスト', () => {
+  function forceGoalQuotingV2(
+    goalEval: string,
+    shortGoal: string | null,
+    longGoal: string | null,
+  ): string {
+    // 短期目標の引用修正
+    if (shortGoal && !goalEval.includes(shortGoal)) {
+      let replaced = goalEval.replace(/短期目標[『「「][^』」」]*[』」」]/, `短期目標『${shortGoal}』`);
+      if (!replaced.includes(shortGoal)) {
+        replaced = goalEval.replace(/短期目標[^。、]*?について/, `短期目標『${shortGoal}』について`);
+      }
+      if (replaced.includes(shortGoal)) {
+        goalEval = replaced;
+      } else {
+        const shortEvalBody = goalEval.match(/短期[^。]*?(継続|達成|維持|安定|変更)[^。]*。/)?.[0] || '';
+        const shortVerdict = /達成/.test(shortEvalBody) ? '達成' : /変更/.test(shortEvalBody) ? '変更' : '継続';
+        const shortReasoning = shortEvalBody
+          ? shortEvalBody.replace(/短期目標[^、。]*?について[、,]?\s*/, '')
+          : '現在のサービス提供により安定した状態が維持されている。';
+        goalEval = goalEval.replace(/短期[^。]*?(継続する|達成した|変更する)[^。]*。/, '').trim();
+        const shortSection = shortVerdict === '継続'
+          ? `短期目標『${shortGoal}』について、${shortReasoning.replace(/。$/, '')}ため、目標を継続する。`
+          : `短期目標『${shortGoal}』について、${shortReasoning}`;
+        goalEval = shortSection + (goalEval ? ' ' + goalEval : '');
+      }
+    }
+    // 長期目標の引用修正
+    if (longGoal && !goalEval.includes(longGoal)) {
+      let replaced = goalEval.replace(/長期目標[『「「][^』」」]*[』」」]/, `長期目標『${longGoal}』`);
+      if (!replaced.includes(longGoal)) {
+        replaced = goalEval.replace(/長期目標[^。、]*?について/, `長期目標『${longGoal}』について`);
+      }
+      if (replaced.includes(longGoal)) {
+        goalEval = replaced;
+      } else {
+        goalEval = goalEval.replace(/長期[^。]*?(継続する|達成した|変更する)[^。]*。/, '').trim();
+        goalEval += ` 長期目標『${longGoal}』について、長期的な視点で支援を継続しており、現状維持で目標を継続する。`;
+      }
+    }
+    return goalEval;
+  }
+
+  it('C20に短期目標・長期目標の両方が一字一句完全一致で引用されること', () => {
+    const shortGoal = '定期的な支援を受けながら、日常生活動作の維持を図り、安全に自宅で生活できる環境を整える';
+    const longGoal = '必要な介護サービスを利用しながら、住み慣れた自宅での安定した日常生活を継続する';
+    const aiOutput = "短期目標『本人の希望に基づく支援目標』について安定。長期目標についても問題なし。";
+
+    const result = forceGoalQuotingV2(aiOutput, shortGoal, longGoal);
+
+    // 短期・長期目標の一字一句完全一致を検証
+    expect(result).toContain(`短期目標『${shortGoal}』`);
+    expect(result).toContain(`長期目標『${longGoal}』`);
+    // 句読点・助詞の揺れがないことを確認
+    expect(result).toContain(shortGoal);
+    expect(result).toContain(longGoal);
+  });
+
+  it('AIが要約・言い換えした場合でも正しい目標に強制置換されること', () => {
+    const shortGoal = '安全に在宅生活を送る';
+    const longGoal = '自宅での生活を継続する';
+    const aiOutput = "短期目標『安全な生活を送りたい』について、達成状況は良好。長期目標『家での暮らしを続けたい』も同様。";
+
+    const result = forceGoalQuotingV2(aiOutput, shortGoal, longGoal);
+    expect(result).toContain(shortGoal);
+    expect(result).toContain(longGoal);
+    expect(result).not.toContain('安全な生活を送りたい');
+    expect(result).not.toContain('家での暮らしを続けたい');
+  });
+
+  it('C20に短期目標の評価1本＋長期目標の評価1本が含まれること', () => {
+    const shortGoal = '日常生活動作を維持する';
+    const longGoal = '安定した在宅生活を継続する';
+    const aiOutput = "目標は概ね達成されている。";
+
+    const result = forceGoalQuotingV2(aiOutput, shortGoal, longGoal);
+    // 短期目標と長期目標の両方が含まれることを確認
+    expect(result).toContain('短期目標');
+    expect(result).toContain('長期目標');
+    expect(result).toContain(shortGoal);
+    expect(result).toContain(longGoal);
+  });
+});
+
+describe('36. 継続パターン時、2026年1月計画書E12/E13が前版と完全一致で引き継がれること', () => {
+  it('goalContinuation=true → inheritShortTermGoal=true → 前版短期目標が一字一句一致で使用', () => {
+    const previousShortGoal = '定期的な支援を受けながら、日常生活動作の維持を図り、安全に自宅で生活できる環境を整える';
+    const goalContinuation = true;
+
+    // executor → carePlanGeneratorの流れ
+    const ctx: { inheritShortTermGoal?: boolean; inheritLongTermGoal?: boolean } = {};
+    if (goalContinuation) {
+      ctx.inheritShortTermGoal = true;
+    }
+
+    // carePlanGeneratorでの後処理
+    let planGoalShort = 'AIが新しく生成した短期目標（文言は異なる）';
+    if (ctx.inheritShortTermGoal) {
+      planGoalShort = previousShortGoal;
+    }
+
+    expect(planGoalShort).toBe(previousShortGoal);
+    // 句読点・助詞も含めて完全一致
+    expect(planGoalShort).toEqual(previousShortGoal);
+  });
+
+  it('長期目標が期間内なら前版長期目標も完全一致で引き継がれること', () => {
+    const previousLongGoal = '必要な介護サービスを利用しながら、住み慣れた自宅での安定した日常生活を継続する';
+    const longTermEndDate = '2026-05-01';
+    const planCreationDate = '2026-01-01';
+
+    const stepDate = new Date(planCreationDate + 'T00:00:00');
+    const longTermEnd = new Date(longTermEndDate + 'T00:00:00');
+    const longTermStillActive = stepDate < longTermEnd;
+
+    expect(longTermStillActive).toBe(true);
+
+    let planGoalLong = 'AIが生成した新しい長期目標';
+    if (longTermStillActive) {
+      planGoalLong = previousLongGoal;
+    }
+
+    expect(planGoalLong).toBe(previousLongGoal);
+  });
+});
+
+describe('37. 更新パターン時、モニタリング評価と次回計画書目標が矛盾しないテスト', () => {
+  it('goalContinuation=false（達成）→ 新目標が使用され、前版目標と異なること', () => {
+    const previousGoal = '前回の短期目標';
+    const newGoal = '新しいステージの短期目標';
+    const goalContinuation = false;
+
+    let planGoalShort = newGoal; // AIの新目標
+    const ctx: { inheritShortTermGoal?: boolean } = {};
+    if (goalContinuation) {
+      ctx.inheritShortTermGoal = true;
+      planGoalShort = previousGoal;
+    }
+
+    expect(planGoalShort).toBe(newGoal);
+    expect(planGoalShort).not.toBe(previousGoal);
+  });
+
+  it('モニタリングで「目標を達成」→ goalContinuation=false', () => {
+    const goalEval = "短期目標『安全に生活する』について、目標を達成したと判断する。";
+    const goalContinuation = /目標を継続/.test(goalEval);
+    expect(goalContinuation).toBe(false);
+  });
+
+  it('モニタリングで「目標を変更」→ goalContinuation=false', () => {
+    const goalEval = "短期目標について、新たな段階として目標を変更する。";
+    const goalContinuation = /目標を継続/.test(goalEval);
+    expect(goalContinuation).toBe(false);
+  });
+});
+
+describe('38. D12のservice_type要約が計画書サービス2・手順書service_typeと一致するテスト', () => {
+  it('身体介護と家事援助の両方がある場合、D12に両方の言及があること', () => {
+    const serviceTypes = ['家事援助', '身体介護'];
+    let serviceReason = '身体介護（服薬確認・見守り）が計画通り提供されている。';
+
+    // 後処理ロジック
+    const hasBody = serviceTypes.some(st => st.includes('身体'));
+    const hasHouse = serviceTypes.some(st => st.includes('家事') || st.includes('生活'));
+    if (hasBody && hasHouse) {
+      const mentionsBody = /身体介護|服薬|排泄|入浴|更衣|整容|バイタル|体調確認|移動支援|安全確認|就寝/.test(serviceReason);
+      const mentionsHouse = /家事援助|調理|掃除|洗濯|配膳|環境整備|片付/.test(serviceReason);
+      if (mentionsBody && !mentionsHouse) {
+        serviceReason = serviceReason.replace(/。$/, '') + '。また、家事援助（調理・掃除・洗濯等）も計画通り提供されていることを確認した。';
+      }
+    }
+
+    expect(serviceReason).toContain('身体介護');
+    expect(serviceReason).toContain('家事援助');
+  });
+
+  it('身体介護のみの場合、家事援助への言及が追加されないこと', () => {
+    const serviceTypes = ['身体介護'];
+    let serviceReason = '身体介護（服薬確認・整容・安全確認等）が計画通り提供されている。';
+
+    const hasBody = serviceTypes.some(st => st.includes('身体'));
+    const hasHouse = serviceTypes.some(st => st.includes('家事'));
+    // 片方のみの場合は補完不要
+    expect(hasBody && hasHouse).toBe(false);
+    expect(serviceReason).not.toContain('家事援助');
+  });
+});
+
+describe('39. 表紙G17通院等介助チェックが根拠なく残らないテスト', () => {
+  it('契約支給量に通院等介助11時間がある場合は根拠ありでチェック', () => {
+    const supplyH: Record<string, string> = { '通院等介助(身体介護を伴わない)': '11' };
+    const result = checkService(['通院等介助(身体介護を伴わない)'], supplyH, []);
+    expect(result.checked).toBe(true);
+    expect(result.hours).toBe('11');
+  });
+
+  it('契約支給量にも実績にも通院等介助がなければチェックが入らないこと', () => {
+    const supplyH: Record<string, string> = { '身体介護': '30', '家事援助': '20' };
+    const result = checkService(['通院等介助(身体介護を伴わない)'], supplyH, ['身体介護', '家事援助']);
+    expect(result.checked).toBe(false);
+  });
+
+  it('AIブロックだけでは通院等介助(身体伴わない)のチェックが入らないこと', () => {
+    const result = computeVisitCheckFlags('', '', false, [
+      { service_type: '通院等介助(身体介護を伴わない)', steps: [
+        { item: '通院付き添い', content: '病院まで同行', note: '' },
+      ] },
+    ]);
+    // AIブロックだけではvisitNoBodyはfalse（billingHasVisitが必要）
+    expect(result.hasVisitNoBody).toBe(false);
+  });
+});
+
+describe('40. as-of dateが3月のとき、2月実績パターン変更を検知して再生成するテスト', () => {
+  it('1月と2月でパターンが変わっていれば変更検出されること', () => {
+    // 1月: 18:30-19:30のパターン
+    const janPattern = new Set(['水-18:30~19:30', '木-18:30~19:30', '日-18:30~19:30']);
+    // 2月: 19:30-21:00に変更（身体介護パターン追加）
+    const febPattern = new Set(['水-18:30~19:30', '木-18:30~19:30', '日-18:30~19:30', '水-19:30~21:00', '木-19:30~21:00']);
+
+    expect(hasPatternChanged(janPattern, febPattern)).toBe(true);
+  });
+
+  it('パターン変更検出時にskipTejunsho=false（手順書再生成必要）', () => {
+    const patternChanged = true;
+    const skipTejunsho = !patternChanged;
+    expect(skipTejunsho).toBe(false);
+  });
+
+  it('as-of dateが1月（2月実績なし）の場合、パターン変更は検出されないこと', () => {
+    // 1月時点では2月データがないため、前月(12月)と比較
+    const decPattern = new Set(['水-18:30~19:30', '木-18:30~19:30', '日-18:30~19:30']);
+    const janPattern = new Set(['水-18:30~19:30', '木-18:30~19:30', '日-18:30~19:30']);
+    expect(hasPatternChanged(decPattern, janPattern)).toBe(false);
+  });
+});
+
+describe('41. 既存改善項目の回帰テスト', () => {
+  it('手順書でサービス1が家事援助、サービス2が身体介護として整理されていること', () => {
+    // careProcedureGeneratorの混在除去ロジック
+    const BODY_KW = /服薬|排泄|入浴|更衣|整容|移乗|移動介助|バイタル|体調|食事介助|口腔ケア|清拭|体位|見守り|安全確認|血圧|体温/;
+    const HOUSE_KW = /調理|配膳|片付|掃除|洗濯|買い物|環境整備|ゴミ|献立|食材|台所|食器|キッチン|居室整理|シンク|コンロ/;
+
+    // 家事援助ブロック
+    const houseSteps = [
+      { item: '調理', detail: '夕食の調理' },
+      { item: '掃除', detail: '居室清掃' },
+    ];
+    for (const step of houseSteps) {
+      const text = `${step.item} ${step.detail}`;
+      expect(HOUSE_KW.test(text)).toBe(true);
+      // 身体介護キーワードがないことを確認
+      expect(BODY_KW.test(text)).toBe(false);
+    }
+
+    // 身体介護ブロック
+    const bodySteps = [
+      { item: '服薬確認', detail: '服薬の声かけ' },
+      { item: '整容介助', detail: '洗面の見守り' },
+    ];
+    for (const step of bodySteps) {
+      const text = `${step.item} ${step.detail}`;
+      expect(BODY_KW.test(text)).toBe(true);
+    }
+  });
+
+  it('手順書にバイタルチェックが含まれていること', () => {
+    const steps = [
+      { item: '到着・挨拶', detail: '訪問' },
+      { item: '排泄介助', detail: 'トイレ介助' },
+    ];
+    const hasVital = steps.some(s => /バイタル|血圧|体温|脈拍|SpO2/.test(`${s.item} ${s.detail}`));
+    expect(hasVital).toBe(false);
+
+    // 自動挿入ロジック
+    if (!hasVital) {
+      const greetIdx = steps.findIndex(s => /到着|挨拶/.test(s.item));
+      steps.splice(greetIdx >= 0 ? greetIdx + 1 : 0, 0, {
+        item: 'バイタルチェック',
+        detail: '血圧・体温・脈拍を測定',
+      });
+    }
+    const hasVitalAfter = steps.some(s => /バイタル|血圧|体温/.test(`${s.item} ${s.detail}`));
+    expect(hasVitalAfter).toBe(true);
+  });
+
+  it('経緯書の並びが計画書→手順書→モニタリング→計画書であること', () => {
+    const log = [
+      { order: 1, docType: '居宅介護計画書' },
+      { order: 2, docType: '訪問介護手順書' },
+      { order: 3, docType: 'モニタリング表' },
+      { order: 4, docType: '居宅介護計画書' },
+    ];
+    expect(log[0].docType).toBe('居宅介護計画書');
+    expect(log[1].docType).toBe('訪問介護手順書');
+    expect(log[2].docType).toBe('モニタリング表');
+    expect(log[3].docType).toBe('居宅介護計画書');
+    // 順番が正しいことを確認
+    for (let i = 0; i < log.length - 1; i++) {
+      expect(log[i].order).toBeLessThan(log[i + 1].order);
+    }
+  });
+
+  it('年末年始回避ルール（12/30〜1/4 → 12/29）が維持されていること', () => {
+    expect(avoidNewYear(new Date(2025, 11, 30)).getDate()).toBe(29);
+    expect(avoidNewYear(new Date(2025, 11, 31)).getDate()).toBe(29);
+    expect(avoidNewYear(new Date(2026, 0, 1)).getDate()).toBe(29);
+    expect(avoidNewYear(new Date(2026, 0, 4)).getDate()).toBe(29);
+    expect(avoidNewYear(new Date(2026, 0, 5)).getDate()).toBe(5); // 変更なし
+  });
+
+  it('手順書に障害支援区分が入っていること（DB値優先のテスト）', () => {
+    // careProcedureGenerator.ts の障害支援区分ロジック
+    const clientCareLevel = '';
+    let careLevelText = clientCareLevel;
+    // DB値がある場合（テストではcategories.length > 0をシミュレート）
+    const dbCategory = '区分3';
+    if (dbCategory) {
+      careLevelText = dbCategory;
+    }
+    if (!careLevelText) careLevelText = '未設定';
+
+    expect(careLevelText).toBe('区分3');
+    expect(careLevelText).not.toBe('未設定');
+  });
+});

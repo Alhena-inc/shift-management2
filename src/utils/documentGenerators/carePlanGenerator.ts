@@ -1158,11 +1158,51 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
     }
   }
 
-  // === サービス内容の種別混在を修正（後処理バリデーション） ===
-  // 身体介護として説明可能な項目のキーワード（体調確認・バイタル・服薬等）
+  // === service_type と実際のステップ内容の不一致を検出・修正 ===
+  // ★重要：混在除去より先にservice_type修正を実行する。
+  // 理由：混在除去がservice_typeに基づいてステップを削除するため、
+  // service_typeが誤っていると正しいステップが除外されてしまう。
+  // 例：家事援助内容（調理・掃除等）のブロックでservice_type="身体介護"の場合、
+  // 先に混在除去すると全ての家事ステップが削除され、service_type修正が発火しなくなる。
   const BODY_KEYWORDS = /服薬|排泄|入浴|更衣|整容|移乗|移動介助|バイタル|体調確認|体調|食事介助|口腔ケア|清拭|体位|見守り|安全確認|血圧|体温|脈拍|SpO2/;
-  // 家事援助として説明可能な項目のキーワード（調理・掃除・洗濯等）
   const HOUSE_KEYWORDS = /調理|配膳|片付|掃除|洗濯|買い物|環境整備|ゴミ|献立|食材|台所|食器|キッチン|居室整理|シンク|コンロ/;
+
+  for (let i = 1; i <= 4; i++) {
+    const service = plan[`service${i}` as keyof CarePlan] as ServiceBlock | null;
+    if (!service || service.steps.length === 0) continue;
+    const st = (service.service_type || '').replace(/\s+/g, '');
+    if (st.includes('重度')) continue;
+
+    // 全ステップのテキストから、身体介護/家事援助のキーワード出現数を集計
+    let bodyCount = 0;
+    let houseCount = 0;
+    for (const step of service.steps) {
+      const text = `${step.item} ${step.content}`;
+      if (BODY_KEYWORDS.test(text)) bodyCount++;
+      if (HOUSE_KEYWORDS.test(text)) houseCount++;
+    }
+
+    const currentIsBody = st.includes('身体');
+    const currentIsHouse = st.includes('家事') || st.includes('生活');
+
+    // ステップの過半数が反対側の種別に該当する場合、service_type を修正
+    if (currentIsBody && houseCount > bodyCount) {
+      console.log(`[CarePlan] service_type修正: サービス${i} 「${service.service_type}」→「家事援助」（身体KW=${bodyCount}, 家事KW=${houseCount}/${service.steps.length}件）`);
+      service.service_type = '家事援助';
+      for (const step of service.steps) {
+        step.category = '家事援助';
+      }
+    } else if (currentIsHouse && bodyCount > houseCount) {
+      console.log(`[CarePlan] service_type修正: サービス${i} 「${service.service_type}」→「身体介護」（身体KW=${bodyCount}, 家事KW=${houseCount}/${service.steps.length}件）`);
+      service.service_type = '身体介護';
+      for (const step of service.steps) {
+        step.category = '身体介護';
+      }
+    }
+  }
+
+  // === サービス内容の種別混在を修正（後処理バリデーション） ===
+  // ★service_type修正後に実行するので、正しいservice_typeに基づいて混在除去される
   for (let i = 1; i <= 4; i++) {
     const service = plan[`service${i}` as keyof CarePlan] as ServiceBlock | null;
     if (!service || service.steps.length === 0) continue;
@@ -1194,43 +1234,6 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
     }
     if (before !== service.steps.length) {
       console.log(`[CarePlan] サービス${i}(${st}): ${before}件→${service.steps.length}件（混在除去）`);
-    }
-  }
-
-  // === service_type と実際のステップ内容の不一致を検出・修正 ===
-  // AIが service_type を誤って返す場合がある（例: 家事援助内容なのに service_type="身体介護"）
-  // 混在除去後に残ったステップの内容から、ブロックの実際の種別を再判定し、service_type を修正する
-  for (let i = 1; i <= 4; i++) {
-    const service = plan[`service${i}` as keyof CarePlan] as ServiceBlock | null;
-    if (!service || service.steps.length === 0) continue;
-    const st = (service.service_type || '').replace(/\s+/g, '');
-    if (st.includes('重度')) continue;
-
-    // 全ステップのテキストから、身体介護/家事援助のキーワード出現数を集計
-    let bodyCount = 0;
-    let houseCount = 0;
-    for (const step of service.steps) {
-      const text = `${step.item} ${step.content}`;
-      if (BODY_KEYWORDS.test(text)) bodyCount++;
-      if (HOUSE_KEYWORDS.test(text)) houseCount++;
-    }
-
-    const currentIsBody = st.includes('身体');
-    const currentIsHouse = st.includes('家事') || st.includes('生活');
-
-    // ステップの過半数が反対側の種別に該当する場合、service_type を修正
-    if (currentIsBody && houseCount > bodyCount && houseCount > service.steps.length / 2) {
-      console.log(`[CarePlan] service_type修正: サービス${i} 「${service.service_type}」→「家事援助」（身体KW=${bodyCount}, 家事KW=${houseCount}/${service.steps.length}件）`);
-      service.service_type = '家事援助';
-      for (const step of service.steps) {
-        step.category = '家事援助';
-      }
-    } else if (currentIsHouse && bodyCount > houseCount && bodyCount > service.steps.length / 2) {
-      console.log(`[CarePlan] service_type修正: サービス${i} 「${service.service_type}」→「身体介護」（身体KW=${bodyCount}, 家事KW=${houseCount}/${service.steps.length}件）`);
-      service.service_type = '身体介護';
-      for (const step of service.steps) {
-        step.category = '身体介護';
-      }
     }
   }
 
@@ -1488,6 +1491,21 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
 
   console.log(`[CarePlan] チェックボックス判定: 実績=${serviceTypes.join(',')}, 支給量=${JSON.stringify(supplyHours)}, AI種別=${allSvcTypes.join(',')}`);
   console.log(`[CarePlan] → 身体=${hasBody}, 家事=${hasHouse}, 重度=${hasHeavy}, 通院(伴)=${hasVisitBody}, 通院(非)=${hasVisitNoBody}`);
+
+  // 表紙チェック根拠ログ（運営指導対応用）
+  if (hasVisitBody) {
+    const reasons: string[] = [];
+    if (visitBodyHours) reasons.push(`契約支給量: ${visitBodyHours}時間`);
+    if (billingHasVisit) reasons.push('実績に通院あり');
+    if (planHasVisitBodyContent) reasons.push('AIプランに通院(身体伴う)ブロックあり');
+    console.log(`[CarePlan] 通院等介助(身体伴う)チェック根拠: ${reasons.join(', ')}`);
+  }
+  if (hasVisitNoBody) {
+    const reasons: string[] = [];
+    if (visitNoBodyHours) reasons.push(`契約支給量: ${visitNoBodyHours}時間`);
+    if (billingHasVisit && planHasVisitNoBodyContent) reasons.push('実績+AIプランの根拠あり');
+    console.log(`[CarePlan] 通院等介助(身体伴わない)チェック根拠: ${reasons.join(', ')}`);
+  }
 
   const checkboxAlignment: Partial<ExcelJS.Alignment> = { vertical: 'middle', wrapText: true };
   ws0.getCell('D16').value = checkboxText('身体介護', { checked: hasBody, hours: bodyHours });
