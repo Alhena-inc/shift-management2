@@ -288,26 +288,30 @@ function serviceCodeToLabel(code: string): string {
 const WEEKDAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
 
 function buildBillingSummary(records: BillingRecord[]): string {
-  const byDay = new Map<string, string[]>();
+  // ★重要: モニタリングのbillingSummaryは、AIに「曜日×時刻×作業内容」の列挙をさせないよう、
+  // 詳細な曜日別データではなく、サービス提供の概要と種別の真値情報のみを渡す。
+  const lines: string[] = [];
+
+  // 月間の提供回数サマリー（曜日×種別の回数集計のみ）
+  const dayOrder = ['月', '火', '水', '木', '金', '土', '日'];
+  const dayCounts = new Map<string, Map<string, number>>();
   for (const r of records) {
     if (!r.startTime || !r.endTime || !r.serviceDate) continue;
     const d = new Date(r.serviceDate);
     const dayName = WEEKDAY_NAMES[d.getDay()];
-    if (!byDay.has(dayName)) byDay.set(dayName, []);
-    const label = serviceCodeToLabel(r.serviceCode) || r.serviceCode || '不明';
-    byDay.get(dayName)!.push(`${r.startTime}~${r.endTime} ${label}`);
+    const label = serviceCodeToLabel(r.serviceCode) || '不明';
+    if (!dayCounts.has(dayName)) dayCounts.set(dayName, new Map());
+    const counts = dayCounts.get(dayName)!;
+    counts.set(label, (counts.get(label) || 0) + 1);
   }
-  const dayOrder = ['月', '火', '水', '木', '金', '土', '日'];
-  const lines: string[] = [];
   for (const day of dayOrder) {
-    const entries = byDay.get(day);
-    if (!entries) continue;
-    const countMap = new Map<string, number>();
-    for (const e of entries) countMap.set(e, (countMap.get(e) || 0) + 1);
-    const details = [...countMap.entries()].map(([e, c]) => `${e}(${c}回)`).join(', ');
+    const counts = dayCounts.get(day);
+    if (!counts) continue;
+    const details = [...counts.entries()].map(([label, c]) => `${label}${c}回`).join(', ');
     lines.push(`${day}曜: ${details}`);
   }
   if (lines.length === 0) return '実績データなし';
+  lines.push(`月間合計: ${records.length}回`);
 
   // 各時間枠の多数決による真値を明示（D12でこの真値を使うこと）
   // ★重要: 同一startTimeで曜日によって実績コードが異なるケースがあるが、
@@ -324,7 +328,7 @@ function buildBillingSummary(records: BillingRecord[]): string {
   }
   if (timeSlotCounts.size > 0) {
     lines.push('');
-    lines.push('【各時間枠のサービス種別（実績多数決）】★service_reasonの記載はこの種別に必ず合わせること');
+    lines.push('【各時間枠のサービス種別】★内部種別判定のみに使用。service_reason欄にこの情報をそのまま記載しないこと');
     for (const [timeRange, counts] of timeSlotCounts) {
       let bestLabel = '';
       let bestCount = 0;
@@ -333,8 +337,7 @@ function buildBillingSummary(records: BillingRecord[]): string {
       }
       lines.push(`  ${timeRange} → ${bestLabel}`);
     }
-    lines.push('★重要: service_reason欄では上記の種別を使用し、曜日別バラつきではなく多数決の真値を使うこと。');
-    lines.push('★禁止: service_reason欄に「曜日+時刻+作業内容」を並べて計画予定表の説明文にしないこと。service_reasonは「提供状況」「状態安定性」「支援効果」を中心に書くこと。');
+    lines.push('★上記は種別判定用の参考情報です。service_reason欄にはこの時間枠情報をそのまま並べず、「提供状況」「状態安定性」「支援効果」を中心に記載してください。');
   }
 
   return lines.join('\n');
