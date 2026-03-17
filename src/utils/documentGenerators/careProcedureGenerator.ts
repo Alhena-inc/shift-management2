@@ -818,6 +818,23 @@ ${planServiceText}`;
     }
   }
 
+  // === 「記録作成」「申し送り」ステップの除外 ===
+  // プロンプトで禁止しているが、AIが生成してしまった場合のフォールバック
+  const RECORD_STEP_PATTERN = /^(記録|記録作成|申し送り|申し送り事項|サービス記録|支援記録|支援内容.*記録|状況.*記録)$/;
+  for (const proc of manual.procedures) {
+    const before = proc.steps.length;
+    proc.steps = proc.steps.filter(step => {
+      if (RECORD_STEP_PATTERN.test(step.item?.trim() || '')) {
+        console.log(`[CareProcedure] 記録ステップ除外: 「${step.item}」を除外`);
+        return false;
+      }
+      return true;
+    });
+    if (before !== proc.steps.length) {
+      console.log(`[CareProcedure] ${proc.service_type}: ${before}件→${proc.steps.length}件（記録ステップ除外）`);
+    }
+  }
+
   // === バイタルチェック必須ステップの後処理 ===
   for (const proc of manual.procedures) {
     const hasVital = proc.steps.some(s =>

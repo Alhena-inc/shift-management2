@@ -979,6 +979,14 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     const activeLong = goalPeriods.find((g: any) => g.isActive && g.goalType === 'long_term' && g.goalText);
     let goalEval = result.goal_evaluation;
 
+    // === モニタリング理由文の除去 ===
+    // AIが目標評価の冒頭にモニタリング理由文を入れてしまうケースを除去
+    // 例: 「短期目標の期間満了に伴うモニタリングを実施した。短期目標『…』について、…」
+    goalEval = goalEval
+      .replace(/^(短期|長期)?目標の期間満了に伴う(モニタリング|評価)を実施した[。.]\s*/g, '')
+      .replace(/^モニタリングの結果[、,]?\s*/g, '')
+      .trim();
+
     // 短期目標の引用修正
     if (activeShort?.goalText) {
       if (!goalEval.includes(activeShort.goalText)) {
@@ -1087,11 +1095,30 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     let reason = result.service_reason;
 
     // 実績データから時間枠別のサービス種別マップを構築
-    const timeSlotTypes = new Map<string, string>();
+    // ★改善: 同一startTimeで曜日によって種別が異なるケースに対応。
+    // 多数決で最頻出の種別をその時間枠の真値とする。
+    const timeSlotCounts = new Map<string, Map<string, number>>();
     for (const r of clientRecords) {
       if (!r.startTime || !r.serviceCode) continue;
       const label = serviceCodeToLabel(r.serviceCode);
-      if (label) timeSlotTypes.set(r.startTime, label);
+      if (!label) continue;
+      if (!timeSlotCounts.has(r.startTime)) timeSlotCounts.set(r.startTime, new Map());
+      const counts = timeSlotCounts.get(r.startTime)!;
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    const timeSlotTypes = new Map<string, string>();
+    for (const [time, counts] of timeSlotCounts) {
+      let bestLabel = '';
+      let bestCount = 0;
+      for (const [label, count] of counts) {
+        if (count > bestCount) { bestCount = count; bestLabel = label; }
+      }
+      if (bestLabel) {
+        timeSlotTypes.set(time, bestLabel);
+        if (counts.size > 1) {
+          console.log(`[Monitoring] D12時間枠 ${time}: 複数種別検出 ${JSON.stringify(Object.fromEntries(counts))} → 多数決「${bestLabel}」`);
+        }
+      }
     }
 
     // D12の時間枠記載がある場合、実績データのservice_typeと一致させる

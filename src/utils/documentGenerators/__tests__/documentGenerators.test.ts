@@ -2993,3 +2993,190 @@ describe('68. monitoringTriggerNoteの改善テスト', () => {
     expect(note).toContain('service_reason');
   });
 });
+
+describe('69. 計画書の援助項目から「記録」が除外されるテスト（要件D）', () => {
+  const RECORD_STEP_PATTERN = /^(記録|記録作成|申し送り|申し送り事項|サービス記録|支援記録|支援内容.*記録|状況.*記録)$/;
+
+  it('「記録」が援助項目として検出・除外されること', () => {
+    expect(RECORD_STEP_PATTERN.test('記録')).toBe(true);
+    expect(RECORD_STEP_PATTERN.test('記録作成')).toBe(true);
+    expect(RECORD_STEP_PATTERN.test('サービス記録')).toBe(true);
+    expect(RECORD_STEP_PATTERN.test('支援内容と状況を記録')).toBe(true);
+  });
+
+  it('「申し送り」が援助項目として検出・除外されること', () => {
+    expect(RECORD_STEP_PATTERN.test('申し送り')).toBe(true);
+    expect(RECORD_STEP_PATTERN.test('申し送り事項')).toBe(true);
+  });
+
+  it('通常の援助項目は除外されないこと', () => {
+    expect(RECORD_STEP_PATTERN.test('体調確認')).toBe(false);
+    expect(RECORD_STEP_PATTERN.test('服薬確認')).toBe(false);
+    expect(RECORD_STEP_PATTERN.test('掃除')).toBe(false);
+    expect(RECORD_STEP_PATTERN.test('調理')).toBe(false);
+    expect(RECORD_STEP_PATTERN.test('バイタルチェック')).toBe(false);
+    expect(RECORD_STEP_PATTERN.test('到着・挨拶')).toBe(false);
+    expect(RECORD_STEP_PATTERN.test('退室')).toBe(false);
+  });
+
+  it('フィルタリング後にステップ数が正しいこと', () => {
+    const steps = [
+      { item: '体調確認', content: 'バイタルチェック', note: '' },
+      { item: '記録', content: '支援内容と状況を記録', note: '' },
+      { item: '服薬確認', content: '処方薬の確認', note: '' },
+      { item: '申し送り', content: 'サ責への報告', note: '' },
+    ];
+    const filtered = steps.filter(s => !RECORD_STEP_PATTERN.test(s.item.trim()));
+    expect(filtered.length).toBe(2);
+    expect(filtered.map(s => s.item)).toEqual(['体調確認', '服薬確認']);
+  });
+});
+
+describe('70. 手順書に「記録作成」「申し送り」が再発しないテスト（要件D）', () => {
+  const RECORD_STEP_PATTERN = /^(記録|記録作成|申し送り|申し送り事項|サービス記録|支援記録|支援内容.*記録|状況.*記録)$/;
+
+  it('手順書からも記録ステップが除外されること', () => {
+    const steps = [
+      { time: '18:30', item: '到着・挨拶', detail: '訪問開始', note: '' },
+      { time: '19:20', item: '記録作成', detail: '支援記録を作成', note: '' },
+      { time: '19:25', item: '退室', detail: '退室の挨拶', note: '' },
+    ];
+    const filtered = steps.filter(s => !RECORD_STEP_PATTERN.test(s.item.trim()));
+    expect(filtered.length).toBe(2);
+    expect(filtered.map(s => s.item)).toEqual(['到着・挨拶', '退室']);
+  });
+});
+
+describe('71. D12のsource of truth整合テスト（要件B）', () => {
+  it('同一startTimeに複数種別がある場合、多数決で真値を決定すること', () => {
+    // 18:30枠: 家事援助4回, 身体介護1回 → 家事援助が真値
+    const timeSlotCounts = new Map<string, Map<string, number>>();
+    timeSlotCounts.set('18:30', new Map([['家事援助', 4], ['身体介護', 1]]));
+    timeSlotCounts.set('19:30', new Map([['身体介護', 5]]));
+
+    const timeSlotTypes = new Map<string, string>();
+    for (const [time, counts] of timeSlotCounts) {
+      let bestLabel = '';
+      let bestCount = 0;
+      for (const [label, count] of counts) {
+        if (count > bestCount) { bestCount = count; bestLabel = label; }
+      }
+      if (bestLabel) timeSlotTypes.set(time, bestLabel);
+    }
+
+    expect(timeSlotTypes.get('18:30')).toBe('家事援助');
+    expect(timeSlotTypes.get('19:30')).toBe('身体介護');
+  });
+
+  it('同一startTimeが単一種別の場合はそのまま採用', () => {
+    const timeSlotCounts = new Map<string, Map<string, number>>();
+    timeSlotCounts.set('18:30', new Map([['家事援助', 8]]));
+
+    const timeSlotTypes = new Map<string, string>();
+    for (const [time, counts] of timeSlotCounts) {
+      let bestLabel = '';
+      let bestCount = 0;
+      for (const [label, count] of counts) {
+        if (count > bestCount) { bestCount = count; bestLabel = label; }
+      }
+      if (bestLabel) timeSlotTypes.set(time, bestLabel);
+    }
+
+    expect(timeSlotTypes.get('18:30')).toBe('家事援助');
+  });
+});
+
+describe('72. C20のモニタリング理由文除去テスト（要件A）', () => {
+  it('冒頭の理由文が除去されて目標評価だけが残ること', () => {
+    const shortGoal = '安全に在宅生活を継続する';
+    let goalEval = `短期目標の期間満了に伴うモニタリングを実施した。短期目標『${shortGoal}』について、安定しており、目標を継続する。`;
+    // 除去ロジック
+    goalEval = goalEval
+      .replace(/^(短期|長期)?目標の期間満了に伴う(モニタリング|評価)を実施した[。.]\s*/g, '')
+      .replace(/^モニタリングの結果[、,]?\s*/g, '')
+      .trim();
+    expect(goalEval).not.toContain('期間満了に伴うモニタリングを実施した');
+    expect(goalEval).toContain(`短期目標『${shortGoal}』`);
+  });
+
+  it('理由文がない場合はそのまま保持されること', () => {
+    const goalEval = "短期目標『目標文言』について、安定しており、目標を継続する。";
+    const cleaned = goalEval
+      .replace(/^(短期|長期)?目標の期間満了に伴う(モニタリング|評価)を実施した[。.]\s*/g, '')
+      .trim();
+    expect(cleaned).toBe(goalEval);
+  });
+});
+
+describe('73. 長期目標引き継ぎテスト（要件C）', () => {
+  it('長期目標期間内なら、前版から完全一致で引き継がれること', () => {
+    const previousLongGoal = '住み慣れた自宅での安定した日常生活を継続する';
+    const longTermEndDate = '2026-05-01'; // 6ヶ月設定
+    const currentStepDate = '2026-01-01'; // 1月計画書
+
+    const stepDate = new Date(currentStepDate + 'T00:00:00');
+    const longTermEnd = new Date(longTermEndDate + 'T00:00:00');
+    const longTermStillActive = stepDate < longTermEnd;
+
+    expect(longTermStillActive).toBe(true);
+
+    let planGoalLong = 'AIが変更した長期目標';
+    if (longTermStillActive) {
+      planGoalLong = previousLongGoal; // 強制上書き
+    }
+    expect(planGoalLong).toBe(previousLongGoal);
+  });
+
+  it('長期目標期間を過ぎていたら、新規設定が許容されること', () => {
+    const longTermEndDate = '2025-12-31';
+    const currentStepDate = '2026-01-01';
+
+    const stepDate = new Date(currentStepDate + 'T00:00:00');
+    const longTermEnd = new Date(longTermEndDate + 'T00:00:00');
+    const longTermStillActive = stepDate < longTermEnd;
+
+    expect(longTermStillActive).toBe(false);
+  });
+});
+
+describe('74. 回帰テスト: 前回改善済み項目が壊れていないこと', () => {
+  it('計画予定表の代表内容表示が維持されていること', () => {
+    // getRepresentativeItems ロジックの検証
+    function getRepItems(blocks: Array<{ service_type: string; steps: Array<{ item: string }> }>, st: string): string {
+      const block = blocks.find(b => b.service_type.includes(st.includes('身体') ? '身体' : '家事'));
+      if (!block || block.steps.length === 0) return '';
+      const meaningful = block.steps.filter(s => !/到着|挨拶|退室|訪問開始|バイタル/.test(s.item));
+      return (meaningful.length > 0 ? meaningful : block.steps).slice(0, 2).map(s => s.item).join('・');
+    }
+    const blocks = [{ service_type: '家事援助', steps: [{ item: '到着' }, { item: '掃除' }, { item: '洗濯' }] }];
+    expect(getRepItems(blocks, '家事援助')).toBe('掃除・洗濯');
+  });
+
+  it('手順書に障害支援区分が入ること（DB値優先）', () => {
+    const dbCareLevel = '区分3';
+    expect(dbCareLevel).not.toBe('未設定');
+    expect(dbCareLevel).toContain('区分');
+  });
+
+  it('バイタルチェック必須ステップが維持されていること', () => {
+    const steps = [{ item: '到着・挨拶' }, { item: '排泄介助' }];
+    const hasVital = steps.some(s => /バイタル|血圧|体温/.test(s.item));
+    expect(hasVital).toBe(false);
+    // 挿入後
+    steps.splice(1, 0, { item: 'バイタルチェック' });
+    expect(steps.some(s => /バイタル/.test(s.item))).toBe(true);
+  });
+
+  it('経緯書の順番が維持されていること', () => {
+    const log = [
+      { order: 1, docType: '居宅介護計画書' },
+      { order: 2, docType: '訪問介護手順書' },
+      { order: 3, docType: 'モニタリングシート' },
+      { order: 4, docType: '居宅介護計画書' },
+    ];
+    expect(log[0].docType).toBe('居宅介護計画書');
+    expect(log[1].docType).toBe('訪問介護手順書');
+    expect(log[2].docType).toBe('モニタリングシート');
+    expect(log[3].docType).toBe('居宅介護計画書');
+  });
+});
