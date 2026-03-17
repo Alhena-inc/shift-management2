@@ -1245,42 +1245,69 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     result.service_reason = reason;
   }
 
-  // === 週間計画由来の禁止表現チェック ===
-  // D12(service_reason)やC20(goal_evaluation)に、週間計画の作業列挙が混入していないかチェック
-  // 検出された場合は評価文として再構成する
+  // === 週間計画由来の禁止表現チェック（全テキストフィールド対象） ===
+  // D12, C20, ②③④の評価コメントに、週間計画の作業列挙が混入していないかチェック
   {
-    // 禁止パターン: 「曜日+時刻+作業内容」の並びが3回以上繰り返される = 計画予定表の説明文
+    // 禁止パターン
     const SCHEDULE_LISTING_PATTERN = /(月|火|水|木|金|土|日)曜?\d{1,2}[：:]\d{2}[~〜][^、。]{0,30}(身体介護|家事援助)[^、。]{0,30}[、,]/g;
     const DAY_TIME_CONTENT_PATTERN = /(月|火|水|木|金|土|日)曜?\s*\d{1,2}[：:]\d{2}[~〜]\d{1,2}[：:]\d{2}\s*(身体介護|家事援助)\s*\([^)]+\)/g;
+    // 作業3項目以上の羅列パターン（「調理・掃除・洗濯を実施」等）
+    const TASK_LISTING_PATTERN = /(調理|掃除|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認|買い物)[・、](調理|掃除|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認|買い物)[・、](調理|掃除|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認|買い物)/;
+
+    /** 指定テキストが週間計画の作業列挙かどうかを判定 */
+    function hasScheduleListing(text: string): boolean {
+      const m1 = text.match(SCHEDULE_LISTING_PATTERN) || [];
+      const m2 = text.match(DAY_TIME_CONTENT_PATTERN) || [];
+      const m3 = TASK_LISTING_PATTERN.test(text);
+      return m1.length >= 3 || m2.length >= 2 || m3;
+    }
 
     // service_reasonのチェック
-    if (result.service_reason) {
-      const scheduleMatches = result.service_reason.match(SCHEDULE_LISTING_PATTERN) || [];
-      const dayTimeMatches = result.service_reason.match(DAY_TIME_CONTENT_PATTERN) || [];
-      if (scheduleMatches.length >= 3 || dayTimeMatches.length >= 2) {
-        console.warn(`[Monitoring] ⚠ D12に週間計画の作業列挙を検出（${scheduleMatches.length + dayTimeMatches.length}箇所）。評価文に置換します。`);
-        // 計画書の種別に言及しつつ、評価文として再構成
-        const bodyNote = serviceTypes.some(st => st.includes('身体'))
-          ? '身体介護による体調管理・服薬確認が適切に行われ、'
-          : '';
-        const houseNote = serviceTypes.some(st => st.includes('家事') || st.includes('生活'))
-          ? '家事援助により日常的な生活環境の維持が図れている。'
-          : '';
+    if (result.service_reason && hasScheduleListing(result.service_reason)) {
+      console.warn(`[Monitoring] ⚠ D12に週間計画の作業列挙を検出。評価文に置換します。`);
+      const bodyNote = serviceTypes.some(st => st.includes('身体'))
+        ? '身体介護による体調管理・服薬確認が適切に行われ、'
+        : '';
+      const houseNote = serviceTypes.some(st => st.includes('家事') || st.includes('生活'))
+        ? '家事援助により日常的な生活環境の維持が図れている。'
+        : '';
+      if (bodyNote && houseNote) {
         result.service_reason = `計画に基づきサービスが提供されており、${bodyNote}${houseNote}生活状況は概ね安定していることを確認した。`;
+      } else if (bodyNote) {
+        result.service_reason = `計画に基づきサービスが提供されており、${bodyNote}生活状況は概ね安定していることを確認した。`;
+      } else if (houseNote) {
+        result.service_reason = `計画に基づきサービスが提供されており、${houseNote}生活状況は概ね安定していることを確認した。`;
+      } else {
+        result.service_reason = '計画に基づきサービスが提供されており、生活状況は概ね安定していることを確認した。';
+      }
+    }
+
+    // ②③④の評価コメントも同様にチェック
+    const commentFields: Array<keyof MonitoringResult> = ['satisfaction_reason', 'condition_detail', 'service_change_reason'];
+    for (const field of commentFields) {
+      const val = result[field] as string;
+      if (val && hasScheduleListing(val)) {
+        console.warn(`[Monitoring] ⚠ ${field}に週間計画の作業列挙を検出。状態評価文に置換します。`);
+        const fallbacks: Record<string, string> = {
+          satisfaction_reason: '利用者の表情・言動等から、提供サービスに対し満足していると判断する。',
+          condition_detail: '身体状況・精神状態について確認し、前回モニタリング時と比較して著変なし。',
+          service_change_reason: '確認した結果、現行サービス内容で対応可能であり変更なし。',
+        };
+        (result as unknown as Record<string, unknown>)[field] = fallbacks[field] || val;
       }
     }
 
     // goal_evaluation の『』外側のチェック
     if (result.goal_evaluation) {
-      // 『』の外側の文から作業列挙を検出
       const outsideQuotes = result.goal_evaluation.replace(/『[^』]*』/g, '');
       const CARE_LISTING = /調理[・、]*(掃除|洗濯|片付|配膳|環境整備|服薬)/;
-      if (CARE_LISTING.test(outsideQuotes)) {
+      const BODY_CARE_LISTING = /服薬確認[・、]*(体調確認|整容|更衣|安全確認|バイタル)/;
+      if (CARE_LISTING.test(outsideQuotes) || BODY_CARE_LISTING.test(outsideQuotes) || TASK_LISTING_PATTERN.test(outsideQuotes)) {
         console.warn(`[Monitoring] ⚠ C20の『』外側に作業列挙を検出。「状態評価」表現に置換します。`);
-        // 作業列挙部分を状態評価表現に置換
         result.goal_evaluation = result.goal_evaluation
-          .replace(/調理[・、]*(掃除|洗濯|片付|配膳)[^。]*を(継続|実施|提供)[^。]*。?/g, 'サービス提供により生活環境の安定が図れている。')
-          .replace(/服薬確認[・、]*(体調確認|整容|更衣|安全確認)[^。]*を(継続|実施|提供)[^。]*。?/g, '体調管理・安全確認が適切に行われている。');
+          .replace(/調理[・、]*(掃除|洗濯|片付け?|配膳|環境整備)[^。]*を?(継続|実施|提供)[^。]*。?/g, 'サービス提供により生活環境の安定が図れている。')
+          .replace(/服薬確認?[・、]*(体調確認|整容|更衣|安全確認|バイタル)[^。]*を?(継続|実施|提供)[^。]*。?/g, '体調管理・安全確認が適切に行われている。')
+          .replace(/(調理|掃除|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認)[・、]{1,2}(調理|掃除|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認)[・、]{1,2}(調理|掃除|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認)[^。]*を?(継続|実施|提供|行)[^。]*。?/g, 'サービス提供が安定して行われている。');
       }
     }
   }

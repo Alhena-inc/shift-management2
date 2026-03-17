@@ -3268,3 +3268,49 @@ describe('78. 週間計画由来の禁止表現が補正されるテスト', () 
     }
   });
 });
+
+describe('79. 作業3項目以上の羅列パターンが検出されるテスト', () => {
+  const TASK_LISTING = /(調理|掃除|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認|買い物)[・、](調理|掃除|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認|買い物)[・、](調理|掃除|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認|買い物)/;
+
+  it('「調理・掃除・洗濯を実施」が検出されること', () => {
+    expect(TASK_LISTING.test('調理・掃除・洗濯を実施した')).toBe(true);
+  });
+
+  it('「服薬確認・体調確認・安全確認を行った」が検出されること', () => {
+    expect(TASK_LISTING.test('服薬確認・体調確認・安全確認を行った')).toBe(true);
+  });
+
+  it('「配膳・片付け・環境整備を継続」が検出されること', () => {
+    expect(TASK_LISTING.test('配膳・片付け・環境整備を継続した')).toBe(true);
+  });
+
+  it('評価文は検出されないこと', () => {
+    expect(TASK_LISTING.test('生活状況は概ね安定している')).toBe(false);
+    expect(TASK_LISTING.test('体調管理が適切に行われている')).toBe(false);
+    expect(TASK_LISTING.test('在宅生活の継続が図れている')).toBe(false);
+  });
+
+  it('2項目だけなら検出されないこと（3項目以上が対象）', () => {
+    expect(TASK_LISTING.test('調理・掃除を行った')).toBe(false);
+    expect(TASK_LISTING.test('服薬確認・安全確認を実施')).toBe(false);
+  });
+});
+
+describe('80. 4項目評価コメントにも作業列挙が検出されるテスト', () => {
+  const TASK_LISTING = /(調理|掃除|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認|買い物)[・、](調理|掃除|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認|買い物)[・、](調理|掃除|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認|買い物)/;
+
+  it('satisfaction_reasonに作業列挙があれば検出されること', () => {
+    const val = '調理・掃除・洗濯のサービスに満足している';
+    expect(TASK_LISTING.test(val)).toBe(true);
+  });
+
+  it('condition_detailに作業列挙があれば検出されること', () => {
+    const val = '服薬確認・体調確認・安全確認を行い変化なし';
+    expect(TASK_LISTING.test(val)).toBe(true);
+  });
+
+  it('状態評価文であれば検出されないこと', () => {
+    const val = '身体状況・精神状態について確認し、前回モニタリング時と比較して著変なし。';
+    expect(TASK_LISTING.test(val)).toBe(false);
+  });
+});
