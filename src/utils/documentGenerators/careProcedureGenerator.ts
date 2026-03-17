@@ -210,6 +210,31 @@ function buildBillingSummary(records: BillingRecord[]): string {
   lines.push(`→ 各ブロックのservice_typeは上記の種別名と一致させること`);
   lines.push(`→ 各ブロックにはそのサービス種別の手順のみ記載（混在禁止）`);
 
+  // サービス種別ごとの代表的な時間帯を明記（AIが時間帯と種別を正しく対応付けるため）
+  const typeTimeMap = new Map<string, { days: Set<string>; times: Set<string> }>();
+  for (const r of records) {
+    if (!r.startTime || !r.endTime || !r.serviceDate) continue;
+    const label = serviceCodeToLabel(r.serviceCode);
+    if (!label) continue;
+    const d = new Date(r.serviceDate);
+    const dayName = WEEKDAY_NAMES[d.getDay()];
+    if (!typeTimeMap.has(label)) typeTimeMap.set(label, { days: new Set(), times: new Set() });
+    const entry = typeTimeMap.get(label)!;
+    entry.days.add(dayName);
+    entry.times.add(`${r.startTime}~${r.endTime}`);
+  }
+  if (typeTimeMap.size > 0) {
+    lines.push('');
+    lines.push('【サービス種別ごとの実績時間帯】');
+    for (const [label, info] of typeTimeMap) {
+      const days = dayOrder.filter(d => info.days.has(d)).join('・');
+      const times = [...info.times].sort().join(', ');
+      lines.push(`  ${label}: ${days} ${times}`);
+    }
+    lines.push('★重要：各手順書ブロックのservice_typeは、そのブロックのstart_time〜end_timeの時間帯に対応する上記の実績サービス種別と一致させること。');
+    lines.push('★時間帯が家事援助の実績時間帯に該当する場合はservice_type="家事援助"、身体介護の実績時間帯に該当する場合はservice_type="身体介護"とすること。');
+  }
+
   return lines.join('\n');
 }
 
@@ -671,10 +696,64 @@ ${planServiceText}`;
     }
   }
 
+  // === 実績ベースのservice_type修正（最優先） ===
+  // ★重要：キーワードベースの修正より先に実績データから正しいservice_typeを判定する。
+  // 理由：AIがservice_typeを誤って設定する場合（例：身体介護の時間帯を家事援助と出力）、
+  // 実績のサービスコードが最も信頼できるソースであるため。
+  {
+    // 実績から種別ごとの時間帯マップを構築
+    const typeTimeRanges = new Map<string, Array<{ start: string; end: string }>>();
+    for (const r of clientRecords) {
+      if (!r.startTime || !r.endTime) continue;
+      const label = serviceCodeToLabel(r.serviceCode);
+      if (!label) continue;
+      if (!typeTimeRanges.has(label)) typeTimeRanges.set(label, []);
+      const ranges = typeTimeRanges.get(label)!;
+      const exists = ranges.some(t => t.start === r.startTime && t.end === r.endTime);
+      if (!exists) ranges.push({ start: r.startTime, end: r.endTime });
+    }
+
+    for (const proc of manual.procedures) {
+      const st = (proc.service_type || '').replace(/\s+/g, '');
+      if (st.includes('重度')) continue;
+
+      // ブロックのstart_time/end_timeを実績の時間帯と照合
+      const procStart = proc.start_time;
+      const procEnd = proc.end_time;
+      if (!procStart || !procEnd) continue;
+
+      // 各種別の実績時間帯とこのブロックの時間帯の重複度を計算
+      let bestMatch = '';
+      let bestOverlap = 0;
+      for (const [label, ranges] of typeTimeRanges) {
+        for (const range of ranges) {
+          // 時間帯の重複を計算（分単位）
+          const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); };
+          const overlapStart = Math.max(toMin(procStart), toMin(range.start));
+          const overlapEnd = Math.min(toMin(procEnd), toMin(range.end));
+          const overlap = Math.max(0, overlapEnd - overlapStart);
+          if (overlap > bestOverlap) {
+            bestOverlap = overlap;
+            bestMatch = label;
+          }
+        }
+      }
+
+      if (bestMatch && bestOverlap > 0) {
+        const currentLabel = st.includes('身体') ? '身体介護' : (st.includes('家事') || st.includes('生活')) ? '家事援助' : '';
+        if (currentLabel && currentLabel !== bestMatch) {
+          console.log(`[CareProcedure] 実績ベースservice_type修正: 「${proc.service_type}」→「${bestMatch}」（時間帯${procStart}〜${procEnd}の実績が${bestMatch}、重複${bestOverlap}分）`);
+          proc.service_type = bestMatch;
+        }
+      }
+    }
+  }
+
   // === service_type と実際のステップ内容の不一致を検出・修正 ===
   // ★重要：混在除去より先にservice_type修正を実行する。
   // 理由：混在除去がservice_typeに基づいてステップを削除するため、
   // service_typeが誤っていると正しいステップが除外されてしまう。
+  // ★注意：実績ベースの修正が最優先。キーワードベースの修正は実績で判定できない場合のフォールバック。
   const BODY_KW = /服薬|排泄|入浴|更衣|整容|移乗|移動介助|バイタル|体調|食事介助|口腔ケア|清拭|体位|見守り|安全確認|血圧|体温/;
   const HOUSE_KW = /調理|配膳|盛り付|片付|掃除|洗濯|買い物|環境整備|ゴミ|献立|食材|台所|食器|キッチン|居室整理|シンク|コンロ/;
   for (const proc of manual.procedures) {

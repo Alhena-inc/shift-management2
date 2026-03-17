@@ -761,6 +761,31 @@ function buildBillingSummary(records: BillingRecord[]): string {
   lines.push(`→ 各ブロックのservice_typeは上記の種別名と一致させること`);
   lines.push(`→ 各ブロックのstepsには、そのサービス種別に該当する援助項目のみ記載すること（混在禁止）`);
 
+  // サービス種別ごとの代表的な時間帯を明記（AIが時間帯と種別を正しく対応付けるため）
+  const typeTimeMap = new Map<string, { days: Set<string>; times: Set<string> }>();
+  for (const r of records) {
+    if (!r.startTime || !r.endTime || !r.serviceDate) continue;
+    const label = serviceCodeToLabel(r.serviceCode);
+    if (!label) continue;
+    const d = new Date(r.serviceDate);
+    const dayName2 = WEEKDAY_NAMES[d.getDay()];
+    if (!typeTimeMap.has(label)) typeTimeMap.set(label, { days: new Set(), times: new Set() });
+    const entry = typeTimeMap.get(label)!;
+    entry.days.add(dayName2);
+    entry.times.add(`${r.startTime}~${r.endTime}`);
+  }
+  if (typeTimeMap.size > 1) {
+    lines.push('');
+    lines.push('【サービス種別ごとの実績時間帯】');
+    for (const [label, info] of typeTimeMap) {
+      const days = dayOrder.filter(d => info.days.has(d)).join('・');
+      const times = [...info.times].sort().join(', ');
+      lines.push(`  ${label}: ${days} ${times}`);
+    }
+    lines.push('★重要：各サービス内容ブロックのservice_typeは、上記の実績時間帯に基づいて正しく設定すること。');
+    lines.push('★身体介護の実績がある場合は必ずservice_type="身体介護"のブロックを生成し、家事援助の実績がある場合は必ずservice_type="家事援助"のブロックを生成すること。');
+  }
+
   return lines.join('\n');
 }
 
@@ -1254,6 +1279,85 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
       service.service_type = inferred;
       for (const step of service.steps) {
         step.category = inferred;
+      }
+    }
+  }
+
+  // === 実績種別の網羅性チェック: 実績に存在する種別がAI出力に欠けていないか検証 ===
+  // ★重要：実績に身体介護と家事援助の両方があるのに、AIが片方しか生成しなかった場合に修正する。
+  // 例：実績に身体介護+家事援助があるが、AIが2つとも家事援助で生成した場合、
+  //     キーワードベースで一方を身体介護に修正する。
+  {
+    const aiServiceTypes = new Set<string>();
+    for (let i = 1; i <= 4; i++) {
+      const service = plan[`service${i}` as keyof CarePlan] as ServiceBlock | null;
+      if (service && service.steps.length > 0 && service.service_type) {
+        const st = service.service_type.replace(/\s+/g, '');
+        if (st.includes('身体')) aiServiceTypes.add('身体介護');
+        else if (st.includes('家事') || st.includes('生活')) aiServiceTypes.add('家事援助');
+        else if (st.includes('重度')) aiServiceTypes.add('重度訪問');
+        else aiServiceTypes.add(service.service_type);
+      }
+    }
+
+    // 実績には存在するがAI出力に欠けている種別を検出
+    const missingTypes: string[] = [];
+    for (const billingType of serviceTypes) {
+      if (!aiServiceTypes.has(billingType)) {
+        missingTypes.push(billingType);
+      }
+    }
+
+    if (missingTypes.length > 0) {
+      console.log(`[CarePlan] 実績種別欠落検出: AI出力=${[...aiServiceTypes].join(',')}, 実績=${serviceTypes.join(',')}, 欠落=${missingTypes.join(',')}`);
+
+      // 同じservice_typeが重複しているブロックを探して、欠落種別に割り当てる
+      for (const missing of missingTypes) {
+        // 重複ブロックを探す（同じservice_typeが2つ以上ある場合）
+        const typeCountMap = new Map<string, number[]>();
+        for (let i = 1; i <= 4; i++) {
+          const service = plan[`service${i}` as keyof CarePlan] as ServiceBlock | null;
+          if (!service || service.steps.length === 0) continue;
+          const normType = service.service_type.replace(/\s+/g, '');
+          const key = normType.includes('身体') ? '身体介護' : (normType.includes('家事') || normType.includes('生活')) ? '家事援助' : service.service_type;
+          if (!typeCountMap.has(key)) typeCountMap.set(key, []);
+          typeCountMap.get(key)!.push(i);
+        }
+
+        // 重複ブロックの中でキーワードが欠落種別に近いものを変更
+        for (const [existingType, indices] of typeCountMap) {
+          if (indices.length < 2) continue; // 重複なし
+          if (existingType === missing) continue; // 既に正しい種別
+
+          // 重複ブロックの中でキーワードマッチが欠落種別寄りなものを探す
+          let bestIdx = -1;
+          let bestScore = -1;
+          for (const idx of indices) {
+            const service = plan[`service${idx}` as keyof CarePlan] as ServiceBlock | null;
+            if (!service) continue;
+            let score = 0;
+            for (const step of service.steps) {
+              const text = `${step.item} ${step.content}`;
+              if (missing === '身体介護' && BODY_KEYWORDS.test(text)) score++;
+              if (missing === '家事援助' && HOUSE_KEYWORDS.test(text)) score++;
+            }
+            if (score > bestScore) {
+              bestScore = score;
+              bestIdx = idx;
+            }
+          }
+
+          if (bestIdx > 0) {
+            const service = plan[`service${bestIdx}` as keyof CarePlan] as ServiceBlock | null;
+            if (service) {
+              console.log(`[CarePlan] 実績種別欠落修正: サービス${bestIdx} 「${service.service_type}」→「${missing}」（重複ブロックを割り当て）`);
+              service.service_type = missing;
+              for (const step of service.steps) {
+                step.category = missing;
+              }
+            }
+          }
+        }
       }
     }
   }
