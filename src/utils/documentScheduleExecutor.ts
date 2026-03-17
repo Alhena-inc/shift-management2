@@ -942,6 +942,7 @@ export async function executeCatchUpGeneration(
   let currentLongTermMonths = 6;
   let currentPlanStart = contractStart; // 現在の計画の起点
   let lastWeeklyPattern: Set<string> = new Set(); // 前回の手順書作成時の週間パターン
+  let lastServiceBlocks: Array<{ service_type: string; visit_label: string; steps: Array<{ item: string; content: string; note: string; category?: string }> }> | undefined; // 直前の計画書のサービスブロック（モニタリングに引き継ぐ）
 
   // モニタリング周期を区分から事前取得（短期目標期間が長くてもモニタリングが入るようにする）
   let baseMonitoringCycleMonths: number | undefined;
@@ -1218,6 +1219,8 @@ export async function executeCatchUpGeneration(
 
             // 計画書のサービス内容を手順書に引き継ぐ
             ctx.carePlanServiceBlocks = planResult.serviceBlocks;
+            // モニタリング用にもサービスブロックを保持
+            lastServiceBlocks = planResult.serviceBlocks;
 
             const { generate: generateProcedure } = await import('./documentGenerators/careProcedureGenerator');
             await generateProcedure(ctx);
@@ -1320,6 +1323,13 @@ export async function executeCatchUpGeneration(
         // モニタリングのトリガー種別をctxに設定（短期/長期目標期間満了の旨を記載するため）
         if (step.monitoringType === 'short_term' || step.monitoringType === 'long_term') {
           ctx.monitoringType = step.monitoringType;
+        }
+
+        // 直前の計画書のサービスブロックをモニタリングに引き継ぐ
+        // D12のservice_type判定とプロンプトの根拠に使用
+        if (lastServiceBlocks) {
+          ctx.carePlanServiceBlocks = lastServiceBlocks;
+          console.log(`[CatchUp] 計画書サービスブロックをモニタリングに引き継ぎ: ${lastServiceBlocks.length}ブロック`);
         }
 
         const promptData = await loadAiPrompt('monitoring').catch(() => null);
