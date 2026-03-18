@@ -4459,3 +4459,48 @@ describe('109. D12の単一タスク叙述パターン検出テスト', () => {
     expect(matches.length).toBeLessThan(2);
   });
 });
+
+// ===== プロンプト入力から時間枠情報が除去されているテスト =====
+
+describe('110. AIプロンプトに時間枠詳細が渡されないテスト（要件B根本対策）', () => {
+  it('billing_summaryに「18:30~19:30 → 家事援助」のような時間枠→種別マッピングが含まれないこと', () => {
+    // buildBillingSummaryの出力形式チェック
+    const BAD_TIME_SLOT_FORMAT = /\d{1,2}:\d{2}[~〜]\d{1,2}:\d{2}\s*→\s*(身体介護|家事援助)/;
+    // モニタリング用のbillingSummaryは種別ごとの月間合計のみ
+    const goodSummary = '家事援助: 月12回\n身体介護: 月8回\n提供曜日: 水・木・金・日\n月間合計: 20回';
+    expect(BAD_TIME_SLOT_FORMAT.test(goodSummary)).toBe(false);
+
+    // 旧フォーマット（これがAIの作業列挙文を誘発していた）
+    const badSummary = '18:30~19:30 → 家事援助\n19:30~20:30 → 身体介護';
+    expect(BAD_TIME_SLOT_FORMAT.test(badSummary)).toBe(true);
+  });
+
+  it('carePlanServiceNoteに曜日・時間帯が含まれないこと', () => {
+    // 新しいフォーマット: 種別名のみ
+    const goodNote = '【居宅介護計画書のサービス種別】家事援助・身体介護';
+    expect(goodNote).not.toMatch(/\d{1,2}:\d{2}/); // 時刻なし
+    expect(goodNote).not.toMatch(/(月|火|水|木|金|土|日)曜/); // 曜日なし
+
+    // 旧フォーマット（これが問題だった）
+    const badNote = 'ブロック1: 家事援助（水・木・日 18:30〜19:30）';
+    expect(badNote).toMatch(/\d{1,2}:\d{2}/); // 時刻あり → NG
+  });
+});
+
+describe('111. D12種別補完で作業列挙（調理・掃除・洗濯等）が使われないテスト', () => {
+  it('家事援助言及不足時の補完文に作業名が含まれないこと', () => {
+    const supplement = 'また、家事援助による日常生活の支援も安定して行われていることを確認した。';
+    // NG: 調理、掃除、洗濯、配膳、片付け 等の個別作業名
+    expect(supplement).not.toMatch(/調理|掃除|洗濯|配膳|片付け?|環境整備/);
+    // OK: 「日常生活の支援」「生活環境」等の抽象的表現
+    expect(supplement).toMatch(/日常生活/);
+  });
+
+  it('身体介護言及不足時の補完文に作業名が含まれないこと', () => {
+    const supplement = 'また、身体介護による体調管理も安定して行われていることを確認した。';
+    // NG: 服薬確認、整容、更衣、安全確認 等の個別作業名
+    expect(supplement).not.toMatch(/服薬確認|整容|更衣|安全確認|バイタル/);
+    // OK: 「体調管理」等の抽象的表現
+    expect(supplement).toMatch(/体調管理/);
+  });
+});

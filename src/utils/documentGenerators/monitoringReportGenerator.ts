@@ -320,32 +320,11 @@ function buildBillingSummary(records: BillingRecord[]): string {
   lines.push(`提供曜日: ${activeDayList.join('・')}`);
   lines.push(`月間合計: ${records.length}回`);
 
-  // 各時間枠の多数決による真値を明示（D12でこの真値を使うこと）
-  // ★重要: 同一startTimeで曜日によって実績コードが異なるケースがあるが、
-  // 居宅介護計画書の計画予定表に合わせた種別を真値とする。
-  const timeSlotCounts = new Map<string, Map<string, number>>();
-  for (const r of records) {
-    if (!r.startTime || !r.endTime || !r.serviceCode) continue;
-    const label = serviceCodeToLabel(r.serviceCode);
-    if (!label) continue;
-    const key = `${r.startTime}~${r.endTime}`;
-    if (!timeSlotCounts.has(key)) timeSlotCounts.set(key, new Map());
-    const counts = timeSlotCounts.get(key)!;
-    counts.set(label, (counts.get(label) || 0) + 1);
-  }
-  if (timeSlotCounts.size > 0) {
-    lines.push('');
-    lines.push('【各時間枠のサービス種別】★内部種別判定のみに使用。service_reason欄にこの情報をそのまま記載しないこと');
-    for (const [timeRange, counts] of timeSlotCounts) {
-      let bestLabel = '';
-      let bestCount = 0;
-      for (const [label, count] of counts) {
-        if (count > bestCount) { bestCount = count; bestLabel = label; }
-      }
-      lines.push(`  ${timeRange} → ${bestLabel}`);
-    }
-    lines.push('★上記は種別判定用の参考情報です。service_reason欄にはこの時間枠情報をそのまま並べず、「提供状況」「状態安定性」「支援効果」を中心に記載してください。');
-  }
+  // ★重要: 時間枠ごとのサービス種別はAIプロンプトに渡さない。
+  // 理由: 「18:30~19:30 → 家事援助」のような情報を渡すと、AIが
+  // 「18:30〜19:30の家事援助と19:30〜20:30の身体介護が提供されている」のような
+  // 時間枠ベースの作業列挙文を生成してしまう。
+  // 種別の判定はD12の後処理で行い、AIには種別の合計回数だけ渡す。
 
   return lines.join('\n');
 }
@@ -945,12 +924,14 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
   // ★重要: モニタリングは「計画の写し」ではないため、計画書のケア内容(steps/items)はAIに渡さない。
   // 種別(service_type)と訪問パターン(visit_label)のみを渡し、D12の種別判定の根拠とする。
   let carePlanServiceNote = '';
+  // ★重要: AIプロンプトには種別名のみ渡し、曜日・時間帯は渡さない。
+  // 曜日・時間帯を渡すとAIが「水・木・日 18:30〜19:30の家事援助」のような
+  // 週間計画の説明文を生成してしまうため。
   if (ctx.carePlanServiceBlocks && ctx.carePlanServiceBlocks.length > 0) {
-    const blockLines = ctx.carePlanServiceBlocks.map((block, i) => {
-      return `  ブロック${i + 1}: ${block.service_type}（${block.visit_label}）`;
-    });
-    carePlanServiceNote = `\n\n【居宅介護計画書のサービス種別（D12の種別判定用）】\n${blockLines.join('\n')}\n★注意: 上記は種別判定のためだけの情報です。service_reason欄には計画書のケア内容を列挙せず、サービスの「提供状況」「状態安定性」「支援効果」を記載してください。`;
-    console.log(`[Monitoring] 計画書サービス種別情報をプロンプトに追加（種別のみ、ケア内容なし）: ${ctx.carePlanServiceBlocks.length}ブロック`);
+    const typeSet = new Set(ctx.carePlanServiceBlocks.map(b => b.service_type));
+    const typeList = [...typeSet].join('・');
+    carePlanServiceNote = `\n\n【居宅介護計画書のサービス種別】${typeList}\n★重要: service_reason欄にはサービスの「提供状況」「状態安定性」「支援効果」を記載してください。曜日・時間帯・作業内容の列挙は禁止です。`;
+    console.log(`[Monitoring] 計画書サービス種別情報をプロンプトに追加（種別名のみ）: ${typeList}`);
   }
 
   // テンプレート変数
@@ -1259,13 +1240,14 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     }
 
     // サービス種別ごとの記載が不足している場合に補完
+    // ★注意: 作業内容（調理・掃除等）は列挙しない。種別レベルの効果記述に留める。
     if (hasBody && hasHouse) {
-      const mentionsBody = /身体介護|服薬|排泄|入浴|更衣|整容|バイタル|体調確認|移動支援|安全確認|就寝/.test(reason);
-      const mentionsHouse = /家事援助|調理|掃除|洗濯|配膳|環境整備|片付/.test(reason);
+      const mentionsBody = /身体介護|体調管理|服薬.*確認|服薬.*管理/.test(reason);
+      const mentionsHouse = /家事援助|日常生活.*支援|生活環境/.test(reason);
       if (mentionsBody && !mentionsHouse) {
-        reason = reason.replace(/。$/, '') + '。また、家事援助（調理・掃除・洗濯等）も計画通り提供されていることを確認した。';
+        reason = reason.replace(/。$/, '') + '。また、家事援助による日常生活の支援も安定して行われていることを確認した。';
       } else if (mentionsHouse && !mentionsBody) {
-        reason = reason.replace(/。$/, '') + '。また、身体介護（服薬確認・整容・更衣見守り・安全確認等）も計画通り提供されていることを確認した。';
+        reason = reason.replace(/。$/, '') + '。また、身体介護による体調管理も安定して行われていることを確認した。';
       }
     }
     result.service_reason = reason;
