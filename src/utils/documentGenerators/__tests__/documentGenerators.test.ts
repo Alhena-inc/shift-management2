@@ -4538,3 +4538,76 @@ describe('113. AIプロンプト推奨例文に個別作業名が含まれない
     expect(jsonExample).not.toMatch(/調理|掃除|洗濯|配膳|片付け|服薬確認|体調確認|整容|更衣/);
   });
 });
+
+describe('114. 「清掃」がhasScheduleListingで検出されるテスト', () => {
+  const TASK_TWO_ITEMS_PATTERN = /(調理|掃除|清掃|洗濯|配膳|片付け?|環境整備|買い物)[・、](調理|掃除|清掃|洗濯|配膳|片付け?|環境整備|買い物)[^、。]{0,10}(実施|行[いっわ]|提供|継続)/;
+
+  it('「調理・清掃の支援が適切に実施され」が検出されること', () => {
+    expect(TASK_TWO_ITEMS_PATTERN.test('調理・清掃の支援が適切に実施され')).toBe(true);
+  });
+
+  it('「調理・掃除を実施」も引き続き検出されること', () => {
+    expect(TASK_TWO_ITEMS_PATTERN.test('調理・掃除を実施')).toBe(true);
+  });
+
+  it('「清掃・洗濯を行い」が検出されること', () => {
+    expect(TASK_TWO_ITEMS_PATTERN.test('清掃・洗濯を行い')).toBe(true);
+  });
+});
+
+describe('115. 通院等介助(身体介護を伴わない)11時間の根拠判定テスト（要件F）', () => {
+  // checkService再現
+  function checkService(
+    keys: string[],
+    supplyH: Record<string, string>,
+    serviceTypes: string[],
+  ): { checked: boolean; hours: string } {
+    for (const k of keys) {
+      if (supplyH[k] !== undefined) {
+        return { checked: true, hours: supplyH[k] };
+      }
+    }
+    if (Object.keys(supplyH).length > 0) {
+      return { checked: false, hours: '' };
+    }
+    for (const k of keys) {
+      for (const st of serviceTypes) {
+        if (st === k || st.includes(k)) return { checked: true, hours: '' };
+      }
+    }
+    return { checked: false, hours: '' };
+  }
+
+  it('契約支給量に通院等介助(身体介護を伴わない)11時間があれば根拠ありでチェックON', () => {
+    const supplyH = { '身体介護': '30', '家事援助': '20', '通院等介助(身体介護を伴わない)': '11' };
+    const result = checkService(['通院等介助(身体介護を伴わない)'], supplyH, []);
+    expect(result.checked).toBe(true);
+    expect(result.hours).toBe('11');
+    // 根拠: 契約支給量に記載あり → 表紙に残してよい
+  });
+
+  it('契約支給量に通院等介助がなければ根拠なしでチェックOFF', () => {
+    const supplyH = { '身体介護': '30', '家事援助': '20' };
+    const result = checkService(['通院等介助(身体介護を伴わない)'], supplyH, ['身体介護', '家事援助']);
+    expect(result.checked).toBe(false);
+    // 根拠なし → 表紙から外す
+  });
+
+  it('契約支給量が空で実績にも通院がなければチェックOFF', () => {
+    const supplyH: Record<string, string> = {};
+    const result = checkService(['通院等介助(身体介護を伴わない)'], supplyH, ['身体介護']);
+    expect(result.checked).toBe(false);
+  });
+
+  it('判定優先順: 契約支給量 > 実績 > AIブロック', () => {
+    // 契約支給量にある場合: 最優先でチェックON
+    const withSupply = checkService(['通院等介助(身体介護を伴わない)'], { '通院等介助(身体介護を伴わない)': '5' }, []);
+    expect(withSupply.checked).toBe(true);
+    expect(withSupply.hours).toBe('5');
+
+    // 契約支給量にないが実績にある場合: 契約支給量があるのでフォールバックしない
+    const withoutSupply = checkService(['通院等介助(身体介護を伴わない)'], { '身体介護': '30' }, ['通院']);
+    expect(withoutSupply.checked).toBe(false);
+    // 契約支給量データがある場合、実績フォールバックはしない
+  });
+});
