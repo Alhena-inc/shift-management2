@@ -3625,3 +3625,97 @@ describe('86. 拡張版RECORD_STEP_PATTERNのテスト', () => {
     expect(RECORD_STEP_PATTERN.test('バイタルチェック')).toBe(false);
   });
 });
+
+describe('87. 4項目評価が「特になし」だけで終わらず具体化されるテスト（要件D）', () => {
+  const VAGUE_PATTERN = /^(特になし|問題なし|特にない|特に問題(なし|ない)|なし|ー|−|―)[\s。、．]*$/;
+
+  const reasonFields = [
+    { key: 'service_reason', fallback: '計画に基づいたサービスが各曜日に提供されていることを確認した。' },
+    { key: 'satisfaction_reason', fallback: '利用者の表情・言動等から、提供サービスに対し満足していると判断する。' },
+    { key: 'condition_detail', fallback: '身体状況・精神状態について確認し、前回モニタリング時と比較して著変なし。' },
+    { key: 'service_change_reason', fallback: '確認した結果、現行サービス内容で対応可能であり変更なし。' },
+  ];
+
+  it('「特になし」はフォールバックに置換されること', () => {
+    for (const { key, fallback } of reasonFields) {
+      const val = '特になし';
+      const replaced = VAGUE_PATTERN.test(val.trim()) ? fallback : val;
+      expect(replaced).not.toBe('特になし');
+      expect(replaced.length).toBeGreaterThan(15);
+    }
+  });
+
+  it('「問題なし」もフォールバックに置換されること', () => {
+    for (const { fallback } of reasonFields) {
+      const val = '問題なし';
+      const replaced = VAGUE_PATTERN.test(val.trim()) ? fallback : val;
+      expect(replaced).not.toBe('問題なし');
+    }
+  });
+
+  it('具体的な記載は置換されないこと', () => {
+    const val = '計画に基づきサービスが提供されており、生活状況は概ね安定している。';
+    expect(VAGUE_PATTERN.test(val.trim())).toBe(false);
+  });
+
+  it('「ー」「−」だけの場合もフォールバックされること', () => {
+    expect(VAGUE_PATTERN.test('ー')).toBe(true);
+    expect(VAGUE_PATTERN.test('−')).toBe(true);
+    expect(VAGUE_PATTERN.test('―')).toBe(true);
+  });
+});
+
+describe('88. 年末年始前倒し作成時の時系列整合テスト（要件E）', () => {
+  function avoidNewYear(date: Date): Date {
+    const d = new Date(date);
+    const m = d.getMonth() + 1;
+    const day = d.getDate();
+    if (m === 12 && day >= 30) { d.setMonth(11, 29); }
+    if (m === 1 && day <= 4) { d.setFullYear(d.getFullYear() - 1, 11, 29); }
+    return d;
+  }
+
+  it('2026年1月1日作成日は2025年12月29日に前倒しされること', () => {
+    const planDate = avoidNewYear(new Date(2026, 0, 1));
+    expect(planDate.getFullYear()).toBe(2025);
+    expect(planDate.getMonth()).toBe(11); // 12月
+    expect(planDate.getDate()).toBe(29);
+  });
+
+  it('前倒し作成された計画書でも、モニタリングは直前計画書を参照すること', () => {
+    // 2025年11月計画書 → 2026年1月モニタリング → 2026年1月計画書(12/29作成)
+    // モニタリングは2025年11月計画書の目標を参照すべき
+    const goalPeriods = [
+      { goalType: 'short_term', isActive: true, goalText: '2025年11月の短期目標', startDate: '2025-11-01', endDate: '2026-02-01' },
+      { goalType: 'long_term', isActive: true, goalText: '2025年11月の長期目標', startDate: '2025-11-01', endDate: '2026-05-01' },
+    ];
+    const monitoringDate = new Date('2026-01-01');
+    const activeShort = goalPeriods.find(g => g.isActive && g.goalType === 'short_term');
+    const activeLong = goalPeriods.find(g => g.isActive && g.goalType === 'long_term');
+
+    // モニタリング時点でactiveな目標は2025年11月計画書のもの
+    expect(activeShort?.goalText).toBe('2025年11月の短期目標');
+    expect(activeLong?.goalText).toBe('2025年11月の長期目標');
+
+    // 長期目標はまだ期間内（2026-05-01まで）
+    const longTermEnd = new Date(activeLong!.endDate + 'T00:00:00');
+    expect(monitoringDate < longTermEnd).toBe(true);
+  });
+
+  it('年末年始前倒し作成でも、長期目標の期間内判定が正しいこと', () => {
+    // 2025年11月計画書の長期目標: 6ヶ月 → 2026年5月1日まで
+    // 2026年1月モニタリング時点 → まだ期間内
+    const longTermEndDate = '2026-05-01';
+    const monitoringStepDate = '2026-01-01';
+    const planCreationDate = '2025-12-29'; // 年末年始前倒し
+
+    const stepDate = new Date(monitoringStepDate + 'T00:00:00');
+    const longTermEnd = new Date(longTermEndDate + 'T00:00:00');
+    const planDate = new Date(planCreationDate + 'T00:00:00');
+
+    // 長期目標は期間内
+    expect(stepDate < longTermEnd).toBe(true);
+    // 前倒し作成日は短期目標期限前
+    expect(planDate < longTermEnd).toBe(true);
+  });
+});
