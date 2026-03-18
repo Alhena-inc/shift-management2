@@ -1065,11 +1065,14 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     // === モニタリング理由文の除去 ===
     // AIが目標評価の冒頭や文中にモニタリング理由文を入れてしまうケースを除去
     // 例: 「短期目標の期間満了に伴うモニタリングを実施した。短期目標『…』について、…」
-    // 例: 「短期目標の期間満了に伴い実施した評価。短期目標『…』について、…」
+    // 例: 「モニタリングを実施した。」（目標接頭辞なしのパターン）
     goalEval = goalEval
       .replace(/(短期|長期)?目標の期間満了に伴う?(モニタリング|評価)を実施した[。.]\s*/g, '')
       .replace(/(短期|長期)?目標の期間満了に伴い実施した(モニタリング|評価)[。.]\s*/g, '')
       .replace(/^モニタリングの結果[、,]?\s*/g, '')
+      // ★追加: 目標接頭辞なしの理由文も除去（「モニタリングを実施した。」等）
+      .replace(/^モニタリングを実施した[。.]\s*/g, '')
+      .replace(/モニタリング(を|の)実施[。.]\s*/g, '')
       .trim();
 
     // 短期目標の引用修正
@@ -1153,17 +1156,19 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     }
 
     // === C20 最終品質保証: 目標評価として成立しているか検証 ===
-    // AIが理由文だけを返した場合（「短期目標の期間満了に伴うモニタリングを実施した。」等）や、
-    // 目標文言の引用が全くない場合に、完全に再構築する。
+    // AIが理由文だけを返した場合や、目標文言の引用が全くない場合に、完全に再構築する。
     const hasShortGoalQuote = activeShort?.goalText && goalEval.includes(activeShort.goalText);
     const hasLongGoalQuote = activeLong?.goalText && goalEval.includes(activeLong.goalText);
-    const isOnlyTriggerText = /^(短期|長期)?目標の期間満了に伴う(モニタリング|評価)を実施した[。.]?\s*$/.test(goalEval.trim());
+    // ★拡張: 目標接頭辞なしの理由文パターンも検出
+    const isOnlyTriggerText = /^((短期|長期)?目標の期間満了に伴う(モニタリング|評価)を実施した|モニタリングを実施した|モニタリングの実施)[。.]?\s*$/.test(goalEval.trim());
     const isEmptyOrTooShort = !goalEval || goalEval.trim().length < 20;
     const lacksGoalStructure = !goalEval.includes('『') && (activeShort?.goalText || activeLong?.goalText);
+    // ★追加: 目標評価の判定語（継続/達成/変更）が含まれていない場合も不成立とみなす
+    const lacksVerdictWord = (activeShort?.goalText || activeLong?.goalText) && !/目標を(継続|達成|変更)/.test(goalEval);
 
-    if (isOnlyTriggerText || isEmptyOrTooShort || lacksGoalStructure) {
+    if (isOnlyTriggerText || isEmptyOrTooShort || lacksGoalStructure || lacksVerdictWord) {
       console.warn(`[Monitoring] ⚠ C20が目標評価として不成立。完全再構築します。`);
-      console.warn(`[Monitoring]   isOnlyTriggerText=${isOnlyTriggerText}, isEmptyOrTooShort=${isEmptyOrTooShort}, lacksGoalStructure=${lacksGoalStructure}`);
+      console.warn(`[Monitoring]   isOnlyTriggerText=${isOnlyTriggerText}, isEmptyOrTooShort=${isEmptyOrTooShort}, lacksGoalStructure=${lacksGoalStructure}, lacksVerdictWord=${lacksVerdictWord}`);
       let rebuilt = '';
       if (activeShort?.goalText) {
         rebuilt += `短期目標『${activeShort.goalText}』について、現在のサービス提供により安定した生活が維持されているが、定着のため引き続き支援が必要と判断し、目標を継続する。`;
@@ -1282,6 +1287,9 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     const TIME_SLOT_PAIR_PATTERN = /\d{1,2}[：:]\d{2}[~〜]\d{1,2}[：:]\d{2}[^、。]{0,20}(身体介護|家事援助)[^。]{0,30}\d{1,2}[：:]\d{2}[~〜]\d{1,2}[：:]\d{2}/;
     // ★追加: 「週N回の○○支援」パターン（「週3回の夕食調理支援が実施され」等）- 要件CのNG例対応
     const WEEKLY_FREQ_PATTERN = /週\d+回の[^、。]{2,15}(支援|介助|確認)[^、。]{0,10}(実施|行[いっわ]|提供され)/;
+    // ★追加: 単一ケアタスク＋叙述動詞（「掃除支援も適宜行われ」「調理支援が実施され」等）
+    // これは週間計画の個別項目を説明する文で、状態評価ではない
+    const SINGLE_TASK_NARRATIVE = /(夕食)?調理支援|掃除支援|洗濯支援|配膳支援|買い物支援|入浴介助|排泄介助|服薬確認支援/;
 
     /** 指定テキストが週間計画の作業列挙かどうかを判定 */
     function hasScheduleListing(text: string): boolean {
@@ -1292,7 +1300,11 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
       const m5 = TIME_SLOT_PAIR_PATTERN.test(text);
       const m6 = TASK_TWO_ITEMS_PATTERN.test(text);
       const m7 = WEEKLY_FREQ_PATTERN.test(text);
-      return m1.length >= 3 || m2.length >= 2 || m3 || m4 || m5 || m6 || m7;
+      // m8: 単一タスク叙述は、動詞と組み合わさった場合に検出
+      // 「掃除支援も適宜行われ」「調理支援が実施され」はタスク説明であり状態評価ではない
+      const taskNarrativeMatches = text.match(new RegExp(`${SINGLE_TASK_NARRATIVE.source}[^、。]{0,15}(行われ|実施され|提供され|行[いっ]|実施し)`, 'g')) || [];
+      const m8 = taskNarrativeMatches.length >= 2; // 2つ以上のタスク叙述がある場合
+      return m1.length >= 3 || m2.length >= 2 || m3 || m4 || m5 || m6 || m7 || m8;
     }
 
     // service_reasonのチェック
