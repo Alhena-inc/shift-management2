@@ -897,21 +897,37 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     assessmentFileUrls = docs.filter((d: any) => d.fileUrl).slice(0, 3).map((d: any) => d.fileUrl);
   } catch { /* skip */ }
 
-  // 目標達成状況
+  // ★★★ 前回計画書の目標（最優先source of truth） ★★★
+  // ctx.previousPlanGoals が設定されている場合はそちらを最優先で使用する。
+  // これにより、本人希望文やアセスメント文ではなく、前回計画書のE12/E13が確実に参照される。
   let goalStatusNote = '';
-  try {
-    const goals = await loadGoalPeriods(client.id);
-    const activeGoals = goals.filter((g: any) => g.isActive && g.goalText);
-    if (activeGoals.length > 0) {
-      const labels: Record<string, string> = { achieved: '達成', partially_achieved: '一部達成', not_achieved: '未達成', pending: '未評価' };
-      const lines = activeGoals.map((g: any) => {
-        const typeLabel = g.goalType === 'long_term' ? '長期' : '短期';
-        const status = g.achievementStatus ? (labels[g.achievementStatus] || '未評価') : '未評価';
-        return `- ${typeLabel}目標（${g.startDate}〜${g.endDate}）: ${g.goalText} → ${status}`;
-      });
-      goalStatusNote = `\n\n【現在の目標達成状況（直前の居宅介護計画書より）】\n※以下の目標文言をgoal_evaluation欄で引用する際は一字一句変えずにそのまま使用すること\n${lines.join('\n')}`;
+  if (ctx.previousPlanGoals && (ctx.previousPlanGoals.shortTermGoal || ctx.previousPlanGoals.longTermGoal)) {
+    const pg = ctx.previousPlanGoals;
+    const lines: string[] = [];
+    if (pg.shortTermGoal) {
+      lines.push(`- 短期目標: ${pg.shortTermGoal}`);
     }
-  } catch { /* skip */ }
+    if (pg.longTermGoal) {
+      lines.push(`- 長期目標: ${pg.longTermGoal}`);
+    }
+    goalStatusNote = `\n\n★★★最優先参照★★★\n【前回の居宅介護計画書の目標（${pg.planDate || ''}）】\n以下は前回の居宅介護計画書に記載された目標です。goal_evaluation欄では必ずこの文言を一字一句変えずに『』内に引用してください。\n本人希望文・アセスメント文・週間計画文言は絶対に目標として使わないこと。\n${lines.join('\n')}\n\n★上記の目標文言をそのままコピーして使うこと。要約・言い換え・本人希望文の流用は厳禁。`;
+    console.log(`[Monitoring] 前回計画書目標をプロンプトに設定（ctx.previousPlanGoals使用）`);
+  } else {
+    // フォールバック: ctx.previousPlanGoalsがない場合はloadGoalPeriodsから取得
+    try {
+      const goals = await loadGoalPeriods(client.id);
+      const activeGoals = goals.filter((g: any) => g.isActive && g.goalText);
+      if (activeGoals.length > 0) {
+        const labels: Record<string, string> = { achieved: '達成', partially_achieved: '一部達成', not_achieved: '未達成', pending: '未評価' };
+        const lines = activeGoals.map((g: any) => {
+          const typeLabel = g.goalType === 'long_term' ? '長期' : '短期';
+          const status = g.achievementStatus ? (labels[g.achievementStatus] || '未評価') : '未評価';
+          return `- ${typeLabel}目標（${g.startDate}〜${g.endDate}）: ${g.goalText} → ${status}`;
+        });
+        goalStatusNote = `\n\n【現在の目標達成状況（直前の居宅介護計画書より）】\n※以下の目標文言をgoal_evaluation欄で引用する際は一字一句変えずにそのまま使用すること\n${lines.join('\n')}`;
+      }
+    } catch { /* skip */ }
+  }
 
   // モニタリングのトリガー種別を記載
   // ★注意: goal_evaluationの冒頭に理由文を入れる指示は削除。
@@ -1040,11 +1056,30 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
   }
 
   // 目標文言の引用検証: goal_evaluationが直前計画書の目標を正確に引用しているか確認
-  // 不一致の場合は強制的に正しい目標文言で再構築する
+  // ★最優先: ctx.previousPlanGoals（前回計画書resolver経由の確定値）
+  // フォールバック: loadGoalPeriods（DB上のactive目標）
   try {
-    const goalPeriods = await loadGoalPeriods(client.id);
-    const activeShort = goalPeriods.find((g: any) => g.isActive && g.goalType === 'short_term' && g.goalText);
-    const activeLong = goalPeriods.find((g: any) => g.isActive && g.goalType === 'long_term' && g.goalText);
+    let shortGoalText = '';
+    let longGoalText = '';
+    if (ctx.previousPlanGoals) {
+      shortGoalText = ctx.previousPlanGoals.shortTermGoal;
+      longGoalText = ctx.previousPlanGoals.longTermGoal;
+      console.log(`[Monitoring] C20後処理: ctx.previousPlanGoals使用（前回計画書resolver経由）`);
+    }
+    // ctx.previousPlanGoalsがない場合 OR 空の場合のフォールバック
+    if (!shortGoalText || !longGoalText) {
+      const goalPeriods = await loadGoalPeriods(client.id);
+      if (!shortGoalText) {
+        const activeShortFb = goalPeriods.find((g: any) => g.isActive && g.goalType === 'short_term' && g.goalText);
+        if (activeShortFb?.goalText) shortGoalText = activeShortFb.goalText;
+      }
+      if (!longGoalText) {
+        const activeLongFb = goalPeriods.find((g: any) => g.isActive && g.goalType === 'long_term' && g.goalText);
+        if (activeLongFb?.goalText) longGoalText = activeLongFb.goalText;
+      }
+    }
+    const activeShort = shortGoalText ? { goalText: shortGoalText } : null;
+    const activeLong = longGoalText ? { goalText: longGoalText } : null;
     let goalEval = result.goal_evaluation;
 
     // === モニタリング理由文の除去 ===

@@ -36,6 +36,13 @@ export interface GeneratorContext {
   inheritShortTermGoal?: boolean;
   /** モニタリングのトリガー種別（短期目標期間満了 / 長期目標期間満了） */
   monitoringType?: 'short_term' | 'long_term';
+  /** ★前回計画書の目標（モニタリングC20で最優先参照するsource of truth） */
+  previousPlanGoals?: {
+    longTermGoal: string;   // E12: 前回計画書の長期目標
+    shortTermGoal: string;  // E13: 前回計画書の短期目標
+    planDate: string;       // 前回計画書の作成年月
+    planFileName: string;   // 前回計画書のファイル名（トレーサビリティ用）
+  };
   /** 居宅介護計画書のサービス内容（手順書生成時に計画書と一致させるため） */
   carePlanServiceBlocks?: Array<{
     service_type: string;

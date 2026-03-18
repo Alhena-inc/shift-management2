@@ -163,6 +163,7 @@ async function buildContext(
       steps: Array<{ item: string; content: string; note: string; category?: string }>;
     }> | undefined,
     monitoringType: undefined as ('short_term' | 'long_term') | undefined,
+    previousPlanGoals: undefined as { longTermGoal: string; shortTermGoal: string; planDate: string; planFileName: string } | undefined,
   };
 }
 
@@ -510,6 +511,25 @@ export async function executeMonitoringScheduleAction(
     // モニタリングのトリガー種別をctxに設定
     if (schedule.monitoringType === 'short_term' || schedule.monitoringType === 'long_term') {
       ctx.monitoringType = schedule.monitoringType;
+    }
+
+    // ★前回計画書の目標をctxに設定（モニタリングC20のsource of truth）
+    // loadGoalPeriodsからactiveな目標を取得し、previousPlanGoalsとして明示的に保持する
+    try {
+      const goals = await loadGoalPeriods(client.id);
+      const activeShort = goals.find((g: any) => g.isActive && g.goalType === 'short_term' && g.goalText);
+      const activeLong = goals.find((g: any) => g.isActive && g.goalType === 'long_term' && g.goalText);
+      if (activeShort?.goalText || activeLong?.goalText) {
+        ctx.previousPlanGoals = {
+          longTermGoal: activeLong?.goalText || '',
+          shortTermGoal: activeShort?.goalText || '',
+          planDate: activeShort?.startDate || activeLong?.startDate || '',
+          planFileName: `居宅介護計画書_${client.name}`,
+        };
+        console.log(`[v2Monitoring] 前回計画書目標を設定: 短期「${ctx.previousPlanGoals.shortTermGoal.substring(0, 30)}...」 長期「${ctx.previousPlanGoals.longTermGoal.substring(0, 30)}...」`);
+      }
+    } catch (err) {
+      console.warn('[v2Monitoring] 前回計画書目標の取得に失敗:', err);
     }
 
     const promptData = await loadAiPrompt('monitoring').catch(() => null);
