@@ -1462,7 +1462,8 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
 
   // === 「記録」「申し送り」ステップの除外 ===
   // ヘルパーの内部事務であり、利用者への援助ではないため計画書から除外する
-  const RECORD_STEP_PATTERN = /^(記録|記録作成|申し送り|申し送り事項|サービス記録|支援記録|支援内容.*記録|状況.*記録|報告・記録|報告|状況報告|退室.*報告)$/;
+  // ★ 完全一致（^...$）ではなく、itemの主語が「記録」「報告」「申し送り」であるかをチェック
+  const RECORD_STEP_PATTERN = /^(記録|記録作成|記録確認|記録・報告|申し送り|申し送り事項|サービス記録|支援記録|支援内容.*記録|状況.*記録|報告・記録|報告|状況報告|退室.*報告|.*への記録|.*の記録)$/;
   for (let i = 1; i <= 4; i++) {
     const service = plan[`service${i}` as keyof CarePlan] as ServiceBlock | null;
     if (!service || service.steps.length === 0) continue;

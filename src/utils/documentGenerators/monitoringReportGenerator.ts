@@ -1056,10 +1056,12 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     let goalEval = result.goal_evaluation;
 
     // === モニタリング理由文の除去 ===
-    // AIが目標評価の冒頭にモニタリング理由文を入れてしまうケースを除去
+    // AIが目標評価の冒頭や文中にモニタリング理由文を入れてしまうケースを除去
     // 例: 「短期目標の期間満了に伴うモニタリングを実施した。短期目標『…』について、…」
+    // 例: 「短期目標の期間満了に伴い実施した評価。短期目標『…』について、…」
     goalEval = goalEval
-      .replace(/^(短期|長期)?目標の期間満了に伴う(モニタリング|評価)を実施した[。.]\s*/g, '')
+      .replace(/(短期|長期)?目標の期間満了に伴う?(モニタリング|評価)を実施した[。.]\s*/g, '')
+      .replace(/(短期|長期)?目標の期間満了に伴い実施した(モニタリング|評価)[。.]\s*/g, '')
       .replace(/^モニタリングの結果[、,]?\s*/g, '')
       .trim();
 
@@ -1126,7 +1128,18 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
       goalEval = goalEval.substring(0, firstEnd) + (withoutDupShort ? ' ' + withoutDupShort : '');
       console.log(`[Monitoring] C20構造修正: 短期目標評価の重複を除去（${shortMatches.length}本→1本）`);
     }
-    if (!longMatches && activeLong?.goalText) {
+    if (longMatches && longMatches.length > 1) {
+      // 長期目標が複数並んでいる場合: 最初の1文だけ残す
+      const firstLongIdx = goalEval.indexOf('長期目標');
+      const firstLongEnd = goalEval.indexOf('。', firstLongIdx) + 1;
+      if (firstLongEnd > 0) {
+        const beforeLong = goalEval.substring(0, firstLongIdx).trim();
+        const longSection = goalEval.substring(firstLongIdx, firstLongEnd);
+        const afterLong = goalEval.substring(firstLongEnd).replace(/長期目標[^。]*。/g, '').trim();
+        goalEval = (beforeLong ? beforeLong + ' ' : '') + longSection + (afterLong ? ' ' + afterLong : '');
+        console.log(`[Monitoring] C20構造修正: 長期目標評価の重複を除去（${longMatches.length}本→1本）`);
+      }
+    } else if (!longMatches && activeLong?.goalText) {
       // 長期目標評価が完全に欠けている場合は追加
       goalEval += ` 長期目標『${activeLong.goalText}』について、長期的な視点で支援を継続しており、現状維持で目標を継続する。`;
       console.log(`[Monitoring] C20構造修正: 長期目標評価を追加`);

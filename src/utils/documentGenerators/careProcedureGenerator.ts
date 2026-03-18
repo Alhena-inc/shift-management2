@@ -820,7 +820,7 @@ ${planServiceText}`;
 
   // === 「記録作成」「申し送り」ステップの除外 ===
   // プロンプトで禁止しているが、AIが生成してしまった場合のフォールバック
-  const RECORD_STEP_PATTERN = /^(記録|記録作成|申し送り|申し送り事項|サービス記録|支援記録|支援内容.*記録|状況.*記録|報告・記録|報告|状況報告|退室.*報告)$/;
+  const RECORD_STEP_PATTERN = /^(記録|記録作成|記録確認|記録・報告|申し送り|申し送り事項|サービス記録|支援記録|支援内容.*記録|状況.*記録|報告・記録|報告|状況報告|退室.*報告|.*への記録|.*の記録)$/;
   for (const proc of manual.procedures) {
     const before = proc.steps.length;
     proc.steps = proc.steps.filter(step => {

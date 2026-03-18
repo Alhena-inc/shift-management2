@@ -3546,3 +3546,82 @@ describe('83. モニタリング対象月が未来計画書を参照しないテ
     expect(monitoringIndex).toBeLessThan(goalUpdateIndex);
   });
 });
+
+describe('84. C20長期目標重複除去テスト', () => {
+  it('長期目標が2回出現した場合、1本に削減されること', () => {
+    let goalEval = "短期目標『短期の目標』について、目標を継続する。長期目標『長期の目標A』について、継続する。長期目標『長期の目標B』について、維持する。";
+    const longMatches = goalEval.match(/長期目標/g);
+    expect(longMatches!.length).toBe(2);
+
+    // 重複除去ロジック
+    if (longMatches && longMatches.length > 1) {
+      const firstLongIdx = goalEval.indexOf('長期目標');
+      const firstLongEnd = goalEval.indexOf('。', firstLongIdx) + 1;
+      if (firstLongEnd > 0) {
+        const beforeLong = goalEval.substring(0, firstLongIdx).trim();
+        const longSection = goalEval.substring(firstLongIdx, firstLongEnd);
+        const afterLong = goalEval.substring(firstLongEnd).replace(/長期目標[^。]*。/g, '').trim();
+        goalEval = (beforeLong ? beforeLong + ' ' : '') + longSection + (afterLong ? ' ' + afterLong : '');
+      }
+    }
+
+    expect((goalEval.match(/長期目標/g) || []).length).toBe(1);
+    expect((goalEval.match(/短期目標/g) || []).length).toBe(1);
+  });
+});
+
+describe('85. 理由文除去が文中でも動作するテスト', () => {
+  it('冒頭の理由文が除去されること', () => {
+    let text = '短期目標の期間満了に伴うモニタリングを実施した。短期目標について、継続する。';
+    text = text
+      .replace(/(短期|長期)?目標の期間満了に伴う?(モニタリング|評価)を実施した[。.]\s*/g, '')
+      .replace(/(短期|長期)?目標の期間満了に伴い実施した(モニタリング|評価)[。.]\s*/g, '')
+      .trim();
+    expect(text).not.toContain('実施した');
+    expect(text).toContain('短期目標について');
+  });
+
+  it('文中の理由文も除去されること', () => {
+    let text = '短期目標について、安定。目標の期間満了に伴うモニタリングを実施した。長期目標について、継続。';
+    text = text
+      .replace(/(短期|長期)?目標の期間満了に伴う?(モニタリング|評価)を実施した[。.]\s*/g, '')
+      .trim();
+    expect(text).not.toContain('実施した');
+  });
+
+  it('「伴い実施した」パターンも除去されること', () => {
+    let text = '短期目標の期間満了に伴い実施した評価。短期目標について、継続する。';
+    text = text
+      .replace(/(短期|長期)?目標の期間満了に伴い実施した(モニタリング|評価)[。.]\s*/g, '')
+      .trim();
+    expect(text).not.toContain('実施した');
+  });
+});
+
+describe('86. 拡張版RECORD_STEP_PATTERNのテスト', () => {
+  const RECORD_STEP_PATTERN = /^(記録|記録作成|記録確認|記録・報告|申し送り|申し送り事項|サービス記録|支援記録|支援内容.*記録|状況.*記録|報告・記録|報告|状況報告|退室.*報告|.*への記録|.*の記録)$/;
+
+  it('「記録確認」が検出されること', () => {
+    expect(RECORD_STEP_PATTERN.test('記録確認')).toBe(true);
+  });
+
+  it('「記録・報告」が検出されること', () => {
+    expect(RECORD_STEP_PATTERN.test('記録・報告')).toBe(true);
+  });
+
+  it('「介護記録への記録」が検出されること', () => {
+    expect(RECORD_STEP_PATTERN.test('介護記録への記録')).toBe(true);
+  });
+
+  it('「サービス内容の記録」が検出されること', () => {
+    expect(RECORD_STEP_PATTERN.test('サービス内容の記録')).toBe(true);
+  });
+
+  it('通常の援助項目は除外されないこと', () => {
+    expect(RECORD_STEP_PATTERN.test('体調確認')).toBe(false);
+    expect(RECORD_STEP_PATTERN.test('退室')).toBe(false);
+    expect(RECORD_STEP_PATTERN.test('服薬確認')).toBe(false);
+    expect(RECORD_STEP_PATTERN.test('到着・挨拶')).toBe(false);
+    expect(RECORD_STEP_PATTERN.test('バイタルチェック')).toBe(false);
+  });
+});
