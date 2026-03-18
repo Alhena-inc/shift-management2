@@ -698,12 +698,38 @@ ${planServiceText}`;
     }
   }
 
-  // === 実績ベースのservice_type修正（最優先） ===
-  // ★重要：キーワードベースの修正より先に実績データから正しいservice_typeを判定する。
-  // 理由：AIがservice_typeを誤って設定する場合（例：身体介護の時間帯を家事援助と出力）、
-  // 実績のサービスコードが最も信頼できるソースであるため。
-  {
-    // 実績から種別ごとの時間帯マップを構築
+  // === 計画書ベースのservice_type修正（最最優先） ===
+  // ★最重要: 計画書のサービスブロック(ctx.carePlanServiceBlocks)が渡されている場合、
+  // それが全帳票のsource of truthであるため、実績データよりも計画書を優先する。
+  // 実績データは曜日ごとにサービスコードがブレることがあるため、信頼性が低い。
+  // ★追加: 計画書で修正した時間枠を記録し、後続のキーワードベース修正で上書きされないようにする。
+  const carePlanCorrectedStartTimes = new Set<string>();
+  if (ctx.carePlanServiceBlocks && ctx.carePlanServiceBlocks.length > 0) {
+    for (const proc of manual.procedures) {
+      const st = (proc.service_type || '').replace(/\s+/g, '');
+      if (st.includes('重度')) continue;
+      const procStart = proc.start_time;
+      if (!procStart) continue;
+
+      // 計画書のサービスブロックからvisit_labelの時刻を抽出し、最も近いブロックを探す
+      for (const block of ctx.carePlanServiceBlocks) {
+        const timeMatch = block.visit_label?.match(/(\d{1,2}:\d{2})/);
+        if (!timeMatch) continue;
+        const blockStartTime = timeMatch[1];
+        if (blockStartTime === procStart) {
+          const currentType = st.includes('身体') ? '身体介護' : (st.includes('家事') || st.includes('生活')) ? '家事援助' : proc.service_type;
+          if (currentType !== block.service_type) {
+            console.log(`[CareProcedure] 計画書ベースservice_type修正: 「${proc.service_type}」→「${block.service_type}」（時間帯${procStart}は計画書で${block.service_type}）`);
+            proc.service_type = block.service_type;
+          }
+          // ★計画書で確定した時間枠を記録（キーワードベース修正で上書き禁止にするため）
+          carePlanCorrectedStartTimes.add(procStart);
+          break;
+        }
+      }
+    }
+  } else {
+    // === 実績ベースのservice_type修正（計画書情報がない場合のフォールバック） ===
     const typeTimeRanges = new Map<string, Array<{ start: string; end: string }>>();
     for (const r of clientRecords) {
       if (!r.startTime || !r.endTime) continue;
@@ -718,18 +744,14 @@ ${planServiceText}`;
     for (const proc of manual.procedures) {
       const st = (proc.service_type || '').replace(/\s+/g, '');
       if (st.includes('重度')) continue;
-
-      // ブロックのstart_time/end_timeを実績の時間帯と照合
       const procStart = proc.start_time;
       const procEnd = proc.end_time;
       if (!procStart || !procEnd) continue;
 
-      // 各種別の実績時間帯とこのブロックの時間帯の重複度を計算
       let bestMatch = '';
       let bestOverlap = 0;
       for (const [label, ranges] of typeTimeRanges) {
         for (const range of ranges) {
-          // 時間帯の重複を計算（分単位）
           const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); };
           const overlapStart = Math.max(toMin(procStart), toMin(range.start));
           const overlapEnd = Math.min(toMin(procEnd), toMin(range.end));
@@ -756,11 +778,18 @@ ${planServiceText}`;
   // 理由：混在除去がservice_typeに基づいてステップを削除するため、
   // service_typeが誤っていると正しいステップが除外されてしまう。
   // ★注意：実績ベースの修正が最優先。キーワードベースの修正は実績で判定できない場合のフォールバック。
+  // ★追加：計画書で確定した時間枠（carePlanCorrectedStartTimes）はキーワードベース修正をスキップする。
+  //   計画書が全帳票のsource of truthであり、キーワードに基づく推定で上書きしてはならない。
   const BODY_KW = /服薬|排泄|入浴|更衣|整容|移乗|移動介助|バイタル|体調|食事介助|口腔ケア|清拭|体位|見守り|安全確認|血圧|体温/;
   const HOUSE_KW = /調理|配膳|盛り付|片付|掃除|洗濯|買い物|環境整備|ゴミ|献立|食材|台所|食器|キッチン|居室整理|シンク|コンロ/;
   for (const proc of manual.procedures) {
     const st = (proc.service_type || '').replace(/\s+/g, '');
     if (st.includes('重度')) continue;
+    // ★計画書で確定済みの時間枠はスキップ（回帰修正防止 - 要件A対応）
+    if (carePlanCorrectedStartTimes.has(proc.start_time)) {
+      console.log(`[CareProcedure] キーワードベース修正スキップ: ${proc.start_time}枠は計画書で${proc.service_type}に確定済み`);
+      continue;
+    }
     const currentIsBody = st.includes('身体');
     const currentIsHouse = st.includes('家事') || st.includes('生活');
     if (!currentIsBody && !currentIsHouse) continue;
@@ -784,6 +813,97 @@ ${planServiceText}`;
       const inferred = houseCount >= bodyCount ? '家事援助' : '身体介護';
       console.log(`[CareProcedure] service_type推定: 「${proc.service_type || '(空)'}」→「${inferred}」（身体KW=${bodyCount}, 家事KW=${houseCount}）`);
       proc.service_type = inferred;
+    }
+  }
+
+  // === 計画書で身体介護に修正された枠のステップ整合 ===
+  // ★要件A-2〜4: 19:30枠のように計画書で身体介護と確定した枠で、
+  // AIが生成した家事援助寄りのステップ（調理・片付け等）が残っている場合、
+  // 身体介護として説明可能な内容に置換する。
+  if (ctx.carePlanServiceBlocks && ctx.carePlanServiceBlocks.length > 0) {
+    for (const proc of manual.procedures) {
+      if (!carePlanCorrectedStartTimes.has(proc.start_time)) continue;
+      const st = (proc.service_type || '').replace(/\s+/g, '');
+      if (!st.includes('身体')) continue;
+
+      // 家事援助キーワードが過半数のステップを持つ場合、ステップを身体介護用に置換
+      let houseStepCount = 0;
+      for (const step of proc.steps) {
+        const text = `${step.item} ${step.detail}`;
+        if (HOUSE_KW.test(text) && !BODY_KW.test(text)) houseStepCount++;
+      }
+
+      if (houseStepCount > proc.steps.length / 2) {
+        console.log(`[CareProcedure] ${proc.start_time}枠: 家事ステップ過半数(${houseStepCount}/${proc.steps.length}) → 身体介護用ステップに置換`);
+
+        // 計画書の身体介護ブロックからステップを取得して展開
+        const planBlock = ctx.carePlanServiceBlocks.find(b => {
+          const timeMatch = b.visit_label?.match(/(\d{1,2}:\d{2})/);
+          return timeMatch && timeMatch[1] === proc.start_time && b.service_type.includes('身体');
+        });
+
+        // 到着・退室ステップを保持
+        const arrivalStep = proc.steps.find(s => /到着|挨拶|訪問開始/.test(s.item));
+        const exitStep = proc.steps.find(s => /退室/.test(s.item));
+
+        // 新しいステップを構築
+        const newSteps: ProcedureStep[] = [];
+        const startMin = parseInt(proc.start_time.split(':')[0]) * 60 + parseInt(proc.start_time.split(':')[1] || '0');
+        const endMin = parseInt(proc.end_time.split(':')[0]) * 60 + parseInt(proc.end_time.split(':')[1] || '0');
+        const totalMin = endMin - startMin;
+        const toTimeStr = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+
+        // 到着
+        newSteps.push(arrivalStep || {
+          time: proc.start_time,
+          item: '到着・挨拶',
+          detail: '利用者宅に到着し、挨拶を行い、体調・表情を確認する。居室内の安全確認を行い、室温等の環境を確認する',
+          note: '表情や声のトーンの変化に注意し、いつもと違う様子がないか観察する',
+        });
+
+        // 身体介護の主要ステップ（計画書のステップがあればそこから生成）
+        if (planBlock && planBlock.steps.length > 0) {
+          const interval = Math.floor(totalMin / (planBlock.steps.length + 2));
+          for (let i = 0; i < planBlock.steps.length; i++) {
+            const ps = planBlock.steps[i];
+            const stepTime = toTimeStr(startMin + interval * (i + 1));
+            newSteps.push({
+              time: stepTime,
+              item: ps.item.substring(0, 15),
+              detail: ps.content.replace(/^\d{1,2}:\d{2}\s*/, '').substring(0, 100) || `${ps.item}を実施し、利用者の状態を確認する。必要に応じて声かけ・見守りを行う`,
+              note: ps.note.substring(0, 60) || '利用者の反応や表情を注意深く観察し、異変があれば速やかに報告する',
+            });
+          }
+        } else {
+          // 計画書ステップなし → 身体介護の標準ステップを使用
+          const bodySteps = [
+            { item: 'バイタルチェック', detail: '血圧・体温・脈拍を測定し、体調を確認する。前回値と比較し変動がないか確認する', note: '測定値は記録用紙に記入。数値に変動があれば報告する' },
+            { item: '体調確認', detail: '体調・気分・食欲等について聴取し、心身の状態を確認する。服薬状況も併せて確認する', note: '自覚症状の訴えに注意し、変化があれば記録する' },
+            { item: '服薬確認', detail: '処方薬の服薬状況を確認し、飲み忘れや残薬がないか確認する。必要に応じて声かけを行う', note: '服薬時間・量を確認し、飲み忘れがあれば速やかに対応する' },
+            { item: '夕食摂取見守り', detail: '夕食の摂取状況を見守り、安全に食事ができるよう配慮する。水分摂取量も確認する', note: '食事中のむせ込みや食欲低下に注意し、記録する' },
+            { item: '室内移動見守り', detail: '室内での移動を見守り、転倒予防に配慮する。必要に応じて声かけや軽介助を行う', note: '動線上の障害物がないか確認し、安全な移動を支援する' },
+            { item: '安全確認', detail: '居室内の安全確認を行い、危険箇所がないか確認する。戸締りや火の元の確認を行う', note: '転倒リスクのある箇所を重点的に確認する' },
+          ];
+          const interval = Math.floor(totalMin / (bodySteps.length + 2));
+          for (let i = 0; i < bodySteps.length; i++) {
+            newSteps.push({
+              time: toTimeStr(startMin + interval * (i + 1)),
+              ...bodySteps[i],
+            });
+          }
+        }
+
+        // 退室
+        newSteps.push(exitStep || {
+          time: proc.end_time,
+          item: '退室',
+          detail: '利用者に退室の挨拶をし、次回訪問予定を伝える。施錠確認を行い退室する',
+          note: '退室時の表情・体調を最終確認し、変化があれば報告する',
+        });
+
+        proc.steps = newSteps;
+        console.log(`[CareProcedure] ${proc.start_time}枠: 身体介護用ステップに置換完了（${newSteps.length}ステップ）`);
+      }
     }
   }
 

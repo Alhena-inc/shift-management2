@@ -1273,13 +1273,19 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     const DAY_TIME_CONTENT_PATTERN = /(月|火|水|木|金|土|日)曜?\s*\d{1,2}[：:]\d{2}[~〜]\d{1,2}[：:]\d{2}\s*(身体介護|家事援助)\s*\([^)]+\)/g;
     // 作業3項目以上の羅列パターン（「調理・掃除・洗濯を実施」等）
     const TASK_LISTING_PATTERN = /(調理|掃除|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認|買い物)[・、](調理|掃除|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認|買い物)[・、](調理|掃除|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認|買い物)/;
+    // ★追加: 曜日チェーンパターン（「水曜は○○を行い、木曜は○○を行い」等）
+    const DAY_CHAIN_PATTERN = /(月|火|水|木|金|土|日)曜[はに][^、。]{3,30}(行[いっ]|実施|提供)[^、。]{0,10}[、,]\s*(月|火|水|木|金|土|日)曜[はに]/;
+    // ★追加: 時間枠2つ以上の列挙パターン（「18:30〜19:30の家事援助と19:30〜20:30の身体介護」等）
+    const TIME_SLOT_PAIR_PATTERN = /\d{1,2}[：:]\d{2}[~〜]\d{1,2}[：:]\d{2}[^、。]{0,20}(身体介護|家事援助)[^。]{0,30}\d{1,2}[：:]\d{2}[~〜]\d{1,2}[：:]\d{2}/;
 
     /** 指定テキストが週間計画の作業列挙かどうかを判定 */
     function hasScheduleListing(text: string): boolean {
       const m1 = text.match(SCHEDULE_LISTING_PATTERN) || [];
       const m2 = text.match(DAY_TIME_CONTENT_PATTERN) || [];
       const m3 = TASK_LISTING_PATTERN.test(text);
-      return m1.length >= 3 || m2.length >= 2 || m3;
+      const m4 = DAY_CHAIN_PATTERN.test(text);
+      const m5 = TIME_SLOT_PAIR_PATTERN.test(text);
+      return m1.length >= 3 || m2.length >= 2 || m3 || m4 || m5;
     }
 
     // service_reasonのチェック

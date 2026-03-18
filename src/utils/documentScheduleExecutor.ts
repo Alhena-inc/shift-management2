@@ -1116,25 +1116,26 @@ export async function executeCatchUpGeneration(
 
       if (step.type === 'plan') {
         // === 長期目標の期間内チェック ===
-        // 短期目標モニタリング後の計画再作成時、長期目標がまだ期間内なら引き継ぐ
+        // 計画書作成時に長期目標がまだ期間内なら、前版から完全一致で引き継ぐ。
+        // ★修正: revisionReason（モニタリング後の計画再作成）に限らず、
+        // 全ての計画書作成で長期目標の期間内チェックを行う。
+        // これにより、時系列の連続性が保たれる（要件E対応）。
         let longTermStillActive = false;
-        if (step.revisionReason) {
-          try {
-            const existingGoals = await loadGoalPeriods(client.id);
-            const activeLongTerm = existingGoals.find((g: any) => g.isActive && g.goalType === 'long_term');
-            if (activeLongTerm?.endDate) {
-              const stepDate = new Date(step.periodStart + 'T00:00:00');
-              const longTermEnd = new Date(activeLongTerm.endDate + 'T00:00:00');
-              if (stepDate < longTermEnd) {
-                longTermStillActive = true;
-                ctx.inheritLongTermGoal = true;
-                console.log(`[CatchUp] 長期目標は期間内(${activeLongTerm.endDate}まで) → 引き継ぎ`);
-              } else {
-                console.log(`[CatchUp] 長期目標期間到来(${activeLongTerm.endDate}) → 新規設定`);
-              }
+        try {
+          const existingGoals = await loadGoalPeriods(client.id);
+          const activeLongTerm = existingGoals.find((g: any) => g.isActive && g.goalType === 'long_term');
+          if (activeLongTerm?.endDate) {
+            const stepDate = new Date(step.periodStart + 'T00:00:00');
+            const longTermEnd = new Date(activeLongTerm.endDate + 'T00:00:00');
+            if (stepDate < longTermEnd) {
+              longTermStillActive = true;
+              ctx.inheritLongTermGoal = true;
+              console.log(`[CatchUp] 長期目標は期間内(${activeLongTerm.endDate}まで) → 引き継ぎ`);
+            } else {
+              console.log(`[CatchUp] 長期目標期間到来(${activeLongTerm.endDate}) → 新規設定`);
             }
-          } catch { /* skip */ }
-        }
+          }
+        } catch { /* skip */ }
 
         // === 計画書 + 手順書 ===
         const promptData = await loadAiPrompt('care-plan').catch(() => null);
