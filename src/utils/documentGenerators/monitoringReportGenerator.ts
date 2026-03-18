@@ -1117,11 +1117,12 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     const shortMatches = goalEval.match(/短期目標/g);
     const longMatches = goalEval.match(/長期目標/g);
     if (shortMatches && shortMatches.length > 1) {
-      // 短期目標が複数並んでいる場合: 最初の1つだけ残す
-      const firstEnd = goalEval.indexOf('。', goalEval.indexOf('短期目標')) + 1;
+      // 短期目標が複数並んでいる場合: 最初の1文（最初の。まで）だけ残す
+      const firstShortIdx = goalEval.indexOf('短期目標');
+      const firstEnd = goalEval.indexOf('。', firstShortIdx) + 1;
       const rest = goalEval.substring(firstEnd).trim();
-      // 残りから重複する短期目標評価を除去（長期目標部分は保持）
-      const withoutDupShort = rest.replace(/短期目標[^。]*?(?:継続する|達成した|変更する)[^。]*。/g, '').trim();
+      // 残りから「短期目標」を含む文を全て除去（長期目標部分は保持）
+      const withoutDupShort = rest.replace(/短期目標[^。]*。/g, '').trim();
       goalEval = goalEval.substring(0, firstEnd) + (withoutDupShort ? ' ' + withoutDupShort : '');
       console.log(`[Monitoring] C20構造修正: 短期目標評価の重複を除去（${shortMatches.length}本→1本）`);
     }
