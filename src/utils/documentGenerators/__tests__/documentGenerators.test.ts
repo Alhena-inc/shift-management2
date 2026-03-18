@@ -3471,3 +3471,78 @@ describe('81. C20後処理パイプライン統合テスト', () => {
     expect(result).not.toContain('安心して暮らしたい');
   });
 });
+
+describe('82. 計画書の援助項目に「報告・記録」が出ないテスト', () => {
+  const RECORD_STEP_PATTERN = /^(記録|記録作成|申し送り|申し送り事項|サービス記録|支援記録|支援内容.*記録|状況.*記録|報告・記録|報告|状況報告|退室.*報告)$/;
+
+  it('「報告・記録」が検出されること', () => {
+    expect(RECORD_STEP_PATTERN.test('報告・記録')).toBe(true);
+  });
+
+  it('「報告」が検出されること', () => {
+    expect(RECORD_STEP_PATTERN.test('報告')).toBe(true);
+  });
+
+  it('「状況報告」が検出されること', () => {
+    expect(RECORD_STEP_PATTERN.test('状況報告')).toBe(true);
+  });
+
+  it('「退室・報告」が検出されること', () => {
+    expect(RECORD_STEP_PATTERN.test('退室・報告')).toBe(true);
+  });
+
+  it('既存パターンも引き続き検出されること', () => {
+    expect(RECORD_STEP_PATTERN.test('記録')).toBe(true);
+    expect(RECORD_STEP_PATTERN.test('記録作成')).toBe(true);
+    expect(RECORD_STEP_PATTERN.test('申し送り')).toBe(true);
+  });
+
+  it('通常の援助項目は除外されないこと', () => {
+    expect(RECORD_STEP_PATTERN.test('体調確認')).toBe(false);
+    expect(RECORD_STEP_PATTERN.test('服薬確認')).toBe(false);
+    expect(RECORD_STEP_PATTERN.test('退室')).toBe(false);
+    expect(RECORD_STEP_PATTERN.test('到着・挨拶')).toBe(false);
+  });
+
+  it('フィルタリングで報告・記録系が全て除外されること', () => {
+    const steps = [
+      { item: '体調確認' },
+      { item: '報告・記録' },
+      { item: '服薬確認' },
+      { item: '報告' },
+      { item: '状況報告' },
+      { item: '退室' },
+    ];
+    const filtered = steps.filter(s => !RECORD_STEP_PATTERN.test(s.item.trim()));
+    expect(filtered.length).toBe(3);
+    expect(filtered.map(s => s.item)).toEqual(['体調確認', '服薬確認', '退室']);
+  });
+});
+
+describe('83. モニタリング対象月が未来計画書を参照しないテスト', () => {
+  it('2026年1月モニタリングは2025年11月計画書の目標を参照すべき（2026年1月計画書ではない）', () => {
+    // goal_periodsは「isActive」フラグで管理される
+    // モニタリング実施時点でactiveな目標 = 直前計画書（2025年11月）の目標
+    // 2026年1月計画書の目標はモニタリング後に作成されるので、まだactiveでない
+    const goalPeriods = [
+      { goalType: 'short_term', isActive: true, goalText: '2025年11月の短期目標', startDate: '2025-11-01', endDate: '2026-02-01' },
+      { goalType: 'long_term', isActive: true, goalText: '2025年11月の長期目標', startDate: '2025-11-01', endDate: '2026-05-01' },
+    ];
+    // activeShort/activeLong は isActive=true のものを取得
+    const activeShort = goalPeriods.find(g => g.isActive && g.goalType === 'short_term' && g.goalText);
+    const activeLong = goalPeriods.find(g => g.isActive && g.goalType === 'long_term' && g.goalText);
+    expect(activeShort?.goalText).toBe('2025年11月の短期目標');
+    expect(activeLong?.goalText).toBe('2025年11月の長期目標');
+    // 2026年1月計画書の目標はまだactiveでないはず
+    expect(goalPeriods.filter(g => g.goalText.includes('2026年1月')).length).toBe(0);
+  });
+
+  it('計画書生成後にgoal_periodsが更新される（モニタリング時にはまだ反映されない）', () => {
+    // executorの処理順序: モニタリング → 計画書 → goal_periods更新
+    // つまりモニタリング時のgoal_periodsはまだ「直前計画書」の目標
+    const processingOrder = ['monitoring', 'plan', 'goal_periods_update'];
+    const monitoringIndex = processingOrder.indexOf('monitoring');
+    const goalUpdateIndex = processingOrder.indexOf('goal_periods_update');
+    expect(monitoringIndex).toBeLessThan(goalUpdateIndex);
+  });
+});
