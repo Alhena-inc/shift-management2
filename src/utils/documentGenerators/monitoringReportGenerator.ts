@@ -295,28 +295,29 @@ const WEEKDAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
 
 function buildBillingSummary(records: BillingRecord[]): string {
   // ★重要: モニタリングのbillingSummaryは、AIに「曜日×時刻×作業内容」の列挙をさせないよう、
-  // 詳細な曜日別データではなく、サービス提供の概要と種別の真値情報のみを渡す。
+  // 曜日別の詳細ではなく、月間総提供回数と種別ごとの回数集計のみを渡す。
+  // ★修正: 曜日別の「月曜: 家事援助2回」のような記載はAIが曜日チェーン文を生成する誘因になるため、
+  // 種別ごとの月間合計回数のみに簡素化する。
   const lines: string[] = [];
 
-  // 月間の提供回数サマリー（曜日×種別の回数集計のみ）
+  // 種別ごとの月間提供回数（曜日別ではなく月間合計）
+  const typeCounts = new Map<string, number>();
+  const activeDays = new Set<string>();
   const dayOrder = ['月', '火', '水', '木', '金', '土', '日'];
-  const dayCounts = new Map<string, Map<string, number>>();
   for (const r of records) {
     if (!r.startTime || !r.endTime || !r.serviceDate) continue;
     const d = new Date(r.serviceDate);
-    const dayName = WEEKDAY_NAMES[d.getDay()];
+    activeDays.add(WEEKDAY_NAMES[d.getDay()]);
     const label = serviceCodeToLabel(r.serviceCode) || '不明';
-    if (!dayCounts.has(dayName)) dayCounts.set(dayName, new Map());
-    const counts = dayCounts.get(dayName)!;
-    counts.set(label, (counts.get(label) || 0) + 1);
+    typeCounts.set(label, (typeCounts.get(label) || 0) + 1);
   }
-  for (const day of dayOrder) {
-    const counts = dayCounts.get(day);
-    if (!counts) continue;
-    const details = [...counts.entries()].map(([label, c]) => `${label}${c}回`).join(', ');
-    lines.push(`${day}曜: ${details}`);
+  if (typeCounts.size === 0) return '実績データなし';
+  // 種別ごとの合計回数のみ表示（曜日別の回数は渡さない）
+  for (const [label, count] of typeCounts) {
+    lines.push(`${label}: 月${count}回`);
   }
-  if (lines.length === 0) return '実績データなし';
+  const activeDayList = dayOrder.filter(d => activeDays.has(d));
+  lines.push(`提供曜日: ${activeDayList.join('・')}`);
   lines.push(`月間合計: ${records.length}回`);
 
   // 各時間枠の多数決による真値を明示（D12でこの真値を使うこと）
@@ -1273,6 +1274,8 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     const DAY_TIME_CONTENT_PATTERN = /(月|火|水|木|金|土|日)曜?\s*\d{1,2}[：:]\d{2}[~〜]\d{1,2}[：:]\d{2}\s*(身体介護|家事援助)\s*\([^)]+\)/g;
     // 作業3項目以上の羅列パターン（「調理・掃除・洗濯を実施」等）
     const TASK_LISTING_PATTERN = /(調理|掃除|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認|買い物)[・、](調理|掃除|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認|買い物)[・、](調理|掃除|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認|買い物)/;
+    // ★追加: 作業2項目の列挙＋動詞パターン（「調理・掃除を実施」「服薬確認・体調確認を行った」等）
+    const TASK_TWO_ITEMS_PATTERN = /(調理|掃除|洗濯|配膳|片付け?|環境整備|買い物)[・、](調理|掃除|洗濯|配膳|片付け?|環境整備|買い物)[^、。]{0,10}(実施|行[いっわ]|提供|継続)/;
     // ★追加: 曜日チェーンパターン（「水曜は○○を行い、木曜は○○を行い」等）
     const DAY_CHAIN_PATTERN = /(月|火|水|木|金|土|日)曜[はに][^、。]{3,30}(行[いっ]|実施|提供)[^、。]{0,10}[、,]\s*(月|火|水|木|金|土|日)曜[はに]/;
     // ★追加: 時間枠2つ以上の列挙パターン（「18:30〜19:30の家事援助と19:30〜20:30の身体介護」等）
@@ -1285,26 +1288,24 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
       const m3 = TASK_LISTING_PATTERN.test(text);
       const m4 = DAY_CHAIN_PATTERN.test(text);
       const m5 = TIME_SLOT_PAIR_PATTERN.test(text);
-      return m1.length >= 3 || m2.length >= 2 || m3 || m4 || m5;
+      const m6 = TASK_TWO_ITEMS_PATTERN.test(text);
+      return m1.length >= 3 || m2.length >= 2 || m3 || m4 || m5 || m6;
     }
 
     // service_reasonのチェック
     if (result.service_reason && hasScheduleListing(result.service_reason)) {
-      console.warn(`[Monitoring] ⚠ D12に週間計画の作業列挙を検出。評価文に置換します。`);
-      const bodyNote = serviceTypes.some(st => st.includes('身体'))
-        ? '身体介護による体調管理・服薬確認が適切に行われ、'
-        : '';
-      const houseNote = serviceTypes.some(st => st.includes('家事') || st.includes('生活'))
-        ? '家事援助により日常的な生活環境の維持が図れている。'
-        : '';
-      if (bodyNote && houseNote) {
-        result.service_reason = `計画に基づきサービスが提供されており、${bodyNote}${houseNote}生活状況は概ね安定していることを確認した。`;
-      } else if (bodyNote) {
-        result.service_reason = `計画に基づきサービスが提供されており、${bodyNote}生活状況は概ね安定していることを確認した。`;
-      } else if (houseNote) {
-        result.service_reason = `計画に基づきサービスが提供されており、${houseNote}生活状況は概ね安定していることを確認した。`;
+      console.warn(`[Monitoring] ⚠ D12に週間計画の作業列挙を検出。状態評価・支援効果の文に置換します。`);
+      const hasBody = serviceTypes.some(st => st.includes('身体'));
+      const hasHouse = serviceTypes.some(st => st.includes('家事') || st.includes('生活'));
+      // 状態評価・支援効果を中心とした文言で置換（作業列挙ではなく効果記述）
+      if (hasBody && hasHouse) {
+        result.service_reason = '計画に基づきサービスが提供されており、生活状況は概ね安定していることを確認した。家事援助により食事・清潔面等の日常生活の支援が継続でき、身体介護による体調管理・服薬確認も支障なく実施されている。大きな心身状態の変化はなく、現行支援により在宅生活の継続が図れている。';
+      } else if (hasBody) {
+        result.service_reason = '計画に基づきサービスが提供されており、身体介護による体調管理・服薬確認が適切に行われていることを確認した。心身状態は安定しており、現行支援で在宅生活の継続が図れている。';
+      } else if (hasHouse) {
+        result.service_reason = '計画に基づきサービスが提供されており、家事援助による日常生活の支援が安定して行われていることを確認した。生活環境の維持が図れ、在宅生活の継続に支障はない。';
       } else {
-        result.service_reason = '計画に基づきサービスが提供されており、生活状況は概ね安定していることを確認した。';
+        result.service_reason = '計画に基づきサービスが提供されており、生活状況は概ね安定していることを確認した。現行支援で在宅生活の継続が図れている。';
       }
     }
 
@@ -1328,7 +1329,7 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
       const outsideQuotes = result.goal_evaluation.replace(/『[^』]*』/g, '');
       const CARE_LISTING = /調理[・、]*(掃除|洗濯|片付|配膳|環境整備|服薬)/;
       const BODY_CARE_LISTING = /服薬確認[・、]*(体調確認|整容|更衣|安全確認|バイタル)/;
-      if (CARE_LISTING.test(outsideQuotes) || BODY_CARE_LISTING.test(outsideQuotes) || TASK_LISTING_PATTERN.test(outsideQuotes)) {
+      if (CARE_LISTING.test(outsideQuotes) || BODY_CARE_LISTING.test(outsideQuotes) || TASK_LISTING_PATTERN.test(outsideQuotes) || TASK_TWO_ITEMS_PATTERN.test(outsideQuotes)) {
         console.warn(`[Monitoring] ⚠ C20の『』外側に作業列挙を検出。「状態評価」表現に置換します。`);
         result.goal_evaluation = result.goal_evaluation
           .replace(/調理[・、]*(掃除|洗濯|片付け?|配膳|環境整備)[^。]*を?(継続|実施|提供)[^。]*。?/g, 'サービス提供により生活環境の安定が図れている。')
