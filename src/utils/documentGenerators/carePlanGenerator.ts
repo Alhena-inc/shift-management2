@@ -1460,23 +1460,32 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
     }
   }
 
-  // === 「記録」「申し送り」ステップの除外 ===
+  // === 「記録」「申し送り」「情報共有」ステップの除外 ===
   // ヘルパーの内部事務であり、利用者への援助ではないため計画書から除外する
-  // ★ 完全一致（^...$）ではなく、itemの主語が「記録」「報告」「申し送り」であるかをチェック
-  const RECORD_STEP_PATTERN = /^(記録|記録作成|記録確認|記録・報告|申し送り|申し送り事項|サービス記録|支援記録|支援内容.*記録|状況.*記録|報告・記録|報告|状況報告|退室.*報告|.*への記録|.*の記録)$/;
+  // ★ 完全一致（^...$）ではなく、itemの主語が「記録」「報告」「申し送り」「情報共有」であるかをチェック
+  // ★ 要件E対応: 「記録報告」（中黒なし）、「情報共有」、「連絡報告」も除外対象に追加
+  const RECORD_STEP_PATTERN = /^(記録|記録作成|記録確認|記録[・]?報告|連絡[・]?報告|申し送り|申し送り事項|サービス記録|支援記録|支援内容.*記録|状況.*記録|報告・記録|報告|状況報告|退室.*報告|情報共有|.*への記録|.*の記録|.*への報告|連絡・調整|連絡調整)$/;
   for (let i = 1; i <= 4; i++) {
     const service = plan[`service${i}` as keyof CarePlan] as ServiceBlock | null;
     if (!service || service.steps.length === 0) continue;
     const before = service.steps.length;
     service.steps = service.steps.filter(step => {
-      if (RECORD_STEP_PATTERN.test(step.item?.trim() || '')) {
-        console.log(`[CarePlan] 記録ステップ除外: サービス${i}から「${step.item}」を除外`);
+      const item = step.item?.trim() || '';
+      // item自体が内部事務項目
+      if (RECORD_STEP_PATTERN.test(item)) {
+        console.log(`[CarePlan] 内部事務ステップ除外: サービス${i}から「${item}」を除外`);
+        return false;
+      }
+      // contentが「サービス実施内容の記録」「情報共有」のみの場合も除外
+      const content = step.content?.trim() || '';
+      if (/^(サービス実施内容の記録|実施内容の記録|訪問看護との情報共有|他事業所との情報共有|記録の作成|記録作成|報告書の作成)$/.test(content.replace(/^\d{1,2}:\d{2}\s*/, ''))) {
+        console.log(`[CarePlan] 内部事務コンテンツ除外: サービス${i}から「${item}: ${content}」を除外`);
         return false;
       }
       return true;
     });
     if (before !== service.steps.length) {
-      console.log(`[CarePlan] サービス${i}: ${before}件→${service.steps.length}件（記録ステップ除外）`);
+      console.log(`[CarePlan] サービス${i}: ${before}件→${service.steps.length}件（内部事務ステップ除外）`);
     }
   }
 

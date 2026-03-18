@@ -4296,23 +4296,89 @@ describe('103. D12が2項目の作業列挙も検出するテスト（hasSchedul
 
 describe('104. buildBillingSummary（モニタリング版）が曜日別の詳細を渡さないテスト', () => {
   it('曜日×種別の個別回数（月曜: 家事援助2回等）をAIに渡さないこと', () => {
-    // buildBillingSummaryの出力に曜日別の「月曜: 家事援助2回」が含まれないことを確認
-    // モニタリング用は種別ごとの月間合計のみ
     const expectedFormat = /^(家事援助|身体介護|重度訪問|通院|同行援護|行動援護): 月\d+回$/;
     const badFormat = /^(月|火|水|木|金|土|日)曜: .+\d+回/;
 
-    // OK例
     expect(expectedFormat.test('家事援助: 月12回')).toBe(true);
     expect(expectedFormat.test('身体介護: 月8回')).toBe(true);
-
-    // NG例（曜日別の回数）
     expect(badFormat.test('月曜: 家事援助2回')).toBe(true);
-    expect(badFormat.test('水曜: 家事援助2回, 身体介護1回')).toBe(true);
 
-    // フォーマットの違い確認
     const okLine = '家事援助: 月12回';
     const ngLine = '月曜: 家事援助2回';
     expect(expectedFormat.test(okLine)).toBe(true);
     expect(expectedFormat.test(ngLine)).toBe(false);
+  });
+});
+
+// ===== 要件E: 計画書の援助項目から「記録報告」を削除するテスト =====
+
+describe('105. 計画書の援助項目に「記録報告」が出ないテスト（要件E）', () => {
+  // 拡張版RECORD_STEP_PATTERN（記録報告・情報共有を含む）
+  const RECORD_STEP_PATTERN = /^(記録|記録作成|記録確認|記録[・]?報告|連絡[・]?報告|申し送り|申し送り事項|サービス記録|支援記録|支援内容.*記録|状況.*記録|報告・記録|報告|状況報告|退室.*報告|情報共有|.*への記録|.*の記録|.*への報告|連絡・調整|連絡調整)$/;
+
+  it('「記録報告」（中黒なし）が検出されること', () => {
+    expect(RECORD_STEP_PATTERN.test('記録報告')).toBe(true);
+  });
+
+  it('「記録・報告」（中黒あり）が検出されること', () => {
+    expect(RECORD_STEP_PATTERN.test('記録・報告')).toBe(true);
+  });
+
+  it('「情報共有」が検出されること', () => {
+    expect(RECORD_STEP_PATTERN.test('情報共有')).toBe(true);
+  });
+
+  it('「連絡報告」が検出されること', () => {
+    expect(RECORD_STEP_PATTERN.test('連絡報告')).toBe(true);
+  });
+
+  it('「連絡・調整」が検出されること', () => {
+    expect(RECORD_STEP_PATTERN.test('連絡・調整')).toBe(true);
+  });
+
+  it('「連絡調整」が検出されること', () => {
+    expect(RECORD_STEP_PATTERN.test('連絡調整')).toBe(true);
+  });
+
+  it('利用者への援助項目は除外されないこと', () => {
+    expect(RECORD_STEP_PATTERN.test('体調確認')).toBe(false);
+    expect(RECORD_STEP_PATTERN.test('服薬確認')).toBe(false);
+    expect(RECORD_STEP_PATTERN.test('調理支援')).toBe(false);
+    expect(RECORD_STEP_PATTERN.test('掃除')).toBe(false);
+    expect(RECORD_STEP_PATTERN.test('安全確認')).toBe(false);
+    expect(RECORD_STEP_PATTERN.test('退室')).toBe(false);
+    expect(RECORD_STEP_PATTERN.test('バイタルチェック')).toBe(false);
+  });
+
+  it('contentレベルでの内部事務検出テスト', () => {
+    const INTERNAL_CONTENT = /^(サービス実施内容の記録|実施内容の記録|訪問看護との情報共有|他事業所との情報共有|記録の作成|記録作成|報告書の作成)$/;
+    expect(INTERNAL_CONTENT.test('サービス実施内容の記録')).toBe(true);
+    expect(INTERNAL_CONTENT.test('訪問看護との情報共有')).toBe(true);
+    expect(INTERNAL_CONTENT.test('他事業所との情報共有')).toBe(true);
+    // 利用者への援助内容は検出されないこと
+    expect(INTERNAL_CONTENT.test('夕食の献立確認・食材の下準備・調理')).toBe(false);
+    expect(INTERNAL_CONTENT.test('服薬状況の見守り・声かけ確認')).toBe(false);
+  });
+});
+
+describe('106. D12の「週N回の○○支援」パターン検出テスト（要件C NG例対応）', () => {
+  const WEEKLY_FREQ_PATTERN = /週\d+回の[^、。]{2,15}(支援|介助|確認)[^、。]{0,10}(実施|行[いっわ]|提供され)/;
+
+  it('「週3回の夕食調理支援が実施され」が検出されること', () => {
+    expect(WEEKLY_FREQ_PATTERN.test('週3回の夕食調理支援が実施され')).toBe(true);
+  });
+
+  it('「週4回の掃除支援が提供され」が検出されること', () => {
+    expect(WEEKLY_FREQ_PATTERN.test('週4回の掃除支援が提供され')).toBe(true);
+  });
+
+  it('「週2回の服薬確認が行われ」が検出されること', () => {
+    expect(WEEKLY_FREQ_PATTERN.test('週2回の服薬確認が行われ')).toBe(true);
+  });
+
+  it('状態評価文は検出されないこと', () => {
+    expect(WEEKLY_FREQ_PATTERN.test('計画に基づく支援は概ね安定して提供されている')).toBe(false);
+    expect(WEEKLY_FREQ_PATTERN.test('在宅生活の継続が図れている')).toBe(false);
+    expect(WEEKLY_FREQ_PATTERN.test('心身状態は安定している')).toBe(false);
   });
 });

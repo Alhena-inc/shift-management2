@@ -1280,6 +1280,8 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     const DAY_CHAIN_PATTERN = /(月|火|水|木|金|土|日)曜[はに][^、。]{3,30}(行[いっ]|実施|提供)[^、。]{0,10}[、,]\s*(月|火|水|木|金|土|日)曜[はに]/;
     // ★追加: 時間枠2つ以上の列挙パターン（「18:30〜19:30の家事援助と19:30〜20:30の身体介護」等）
     const TIME_SLOT_PAIR_PATTERN = /\d{1,2}[：:]\d{2}[~〜]\d{1,2}[：:]\d{2}[^、。]{0,20}(身体介護|家事援助)[^。]{0,30}\d{1,2}[：:]\d{2}[~〜]\d{1,2}[：:]\d{2}/;
+    // ★追加: 「週N回の○○支援」パターン（「週3回の夕食調理支援が実施され」等）- 要件CのNG例対応
+    const WEEKLY_FREQ_PATTERN = /週\d+回の[^、。]{2,15}(支援|介助|確認)[^、。]{0,10}(実施|行[いっわ]|提供され)/;
 
     /** 指定テキストが週間計画の作業列挙かどうかを判定 */
     function hasScheduleListing(text: string): boolean {
@@ -1289,7 +1291,8 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
       const m4 = DAY_CHAIN_PATTERN.test(text);
       const m5 = TIME_SLOT_PAIR_PATTERN.test(text);
       const m6 = TASK_TWO_ITEMS_PATTERN.test(text);
-      return m1.length >= 3 || m2.length >= 2 || m3 || m4 || m5 || m6;
+      const m7 = WEEKLY_FREQ_PATTERN.test(text);
+      return m1.length >= 3 || m2.length >= 2 || m3 || m4 || m5 || m6 || m7;
     }
 
     // service_reasonのチェック
