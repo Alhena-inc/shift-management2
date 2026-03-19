@@ -168,7 +168,8 @@ async function buildContext(
       longTermGoal: string; shortTermGoal: string;
       goalPeriod: { shortTermMonths: number; longTermMonths: number; longTermEndDate: string };
       serviceTypes: string[]; serviceBlocks: Array<{ service_type: string; visit_label: string }>;
-      createdAt: string; planFileName: string; planDate: string; source: string;
+      createdAt: string; planFileName: string; documentDate: string; planStartDate: string; planEndDate: string;
+      planDate: string; source: string;
     } | undefined,
   };
 }
@@ -190,7 +191,8 @@ async function resolvePreviousCarePlan(
   longTermGoal: string; shortTermGoal: string;
   goalPeriod: { shortTermMonths: number; longTermMonths: number; longTermEndDate: string };
   serviceTypes: string[]; serviceBlocks: Array<{ service_type: string; visit_label: string }>;
-  createdAt: string; planFileName: string; planDate: string; source: string;
+  createdAt: string; planFileName: string; documentDate: string; planStartDate: string; planEndDate: string;
+  planDate: string; source: string;
 } | null> {
   // === 方法1: 前回計画書ExcelのE12/E13を読み込む ===
   try {
@@ -229,15 +231,22 @@ async function resolvePreviousCarePlan(
               console.log(`[resolvePreviousCarePlan]   E12(長期${longMonths}ヶ月): 「${longGoal.substring(0, 40)}...」`);
               console.log(`[resolvePreviousCarePlan]   E13(短期${shortMonths}ヶ月): 「${shortGoal.substring(0, 40)}...」`);
 
+              // ファイル名から対象年月を抽出（例: 居宅介護計画書_松尾光雅_2025年11月.xlsx → 2025-11）
+              const yearMonthMatch = (latestPlan.fileName || '').match(/(\d{4})年(\d{1,2})月/);
+              const docDate = yearMonthMatch ? `${yearMonthMatch[1]}-${yearMonthMatch[2].padStart(2, '0')}` : '';
+
               return {
                 longTermGoal: longGoal,
                 shortTermGoal: shortGoal,
                 goalPeriod: { shortTermMonths: shortMonths, longTermMonths: longMonths, longTermEndDate },
-                serviceTypes: [], // Excel読み込みでは種別は取れない（carePlanServiceBlocksで補完）
-                serviceBlocks: [], // 同上
+                serviceTypes: [],
+                serviceBlocks: [],
                 createdAt: planDate,
-                planDate,
                 planFileName: latestPlan.fileName || `居宅介護計画書_${clientName}`,
+                documentDate: docDate,
+                planStartDate: planDate,
+                planEndDate: addMonths(planDate, shortMonths),
+                planDate,
                 source: 'excel',
               };
             }
@@ -275,8 +284,11 @@ async function resolvePreviousCarePlan(
         serviceTypes: [],
         serviceBlocks: [],
         createdAt: pd,
-        planDate: pd,
         planFileName: `居宅介護計画書_${clientName}`,
+        documentDate: pd ? pd.substring(0, 7) : '',
+        planStartDate: pd,
+        planEndDate: activeShort?.endDate || (pd ? addMonths(pd, shortMonths) : ''),
+        planDate: pd,
         source: 'db',
       };
     }
@@ -1373,19 +1385,23 @@ export async function executeCatchUpGeneration(
             lastServiceBlocks = planResult.serviceBlocks;
 
             // ★previousCarePlanを更新（今回生成した計画書が次回のsource of truth）
+            const genDate = generatedAt.substring(0, 10);
             ctx.previousCarePlan = {
               longTermGoal: planResult.goal_long_text || '',
               shortTermGoal: planResult.goal_short_text || '',
               goalPeriod: {
                 shortTermMonths: planResult.short_term_goal_months,
                 longTermMonths: planResult.long_term_goal_months,
-                longTermEndDate: addMonths(generatedAt.substring(0, 10), planResult.long_term_goal_months),
+                longTermEndDate: addMonths(genDate, planResult.long_term_goal_months),
               },
               serviceTypes: planResult.serviceBlocks.map(b => b.service_type),
               serviceBlocks: planResult.serviceBlocks.map(b => ({ service_type: b.service_type, visit_label: b.visit_label })),
-              createdAt: generatedAt.substring(0, 10),
+              createdAt: genDate,
               planFileName: `居宅介護計画書_${client.name}_${step.year}年${step.month}月.xlsx`,
-              planDate: generatedAt.substring(0, 10),
+              documentDate: `${step.year}-${String(step.month).padStart(2, '0')}`,
+              planStartDate: step.periodStart,
+              planEndDate: addMonths(step.periodStart, planResult.short_term_goal_months),
+              planDate: genDate,
               source: 'generated',
             };
             // 後方互換
@@ -1500,10 +1516,41 @@ export async function executeCatchUpGeneration(
           ctx.monitoringType = step.monitoringType;
         }
 
+        // ★★★ 前回計画書をsource of truthとして解決（モニタリングC20の根拠） ★★★
+        // previousCarePlanが未設定の場合（計画書が「作成済み」でスキップされた場合等）に取得
+        if (!ctx.previousCarePlan) {
+          const prevPlan = await resolvePreviousCarePlan(client.id, client.name);
+          if (prevPlan) {
+            ctx.previousCarePlan = prevPlan;
+            ctx.previousPlanGoals = {
+              longTermGoal: prevPlan.longTermGoal,
+              shortTermGoal: prevPlan.shortTermGoal,
+              planDate: prevPlan.planDate,
+              planFileName: prevPlan.planFileName,
+            };
+            console.log(`[CatchUp] モニタリング前にpreviousCarePlanを解決 (source=${prevPlan.source})`);
+          } else {
+            // ★ブロッキング: 前回計画書が取得できない場合はモニタリングを生成しない
+            console.error(`[CatchUp] ⚠ previousCarePlanが未解決のままモニタリング生成を試行 → スキップします`);
+            generationLog.push({
+              order: generationLog.length + 1, docType: 'モニタリング表',
+              fileName: `モニタリングシート_${client.name}_${step.year}年${step.month}月.xlsx`,
+              year: step.year, month: step.month, status: '失敗',
+              reason: '前回の居宅介護計画書が取得できなかったため、モニタリングの生成をスキップしました。手動で前回計画書を確認してください。',
+            });
+            continue;
+          }
+        }
+        console.log(`[CatchUp] モニタリング生成開始: previousCarePlan確定済み (source=${ctx.previousCarePlan.source}, 短期「${ctx.previousCarePlan.shortTermGoal.substring(0, 30)}...」)`);
+
         // 直前の計画書のサービスブロックをモニタリングに引き継ぐ
-        // D12のservice_type判定とプロンプトの根拠に使用
         if (lastServiceBlocks) {
           ctx.carePlanServiceBlocks = lastServiceBlocks;
+          // previousCarePlanのserviceTypesも補完
+          if (ctx.previousCarePlan.serviceTypes.length === 0) {
+            ctx.previousCarePlan.serviceTypes = lastServiceBlocks.map(b => b.service_type);
+            ctx.previousCarePlan.serviceBlocks = lastServiceBlocks.map(b => ({ service_type: b.service_type, visit_label: b.visit_label }));
+          }
           console.log(`[CatchUp] 計画書サービスブロックをモニタリングに引き継ぎ: ${lastServiceBlocks.length}ブロック`);
         }
 

@@ -68,9 +68,15 @@ export interface GeneratorContext {
     createdAt: string;
     /** ファイル名（トレーサビリティ用） */
     planFileName: string;
+    /** 帳票の対象年月（YYYY-MM形式、例: '2025-11'） */
+    documentDate: string;
+    /** 計画の適用開始日（YYYY-MM-DD） */
+    planStartDate: string;
+    /** 計画の適用終了日（YYYY-MM-DD、短期目標期間終了日） */
+    planEndDate: string;
     /** @deprecated planDateはcreatedAtに統合。後方互換 */
     planDate: string;
-    /** 取得元: 'excel' = Excelファイル読み込み, 'db' = goal_periodsフォールバック */
+    /** 取得元: 'excel' | 'db' | 'generated' | 'legacy' */
     source: string;
   };
   /** @deprecated previousCarePlanに統合。後方互換のため残す */

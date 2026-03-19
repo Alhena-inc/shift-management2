@@ -903,7 +903,14 @@ function buildTemplateFromScratch(ws: ExcelJS.Worksheet): void {
 }
 
 // ==================== メイン生成関数 ====================
-export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNeeded: string; monitoringCycleMonths: number; goalContinuation: boolean; resolvedGoalTexts?: { shortTermGoal: string; longTermGoal: string }; manualReviewNeeded?: boolean }> {
+export async function generate(ctx: GeneratorContext): Promise<{
+  planRevisionNeeded: string;
+  monitoringCycleMonths: number;
+  goalContinuation: boolean;
+  resolvedGoalTexts?: { shortTermGoal: string; longTermGoal: string };
+  manualReviewNeeded?: boolean;
+  goalVerdict?: { short: '継続' | '達成' | '変更'; long: '継続' | '達成' | '変更' };
+}> {
   const { careClients, billingRecords, supplyAmounts, year, month, officeInfo, customPrompt, customSystemInstruction, selectedClient } = ctx;
 
   const client: CareClient = selectedClient || careClients[0];
@@ -911,6 +918,22 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
 
   // manual reviewフラグ: resolvedGoalsが取得不能 or C20構造破壊時にtrueにする
   let manualReviewNeeded = false;
+
+  // ========== previousCarePlanガード ==========
+  // previousCarePlanが未設定（前回計画書が未確定）ならモニタリング生成を開始しない。
+  // 代替ソース（本人希望文・アセスメント文等）で作文することを防止する。
+  // executorがpreviousCarePlanをctxに設定してから呼び出すことを前提とする。
+  if (!ctx.previousCarePlan && !ctx.previousPlanGoals) {
+    // 最終手段: resolvePreviousPlanGoalsでDBフォールバックを試みる
+    const fallbackGoals = await resolvePreviousPlanGoals(ctx, client.id);
+    if (fallbackGoals.source === 'none' || (!fallbackGoals.shortTermGoal && !fallbackGoals.longTermGoal)) {
+      console.error(`[Monitoring] ❌ 前回計画書(previousCarePlan)が未確定のためモニタリング生成をブロックします`);
+      throw new Error('モニタリング生成ブロック: 前回の居宅介護計画書が見つかりません。先に計画書を生成してください。');
+    }
+    // DBフォールバックで取得できた場合はmanualReview推奨で続行
+    console.warn(`[Monitoring] ⚠ previousCarePlanが未設定。DBフォールバックで続行しますがmanual review推奨`);
+    manualReviewNeeded = true;
+  }
 
   // 障害支援区分・サービス提供責任者を取得
   const supportCategory = await getClientSupportCategory(client.id);
@@ -972,6 +995,12 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     }
     goalStatusNote = `\n\n★★★最優先参照★★★\n【前回の居宅介護計画書の目標（${resolvedGoals.planDate || ''}）】\n以下は前回の居宅介護計画書に記載された目標です。goal_evaluation欄では必ずこの文言を一字一句変えずに『』内に引用してください。\n本人希望文・アセスメント文・週間計画文言は絶対に目標として使わないこと。\n${lines.join('\n')}\n\n★上記の目標文言をそのままコピーして使うこと。要約・言い換え・本人希望文の流用は厳禁。`;
     console.log(`[Monitoring] 前回計画resolver結果: source=${resolvedGoals.source}, 短期「${resolvedGoals.shortTermGoal.substring(0, 30)}...」 長期「${resolvedGoals.longTermGoal.substring(0, 30)}...」`);
+
+    // goalPeriodsフォールバック時はmanualReview推奨（Excel読み込みより信頼度が低い）
+    if (resolvedGoals.source === 'goalPeriods') {
+      console.warn(`[Monitoring] ⚠ 前回計画書の目標がDB(goalPeriods)フォールバック経由。Excelセル値との乖離リスクあり`);
+      manualReviewNeeded = true;
+    }
   } else {
     console.warn(`[Monitoring] ⚠ 前回計画書の目標が取得できませんでした（source=${resolvedGoals.source}）`);
     // 前回計画書の目標が取得不能 → C20の品質保証ができない → manual review推奨
@@ -1545,10 +1574,29 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     ? getMonitoringCycleMonths(supportCategory || client.careLevel || '', true)
     : monitoringCycleMonths;
 
-  // 目標継続判定: goal_evaluationに「継続する」が含まれていれば目標継続
-  const goalContinuation = /目標を継続/.test(result.goal_evaluation);
+  // 目標継続判定: goal_evaluationから短期・長期それぞれの判定語を抽出
+  const shortVerdictMatch = result.goal_evaluation.match(/短期目標[^。]*?目標を(継続|達成|変更)/);
+  const longVerdictMatch = result.goal_evaluation.match(/長期目標[^。]*?目標を(継続|達成|変更)/);
+  const shortVerdict = (shortVerdictMatch?.[1] || '継続') as '継続' | '達成' | '変更';
+  const longVerdict = (longVerdictMatch?.[1] || '継続') as '継続' | '達成' | '変更';
+
+  // 後方互換: goalContinuationは短期目標が「継続」の場合にtrue
+  const goalContinuation = shortVerdict === '継続';
   if (goalContinuation) {
-    console.log(`[Monitoring] 目標継続と判定 → 次の計画書で短期目標を引き継ぎます`);
+    console.log(`[Monitoring] 短期目標: 継続と判定 → 次の計画書で短期目標を引き継ぎます`);
+  } else {
+    console.log(`[Monitoring] 短期目標: ${shortVerdict}と判定 → 次の計画書で短期目標を変更可能`);
+  }
+  console.log(`[Monitoring] 長期目標: ${longVerdict}と判定`);
+
+  // ★長期目標がgoalPeriod内なのに「変更」と判定された場合は警告
+  if (longVerdict === '変更' && ctx.previousCarePlan?.goalPeriod?.longTermEndDate) {
+    const endDate = ctx.previousCarePlan.goalPeriod.longTermEndDate;
+    const currentDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    if (currentDate < endDate) {
+      console.warn(`[Monitoring] ⚠ 長期目標が期間内（〜${endDate}）にも関わらず「変更」判定。要確認`);
+      manualReviewNeeded = true;
+    }
   }
 
   // ★resolvedGoalTextsを返却し、executor側で次回計画書に正確な文言を引き継げるようにする
@@ -1556,5 +1604,8 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     ? { shortTermGoal: resolvedGoals.shortTermGoal, longTermGoal: resolvedGoals.longTermGoal }
     : undefined;
 
-  return { planRevisionNeeded, monitoringCycleMonths: effectiveCycleMonths, goalContinuation, resolvedGoalTexts, manualReviewNeeded };
+  // ★goalVerdict: 短期・長期それぞれの判定結果（executor側で次回計画書との連動に使用）
+  const goalVerdict = { short: shortVerdict, long: longVerdict };
+
+  return { planRevisionNeeded, monitoringCycleMonths: effectiveCycleMonths, goalContinuation, resolvedGoalTexts, manualReviewNeeded, goalVerdict };
 }

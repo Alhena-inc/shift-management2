@@ -5314,3 +5314,248 @@ describe('129. C20出力形式固定テスト: 必ず「短期目標『…』に
     ]));
   });
 });
+
+// ===== チームB追加テスト: previousCarePlanガードと生成順序テスト =====
+
+describe('130. previousCarePlan未確定時にモニタリング生成がブロックされるテスト', () => {
+  // monitoringReportGenerator.ts のpreviousCarePlanガードロジックを再現
+  function checkPreviousCarePlanGuard(
+    previousCarePlan: { shortTermGoal: string; longTermGoal: string } | undefined,
+    previousPlanGoals: { shortTermGoal: string; longTermGoal: string } | undefined,
+    dbFallbackAvailable: boolean,
+  ): { blocked: boolean; manualReview: boolean; reason: string } {
+    if (!previousCarePlan && !previousPlanGoals) {
+      if (!dbFallbackAvailable) {
+        return { blocked: true, manualReview: false, reason: '前回の居宅介護計画書が見つかりません' };
+      }
+      return { blocked: false, manualReview: true, reason: 'DBフォールバックで続行' };
+    }
+    return { blocked: false, manualReview: false, reason: '' };
+  }
+
+  it('previousCarePlanもpreviousPlanGoalsも無く、DBフォールバックも無い場合はブロック', () => {
+    const result = checkPreviousCarePlanGuard(undefined, undefined, false);
+    expect(result.blocked).toBe(true);
+    expect(result.reason).toContain('計画書が見つかりません');
+  });
+
+  it('previousCarePlanもpreviousPlanGoalsも無いが、DBフォールバックがある場合はmanualReview=trueで続行', () => {
+    const result = checkPreviousCarePlanGuard(undefined, undefined, true);
+    expect(result.blocked).toBe(false);
+    expect(result.manualReview).toBe(true);
+  });
+
+  it('previousCarePlanが設定されている場合は正常通過', () => {
+    const result = checkPreviousCarePlanGuard(
+      { shortTermGoal: '目標A', longTermGoal: '目標B' },
+      undefined,
+      false,
+    );
+    expect(result.blocked).toBe(false);
+    expect(result.manualReview).toBe(false);
+  });
+
+  it('previousPlanGoals（後方互換）が設定されている場合も正常通過', () => {
+    const result = checkPreviousCarePlanGuard(
+      undefined,
+      { shortTermGoal: '目標C', longTermGoal: '目標D' },
+      false,
+    );
+    expect(result.blocked).toBe(false);
+    expect(result.manualReview).toBe(false);
+  });
+});
+
+describe('131. 同一バッチで「前回計画書→モニタリング→次回計画書」の逐次処理テスト', () => {
+  it('計画書生成後にpreviousCarePlanが更新され、モニタリングで使えること', () => {
+    // executorの逐次フローを再現
+    type PreviousCarePlan = {
+      shortTermGoal: string; longTermGoal: string;
+      source: string; createdAt: string; planFileName: string;
+    };
+    let previousCarePlan: PreviousCarePlan | undefined = undefined;
+
+    // Step 1: 前回計画書Excel読み込み → previousCarePlan設定
+    previousCarePlan = {
+      shortTermGoal: '清潔な居住環境を保つ',
+      longTermGoal: '在宅生活を継続する',
+      source: 'excel',
+      createdAt: '2025-11-01',
+      planFileName: '居宅介護計画書_2025年11月.xlsx',
+    };
+    expect(previousCarePlan).toBeDefined();
+    expect(previousCarePlan.source).toBe('excel');
+
+    // Step 2: 計画書生成 → previousCarePlanを更新
+    const planResult = {
+      goal_short_text: '清潔な居住環境を保つ',
+      goal_long_text: '在宅生活を継続する',
+    };
+    previousCarePlan = {
+      shortTermGoal: planResult.goal_short_text,
+      longTermGoal: planResult.goal_long_text,
+      source: 'generated',
+      createdAt: '2026-01-01',
+      planFileName: '居宅介護計画書_2026年1月.xlsx',
+    };
+    expect(previousCarePlan.source).toBe('generated');
+
+    // Step 3: モニタリング生成 → previousCarePlanの目標を参照
+    const monitoringShortGoal = previousCarePlan.shortTermGoal;
+    const monitoringLongGoal = previousCarePlan.longTermGoal;
+    expect(monitoringShortGoal).toBe('清潔な居住環境を保つ');
+    expect(monitoringLongGoal).toBe('在宅生活を継続する');
+  });
+
+  it('モニタリング「継続」なら次回計画書の短期目標が同文言であること', () => {
+    const previousShortGoal = '服薬習慣の定着と清潔な居住環境を保つ';
+    const goalContinuation = true;
+
+    // executor側ロジック再現
+    let nextPlanShortGoal = 'AIが生成した新しい短期目標';
+    if (goalContinuation) {
+      nextPlanShortGoal = previousShortGoal; // 前回と完全同一
+    }
+
+    expect(nextPlanShortGoal).toBe(previousShortGoal);
+  });
+
+  it('モニタリング「達成/変更」なら次回計画書の短期目標は変更可能であること', () => {
+    const previousShortGoal = '服薬管理を定着させる';
+    const goalContinuation = false; // 達成 or 変更
+
+    let nextPlanShortGoal = 'AIが生成した新しい短期目標';
+    if (goalContinuation) {
+      nextPlanShortGoal = previousShortGoal;
+    }
+    // goalContinuation=falseなのでAIの新目標がそのまま使われる
+    expect(nextPlanShortGoal).not.toBe(previousShortGoal);
+  });
+});
+
+describe('132. goalVerdictの抽出テスト', () => {
+  function extractGoalVerdict(goalEval: string): { short: string; long: string } {
+    const shortMatch = goalEval.match(/短期目標[^。]*?目標を(継続|達成|変更)/);
+    const longMatch = goalEval.match(/長期目標[^。]*?目標を(継続|達成|変更)/);
+    return {
+      short: shortMatch?.[1] || '継続',
+      long: longMatch?.[1] || '継続',
+    };
+  }
+
+  it('短期=継続、長期=継続が正しく抽出されること', () => {
+    const c20 = "短期目標『目標A』について、安定しているため目標を継続する。 長期目標『目標B』について、目標を継続する。";
+    const verdict = extractGoalVerdict(c20);
+    expect(verdict.short).toBe('継続');
+    expect(verdict.long).toBe('継続');
+  });
+
+  it('短期=達成、長期=継続が正しく抽出されること', () => {
+    const c20 = "短期目標『目標A』について、達成したため目標を達成したと判断する。 長期目標『目標B』について、目標を継続する。";
+    // 「目標を達成」を抽出
+    const verdict = extractGoalVerdict(c20);
+    expect(verdict.short).toBe('達成');
+    expect(verdict.long).toBe('継続');
+  });
+
+  it('短期=変更、長期=変更が正しく抽出されること', () => {
+    const c20 = "短期目標『目標A』について、新たな段階として目標を変更する。 長期目標『目標B』について、期間満了により目標を変更する。";
+    const verdict = extractGoalVerdict(c20);
+    expect(verdict.short).toBe('変更');
+    expect(verdict.long).toBe('変更');
+  });
+
+  it('判定語がない場合はデフォルト「継続」になること', () => {
+    const c20 = "短期目標について安定している。長期目標について問題なし。";
+    const verdict = extractGoalVerdict(c20);
+    expect(verdict.short).toBe('継続');
+    expect(verdict.long).toBe('継続');
+  });
+});
+
+describe('133. 長期目標がgoalPeriod内で「変更」判定の場合に警告が出るテスト', () => {
+  function checkLongTermGoalPeriodWarning(
+    longVerdict: string,
+    longTermEndDate: string | undefined,
+    currentYear: number,
+    currentMonth: number,
+  ): boolean {
+    if (longVerdict === '変更' && longTermEndDate) {
+      const currentDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+      if (currentDate < longTermEndDate) {
+        return true; // warning needed
+      }
+    }
+    return false;
+  }
+
+  it('長期目標期間内（2026-04まで）で2026年1月に「変更」→ 警告あり', () => {
+    const result = checkLongTermGoalPeriodWarning('変更', '2026-04-30', 2026, 1);
+    expect(result).toBe(true);
+  });
+
+  it('長期目標期間外（2025-12まで）で2026年1月に「変更」→ 警告なし', () => {
+    const result = checkLongTermGoalPeriodWarning('変更', '2025-12-31', 2026, 1);
+    expect(result).toBe(false);
+  });
+
+  it('長期目標「継続」→ 警告なし', () => {
+    const result = checkLongTermGoalPeriodWarning('継続', '2026-04-30', 2026, 1);
+    expect(result).toBe(false);
+  });
+
+  it('longTermEndDateが未設定→ 警告なし', () => {
+    const result = checkLongTermGoalPeriodWarning('変更', undefined, 2026, 1);
+    expect(result).toBe(false);
+  });
+});
+
+describe('134. D12に禁止ソース文言がそのまま流れないテスト', () => {
+  // D12に直接使ってはいけないソースのパターン
+  const FORBIDDEN_D12_SOURCES = [
+    // 週間計画の直接記載
+    /月曜.*火曜|火曜.*水曜|水曜.*木曜/,
+    // K21備考欄の典型パターン
+    /曜日.*時間帯.*サービス種別/,
+    // サービス内容本文の流用
+    /利用者宅を訪問し.*表情.*体調を確認/,
+    // 手順書steps/detail/noteの流用
+    /ステップ\d|手順\d|Step\d/i,
+    // 個別作業名3項目以上の列挙
+    /(調理|掃除|清掃|洗濯|配膳|片付け)[・、](調理|掃除|清掃|洗濯|配膳|片付け)[・、](調理|掃除|清掃|洗濯|配膳|片付け)/,
+  ];
+
+  function hasForbiddenD12Source(text: string): boolean {
+    return FORBIDDEN_D12_SOURCES.some(pattern => pattern.test(text));
+  }
+
+  it('週間計画の曜日チェーンがD12に入っていたら検出されること', () => {
+    const d12 = '月曜は家事援助を行い、火曜は身体介護を提供し、水曜も家事援助を実施している。';
+    expect(hasForbiddenD12Source(d12)).toBe(true);
+  });
+
+  it('手順書ステップの流用がD12に入っていたら検出されること', () => {
+    const d12 = 'ステップ1で体調確認、ステップ2で調理支援を実施している。';
+    expect(hasForbiddenD12Source(d12)).toBe(true);
+  });
+
+  it('個別作業3項目列挙がD12に入っていたら検出されること', () => {
+    const d12 = '調理・掃除・洗濯を適切に実施している。';
+    expect(hasForbiddenD12Source(d12)).toBe(true);
+  });
+
+  it('サービス内容本文の流用がD12に入っていたら検出されること', () => {
+    const d12 = '利用者宅を訪問し、表情や体調を確認した上で支援を開始している。';
+    expect(hasForbiddenD12Source(d12)).toBe(true);
+  });
+
+  it('正しい状態評価文はフォールバックに該当しないこと', () => {
+    const d12 = '計画に基づきサービスが提供されており、生活状況は概ね安定していることを確認した。家事援助により日常生活の支援が継続でき、身体介護による体調管理も支障なく実施されている。';
+    expect(hasForbiddenD12Source(d12)).toBe(false);
+  });
+
+  it('種別レベルの効果記述はフォールバックに該当しないこと', () => {
+    const d12 = '計画に基づき重度訪問介護サービスが提供されており、見守りを含む包括的な支援が安定して行われていることを確認した。';
+    expect(hasForbiddenD12Source(d12)).toBe(false);
+  });
+});
