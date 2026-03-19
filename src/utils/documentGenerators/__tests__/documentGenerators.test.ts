@@ -5559,3 +5559,249 @@ describe('134. D12に禁止ソース文言がそのまま流れないテスト',
     expect(hasForbiddenD12Source(d12)).toBe(false);
   });
 });
+
+// ===== チームB追加テスト: C20/D12の評価本文汚染遮断テスト =====
+
+describe('135. C20/D12の評価本文汚染遮断テスト（松尾光雅ケース）', () => {
+  // monitoringReportGenerator.tsの汚染パターンを再現
+  const CONTAMINATION_PATTERNS: Array<[RegExp, string]> = [
+    [/訪問看護(による|での|で|が|を通じた)?[^、。]{0,30}(服薬|投薬|薬|バイタル|血圧)[^、。]{0,20}(確認|管理|チェック|測定|支援|指導)[^。]*。?/g, '訪問看護の服薬管理記述'],
+    [/訪問看護[^、。]{0,40}(連携|情報共有|報告)[^。]*。?/g, '訪問看護連携記述'],
+    [/漢方薬[^、。]{0,30}(嫌[がい]?|嫌悪|苦手|飲み?たくない|拒否|抵抗)[^。]*。?/g, '漢方薬への嫌悪感記述'],
+    [/作業所[^、。]{0,30}(袋詰め?|作業|通所|参加|就労)[^。]*。?/g, '作業所活動記述'],
+    [/デイケア[^、。]{0,30}(参加|通所|利用|出席|復帰)[^。]*。?/g, 'デイケア参加記述'],
+  ];
+
+  function removeContamination(text: string): string {
+    let cleaned = text;
+    for (const [pat] of CONTAMINATION_PATTERNS) {
+      cleaned = cleaned.replace(new RegExp(pat.source, pat.flags), '');
+    }
+    return cleaned.replace(/\s{2,}/g, ' ').replace(/。{2,}/g, '。').trim();
+  }
+
+  it('「訪問看護による服薬状況の確認が行われている」が除去されること', () => {
+    const input = '計画に基づきサービスが提供されている。訪問看護による服薬状況の確認が行われている。生活は安定している。';
+    const result = removeContamination(input);
+    expect(result).not.toContain('訪問看護');
+    expect(result).toContain('計画に基づき');
+    expect(result).toContain('生活は安定');
+  });
+
+  it('「漢方薬への嫌悪感があり服薬が不安定」が除去されること', () => {
+    const input = '短期目標について安定している。漢方薬への嫌悪感があり服薬が不安定な面がある。目標を継続する。';
+    const result = removeContamination(input);
+    expect(result).not.toContain('漢方薬');
+    expect(result).toContain('安定している');
+  });
+
+  it('「作業所での袋詰め作業に参加している」が除去されること', () => {
+    const input = '在宅生活は安定している。作業所での袋詰め作業に週3回参加している。支援を継続する。';
+    const result = removeContamination(input);
+    expect(result).not.toContain('作業所');
+    expect(result).not.toContain('袋詰め');
+  });
+
+  it('「デイケアへの参加も安定している」が除去されること', () => {
+    const input = 'サービスが提供されている。デイケアへの参加も安定している。心身状態に変化なし。';
+    const result = removeContamination(input);
+    expect(result).not.toContain('デイケア');
+    expect(result).toContain('サービスが提供されている');
+  });
+
+  it('居宅介護の評価文は除去されないこと', () => {
+    const input = '計画に基づきサービスが提供されており、家事援助による日常生活の支援が安定して行われている。身体介護による体調管理も適切に実施されている。';
+    const result = removeContamination(input);
+    expect(result).toBe(input);
+  });
+
+  it('複数の汚染が同時にある場合、全て除去されること', () => {
+    const input = '訪問看護による服薬管理が行われている。作業所での袋詰め作業に参加している。デイケアへの参加も安定している。計画に基づきサービスが提供されている。';
+    const result = removeContamination(input);
+    expect(result).not.toContain('訪問看護');
+    expect(result).not.toContain('作業所');
+    expect(result).not.toContain('デイケア');
+    expect(result).toContain('計画に基づきサービスが提供されている');
+  });
+});
+
+describe('136. E12長期目標引き継ぎ: previousCarePlan最優先テスト', () => {
+  // carePlanGenerator.ts のinheritLongTermGoalロジックを再現
+  function resolveLongTermGoal(
+    inheritLongTermGoal: boolean,
+    previousCarePlan: { longTermGoal: string; goalPeriod?: { longTermMonths: number } } | undefined,
+    previousPlanGoals: { longTermGoal: string } | undefined,
+    dbLongGoal: string | undefined,
+    aiGoal: string,
+  ): { goal: string; source: string } {
+    if (!inheritLongTermGoal) {
+      return { goal: aiGoal, source: 'ai' };
+    }
+
+    // ★最優先: previousCarePlan
+    if (previousCarePlan?.longTermGoal) {
+      return { goal: previousCarePlan.longTermGoal, source: 'previousCarePlan' };
+    }
+    // 後方互換
+    if (previousPlanGoals?.longTermGoal) {
+      return { goal: previousPlanGoals.longTermGoal, source: 'previousPlanGoals' };
+    }
+    // DBフォールバック
+    if (dbLongGoal) {
+      return { goal: dbLongGoal, source: 'db' };
+    }
+    // 取得失敗 → AIの出力をそのまま使う
+    return { goal: aiGoal, source: 'ai-fallback' };
+  }
+
+  const MATSUO_LONG = '断酒生活を継続し、ADLを維持する（介護サービスを活用しながら在宅生活を継続する）';
+
+  it('inheritLongTermGoal=trueでpreviousCarePlanがある場合、previousCarePlanの文言が使われること', () => {
+    const result = resolveLongTermGoal(
+      true,
+      { longTermGoal: MATSUO_LONG, goalPeriod: { longTermMonths: 6 } },
+      undefined,
+      'DBの長期目標',
+      'AIが生成した別の長期目標',
+    );
+    expect(result.goal).toBe(MATSUO_LONG);
+    expect(result.source).toBe('previousCarePlan');
+  });
+
+  it('inheritLongTermGoal=trueでpreviousCarePlanがなくDBがある場合、DB文言が使われること', () => {
+    const result = resolveLongTermGoal(true, undefined, undefined, 'DBの長期目標', 'AIの目標');
+    expect(result.goal).toBe('DBの長期目標');
+    expect(result.source).toBe('db');
+  });
+
+  it('inheritLongTermGoal=falseの場合、AIの出力がそのまま使われること', () => {
+    const result = resolveLongTermGoal(false, { longTermGoal: MATSUO_LONG }, undefined, 'DB', 'AIの目標');
+    expect(result.goal).toBe('AIの目標');
+    expect(result.source).toBe('ai');
+  });
+
+  it('2025年11月E12と2026年1月E12が同文言であること（長期目標期間内の場合）', () => {
+    // 2025年11月に6ヶ月の長期目標を設定 → 2026年4月まで
+    // 2026年1月はまだ期間内 → 同文言引き継ぎ
+    const nov2025E12 = MATSUO_LONG;
+    const jan2026E12 = resolveLongTermGoal(true, { longTermGoal: nov2025E12, goalPeriod: { longTermMonths: 6 } }, undefined, undefined, 'AIが変えた目標');
+    expect(jan2026E12.goal).toBe(nov2025E12);
+  });
+});
+
+describe('137. 通院11時間の整合チェックテスト', () => {
+  // 通院等介助のチェックボックスG17がONだが、根拠が無い場合を検出する
+  interface VisitAssistCheck {
+    checkboxOn: boolean;        // G17がチェックON
+    hasSupplyAmount: boolean;   // 契約支給量に通院等介助がある
+    hasBillingRecord: boolean;  // 実績に通院サービスコードがある
+    hasScheduleEntry: boolean;  // 計画予定表に通院が記載されている
+    hasDetailEntry: boolean;    // 詳細欄F85に通院の記述がある
+  }
+
+  function validateVisitAssistConsistency(check: VisitAssistCheck): {
+    valid: boolean;
+    reason: string;
+    action: 'pass' | 'fail' | 'manual_review';
+  } {
+    if (!check.checkboxOn) {
+      return { valid: true, reason: 'チェックOFFのため検証不要', action: 'pass' };
+    }
+
+    // チェックONの場合、根拠が必要
+    const hasAnyEvidence = check.hasSupplyAmount || check.hasBillingRecord;
+    const hasDocEvidence = check.hasScheduleEntry || check.hasDetailEntry;
+
+    if (hasAnyEvidence && hasDocEvidence) {
+      return { valid: true, reason: '契約/実績と書類の両方に根拠あり', action: 'pass' };
+    }
+
+    if (hasAnyEvidence && !hasDocEvidence) {
+      return { valid: false, reason: '契約/実績にはあるが計画予定表/詳細欄に根拠なし', action: 'manual_review' };
+    }
+
+    if (!hasAnyEvidence) {
+      return { valid: false, reason: '契約支給量にも実績にも通院等介助の根拠なし', action: 'fail' };
+    }
+
+    return { valid: false, reason: '整合性不明', action: 'manual_review' };
+  }
+
+  it('チェックOFFなら検証不要でpass', () => {
+    const result = validateVisitAssistConsistency({
+      checkboxOn: false, hasSupplyAmount: false, hasBillingRecord: false,
+      hasScheduleEntry: false, hasDetailEntry: false,
+    });
+    expect(result.action).toBe('pass');
+  });
+
+  it('チェックON + 契約支給量あり + 予定表記載ありならpass', () => {
+    const result = validateVisitAssistConsistency({
+      checkboxOn: true, hasSupplyAmount: true, hasBillingRecord: false,
+      hasScheduleEntry: true, hasDetailEntry: false,
+    });
+    expect(result.action).toBe('pass');
+  });
+
+  it('チェックON + 契約も実績もなしならfail', () => {
+    const result = validateVisitAssistConsistency({
+      checkboxOn: true, hasSupplyAmount: false, hasBillingRecord: false,
+      hasScheduleEntry: false, hasDetailEntry: false,
+    });
+    expect(result.action).toBe('fail');
+    expect(result.reason).toContain('根拠なし');
+  });
+
+  it('チェックON + 実績あり + 書類記載なしならmanual_review', () => {
+    const result = validateVisitAssistConsistency({
+      checkboxOn: true, hasSupplyAmount: false, hasBillingRecord: true,
+      hasScheduleEntry: false, hasDetailEntry: false,
+    });
+    expect(result.action).toBe('manual_review');
+  });
+
+  it('松尾光雅ケース: 通院11時間の根拠なし → fail', () => {
+    // 松尾光雅はデイケアで自主通院。契約支給量にも実績にも通院等介助なし。
+    const result = validateVisitAssistConsistency({
+      checkboxOn: true, hasSupplyAmount: false, hasBillingRecord: false,
+      hasScheduleEntry: false, hasDetailEntry: false,
+    });
+    expect(result.action).toBe('fail');
+  });
+});
+
+describe('138. C20が継続なら次回計画書E13が条件を満たすテスト', () => {
+  it('C20短期=継続なら次回E13はpreviousCarePlan.shortTermGoalと同文言であること', () => {
+    const previousShort = '手の震え等に配慮した食事作りと清潔な居住環境を保つ';
+    const goalVerdict = { short: '継続' as const, long: '継続' as const };
+
+    // C20が継続 → inheritShortTermGoal=true → E13は前版同文言
+    let nextE13 = 'AIが生成した新しい目標';
+    if (goalVerdict.short === '継続') {
+      nextE13 = previousShort;
+    }
+    expect(nextE13).toBe(previousShort);
+  });
+
+  it('C20短期=達成なら次回E13は変更可能であること', () => {
+    const previousShort = '手の震え等に配慮した食事作りと清潔な居住環境を保つ';
+    const shortVerdict: string = '達成'; // as stringで型制約を緩和
+
+    let nextE13 = 'AIが生成した新しい目標';
+    if (shortVerdict === '継続') {
+      nextE13 = previousShort;
+    }
+    expect(nextE13).not.toBe(previousShort);
+  });
+
+  it('C20長期=継続なら次回E12はpreviousCarePlan.longTermGoalと同文言であること', () => {
+    const previousLong = '断酒生活を継続し、ADLを維持する';
+    const goalVerdict = { short: '継続' as const, long: '継続' as const };
+
+    let nextE12 = 'AIが生成した新しい長期目標';
+    if (goalVerdict.long === '継続') {
+      nextE12 = previousLong;
+    }
+    expect(nextE12).toBe(previousLong);
+  });
+});

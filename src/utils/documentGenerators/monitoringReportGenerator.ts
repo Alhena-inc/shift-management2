@@ -1045,7 +1045,7 @@ export async function generate(ctx: GeneratorContext): Promise<{
     billing_summary: billingSummary,
     supply_amounts: supplyText,
     assessment_note: (assessmentFileUrls.length > 0
-      ? '【添付アセスメント資料あり】添付のアセスメント資料の内容を読み取り、個別性のある評価をしてください。'
+      ? '【添付アセスメント資料あり】添付のアセスメント資料は②満足度・③心身状況の個別性を出すために参考にしてください。\n★ただし goal_evaluation欄（⑤目標達成状況の評価）では、アセスメントの内容（訪問看護、服薬の詳細、作業所、デイケア等）を直接引用しないこと。\n★ goal_evaluation欄は前回計画書の目標文言のみを『』で引用し、到達状況・継続要否を記載すること。'
       : '【アセスメント資料なし】実績データ・契約支給量から推測して評価してください。')
       + goalStatusNote
       + monitoringTriggerNote
@@ -1355,6 +1355,30 @@ export async function generate(ctx: GeneratorContext): Promise<{
       }
     }
 
+    // === C20 アセスメント由来語句の除去 ===
+    // goal_evaluation（C20）にはアセスメントの具体的内容を含めない
+    // 『』内の目標引用は保護し、『』外のアセスメント由来語句のみ置換
+    {
+      const outsideQuotes = goalEval.replace(/『[^』]*』/g, '');
+      // アセスメント由来の具体的語句パターン
+      const ASSESSMENT_PHRASES = /訪問看護|漢方薬|抗酒剤|作業所|袋詰め|デイケア|デイサービス|リハビリ|通所|就労|薬[にへ]対する嫌悪|服薬[をの]嫌がり/;
+      if (ASSESSMENT_PHRASES.test(outsideQuotes)) {
+        console.warn(`[Monitoring] ⚠ C20の『』外にアセスメント由来語句を検出。簡潔な評価文に置換します。`);
+        // 『』内引用と判定語を保持しつつ、アセスメント詳細を除去して再構築
+        const shortQuote = goalEval.match(/短期目標『[^』]*』/)?.[0] || '';
+        const longQuote = goalEval.match(/長期目標『[^』]*』/)?.[0] || '';
+        const shortVerdict = /短期[^。]*?目標を(継続|達成|変更)/.test(goalEval);
+        const longVerdict = /長期[^。]*?目標を(継続|達成|変更)/.test(goalEval);
+        const sVerdict = goalEval.match(/短期[^。]*?目標を(継続|達成|変更)/)?.[1] || '継続';
+        const lVerdict = goalEval.match(/長期[^。]*?目標を(継続|達成|変更)/)?.[1] || '継続';
+
+        if (shortQuote && longQuote) {
+          goalEval = `${shortQuote}について、サービス提供により安定した状態が維持されているが、定着のため引き続き支援が必要と判断し、目標を${sVerdict}する。 ${longQuote}について、長期的な視点で支援を継続しており、目標を${lVerdict}する。`;
+          console.log(`[Monitoring] C20をアセスメント語句除去後に再構築`);
+        }
+      }
+    }
+
     result.goal_evaluation = goalEval;
   } catch (err) {
     console.warn('[Monitoring] 目標引用検証に失敗:', err);
@@ -1535,6 +1559,71 @@ export async function generate(ctx: GeneratorContext): Promise<{
           .replace(/調理[・、]*(掃除|清掃|洗濯|片付け?|配膳|環境整備)[^。]*を?(継続|実施|提供)[^。]*。?/g, 'サービス提供により生活環境の安定が図れている。')
           .replace(/服薬確認?[・、]*(体調確認|整容|更衣|安全確認|バイタル)[^。]*を?(継続|実施|提供)[^。]*。?/g, '体調管理が適切に行われている。')
           .replace(/(調理|掃除|清掃|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認)[・、]{1,2}(調理|掃除|清掃|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認)[・、]{1,2}(調理|掃除|清掃|洗濯|配膳|片付け?|環境整備|服薬確認|体調確認|更衣|整容|安全確認)[^。]*を?(継続|実施|提供|行)[^。]*。?/g, 'サービス提供が安定して行われている。');
+      }
+    }
+  }
+
+  // === C20/D12/②③④ 評価本文の汚染遮断 ===
+  // 居宅介護事業所のモニタリングに不適切な情報源からの文言を除去する。
+  // AIがアセスメントから無差別に引っ張る問題（訪問看護の服薬管理、漢方薬嫌悪、作業所活動等）への対策。
+  {
+    const CONTAMINATION_PATTERNS: Array<[RegExp, string]> = [
+      // 他事業所サービスの具体的記述
+      [/訪問看護(による|での|で|が|を通じた)?[^、。]{0,30}(服薬|投薬|薬|バイタル|血圧)[^、。]{0,20}(確認|管理|チェック|測定|支援|指導)[^。]*。?/g, '訪問看護の服薬管理記述'],
+      [/訪問看護[^、。]{0,40}(連携|情報共有|報告)[^。]*。?/g, '訪問看護連携記述'],
+      // 薬への個人的感情
+      [/漢方薬[^、。]{0,30}(嫌[がい]?|嫌悪|苦手|飲み?たくない|拒否|抵抗)[^。]*。?/g, '漢方薬への嫌悪感記述'],
+      [/[^、。]{0,5}薬[をにが][^、。]{0,20}(嫌[がい]?|嫌悪|苦手|飲み?たくない|拒否|抵抗)[^。]*。?/g, '服薬への抵抗記述'],
+      // 他事業所の活動記述
+      [/作業所[^、。]{0,30}(袋詰め?|作業|通所|参加|就労)[^。]*。?/g, '作業所活動記述'],
+      [/デイケア[^、。]{0,30}(参加|通所|利用|出席|復帰)[^。]*。?/g, 'デイケア参加記述'],
+      [/デイサービス[^、。]{0,30}(参加|通所|利用|出席)[^。]*。?/g, 'デイサービス参加記述'],
+      [/通所(介護|リハ|リハビリ)[^、。]{0,30}(参加|通所|利用|出席)[^。]*。?/g, '通所サービス参加記述'],
+      // 居宅介護計画外のサービス
+      [/訪問(リハ|リハビリ|歯科|診療)[^、。]{0,30}(実施|提供|行[いっわ])[^。]*。?/g, '居宅介護外サービス記述'],
+    ];
+
+    const textFields2: Array<keyof MonitoringResult> = [
+      'service_reason', 'satisfaction_reason', 'condition_detail',
+      'service_change_reason', 'goal_evaluation', 'procedure_check',
+    ];
+
+    for (const field of textFields2) {
+      let val = result[field] as string;
+      if (!val) continue;
+
+      if (field === 'goal_evaluation') {
+        // C20: 『』内は目標文言なので保護する。『』外のみ汚染除去
+        const outsideQuotes2 = val.replace(/『[^』]*』/g, '');
+        let modified = false;
+        for (const [pat, label] of CONTAMINATION_PATTERNS) {
+          if (new RegExp(pat.source, pat.flags).test(outsideQuotes2)) {
+            console.warn(`[Monitoring] ⚠ C20の『』外に${label}を検出。除去します。`);
+            // 『』を一時退避して外側だけ置換
+            const quotes: string[] = [];
+            const escaped = val.replace(/『[^』]*』/g, (m) => { quotes.push(m); return `__QUOTE_${quotes.length - 1}__`; });
+            const cleaned = escaped.replace(new RegExp(pat.source, pat.flags), '');
+            val = cleaned.replace(/__QUOTE_(\d+)__/g, (_, i) => quotes[parseInt(i)]);
+            modified = true;
+          }
+        }
+        if (modified) {
+          val = val.replace(/\s{2,}/g, ' ').replace(/。{2,}/g, '。').trim();
+          (result as unknown as Record<string, unknown>)[field] = val;
+        }
+      } else {
+        // D12等: 全体に対して汚染除去
+        let cleaned = val;
+        for (const [pat, label] of CONTAMINATION_PATTERNS) {
+          if (new RegExp(pat.source, pat.flags).test(cleaned)) {
+            console.warn(`[Monitoring] ⚠ ${field}に${label}を検出。除去します。`);
+            cleaned = cleaned.replace(new RegExp(pat.source, pat.flags), '');
+          }
+        }
+        cleaned = cleaned.replace(/\s{2,}/g, ' ').replace(/。{2,}/g, '。').trim();
+        if (cleaned !== val) {
+          (result as unknown as Record<string, unknown>)[field] = cleaned;
+        }
       }
     }
   }

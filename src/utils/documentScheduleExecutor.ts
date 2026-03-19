@@ -1281,22 +1281,37 @@ export async function executeCatchUpGeneration(
         // ★修正: revisionReason（モニタリング後の計画再作成）に限らず、
         // 全ての計画書作成で長期目標の期間内チェックを行う。
         // これにより、時系列の連続性が保たれる（要件E対応）。
+        // ★長期目標の期間内チェック: previousCarePlan最優先、DBフォールバック
         let longTermStillActive = false;
-        try {
-          const existingGoals = await loadGoalPeriods(client.id);
-          const activeLongTerm = existingGoals.find((g: any) => g.isActive && g.goalType === 'long_term');
-          if (activeLongTerm?.endDate) {
-            const stepDate = new Date(step.periodStart + 'T00:00:00');
-            const longTermEnd = new Date(activeLongTerm.endDate + 'T00:00:00');
-            if (stepDate < longTermEnd) {
-              longTermStillActive = true;
-              ctx.inheritLongTermGoal = true;
-              console.log(`[CatchUp] 長期目標は期間内(${activeLongTerm.endDate}まで) → 引き継ぎ`);
-            } else {
-              console.log(`[CatchUp] 長期目標期間到来(${activeLongTerm.endDate}) → 新規設定`);
-            }
+        const stepDate = new Date(step.periodStart + 'T00:00:00');
+
+        // ★最優先: ctx.previousCarePlanのgoalPeriod.longTermEndDate
+        if (ctx.previousCarePlan?.goalPeriod?.longTermEndDate) {
+          const longTermEnd = new Date(ctx.previousCarePlan.goalPeriod.longTermEndDate + 'T00:00:00');
+          if (stepDate < longTermEnd) {
+            longTermStillActive = true;
+            ctx.inheritLongTermGoal = true;
+            console.log(`[CatchUp] 長期目標は期間内(${ctx.previousCarePlan.goalPeriod.longTermEndDate}まで, source=${ctx.previousCarePlan.source}) → 引き継ぎ`);
+          } else {
+            console.log(`[CatchUp] 長期目標期間到来(${ctx.previousCarePlan.goalPeriod.longTermEndDate}) → 新規設定`);
           }
-        } catch { /* skip */ }
+        }
+
+        // フォールバック: DB(loadGoalPeriods)
+        if (!longTermStillActive && !ctx.previousCarePlan?.goalPeriod?.longTermEndDate) {
+          try {
+            const existingGoals = await loadGoalPeriods(client.id);
+            const activeLongTerm = existingGoals.find((g: any) => g.isActive && g.goalType === 'long_term');
+            if (activeLongTerm?.endDate) {
+              const longTermEnd = new Date(activeLongTerm.endDate + 'T00:00:00');
+              if (stepDate < longTermEnd) {
+                longTermStillActive = true;
+                ctx.inheritLongTermGoal = true;
+                console.log(`[CatchUp] 長期目標は期間内(${activeLongTerm.endDate}まで, source=db) → 引き継ぎ`);
+              }
+            }
+          } catch { /* skip */ }
+        }
 
         // === 計画書 + 手順書 ===
         const promptData = await loadAiPrompt('care-plan').catch(() => null);

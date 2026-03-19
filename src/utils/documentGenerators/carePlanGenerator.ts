@@ -1249,23 +1249,52 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
   const plan = normalizeCarePlan(rawJson);
 
   // 長期目標引き継ぎ: 前版の長期目標を強制適用（AIが変更しても上書き）
+  // ★最優先: ctx.previousCarePlan（前回計画書Excelから読み込んだ確定値）
+  // DBフォールバック（loadGoalPeriods）はExcelセル値と乖離するリスクがあるため最終手段にする
   if (ctx.inheritLongTermGoal) {
-    try {
-      const prevGoals = await loadGoalPeriods(client.id);
-      const activeLongTerm = prevGoals.find((g: any) => g.isActive && g.goalType === 'long_term');
-      if (activeLongTerm?.goalText) {
-        console.log(`[CarePlan] 長期目標引き継ぎ: "${activeLongTerm.goalText}"`);
-        plan.goal_long = activeLongTerm.goalText;
-        // 長期目標期間も前版から算出して引き継ぐ
-        if (activeLongTerm.startDate && activeLongTerm.endDate) {
-          const start = new Date(activeLongTerm.startDate);
-          const end = new Date(activeLongTerm.endDate);
-          const diffMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
-          if (diffMonths > 0) plan.long_term_goal_months = diffMonths;
+    let inheritedLongGoal = '';
+    let inheritedLongMonths = 0;
+
+    // ★最優先: ctx.previousCarePlan
+    if (ctx.previousCarePlan?.longTermGoal) {
+      inheritedLongGoal = ctx.previousCarePlan.longTermGoal;
+      inheritedLongMonths = ctx.previousCarePlan.goalPeriod?.longTermMonths || 0;
+      console.log(`[CarePlan] 長期目標引き継ぎ（previousCarePlan経由, source=${ctx.previousCarePlan.source}）: "${inheritedLongGoal}"`);
+    } else if (ctx.previousPlanGoals?.longTermGoal) {
+      // 後方互換
+      inheritedLongGoal = ctx.previousPlanGoals.longTermGoal;
+      console.log(`[CarePlan] 長期目標引き継ぎ（previousPlanGoals経由, legacy）: "${inheritedLongGoal}"`);
+    }
+
+    // フォールバック: loadGoalPeriods
+    if (!inheritedLongGoal) {
+      try {
+        const prevGoals = await loadGoalPeriods(client.id);
+        const activeLongTerm = prevGoals.find((g: any) => g.isActive && g.goalType === 'long_term');
+        if (activeLongTerm?.goalText) {
+          inheritedLongGoal = activeLongTerm.goalText;
+          console.log(`[CarePlan] 長期目標引き継ぎ（DB経由）: "${inheritedLongGoal}"`);
+          if (activeLongTerm.startDate && activeLongTerm.endDate) {
+            const start = new Date(activeLongTerm.startDate);
+            const end = new Date(activeLongTerm.endDate);
+            const diffMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+            if (diffMonths > 0) inheritedLongMonths = diffMonths;
+          }
         }
+      } catch (err) {
+        console.warn('[CarePlan] 長期目標引き継ぎ取得失敗:', err);
       }
-    } catch (err) {
-      console.warn('[CarePlan] 長期目標引き継ぎ取得失敗:', err);
+    }
+
+    // 適用
+    if (inheritedLongGoal) {
+      if (plan.goal_long !== inheritedLongGoal) {
+        console.warn(`[CarePlan] ⚠ AIが長期目標を変更していたため前版で上書き: AI「${plan.goal_long?.substring(0, 30)}...」→ 前版「${inheritedLongGoal.substring(0, 30)}...」`);
+      }
+      plan.goal_long = inheritedLongGoal;
+      if (inheritedLongMonths > 0) {
+        plan.long_term_goal_months = inheritedLongMonths;
+      }
     }
   }
 
@@ -1817,6 +1846,12 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
     if (visitNoBodyHours) reasons.push(`契約支給量: ${visitNoBodyHours}時間`);
     if (billingHasVisit && planHasVisitNoBodyContent) reasons.push('実績+AIプランの根拠あり');
     console.log(`[CarePlan] 通院等介助(身体伴わない)チェック根拠: ${reasons.join(', ')}`);
+
+    // ★不整合チェック: G17で■なのにサービスブロック内に通院枠がない場合
+    if (!planHasVisitNoBodyContent && !billingHasVisit) {
+      console.warn(`[CarePlan] ⚠ 通院等介助(身体伴わない)不整合: G17=■(${visitNoBodyHours}時間) だがサービスブロック内に通院枠なし・実績にも通院なし → manual review推奨`);
+      console.warn(`[CarePlan]   根拠: 契約支給量のみ(${visitNoBodyHours}時間)。予定表・サービス内容との突合が必要`);
+    }
   }
 
   const checkboxAlignment: Partial<ExcelJS.Alignment> = { vertical: 'middle', wrapText: true };
