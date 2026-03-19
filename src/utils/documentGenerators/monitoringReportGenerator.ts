@@ -55,6 +55,54 @@ export async function getClientSupportCategory(clientId: string): Promise<string
   }
 }
 
+// ==================== 前回計画書resolver ====================
+/**
+ * モニタリング対象年月に対して「前回の居宅介護計画書」の目標を解決する。
+ *
+ * 判定ルール:
+ * 1. ctx.previousPlanGoals が設定済み → そのまま返す（executorが事前設定）
+ * 2. フォールバック: loadGoalPeriods() からactive目標を取得
+ *
+ * 返り値: { shortTermGoal, longTermGoal, planDate, source }
+ * source: 'ctx' = executor事前設定, 'goalPeriods' = DBフォールバック, 'none' = 取得失敗
+ */
+export async function resolvePreviousPlanGoals(
+  ctx: GeneratorContext,
+  clientId: string,
+): Promise<{ shortTermGoal: string; longTermGoal: string; planDate: string; source: string }> {
+  // ★最優先: ctx.previousPlanGoals（executor経由の確定値）
+  if (ctx.previousPlanGoals && (ctx.previousPlanGoals.shortTermGoal || ctx.previousPlanGoals.longTermGoal)) {
+    console.log(`[Monitoring] 前回計画resolver: ctx.previousPlanGoals使用 (source=ctx)`);
+    return {
+      shortTermGoal: ctx.previousPlanGoals.shortTermGoal,
+      longTermGoal: ctx.previousPlanGoals.longTermGoal,
+      planDate: ctx.previousPlanGoals.planDate,
+      source: 'ctx',
+    };
+  }
+
+  // フォールバック: loadGoalPeriods
+  try {
+    const goals = await loadGoalPeriods(clientId);
+    const activeShort = goals.find((g: any) => g.isActive && g.goalType === 'short_term' && g.goalText);
+    const activeLong = goals.find((g: any) => g.isActive && g.goalType === 'long_term' && g.goalText);
+    if (activeShort?.goalText || activeLong?.goalText) {
+      console.log(`[Monitoring] 前回計画resolver: loadGoalPeriods使用 (source=goalPeriods)`);
+      return {
+        shortTermGoal: activeShort?.goalText || '',
+        longTermGoal: activeLong?.goalText || '',
+        planDate: activeShort?.startDate || activeLong?.startDate || '',
+        source: 'goalPeriods',
+      };
+    }
+  } catch (err) {
+    console.warn('[Monitoring] 前回計画resolver: loadGoalPeriods失敗:', err);
+  }
+
+  console.warn('[Monitoring] 前回計画resolver: 前回計画書の目標が取得できませんでした');
+  return { shortTermGoal: '', longTermGoal: '', planDate: '', source: 'none' };
+}
+
 function getServiceResponsibleName(officeServiceManager: string): string {
   // 優先順位: 1. officeInfo.serviceManager（書類設定で選択された値） 2. localStorage
   if (officeServiceManager) return officeServiceManager;
@@ -897,36 +945,21 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     assessmentFileUrls = docs.filter((d: any) => d.fileUrl).slice(0, 3).map((d: any) => d.fileUrl);
   } catch { /* skip */ }
 
-  // ★★★ 前回計画書の目標（最優先source of truth） ★★★
-  // ctx.previousPlanGoals が設定されている場合はそちらを最優先で使用する。
-  // これにより、本人希望文やアセスメント文ではなく、前回計画書のE12/E13が確実に参照される。
+  // ★★★ 前回計画書resolver経由で目標を取得（最優先source of truth） ★★★
+  const resolvedGoals = await resolvePreviousPlanGoals(ctx, client.id);
   let goalStatusNote = '';
-  if (ctx.previousPlanGoals && (ctx.previousPlanGoals.shortTermGoal || ctx.previousPlanGoals.longTermGoal)) {
-    const pg = ctx.previousPlanGoals;
+  if (resolvedGoals.shortTermGoal || resolvedGoals.longTermGoal) {
     const lines: string[] = [];
-    if (pg.shortTermGoal) {
-      lines.push(`- 短期目標: ${pg.shortTermGoal}`);
+    if (resolvedGoals.shortTermGoal) {
+      lines.push(`- 短期目標: ${resolvedGoals.shortTermGoal}`);
     }
-    if (pg.longTermGoal) {
-      lines.push(`- 長期目標: ${pg.longTermGoal}`);
+    if (resolvedGoals.longTermGoal) {
+      lines.push(`- 長期目標: ${resolvedGoals.longTermGoal}`);
     }
-    goalStatusNote = `\n\n★★★最優先参照★★★\n【前回の居宅介護計画書の目標（${pg.planDate || ''}）】\n以下は前回の居宅介護計画書に記載された目標です。goal_evaluation欄では必ずこの文言を一字一句変えずに『』内に引用してください。\n本人希望文・アセスメント文・週間計画文言は絶対に目標として使わないこと。\n${lines.join('\n')}\n\n★上記の目標文言をそのままコピーして使うこと。要約・言い換え・本人希望文の流用は厳禁。`;
-    console.log(`[Monitoring] 前回計画書目標をプロンプトに設定（ctx.previousPlanGoals使用）`);
+    goalStatusNote = `\n\n★★★最優先参照★★★\n【前回の居宅介護計画書の目標（${resolvedGoals.planDate || ''}）】\n以下は前回の居宅介護計画書に記載された目標です。goal_evaluation欄では必ずこの文言を一字一句変えずに『』内に引用してください。\n本人希望文・アセスメント文・週間計画文言は絶対に目標として使わないこと。\n${lines.join('\n')}\n\n★上記の目標文言をそのままコピーして使うこと。要約・言い換え・本人希望文の流用は厳禁。`;
+    console.log(`[Monitoring] 前回計画resolver結果: source=${resolvedGoals.source}, 短期「${resolvedGoals.shortTermGoal.substring(0, 30)}...」 長期「${resolvedGoals.longTermGoal.substring(0, 30)}...」`);
   } else {
-    // フォールバック: ctx.previousPlanGoalsがない場合はloadGoalPeriodsから取得
-    try {
-      const goals = await loadGoalPeriods(client.id);
-      const activeGoals = goals.filter((g: any) => g.isActive && g.goalText);
-      if (activeGoals.length > 0) {
-        const labels: Record<string, string> = { achieved: '達成', partially_achieved: '一部達成', not_achieved: '未達成', pending: '未評価' };
-        const lines = activeGoals.map((g: any) => {
-          const typeLabel = g.goalType === 'long_term' ? '長期' : '短期';
-          const status = g.achievementStatus ? (labels[g.achievementStatus] || '未評価') : '未評価';
-          return `- ${typeLabel}目標（${g.startDate}〜${g.endDate}）: ${g.goalText} → ${status}`;
-        });
-        goalStatusNote = `\n\n【現在の目標達成状況（直前の居宅介護計画書より）】\n※以下の目標文言をgoal_evaluation欄で引用する際は一字一句変えずにそのまま使用すること\n${lines.join('\n')}`;
-      }
-    } catch { /* skip */ }
+    console.warn(`[Monitoring] ⚠ 前回計画書の目標が取得できませんでした（source=${resolvedGoals.source}）`);
   }
 
   // モニタリングのトリガー種別を記載
@@ -1056,30 +1089,13 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
   }
 
   // 目標文言の引用検証: goal_evaluationが直前計画書の目標を正確に引用しているか確認
-  // ★最優先: ctx.previousPlanGoals（前回計画書resolver経由の確定値）
-  // フォールバック: loadGoalPeriods（DB上のactive目標）
+  // ★resolvePreviousPlanGoalsの結果を再利用（resolver結果は上で取得済み）
   try {
-    let shortGoalText = '';
-    let longGoalText = '';
-    if (ctx.previousPlanGoals) {
-      shortGoalText = ctx.previousPlanGoals.shortTermGoal;
-      longGoalText = ctx.previousPlanGoals.longTermGoal;
-      console.log(`[Monitoring] C20後処理: ctx.previousPlanGoals使用（前回計画書resolver経由）`);
-    }
-    // ctx.previousPlanGoalsがない場合 OR 空の場合のフォールバック
-    if (!shortGoalText || !longGoalText) {
-      const goalPeriods = await loadGoalPeriods(client.id);
-      if (!shortGoalText) {
-        const activeShortFb = goalPeriods.find((g: any) => g.isActive && g.goalType === 'short_term' && g.goalText);
-        if (activeShortFb?.goalText) shortGoalText = activeShortFb.goalText;
-      }
-      if (!longGoalText) {
-        const activeLongFb = goalPeriods.find((g: any) => g.isActive && g.goalType === 'long_term' && g.goalText);
-        if (activeLongFb?.goalText) longGoalText = activeLongFb.goalText;
-      }
-    }
+    const shortGoalText = resolvedGoals.shortTermGoal;
+    const longGoalText = resolvedGoals.longTermGoal;
     const activeShort = shortGoalText ? { goalText: shortGoalText } : null;
     const activeLong = longGoalText ? { goalText: longGoalText } : null;
+    console.log(`[Monitoring] C20後処理: resolver結果を使用 (source=${resolvedGoals.source})`);
     let goalEval = result.goal_evaluation;
 
     // === モニタリング理由文の除去 ===
@@ -1312,6 +1328,9 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     // ★追加: 単一ケアタスク＋叙述動詞（「掃除支援も適宜行われ」「調理支援が実施され」等）
     // これは週間計画の個別項目を説明する文で、状態評価ではない
     const SINGLE_TASK_NARRATIVE = /(夕食)?調理支援|掃除支援|清掃支援|洗濯支援|配膳支援|買い物支援|入浴介助|排泄介助|服薬確認支援/;
+    // ★追加: 「家事援助により調理・清掃の支援が実施され」「身体介護では服薬確認を含む体調管理が実施され」等
+    // 種別名＋個別作業名＋動詞のパターン（D12のNG例として明示されたパターン）
+    const SERVICE_TYPE_TASK_PATTERN = /(家事援助|身体介護)(により|では|で|による).{0,20}(調理|清掃|掃除|洗濯|服薬確認|体調管理|食事|排泄|入浴|更衣|整容|安全確認).{0,20}(支援|管理|介助|確認).{0,15}(実施|行[いっわ]|提供|継続)/;
 
     /** 指定テキストが週間計画の作業列挙かどうかを判定 */
     function hasScheduleListing(text: string): boolean {
@@ -1323,10 +1342,11 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
       const m6 = TASK_TWO_ITEMS_PATTERN.test(text);
       const m7 = WEEKLY_FREQ_PATTERN.test(text);
       // m8: 単一タスク叙述は、動詞と組み合わさった場合に検出
-      // 「掃除支援も適宜行われ」「調理支援が実施され」はタスク説明であり状態評価ではない
       const taskNarrativeMatches = text.match(new RegExp(`${SINGLE_TASK_NARRATIVE.source}[^、。]{0,15}(行われ|実施され|提供され|行[いっ]|実施し)`, 'g')) || [];
-      const m8 = taskNarrativeMatches.length >= 2; // 2つ以上のタスク叙述がある場合
-      return m1.length >= 3 || m2.length >= 2 || m3 || m4 || m5 || m6 || m7 || m8;
+      const m8 = taskNarrativeMatches.length >= 2;
+      // m9: 種別名＋個別作業名＋動詞（「家事援助により調理・清掃の支援が実施され」等）
+      const m9 = SERVICE_TYPE_TASK_PATTERN.test(text);
+      return m1.length >= 3 || m2.length >= 2 || m3 || m4 || m5 || m6 || m7 || m8 || m9;
     }
 
     // service_reasonのチェック

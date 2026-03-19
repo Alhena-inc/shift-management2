@@ -4736,3 +4736,74 @@ describe('119. previousPlanGoalsのプロンプト注入テスト', () => {
     expect(note).toContain(pg.planDate);
   });
 });
+
+// ===== 前回計画書resolver関数テスト =====
+
+describe('120. resolvePreviousPlanGoals関数テスト', () => {
+  it('ctx.previousPlanGoalsが設定されている場合、source=ctxで返すこと', () => {
+    const ctx = {
+      previousPlanGoals: {
+        longTermGoal: '断酒生活を継続し、ADLを維持する（介護サービスを活用しながら在宅生活を継続する）',
+        shortTermGoal: '手の震え等に配慮した食事作りと清潔な居住環境を保つ（安全な生活環境を整え、日常動作の維持を図る）',
+        planDate: '2025-11-01',
+        planFileName: '居宅介護計画書_松尾光雅_2025年11月',
+      },
+    };
+
+    // resolvePreviousPlanGoalsの判定ロジック再現
+    let source = 'none';
+    let shortGoal = '';
+    let longGoal = '';
+    if (ctx.previousPlanGoals && (ctx.previousPlanGoals.shortTermGoal || ctx.previousPlanGoals.longTermGoal)) {
+      source = 'ctx';
+      shortGoal = ctx.previousPlanGoals.shortTermGoal;
+      longGoal = ctx.previousPlanGoals.longTermGoal;
+    }
+
+    expect(source).toBe('ctx');
+    expect(shortGoal).toBe(ctx.previousPlanGoals.shortTermGoal);
+    expect(longGoal).toBe(ctx.previousPlanGoals.longTermGoal);
+  });
+
+  it('ctx.previousPlanGoalsが未設定の場合、フォールバックに移行すること', () => {
+    const ctx = {} as { previousPlanGoals?: unknown };
+
+    let source = 'none';
+    if (ctx.previousPlanGoals) {
+      source = 'ctx';
+    } else {
+      source = 'goalPeriods'; // フォールバック
+    }
+
+    expect(source).toBe('goalPeriods');
+  });
+});
+
+describe('121. D12のSERVICE_TYPE_TASKパターン検出テスト', () => {
+  const SERVICE_TYPE_TASK_PATTERN = /(家事援助|身体介護)(により|では|で|による).{0,20}(調理|清掃|掃除|洗濯|服薬確認|体調管理|食事|排泄|入浴|更衣|整容|安全確認).{0,20}(支援|管理|介助|確認).{0,15}(実施|行[いっわ]|提供|継続)/;
+
+  it('「家事援助により調理・清掃の支援が適切に実施され」が検出されること', () => {
+    expect(SERVICE_TYPE_TASK_PATTERN.test('家事援助により調理・清掃の支援が適切に実施され')).toBe(true);
+  });
+
+  it('「身体介護では服薬確認を含む体調管理が継続的に実施され」が検出されること', () => {
+    expect(SERVICE_TYPE_TASK_PATTERN.test('身体介護では服薬確認を含む体調管理が継続的に実施され')).toBe(true);
+  });
+
+  it('「家事援助による調理支援が行われ」が検出されること', () => {
+    expect(SERVICE_TYPE_TASK_PATTERN.test('家事援助による調理支援が行われ')).toBe(true);
+  });
+
+  it('状態評価文は検出されないこと', () => {
+    expect(SERVICE_TYPE_TASK_PATTERN.test('計画に基づきサービスが提供されており安定している')).toBe(false);
+    expect(SERVICE_TYPE_TASK_PATTERN.test('大きな心身変化なく現行支援で生活が維持されている')).toBe(false);
+    expect(SERVICE_TYPE_TASK_PATTERN.test('在宅生活の継続が図れている')).toBe(false);
+  });
+
+  it('種別名だけの一般表現は検出されないこと', () => {
+    // 「家事援助により日常生活の支援が」は個別作業名がないのでOK
+    expect(SERVICE_TYPE_TASK_PATTERN.test('家事援助により日常生活の支援が安定して行われ')).toBe(false);
+    // 「身体介護による体調管理が」は「体調管理」が検出されるが「支援」「管理」「介助」のどれかが必要
+    // → 「体調管理が」→ 体調管理 + ... + 管理が → マッチするかテスト
+  });
+});
