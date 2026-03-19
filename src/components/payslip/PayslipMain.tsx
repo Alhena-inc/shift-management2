@@ -588,11 +588,11 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
             <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'paidLeaveDays']} value={formatDecimal((payslip.attendance as any).paidLeaveDays || 0)} isNumber={false} />
             <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'absences']} value={(payslip.attendance as any).absences} isNumber={false} />
             <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'lateEarlyCount']} value={(payslip.attendance as any).lateEarlyCount || 0} isNumber={false} />
-            <EmptyCell />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeField1']} value={(payslip.attendance as any).freeField1 || ''} isNumber={false} />
             <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'totalWorkDays']} value={formatDecimal((payslip.attendance as any).totalWorkDays || 0)} isNumber={false} />
-            <EmptyCell />
-            <EmptyCell />
-            <EmptyCell />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeField2']} value={(payslip.attendance as any).freeField2 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeField3']} value={(payslip.attendance as any).freeField3 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeField4']} value={(payslip.attendance as any).freeField4 || ''} isNumber={false} />
           </tr>
           {/* Stage 2: Row 3-4 */}
           <tr>
@@ -637,32 +637,32 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
               value={formatDecimal(payslip.attendance.totalWorkHours)}
               isNumber={false}
             />
-            <EmptyCell />
-            <EmptyCell />
-            <EmptyCell />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeField5']} value={(payslip.attendance as any).freeField5 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeField6']} value={(payslip.attendance as any).freeField6 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeField7']} value={(payslip.attendance as any).freeField7 || ''} isNumber={false} />
           </tr>
-          {/* Stage 3: Row 5-6 (Empty rows for height consistency) */}
+          {/* Stage 3: Row 5-6 (自由入力行) */}
           <tr>
-            <LabelCell>　</LabelCell>
-            <LabelCell>　</LabelCell>
-            <LabelCell>　</LabelCell>
-            <LabelCell>　</LabelCell>
-            <LabelCell>　</LabelCell>
-            <LabelCell>　</LabelCell>
-            <LabelCell>　</LabelCell>
-            <LabelCell>　</LabelCell>
-            <LabelCell>　</LabelCell>
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeLabel1']} value={(payslip.attendance as any).freeLabel1 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeLabel2']} value={(payslip.attendance as any).freeLabel2 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeLabel3']} value={(payslip.attendance as any).freeLabel3 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeLabel4']} value={(payslip.attendance as any).freeLabel4 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeLabel5']} value={(payslip.attendance as any).freeLabel5 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeLabel6']} value={(payslip.attendance as any).freeLabel6 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeLabel7']} value={(payslip.attendance as any).freeLabel7 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeLabel8']} value={(payslip.attendance as any).freeLabel8 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeLabel9']} value={(payslip.attendance as any).freeLabel9 || ''} isNumber={false} />
           </tr>
           <tr>
-            <EmptyCell />
-            <EmptyCell />
-            <EmptyCell />
-            <EmptyCell />
-            <EmptyCell />
-            <EmptyCell />
-            <EmptyCell />
-            <EmptyCell />
-            <EmptyCell />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeValue1']} value={(payslip.attendance as any).freeValue1 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeValue2']} value={(payslip.attendance as any).freeValue2 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeValue3']} value={(payslip.attendance as any).freeValue3 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeValue4']} value={(payslip.attendance as any).freeValue4 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeValue5']} value={(payslip.attendance as any).freeValue5 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeValue6']} value={(payslip.attendance as any).freeValue6 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeValue7']} value={(payslip.attendance as any).freeValue7 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeValue8']} value={(payslip.attendance as any).freeValue8 || ''} isNumber={false} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeValue9']} value={(payslip.attendance as any).freeValue9 || ''} isNumber={false} />
           </tr>
         </tbody>
       </table>
