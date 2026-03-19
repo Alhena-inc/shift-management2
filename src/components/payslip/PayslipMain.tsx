@@ -664,6 +664,25 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
             <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeValue8']} value={(payslip.attendance as any).freeValue8 || ''} isNumber={false} />
             <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['attendance', 'freeValue9']} value={(payslip.attendance as any).freeValue9 || ''} isNumber={false} />
           </tr>
+          {/* 備考行（勤怠テーブル内） */}
+          <tr>
+            <td colSpan={10} style={{ ...baseCellStyle, height: '48px', maxHeight: 'none', overflow: 'visible', whiteSpace: 'pre-wrap' as const, verticalAlign: 'top', padding: '2px 6px' }}>
+              {isPrintMode ? (
+                <span style={{ fontSize: '11px', whiteSpace: 'pre-wrap' }}>{(payslip as any).remarks ? `備考: ${(payslip as any).remarks}` : ''}</span>
+              ) : (
+                <textarea
+                  value={(payslip as any).remarks || ''}
+                  onChange={(e) => updateField(['remarks'], e.target.value)}
+                  placeholder="備考を入力..."
+                  style={{
+                    width: '100%', height: '40px', border: 'none', outline: 'none', resize: 'none',
+                    fontSize: '11px', fontFamily: FONT_FAMILY, padding: '0', margin: '0',
+                    backgroundColor: 'transparent', lineHeight: '1.4',
+                  }}
+                />
+              )}
+            </td>
+          </tr>
         </tbody>
       </table>
 
