@@ -57,11 +57,19 @@ export interface GeneratorContext {
       longTermMonths: number;   // 長期目標の期間（月数）
       longTermEndDate: string;  // 長期目標の終了日（YYYY-MM-DD）
     };
-    /** 前回計画書のサービスブロック（種別判定用。steps本文はモニタリングに渡さない） */
+    /** 前回計画書のサービスブロック（種別のみ。steps本文はモニタリングに渡さない） */
     serviceTypes: string[];     // 例: ['家事援助', '身体介護']
-    /** メタ情報 */
-    planDate: string;           // 前回計画書の作成年月
-    planFileName: string;       // ファイル名（トレーサビリティ用）
+    /** サービスブロック詳細（計画書→手順書引き継ぎ用。モニタリングにはserviceTypesのみ渡す） */
+    serviceBlocks: Array<{
+      service_type: string;
+      visit_label: string;
+    }>;
+    /** 作成日（YYYY-MM-DD） */
+    createdAt: string;
+    /** ファイル名（トレーサビリティ用） */
+    planFileName: string;
+    /** @deprecated planDateはcreatedAtに統合。後方互換 */
+    planDate: string;
     /** 取得元: 'excel' = Excelファイル読み込み, 'db' = goal_periodsフォールバック */
     source: string;
   };

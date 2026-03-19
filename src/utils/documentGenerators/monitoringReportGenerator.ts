@@ -903,11 +903,14 @@ function buildTemplateFromScratch(ws: ExcelJS.Worksheet): void {
 }
 
 // ==================== メイン生成関数 ====================
-export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNeeded: string; monitoringCycleMonths: number; goalContinuation: boolean; resolvedGoalTexts?: { shortTermGoal: string; longTermGoal: string } }> {
+export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNeeded: string; monitoringCycleMonths: number; goalContinuation: boolean; resolvedGoalTexts?: { shortTermGoal: string; longTermGoal: string }; manualReviewNeeded?: boolean }> {
   const { careClients, billingRecords, supplyAmounts, year, month, officeInfo, customPrompt, customSystemInstruction, selectedClient } = ctx;
 
   const client: CareClient = selectedClient || careClients[0];
   if (!client) throw new Error('利用者が選択されていません');
+
+  // manual reviewフラグ: resolvedGoalsが取得不能 or C20構造破壊時にtrueにする
+  let manualReviewNeeded = false;
 
   // 障害支援区分・サービス提供責任者を取得
   const supportCategory = await getClientSupportCategory(client.id);
@@ -971,6 +974,8 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     console.log(`[Monitoring] 前回計画resolver結果: source=${resolvedGoals.source}, 短期「${resolvedGoals.shortTermGoal.substring(0, 30)}...」 長期「${resolvedGoals.longTermGoal.substring(0, 30)}...」`);
   } else {
     console.warn(`[Monitoring] ⚠ 前回計画書の目標が取得できませんでした（source=${resolvedGoals.source}）`);
+    // 前回計画書の目標が取得不能 → C20の品質保証ができない → manual review推奨
+    manualReviewNeeded = true;
   }
 
   // モニタリングのトリガー種別を記載
@@ -1266,6 +1271,61 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
       }
     }
 
+    // === C20 最終照合ゲート: 『』内の文言がpreviousPlanGoalsと完全一致しているか検証 ===
+    // 全ての後処理を経た後、C20の『』内を抽出し、resolvedGoalsと照合する。
+    // ズレが残っていれば強制置換。これにより本人希望文やアセスメント文への汚染を最終阻止する。
+    {
+      const quotedTexts = goalEval.match(/『([^』]*)』/g)?.map(m => m.slice(1, -1)) || [];
+      let needsRebuild = false;
+
+      if (activeShort?.goalText) {
+        const shortQuoteMatch = goalEval.match(/短期目標『([^』]*)』/);
+        if (shortQuoteMatch && shortQuoteMatch[1] !== activeShort.goalText) {
+          console.warn(`[Monitoring] ⚠ C20最終照合: 短期目標の『』内が計画書と不一致`);
+          console.warn(`[Monitoring]   『』内: "${shortQuoteMatch[1].substring(0, 40)}..."`);
+          console.warn(`[Monitoring]   計画書: "${activeShort.goalText.substring(0, 40)}..."`);
+          goalEval = goalEval.replace(
+            /短期目標『[^』]*』/,
+            `短期目標『${activeShort.goalText}』`
+          );
+        }
+        // 短期目標の『』自体が存在しない場合（構造破壊）
+        if (!/短期目標『/.test(goalEval)) {
+          needsRebuild = true;
+        }
+      }
+
+      if (activeLong?.goalText) {
+        const longQuoteMatch = goalEval.match(/長期目標『([^』]*)』/);
+        if (longQuoteMatch && longQuoteMatch[1] !== activeLong.goalText) {
+          console.warn(`[Monitoring] ⚠ C20最終照合: 長期目標の『』内が計画書と不一致`);
+          goalEval = goalEval.replace(
+            /長期目標『[^』]*』/,
+            `長期目標『${activeLong.goalText}』`
+          );
+        }
+        if (!/長期目標『/.test(goalEval)) {
+          needsRebuild = true;
+        }
+      }
+
+      // 構造自体が破壊されている場合は完全再構築（manual review相当）
+      if (needsRebuild) {
+        manualReviewNeeded = true;
+        console.warn(`[Monitoring] ⚠ C20最終照合: 目標構造が破壊されている。完全再構築します（manual review推奨）。`);
+        let rebuilt = '';
+        if (activeShort?.goalText) {
+          rebuilt += `短期目標『${activeShort.goalText}』について、現在のサービス提供により安定した生活が維持されているが、定着のため引き続き支援が必要と判断し、目標を継続する。`;
+        }
+        if (activeLong?.goalText) {
+          rebuilt += (rebuilt ? ' ' : '') + `長期目標『${activeLong.goalText}』について、長期的な視点で支援を継続しており、現状維持で目標を継続する。`;
+        }
+        if (rebuilt) {
+          goalEval = rebuilt;
+        }
+      }
+    }
+
     result.goal_evaluation = goalEval;
   } catch (err) {
     console.warn('[Monitoring] 目標引用検証に失敗:', err);
@@ -1496,5 +1556,5 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     ? { shortTermGoal: resolvedGoals.shortTermGoal, longTermGoal: resolvedGoals.longTermGoal }
     : undefined;
 
-  return { planRevisionNeeded, monitoringCycleMonths: effectiveCycleMonths, goalContinuation, resolvedGoalTexts };
+  return { planRevisionNeeded, monitoringCycleMonths: effectiveCycleMonths, goalContinuation, resolvedGoalTexts, manualReviewNeeded };
 }

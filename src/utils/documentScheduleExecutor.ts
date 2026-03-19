@@ -167,7 +167,8 @@ async function buildContext(
     previousCarePlan: undefined as {
       longTermGoal: string; shortTermGoal: string;
       goalPeriod: { shortTermMonths: number; longTermMonths: number; longTermEndDate: string };
-      serviceTypes: string[]; planDate: string; planFileName: string; source: string;
+      serviceTypes: string[]; serviceBlocks: Array<{ service_type: string; visit_label: string }>;
+      createdAt: string; planFileName: string; planDate: string; source: string;
     } | undefined,
   };
 }
@@ -188,7 +189,8 @@ async function resolvePreviousCarePlan(
 ): Promise<{
   longTermGoal: string; shortTermGoal: string;
   goalPeriod: { shortTermMonths: number; longTermMonths: number; longTermEndDate: string };
-  serviceTypes: string[]; planDate: string; planFileName: string; source: string;
+  serviceTypes: string[]; serviceBlocks: Array<{ service_type: string; visit_label: string }>;
+  createdAt: string; planFileName: string; planDate: string; source: string;
 } | null> {
   // === 方法1: 前回計画書ExcelのE12/E13を読み込む ===
   try {
@@ -231,7 +233,9 @@ async function resolvePreviousCarePlan(
                 longTermGoal: longGoal,
                 shortTermGoal: shortGoal,
                 goalPeriod: { shortTermMonths: shortMonths, longTermMonths: longMonths, longTermEndDate },
-                serviceTypes: [], // Excel読み込みでは種別は取れないため空（DBフォールバック or carePlanServiceBlocksで補完）
+                serviceTypes: [], // Excel読み込みでは種別は取れない（carePlanServiceBlocksで補完）
+                serviceBlocks: [], // 同上
+                createdAt: planDate,
                 planDate,
                 planFileName: latestPlan.fileName || `居宅介護計画書_${clientName}`,
                 source: 'excel',
@@ -259,6 +263,7 @@ async function resolvePreviousCarePlan(
         : 6;
 
       console.log(`[resolvePreviousCarePlan] DB(goal_periods)から取得`);
+      const pd = activeShort?.startDate || activeLong?.startDate || '';
       return {
         longTermGoal: activeLong?.goalText || '',
         shortTermGoal: activeShort?.goalText || '',
@@ -268,7 +273,9 @@ async function resolvePreviousCarePlan(
           longTermEndDate: activeLong?.endDate || '',
         },
         serviceTypes: [],
-        planDate: activeShort?.startDate || activeLong?.startDate || '',
+        serviceBlocks: [],
+        createdAt: pd,
+        planDate: pd,
         planFileName: `居宅介護計画書_${clientName}`,
         source: 'db',
       };
@@ -1364,6 +1371,31 @@ export async function executeCatchUpGeneration(
             ctx.carePlanServiceBlocks = planResult.serviceBlocks;
             // モニタリング用にもサービスブロックを保持
             lastServiceBlocks = planResult.serviceBlocks;
+
+            // ★previousCarePlanを更新（今回生成した計画書が次回のsource of truth）
+            ctx.previousCarePlan = {
+              longTermGoal: planResult.goal_long_text || '',
+              shortTermGoal: planResult.goal_short_text || '',
+              goalPeriod: {
+                shortTermMonths: planResult.short_term_goal_months,
+                longTermMonths: planResult.long_term_goal_months,
+                longTermEndDate: addMonths(generatedAt.substring(0, 10), planResult.long_term_goal_months),
+              },
+              serviceTypes: planResult.serviceBlocks.map(b => b.service_type),
+              serviceBlocks: planResult.serviceBlocks.map(b => ({ service_type: b.service_type, visit_label: b.visit_label })),
+              createdAt: generatedAt.substring(0, 10),
+              planFileName: `居宅介護計画書_${client.name}_${step.year}年${step.month}月.xlsx`,
+              planDate: generatedAt.substring(0, 10),
+              source: 'generated',
+            };
+            // 後方互換
+            ctx.previousPlanGoals = {
+              longTermGoal: ctx.previousCarePlan.longTermGoal,
+              shortTermGoal: ctx.previousCarePlan.shortTermGoal,
+              planDate: ctx.previousCarePlan.planDate,
+              planFileName: ctx.previousCarePlan.planFileName,
+            };
+            console.log(`[CatchUp] ★previousCarePlanを更新: 短期「${ctx.previousCarePlan.shortTermGoal.substring(0, 30)}...」 長期「${ctx.previousCarePlan.longTermGoal.substring(0, 30)}...」`);
 
             const { generate: generateProcedure } = await import('./documentGenerators/careProcedureGenerator');
             await generateProcedure(ctx);
