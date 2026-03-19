@@ -1132,6 +1132,23 @@ export async function executeCatchUpGeneration(
       if (step.goalContinuation) {
         ctx.inheritShortTermGoal = true;
         console.log(`[CatchUp] モニタリングで目標継続判定 → inheritShortTermGoal=true`);
+        // ★計画書生成にもpreviousPlanGoalsを渡す（前版目標の確実な引き継ぎのため）
+        if (!ctx.previousPlanGoals) {
+          try {
+            const goals = await loadGoalPeriods(client.id);
+            const activeShort = goals.find((g: any) => g.isActive && g.goalType === 'short_term' && g.goalText);
+            const activeLong = goals.find((g: any) => g.isActive && g.goalType === 'long_term' && g.goalText);
+            if (activeShort?.goalText || activeLong?.goalText) {
+              ctx.previousPlanGoals = {
+                longTermGoal: activeLong?.goalText || '',
+                shortTermGoal: activeShort?.goalText || '',
+                planDate: activeShort?.startDate || activeLong?.startDate || '',
+                planFileName: `居宅介護計画書_${client.name}`,
+              };
+              console.log(`[CatchUp] previousPlanGoalsを計画書生成用に設定: 短期「${ctx.previousPlanGoals.shortTermGoal.substring(0, 30)}...」`);
+            }
+          } catch { /* skip */ }
+        }
       }
 
       if (step.type === 'plan') {

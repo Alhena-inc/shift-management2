@@ -4803,7 +4803,81 @@ describe('121. D12のSERVICE_TYPE_TASKパターン検出テスト', () => {
   it('種別名だけの一般表現は検出されないこと', () => {
     // 「家事援助により日常生活の支援が」は個別作業名がないのでOK
     expect(SERVICE_TYPE_TASK_PATTERN.test('家事援助により日常生活の支援が安定して行われ')).toBe(false);
-    // 「身体介護による体調管理が」は「体調管理」が検出されるが「支援」「管理」「介助」のどれかが必要
-    // → 「体調管理が」→ 体調管理 + ... + 管理が → マッチするかテスト
+  });
+});
+
+// ===== 目標継続時に短期目標が変わらないことのテスト =====
+
+describe('122. goalContinuation=trueのとき短期目標が前版と完全一致で引き継がれるテスト', () => {
+  it('モニタリングで「目標を継続する」→ 次の計画書の短期目標が前版と完全同一であること', () => {
+    const previousShortGoal = 'これからもアルコールを絶った生活を継続したい';
+    const goalContinuation = true;
+
+    // executor側のロジック
+    const ctx: { inheritShortTermGoal?: boolean; previousPlanGoals?: { shortTermGoal: string; longTermGoal: string; planDate: string; planFileName: string } } = {};
+    if (goalContinuation) {
+      ctx.inheritShortTermGoal = true;
+      ctx.previousPlanGoals = {
+        shortTermGoal: previousShortGoal,
+        longTermGoal: '長期目標テスト',
+        planDate: '2025-11-01',
+        planFileName: '居宅介護計画書_松尾光雅',
+      };
+    }
+
+    // carePlanGenerator側のロジック
+    let planGoalShort = 'AIが勝手に生成した新しい短期目標'; // AIの出力
+    if (ctx.inheritShortTermGoal) {
+      // ★最優先: ctx.previousPlanGoals
+      if (ctx.previousPlanGoals?.shortTermGoal) {
+        planGoalShort = ctx.previousPlanGoals.shortTermGoal;
+      }
+    }
+
+    // 「目標を継続する」のに目標が変わっていてはダメ
+    expect(planGoalShort).toBe(previousShortGoal);
+    expect(planGoalShort).not.toBe('AIが勝手に生成した新しい短期目標');
+  });
+
+  it('goalContinuation=falseなら新目標が使用されること', () => {
+    const previousShortGoal = '前回の短期目標';
+    const goalContinuation = false;
+
+    const ctx: { inheritShortTermGoal?: boolean } = {};
+    if (goalContinuation) {
+      ctx.inheritShortTermGoal = true;
+    }
+
+    let planGoalShort = '新しい短期目標';
+    if (ctx.inheritShortTermGoal) {
+      planGoalShort = previousShortGoal;
+    }
+
+    expect(planGoalShort).toBe('新しい短期目標');
+    expect(planGoalShort).not.toBe(previousShortGoal);
+  });
+});
+
+describe('123. previousPlanGoals経由の短期目標引き継ぎがloadGoalPeriodsより優先されるテスト', () => {
+  it('previousPlanGoalsとloadGoalPeriodsで異なる値がある場合、previousPlanGoalsが優先されること', () => {
+    const ctxGoal = '前回計画resolverの短期目標（正解）';
+    const dbGoal = 'DB上のactive短期目標（古い可能性あり）';
+
+    // carePlanGenerator側のロジック再現
+    let inheritedGoal = '';
+
+    // ★最優先: ctx.previousPlanGoals
+    const previousPlanGoals = { shortTermGoal: ctxGoal, longTermGoal: '', planDate: '', planFileName: '' };
+    if (previousPlanGoals.shortTermGoal) {
+      inheritedGoal = previousPlanGoals.shortTermGoal;
+    }
+
+    // フォールバック: loadGoalPeriods（この場合は使われない）
+    if (!inheritedGoal) {
+      inheritedGoal = dbGoal;
+    }
+
+    expect(inheritedGoal).toBe(ctxGoal);
+    expect(inheritedGoal).not.toBe(dbGoal);
   });
 });

@@ -1270,23 +1270,43 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
   }
 
   // 短期目標引き継ぎ: モニタリングで「目標継続」→ 前版の短期目標を強制適用（AIが変更しても上書き）
+  // ★最重要: 「目標を継続する」と判定した場合、次の計画書の短期目標は前版と完全同一でなければならない
+  // 前回計画resolverの確定値 > loadGoalPeriods の順で取得する
   if (ctx.inheritShortTermGoal) {
-    try {
-      const prevGoals = await loadGoalPeriods(client.id);
-      const activeShortTerm = prevGoals.find((g: any) => g.isActive && g.goalType === 'short_term');
-      if (activeShortTerm?.goalText) {
-        console.log(`[CarePlan] 短期目標引き継ぎ（目標継続）: "${activeShortTerm.goalText}"`);
-        plan.goal_short = activeShortTerm.goalText;
-        // 短期目標期間も前版から算出して引き継ぐ
-        if (activeShortTerm.startDate && activeShortTerm.endDate) {
-          const start = new Date(activeShortTerm.startDate);
-          const end = new Date(activeShortTerm.endDate);
-          const diffMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
-          if (diffMonths > 0) plan.short_term_goal_months = diffMonths;
+    let inheritedGoal = '';
+
+    // ★最優先: ctx.previousPlanGoals（前回計画書resolverの確定値）
+    if (ctx.previousPlanGoals?.shortTermGoal) {
+      inheritedGoal = ctx.previousPlanGoals.shortTermGoal;
+      console.log(`[CarePlan] 短期目標引き継ぎ（previousPlanGoals経由）: "${inheritedGoal}"`);
+    }
+
+    // フォールバック: loadGoalPeriods
+    if (!inheritedGoal) {
+      try {
+        const prevGoals = await loadGoalPeriods(client.id);
+        const activeShortTerm = prevGoals.find((g: any) => g.isActive && g.goalType === 'short_term');
+        if (activeShortTerm?.goalText) {
+          inheritedGoal = activeShortTerm.goalText;
+          console.log(`[CarePlan] 短期目標引き継ぎ（loadGoalPeriods経由）: "${inheritedGoal}"`);
+          // 短期目標期間も前版から算出して引き継ぐ
+          if (activeShortTerm.startDate && activeShortTerm.endDate) {
+            const start = new Date(activeShortTerm.startDate);
+            const end = new Date(activeShortTerm.endDate);
+            const diffMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+            if (diffMonths > 0) plan.short_term_goal_months = diffMonths;
+          }
         }
+      } catch (err) {
+        console.warn('[CarePlan] 短期目標引き継ぎ取得失敗:', err);
       }
-    } catch (err) {
-      console.warn('[CarePlan] 短期目標引き継ぎ取得失敗:', err);
+    }
+
+    if (inheritedGoal) {
+      plan.goal_short = inheritedGoal;
+      console.log(`[CarePlan] ★短期目標を前版から強制引き継ぎ完了: "${plan.goal_short}"`);
+    } else {
+      console.warn(`[CarePlan] ⚠ inheritShortTermGoal=trueだが前版短期目標が取得できませんでした`);
     }
   }
 
