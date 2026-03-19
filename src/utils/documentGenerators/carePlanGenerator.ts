@@ -1275,10 +1275,14 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
   if (ctx.inheritShortTermGoal) {
     let inheritedGoal = '';
 
-    // ★最優先: ctx.previousPlanGoals（前回計画書resolverの確定値）
-    if (ctx.previousPlanGoals?.shortTermGoal) {
+    // ★最優先: ctx.previousCarePlan（前回計画書Excelから読み込んだ確定値）
+    if (ctx.previousCarePlan?.shortTermGoal) {
+      inheritedGoal = ctx.previousCarePlan.shortTermGoal;
+      console.log(`[CarePlan] 短期目標引き継ぎ（previousCarePlan経由, source=${ctx.previousCarePlan.source}）: "${inheritedGoal}"`);
+    } else if (ctx.previousPlanGoals?.shortTermGoal) {
+      // 後方互換
       inheritedGoal = ctx.previousPlanGoals.shortTermGoal;
-      console.log(`[CarePlan] 短期目標引き継ぎ（previousPlanGoals経由）: "${inheritedGoal}"`);
+      console.log(`[CarePlan] 短期目標引き継ぎ（previousPlanGoals経由, legacy）: "${inheritedGoal}"`);
     }
 
     // フォールバック: loadGoalPeriods

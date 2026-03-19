@@ -36,12 +36,41 @@ export interface GeneratorContext {
   inheritShortTermGoal?: boolean;
   /** モニタリングのトリガー種別（短期目標期間満了 / 長期目標期間満了） */
   monitoringType?: 'short_term' | 'long_term';
-  /** ★前回計画書の目標（モニタリングC20で最優先参照するsource of truth） */
+  /**
+   * ★前回の居宅介護計画書（モニタリング・次回計画書の source of truth）
+   *
+   * 一括生成フローで「計画書→手順書→モニタリング→次の計画書」と流れる際に、
+   * 前回の計画書の情報を構造化して後続工程に引き回す。
+   *
+   * 取得優先順:
+   * 1. 前回計画書ExcelファイルのE12/E13セルを実際に読み込み
+   * 2. DB(goal_periods)のactive目標（フォールバック）
+   */
+  previousCarePlan?: {
+    /** E12: 前回計画書の長期目標（セルの生値から接頭辞除去済み） */
+    longTermGoal: string;
+    /** E13: 前回計画書の短期目標（セルの生値から接頭辞除去済み） */
+    shortTermGoal: string;
+    /** 目標期間情報 */
+    goalPeriod: {
+      shortTermMonths: number;  // 短期目標の期間（月数）
+      longTermMonths: number;   // 長期目標の期間（月数）
+      longTermEndDate: string;  // 長期目標の終了日（YYYY-MM-DD）
+    };
+    /** 前回計画書のサービスブロック（種別判定用。steps本文はモニタリングに渡さない） */
+    serviceTypes: string[];     // 例: ['家事援助', '身体介護']
+    /** メタ情報 */
+    planDate: string;           // 前回計画書の作成年月
+    planFileName: string;       // ファイル名（トレーサビリティ用）
+    /** 取得元: 'excel' = Excelファイル読み込み, 'db' = goal_periodsフォールバック */
+    source: string;
+  };
+  /** @deprecated previousCarePlanに統合。後方互換のため残す */
   previousPlanGoals?: {
-    longTermGoal: string;   // E12: 前回計画書の長期目標
-    shortTermGoal: string;  // E13: 前回計画書の短期目標
-    planDate: string;       // 前回計画書の作成年月
-    planFileName: string;   // 前回計画書のファイル名（トレーサビリティ用）
+    longTermGoal: string;
+    shortTermGoal: string;
+    planDate: string;
+    planFileName: string;
   };
   /** 居宅介護計画書のサービス内容（手順書生成時に計画書と一致させるため） */
   carePlanServiceBlocks?: Array<{

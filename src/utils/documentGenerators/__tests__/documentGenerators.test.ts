@@ -4881,3 +4881,217 @@ describe('123. previousPlanGoals経由の短期目標引き継ぎがloadGoalPeri
     expect(inheritedGoal).not.toBe(dbGoal);
   });
 });
+
+// ===== チームB追加テスト: C20「変更」判定時の変更理由必須チェック =====
+
+describe('122. C20「変更」判定時に変更理由が必ず含まれるテスト', () => {
+  function ensureChangeReason(goalEval: string): string {
+    // monitoringReportGenerator.ts の変更理由必須チェック後処理を再現
+    if (/目標を変更/.test(goalEval)) {
+      const shortChangeMatch = goalEval.match(/短期目標『[^』]*』について、([^。]*)目標を変更する。/);
+      if (shortChangeMatch) {
+        const reasoning = shortChangeMatch[1].trim();
+        if (!reasoning || reasoning.length < 5) {
+          goalEval = goalEval.replace(
+            /短期目標『([^』]*)』について、\s*目標を変更する。/,
+            `短期目標『$1』について、目標期間が満了し、現在の状況を踏まえ新たな段階の支援が必要と判断したため、目標を変更する。`
+          );
+        }
+      }
+      const longChangeMatch = goalEval.match(/長期目標『[^』]*』について、([^。]*)目標を変更する。/);
+      if (longChangeMatch) {
+        const reasoning = longChangeMatch[1].trim();
+        if (!reasoning || reasoning.length < 5) {
+          goalEval = goalEval.replace(
+            /長期目標『([^』]*)』について、\s*目標を変更する。/,
+            `長期目標『$1』について、長期目標の期間が満了し、これまでの支援状況を踏まえ目標を変更する。`
+          );
+        }
+      }
+    }
+    return goalEval;
+  }
+
+  it('短期目標「変更」に理由がない場合、デフォルト理由が補完されること', () => {
+    const input = "短期目標『健康的な生活を送る』について、目標を変更する。";
+    const result = ensureChangeReason(input);
+    expect(result).toContain('目標期間が満了し');
+    expect(result).toContain('目標を変更する');
+    expect(result).toContain('健康的な生活を送る');
+  });
+
+  it('短期目標「変更」に十分な理由がある場合、変更しないこと', () => {
+    const input = "短期目標『健康的な生活を送る』について、目標を達成したため次の段階の支援が必要と判断し、目標を変更する。";
+    const result = ensureChangeReason(input);
+    expect(result).toBe(input);
+  });
+
+  it('長期目標「変更」に理由がない場合、デフォルト理由が補完されること', () => {
+    const input = "長期目標『安定した在宅生活』について、目標を変更する。";
+    const result = ensureChangeReason(input);
+    expect(result).toContain('長期目標の期間が満了し');
+    expect(result).toContain('目標を変更する');
+  });
+
+  it('「継続」判定の場合は変更理由チェックが発動しないこと', () => {
+    const input = "短期目標『健康的な生活を送る』について、安定しているため目標を継続する。";
+    const result = ensureChangeReason(input);
+    expect(result).toBe(input);
+  });
+});
+
+describe('123. C20モニタリング理由文除去の拡張パターンテスト', () => {
+  function removeReasonPhrases(goalEval: string): string {
+    return goalEval
+      .replace(/(短期|長期)?目標の期間満了に伴う?(モニタリング|評価)を実施した[。.]\s*/g, '')
+      .replace(/(短期|長期)?目標の期間満了に伴い実施した(モニタリング|評価)[。.]\s*/g, '')
+      .replace(/^モニタリングの結果[、,]?\s*/g, '')
+      .replace(/^モニタリングを実施した[。.]\s*/g, '')
+      .replace(/モニタリング(を|の)実施[。.]\s*/g, '')
+      .replace(/^定期モニタリング(の結果)?[、,。.]?\s*/g, '')
+      .replace(/^今回のモニタリング(において|では|の結果)[、,。.]?\s*/g, '')
+      .replace(/^サービス内容の変更は不要と判断した[。.]\s*/g, '')
+      .replace(/^利用者の状況は安定している[。.]\s*/g, '')
+      .trim();
+  }
+
+  it('「定期モニタリングの結果」が除去されること', () => {
+    const input = '定期モニタリングの結果、短期目標『目標A』について目標を継続する。';
+    const result = removeReasonPhrases(input);
+    expect(result).not.toMatch(/^定期モニタリング/);
+    expect(result).toContain('短期目標');
+  });
+
+  it('「今回のモニタリングにおいて」が除去されること', () => {
+    const input = '今回のモニタリングにおいて、短期目標『目標B』について目標を継続する。';
+    const result = removeReasonPhrases(input);
+    expect(result).not.toMatch(/^今回のモニタリング/);
+    expect(result).toContain('短期目標');
+  });
+
+  it('「サービス内容の変更は不要と判断した。」が除去されること', () => {
+    const input = 'サービス内容の変更は不要と判断した。短期目標『目標C』について目標を継続する。';
+    const result = removeReasonPhrases(input);
+    expect(result).not.toMatch(/^サービス内容の変更は不要/);
+    expect(result).toContain('短期目標');
+  });
+
+  it('「利用者の状況は安定している。」が除去されること', () => {
+    const input = '利用者の状況は安定している。短期目標『目標D』について目標を継続する。';
+    const result = removeReasonPhrases(input);
+    expect(result).not.toMatch(/^利用者の状況は安定/);
+    expect(result).toContain('短期目標');
+  });
+});
+
+describe('124. C20最終品質保証 isOnlyTriggerText拡張パターンテスト', () => {
+  const isOnlyTriggerText = (text: string) =>
+    /^((短期|長期)?目標の期間満了に伴う(モニタリング|評価)を実施した|モニタリングを実施した|モニタリングの実施|定期モニタリング(の結果)?|今回のモニタリング(において|では|の結果)|サービス内容の変更は不要と判断した|利用者の状況は安定している)[。.]?\s*$/.test(text.trim());
+
+  it('「定期モニタリング」のみの出力を不成立と判定すること', () => {
+    expect(isOnlyTriggerText('定期モニタリング。')).toBe(true);
+  });
+
+  it('「定期モニタリングの結果」のみの出力を不成立と判定すること', () => {
+    expect(isOnlyTriggerText('定期モニタリングの結果。')).toBe(true);
+  });
+
+  it('「今回のモニタリングにおいて」のみの出力を不成立と判定すること', () => {
+    expect(isOnlyTriggerText('今回のモニタリングにおいて。')).toBe(true);
+  });
+
+  it('「サービス内容の変更は不要と判断した」のみの出力を不成立と判定すること', () => {
+    expect(isOnlyTriggerText('サービス内容の変更は不要と判断した。')).toBe(true);
+  });
+
+  it('「利用者の状況は安定している」のみの出力を不成立と判定すること', () => {
+    expect(isOnlyTriggerText('利用者の状況は安定している。')).toBe(true);
+  });
+
+  it('正しい目標評価文は不成立と判定されないこと', () => {
+    expect(isOnlyTriggerText("短期目標『目標X』について、安定しているため目標を継続する。")).toBe(false);
+  });
+});
+
+describe('125. shortVerdict「達成」「変更」ケースの再構築テンプレートテスト', () => {
+  function buildShortSection(goalText: string, verdict: string, reasoning: string): string {
+    if (verdict === '継続') {
+      return `短期目標『${goalText}』について、${reasoning.replace(/。$/, '')}ため、目標を継続する。`;
+    } else if (verdict === '達成') {
+      return `短期目標『${goalText}』について、${reasoning.replace(/。$/, '')}により、目標を達成したと判断する。`;
+    } else if (verdict === '変更') {
+      return `短期目標『${goalText}』について、${reasoning.replace(/。$/, '')}ため、目標を変更する。`;
+    }
+    return `短期目標『${goalText}』について、${reasoning}`;
+  }
+
+  it('「達成」テンプレートが正しい構造であること', () => {
+    const result = buildShortSection('健康管理を行う', '達成', 'サービス提供により安定した状態が維持された。');
+    expect(result).toContain("短期目標『健康管理を行う』について、");
+    expect(result).toContain('目標を達成したと判断する。');
+    expect(result).not.toContain('目標を継続する');
+  });
+
+  it('「変更」テンプレートが正しい構造であること', () => {
+    const result = buildShortSection('在宅生活を維持する', '変更', '新たな段階の支援が必要。');
+    expect(result).toContain("短期目標『在宅生活を維持する』について、");
+    expect(result).toContain('目標を変更する。');
+    expect(result).not.toContain('目標を継続する');
+  });
+
+  it('「継続」テンプレートは従来通り動作すること', () => {
+    const result = buildShortSection('服薬管理を続ける', '継続', '安定した状態が維持されている。');
+    expect(result).toContain("短期目標『服薬管理を続ける』について、");
+    expect(result).toContain('目標を継続する。');
+  });
+});
+
+describe('126. D12フォールバック置換文の重度訪問・同行援護対応テスト', () => {
+  function getD12Fallback(serviceTypes: string[]): string {
+    const hasBody = serviceTypes.some(st => st.includes('身体'));
+    const hasHouse = serviceTypes.some(st => st.includes('家事') || st.includes('生活'));
+    const hasJudo = serviceTypes.some(st => st.includes('重度'));
+    const hasDoko = serviceTypes.some(st => st.includes('同行'));
+
+    if (hasJudo) {
+      return '計画に基づき重度訪問介護サービスが提供されており、見守りを含む包括的な支援が安定して行われていることを確認した。心身状態に大きな変化はなく、現行支援により在宅生活の継続が図れている。';
+    } else if (hasDoko) {
+      return '計画に基づき同行援護サービスが提供されており、外出時の移動支援が安定して行われていることを確認した。本人の外出意欲も維持されており、現行支援に支障はない。';
+    } else if (hasBody && hasHouse) {
+      return '計画に基づきサービスが提供されており、生活状況は概ね安定していることを確認した。家事援助により日常生活の支援が継続でき、身体介護による体調管理も支障なく実施されている。大きな心身状態の変化はなく、現行支援により在宅生活の継続が図れている。';
+    } else if (hasBody) {
+      return '計画に基づきサービスが提供されており、身体介護による体調管理が適切に行われていることを確認した。心身状態は安定しており、現行支援で在宅生活の継続が図れている。';
+    } else if (hasHouse) {
+      return '計画に基づきサービスが提供されており、家事援助による日常生活の支援が安定して行われていることを確認した。生活環境の維持が図れ、在宅生活の継続に支障はない。';
+    }
+    return '計画に基づきサービスが提供されており、生活状況は概ね安定していることを確認した。現行支援で在宅生活の継続が図れている。';
+  }
+
+  it('重度訪問介護の場合、重度訪問専用のフォールバック文が返ること', () => {
+    const result = getD12Fallback(['重度訪問']);
+    expect(result).toContain('重度訪問介護サービス');
+    expect(result).toContain('見守り');
+    expect(result).not.toContain('家事援助');
+  });
+
+  it('同行援護の場合、同行援護専用のフォールバック文が返ること', () => {
+    const result = getD12Fallback(['同行援護']);
+    expect(result).toContain('同行援護サービス');
+    expect(result).toContain('移動支援');
+    expect(result).not.toContain('身体介護');
+  });
+
+  it('身体介護＋家事援助の場合、従来のフォールバック文が返ること', () => {
+    const result = getD12Fallback(['身体介護', '家事援助']);
+    expect(result).toContain('家事援助');
+    expect(result).toContain('身体介護');
+  });
+
+  it('フォールバック文にはいずれの場合も個別作業名（調理・掃除等）が含まれないこと', () => {
+    const types = [['重度訪問'], ['同行援護'], ['身体介護', '家事援助'], ['身体介護'], ['家事援助'], ['不明サービス']];
+    for (const t of types) {
+      const result = getD12Fallback(t);
+      expect(result).not.toMatch(/調理|掃除|清掃|洗濯|配膳|片付け|服薬確認/);
+    }
+  });
+});

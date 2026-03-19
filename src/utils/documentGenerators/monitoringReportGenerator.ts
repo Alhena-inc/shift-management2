@@ -70,14 +70,25 @@ export async function resolvePreviousPlanGoals(
   ctx: GeneratorContext,
   clientId: string,
 ): Promise<{ shortTermGoal: string; longTermGoal: string; planDate: string; source: string }> {
-  // ★最優先: ctx.previousPlanGoals（executor経由の確定値）
+  // ★最優先: ctx.previousCarePlan（executorがExcel読み込み済みの確定値）
+  if (ctx.previousCarePlan && (ctx.previousCarePlan.shortTermGoal || ctx.previousCarePlan.longTermGoal)) {
+    console.log(`[Monitoring] 前回計画resolver: ctx.previousCarePlan使用 (source=${ctx.previousCarePlan.source})`);
+    return {
+      shortTermGoal: ctx.previousCarePlan.shortTermGoal,
+      longTermGoal: ctx.previousCarePlan.longTermGoal,
+      planDate: ctx.previousCarePlan.planDate,
+      source: ctx.previousCarePlan.source,
+    };
+  }
+
+  // 後方互換: ctx.previousPlanGoals
   if (ctx.previousPlanGoals && (ctx.previousPlanGoals.shortTermGoal || ctx.previousPlanGoals.longTermGoal)) {
-    console.log(`[Monitoring] 前回計画resolver: ctx.previousPlanGoals使用 (source=ctx)`);
+    console.log(`[Monitoring] 前回計画resolver: ctx.previousPlanGoals使用 (source=legacy)`);
     return {
       shortTermGoal: ctx.previousPlanGoals.shortTermGoal,
       longTermGoal: ctx.previousPlanGoals.longTermGoal,
       planDate: ctx.previousPlanGoals.planDate,
-      source: 'ctx',
+      source: 'legacy',
     };
   }
 
@@ -892,7 +903,7 @@ function buildTemplateFromScratch(ws: ExcelJS.Worksheet): void {
 }
 
 // ==================== メイン生成関数 ====================
-export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNeeded: string; monitoringCycleMonths: number; goalContinuation: boolean }> {
+export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNeeded: string; monitoringCycleMonths: number; goalContinuation: boolean; resolvedGoalTexts?: { shortTermGoal: string; longTermGoal: string } }> {
   const { careClients, billingRecords, supplyAmounts, year, month, officeInfo, customPrompt, customSystemInstruction, selectedClient } = ctx;
 
   const client: CareClient = selectedClient || careClients[0];
@@ -1109,6 +1120,11 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
       // ★追加: 目標接頭辞なしの理由文も除去（「モニタリングを実施した。」等）
       .replace(/^モニタリングを実施した[。.]\s*/g, '')
       .replace(/モニタリング(を|の)実施[。.]\s*/g, '')
+      // ★追加: AIが出しがちな追加バリエーション（「定期モニタリングの結果」「今回のモニタリングにおいて」等）
+      .replace(/^定期モニタリング(の結果)?[、,。.]?\s*/g, '')
+      .replace(/^今回のモニタリング(において|では|の結果)[、,。.]?\s*/g, '')
+      .replace(/^サービス内容の変更は不要と判断した[。.]\s*/g, '')
+      .replace(/^利用者の状況は安定している[。.]\s*/g, '')
       .trim();
 
     // 短期目標の引用修正
@@ -1134,6 +1150,10 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
           goalEval = goalEval.replace(/短期[^。]*?(継続する|達成した|変更する)[^。]*。/, '').trim();
           const shortSection = shortVerdict === '継続'
             ? `短期目標『${activeShort.goalText}』について、${shortReasoning.replace(/。$/, '')}ため、目標を継続する。`
+            : shortVerdict === '達成'
+            ? `短期目標『${activeShort.goalText}』について、${shortReasoning.replace(/。$/, '')}により、目標を達成したと判断する。`
+            : shortVerdict === '変更'
+            ? `短期目標『${activeShort.goalText}』について、${shortReasoning.replace(/。$/, '')}ため、目標を変更する。`
             : `短期目標『${activeShort.goalText}』について、${shortReasoning}`;
           goalEval = shortSection + (goalEval ? ' ' + goalEval : '');
         }
@@ -1196,7 +1216,7 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     const hasShortGoalQuote = activeShort?.goalText && goalEval.includes(activeShort.goalText);
     const hasLongGoalQuote = activeLong?.goalText && goalEval.includes(activeLong.goalText);
     // ★拡張: 目標接頭辞なしの理由文パターンも検出
-    const isOnlyTriggerText = /^((短期|長期)?目標の期間満了に伴う(モニタリング|評価)を実施した|モニタリングを実施した|モニタリングの実施)[。.]?\s*$/.test(goalEval.trim());
+    const isOnlyTriggerText = /^((短期|長期)?目標の期間満了に伴う(モニタリング|評価)を実施した|モニタリングを実施した|モニタリングの実施|定期モニタリング(の結果)?|今回のモニタリング(において|では|の結果)|サービス内容の変更は不要と判断した|利用者の状況は安定している)[。.]?\s*$/.test(goalEval.trim());
     const isEmptyOrTooShort = !goalEval || goalEval.trim().length < 20;
     const lacksGoalStructure = !goalEval.includes('『') && (activeShort?.goalText || activeLong?.goalText);
     // ★追加: 目標評価の判定語（継続/達成/変更）が含まれていない場合も不成立とみなす
@@ -1215,6 +1235,34 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
       if (rebuilt) {
         goalEval = rebuilt;
         console.log(`[Monitoring] C20を完全再構築: "${goalEval.substring(0, 80)}..."`);
+      }
+    }
+
+    // === C20 「変更」判定時の変更理由必須チェック ===
+    // 制約: 「変更」なら、C20に達成/変更理由が必要
+    if (/目標を変更/.test(goalEval)) {
+      // 「変更する。」で文が終わっていて、変更理由（「ため」「により」等の因果表現）がない場合
+      const shortChangeMatch = goalEval.match(/短期目標『[^』]*』について、([^。]*)目標を変更する。/);
+      if (shortChangeMatch) {
+        const reasoning = shortChangeMatch[1].trim();
+        // 理由が空か極めて短い（5文字未満）場合は理由不足
+        if (!reasoning || reasoning.length < 5) {
+          console.warn(`[Monitoring] ⚠ C20「目標変更」に変更理由が不足。デフォルト理由を補完します。`);
+          goalEval = goalEval.replace(
+            /短期目標『([^』]*)』について、\s*目標を変更する。/,
+            `短期目標『$1』について、目標期間が満了し、現在の状況を踏まえ新たな段階の支援が必要と判断したため、目標を変更する。`
+          );
+        }
+      }
+      const longChangeMatch = goalEval.match(/長期目標『[^』]*』について、([^。]*)目標を変更する。/);
+      if (longChangeMatch) {
+        const reasoning = longChangeMatch[1].trim();
+        if (!reasoning || reasoning.length < 5) {
+          goalEval = goalEval.replace(
+            /長期目標『([^』]*)』について、\s*目標を変更する。/,
+            `長期目標『$1』について、長期目標の期間が満了し、これまでの支援状況を踏まえ目標を変更する。`
+          );
+        }
       }
     }
 
@@ -1354,8 +1402,14 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
       console.warn(`[Monitoring] ⚠ D12に週間計画の作業列挙を検出。状態評価・支援効果の文に置換します。`);
       const hasBody = serviceTypes.some(st => st.includes('身体'));
       const hasHouse = serviceTypes.some(st => st.includes('家事') || st.includes('生活'));
+      const hasJudo = serviceTypes.some(st => st.includes('重度'));
+      const hasDoko = serviceTypes.some(st => st.includes('同行'));
       // 状態評価・支援効果を中心とした文言で置換（作業列挙ではなく効果記述）
-      if (hasBody && hasHouse) {
+      if (hasJudo) {
+        result.service_reason = '計画に基づき重度訪問介護サービスが提供されており、見守りを含む包括的な支援が安定して行われていることを確認した。心身状態に大きな変化はなく、現行支援により在宅生活の継続が図れている。';
+      } else if (hasDoko) {
+        result.service_reason = '計画に基づき同行援護サービスが提供されており、外出時の移動支援が安定して行われていることを確認した。本人の外出意欲も維持されており、現行支援に支障はない。';
+      } else if (hasBody && hasHouse) {
         result.service_reason = '計画に基づきサービスが提供されており、生活状況は概ね安定していることを確認した。家事援助により日常生活の支援が継続でき、身体介護による体調管理も支障なく実施されている。大きな心身状態の変化はなく、現行支援により在宅生活の継続が図れている。';
       } else if (hasBody) {
         result.service_reason = '計画に基づきサービスが提供されており、身体介護による体調管理が適切に行われていることを確認した。心身状態は安定しており、現行支援で在宅生活の継続が図れている。';
@@ -1437,5 +1491,10 @@ export async function generate(ctx: GeneratorContext): Promise<{ planRevisionNee
     console.log(`[Monitoring] 目標継続と判定 → 次の計画書で短期目標を引き継ぎます`);
   }
 
-  return { planRevisionNeeded, monitoringCycleMonths: effectiveCycleMonths, goalContinuation };
+  // ★resolvedGoalTextsを返却し、executor側で次回計画書に正確な文言を引き継げるようにする
+  const resolvedGoalTexts = (resolvedGoals.shortTermGoal || resolvedGoals.longTermGoal)
+    ? { shortTermGoal: resolvedGoals.shortTermGoal, longTermGoal: resolvedGoals.longTermGoal }
+    : undefined;
+
+  return { planRevisionNeeded, monitoringCycleMonths: effectiveCycleMonths, goalContinuation, resolvedGoalTexts };
 }
