@@ -1,12 +1,38 @@
 // 給与明細の型定義
 
-// 会社情報（固定）
-export const COMPANY_INFO = {
+// 会社情報のデフォルト値
+const DEFAULT_COMPANY_INFO = {
   name: 'Alhena合同会社',
   officeName: '訪問介護事業所のあ',
   address: '〒160-0022 東京都新宿区新宿1-36-2',
   tel: '03-6380-6427',
-} as const;
+};
+
+const COMPANY_INFO_KEY = 'payslip_company_info';
+
+/** 会社情報を取得（localStorageに保存された値を優先、なければデフォルト） */
+export function getCompanyInfo(): { name: string; officeName: string; address: string; tel: string } {
+  try {
+    const saved = localStorage.getItem(COMPANY_INFO_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return { ...DEFAULT_COMPANY_INFO, ...parsed };
+    }
+  } catch { /* ignore */ }
+  return { ...DEFAULT_COMPANY_INFO };
+}
+
+/** 会社情報を保存 */
+export function saveCompanyInfo(info: { name?: string; officeName?: string; address?: string; tel?: string }): void {
+  try {
+    const current = getCompanyInfo();
+    const updated = { ...current, ...info };
+    localStorage.setItem(COMPANY_INFO_KEY, JSON.stringify(updated));
+  } catch { /* ignore */ }
+}
+
+/** @deprecated getCompanyInfo()を使ってください。後方互換のため残す */
+export const COMPANY_INFO = DEFAULT_COMPANY_INFO;
 
 // 深夜時間帯の定義（分単位）
 export const NIGHT_START = 22 * 60; // 22:00

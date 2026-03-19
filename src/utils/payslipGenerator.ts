@@ -1,4 +1,5 @@
 import type { Helper } from '../types';
+import { getCompanyInfo } from '../types/payslip';
 
 interface ShiftRecord {
   date: string; // "2025-12-01"
@@ -378,9 +379,9 @@ export function generatePayslipData(
 
   return {
     yearMonth,
-    companyName: "Alhena合同会社",
-    officeName: "訪問介護事業所のあ",
-    companyAddress: "大阪府大阪市大正区三軒家東４丁目１５−４",
+    companyName: getCompanyInfo().name,
+    officeName: getCompanyInfo().officeName,
+    companyAddress: getCompanyInfo().address,
 
     department: "介護事業",
     employeeName: helper.name || "",

@@ -1,7 +1,8 @@
 // @ts-nocheck
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { Payslip, HourlyPayslip } from '../../types/payslip';
 import type { Helper } from '../../types';
+import { getCompanyInfo, saveCompanyInfo } from '../../types/payslip';
 import { calculateInsurance, getHealthStandardRemuneration } from '../../utils/insuranceCalculator';
 import {
   recalculatePayslip,
@@ -230,6 +231,11 @@ const EmptyCell = ({ colSpan = 1, style = {} }: any) => (
 );
 
 const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, isPrintMode = false }) => {
+  // === 会社名の編集状態 ===
+  const [companyName, setCompanyName] = useState(() => getCompanyInfo().name);
+  const [editingCompany, setEditingCompany] = useState(false);
+  const [tempCompanyName, setTempCompanyName] = useState('');
+
   // === データ処理 ===
   const recalculateTotals = (updated: any) => recalculatePayslip(updated, helper);
 
@@ -359,9 +365,42 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
             <span style={{ width: '50px', fontSize: '14px', flexShrink: 0 }}>氏 名</span>
             <span className="flex-1 text-xl font-bold text-center">{payslip.helperName}</span>
           </div>
-          {/* 会社名行 */}
+          {/* 会社名行（クリックで編集可能） */}
           <div style={{ textAlign: 'right', fontSize: '12px' }}>
-            {(payslip as any).companyName || 'Alhena合同会社'}
+            {editingCompany ? (
+              <input
+                type="text"
+                value={tempCompanyName}
+                onChange={(e) => setTempCompanyName(e.target.value)}
+                onBlur={() => {
+                  if (tempCompanyName.trim()) {
+                    setCompanyName(tempCompanyName.trim());
+                    saveCompanyInfo({ name: tempCompanyName.trim() });
+                  }
+                  setEditingCompany(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (tempCompanyName.trim()) {
+                      setCompanyName(tempCompanyName.trim());
+                      saveCompanyInfo({ name: tempCompanyName.trim() });
+                    }
+                    setEditingCompany(false);
+                  }
+                  if (e.key === 'Escape') setEditingCompany(false);
+                }}
+                autoFocus
+                style={{ fontSize: '12px', textAlign: 'right', border: '1px solid #3b82f6', borderRadius: '2px', padding: '1px 4px', width: '200px' }}
+              />
+            ) : (
+              <span
+                onClick={() => { if (!isPrintMode) { setTempCompanyName(companyName); setEditingCompany(true); } }}
+                style={{ cursor: isPrintMode ? 'default' : 'pointer' }}
+                title={isPrintMode ? '' : 'クリックで会社名を変更'}
+              >
+                {companyName}
+              </span>
+            )}
           </div>
         </div>
 
