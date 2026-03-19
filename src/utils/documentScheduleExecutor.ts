@@ -513,20 +513,72 @@ export async function executeMonitoringScheduleAction(
       ctx.monitoringType = schedule.monitoringType;
     }
 
-    // ★前回計画書の目標をctxに設定（モニタリングC20のsource of truth）
-    // loadGoalPeriodsからactiveな目標を取得し、previousPlanGoalsとして明示的に保持する
+    // ★★★ 前回計画書の目標をctxに設定（モニタリングC20のsource of truth）★★★
+    // 方法1（最優先）: 前回の計画書ExcelファイルのE12/E13セルを実際に読み込む
+    // 方法2（フォールバック）: loadGoalPeriodsからactiveな目標を取得
+    // ※DB上のgoal_periodsだけに依存すると、保存失敗やタイミング問題で目標がずれる
     try {
-      const goals = await loadGoalPeriods(client.id);
-      const activeShort = goals.find((g: any) => g.isActive && g.goalType === 'short_term' && g.goalText);
-      const activeLong = goals.find((g: any) => g.isActive && g.goalType === 'long_term' && g.goalText);
-      if (activeShort?.goalText || activeLong?.goalText) {
-        ctx.previousPlanGoals = {
-          longTermGoal: activeLong?.goalText || '',
-          shortTermGoal: activeShort?.goalText || '',
-          planDate: activeShort?.startDate || activeLong?.startDate || '',
-          planFileName: `居宅介護計画書_${client.name}`,
-        };
-        console.log(`[v2Monitoring] 前回計画書目標を設定: 短期「${ctx.previousPlanGoals.shortTermGoal.substring(0, 30)}...」 長期「${ctx.previousPlanGoals.longTermGoal.substring(0, 30)}...」`);
+      let resolved = false;
+
+      // 方法1: 前回計画書のExcelファイルからE12/E13を読み込む
+      try {
+        const carePlanDocs = await loadShogaiCarePlanDocuments(client.id);
+        if (carePlanDocs && carePlanDocs.length > 0) {
+          // 最新の計画書（モニタリング対象日以前のもの）を取得
+          const sorted = carePlanDocs
+            .filter((d: any) => d.fileUrl)
+            .sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+          const latestPlan = sorted[0];
+          if (latestPlan?.fileUrl) {
+            const ExcelJS = (await import('exceljs')).default;
+            const response = await fetch(latestPlan.fileUrl);
+            if (response.ok) {
+              const buffer = await response.arrayBuffer();
+              const wb = new ExcelJS.Workbook();
+              await wb.xlsx.load(buffer);
+              const ws = wb.worksheets[0];
+              if (ws) {
+                const e12Raw = ws.getCell('E12').value?.toString() || '';
+                const e13Raw = ws.getCell('E13').value?.toString() || '';
+                // 「長期（6ヶ月）: 」「短期（3ヶ月）: 」等の接頭辞を除去して目標文言だけ取得
+                const longGoal = e12Raw.replace(/^長期[（(][^）)]*[）)][:：]\s*/, '').trim();
+                const shortGoal = e13Raw.replace(/^短期[（(][^）)]*[）)][:：]\s*/, '').trim();
+                if (longGoal || shortGoal) {
+                  ctx.previousPlanGoals = {
+                    longTermGoal: longGoal,
+                    shortTermGoal: shortGoal,
+                    planDate: latestPlan.createdAt?.substring(0, 10) || '',
+                    planFileName: latestPlan.fileName || `居宅介護計画書_${client.name}`,
+                  };
+                  resolved = true;
+                  console.log(`[v2Monitoring] ★前回計画書Excelから目標取得成功: ${latestPlan.fileName}`);
+                  console.log(`[v2Monitoring]   E12(長期): 「${longGoal.substring(0, 40)}...」`);
+                  console.log(`[v2Monitoring]   E13(短期): 「${shortGoal.substring(0, 40)}...」`);
+                }
+              }
+            }
+          }
+        }
+      } catch (excelErr) {
+        console.warn('[v2Monitoring] 前回計画書Excel読み込み失敗（フォールバックに移行）:', excelErr);
+      }
+
+      // 方法2: フォールバック — loadGoalPeriodsからactiveな目標を取得
+      if (!resolved) {
+        const goals = await loadGoalPeriods(client.id);
+        const activeShort = goals.find((g: any) => g.isActive && g.goalType === 'short_term' && g.goalText);
+        const activeLong = goals.find((g: any) => g.isActive && g.goalType === 'long_term' && g.goalText);
+        if (activeShort?.goalText || activeLong?.goalText) {
+          ctx.previousPlanGoals = {
+            longTermGoal: activeLong?.goalText || '',
+            shortTermGoal: activeShort?.goalText || '',
+            planDate: activeShort?.startDate || activeLong?.startDate || '',
+            planFileName: `居宅介護計画書_${client.name}`,
+          };
+          console.log(`[v2Monitoring] 前回計画書目標をDB(goal_periods)から取得（フォールバック）`);
+          console.log(`[v2Monitoring]   短期: 「${ctx.previousPlanGoals.shortTermGoal.substring(0, 40)}...」`);
+          console.log(`[v2Monitoring]   長期: 「${ctx.previousPlanGoals.longTermGoal.substring(0, 40)}...」`);
+        }
       }
     } catch (err) {
       console.warn('[v2Monitoring] 前回計画書目標の取得に失敗:', err);
@@ -1132,22 +1184,62 @@ export async function executeCatchUpGeneration(
       if (step.goalContinuation) {
         ctx.inheritShortTermGoal = true;
         console.log(`[CatchUp] モニタリングで目標継続判定 → inheritShortTermGoal=true`);
-        // ★計画書生成にもpreviousPlanGoalsを渡す（前版目標の確実な引き継ぎのため）
+        // ★前回計画書の目標を取得（Excel読み込み最優先、DBフォールバック）
         if (!ctx.previousPlanGoals) {
+          // 方法1: 前回計画書Excelから読み込み
           try {
-            const goals = await loadGoalPeriods(client.id);
-            const activeShort = goals.find((g: any) => g.isActive && g.goalType === 'short_term' && g.goalText);
-            const activeLong = goals.find((g: any) => g.isActive && g.goalType === 'long_term' && g.goalText);
-            if (activeShort?.goalText || activeLong?.goalText) {
-              ctx.previousPlanGoals = {
-                longTermGoal: activeLong?.goalText || '',
-                shortTermGoal: activeShort?.goalText || '',
-                planDate: activeShort?.startDate || activeLong?.startDate || '',
-                planFileName: `居宅介護計画書_${client.name}`,
-              };
-              console.log(`[CatchUp] previousPlanGoalsを計画書生成用に設定: 短期「${ctx.previousPlanGoals.shortTermGoal.substring(0, 30)}...」`);
+            const carePlanDocs = await loadShogaiCarePlanDocuments(client.id);
+            if (carePlanDocs && carePlanDocs.length > 0) {
+              const sorted = carePlanDocs
+                .filter((d: any) => d.fileUrl)
+                .sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+              const latestPlan = sorted[0];
+              if (latestPlan?.fileUrl) {
+                const ExcelJS = (await import('exceljs')).default;
+                const response = await fetch(latestPlan.fileUrl);
+                if (response.ok) {
+                  const buffer = await response.arrayBuffer();
+                  const wb = new ExcelJS.Workbook();
+                  await wb.xlsx.load(buffer);
+                  const ws = wb.worksheets[0];
+                  if (ws) {
+                    const e12Raw = ws.getCell('E12').value?.toString() || '';
+                    const e13Raw = ws.getCell('E13').value?.toString() || '';
+                    const longGoal = e12Raw.replace(/^長期[（(][^）)]*[）)][:：]\s*/, '').trim();
+                    const shortGoal = e13Raw.replace(/^短期[（(][^）)]*[）)][:：]\s*/, '').trim();
+                    if (longGoal || shortGoal) {
+                      ctx.previousPlanGoals = {
+                        longTermGoal: longGoal,
+                        shortTermGoal: shortGoal,
+                        planDate: latestPlan.createdAt?.substring(0, 10) || '',
+                        planFileName: latestPlan.fileName || '',
+                      };
+                      console.log(`[CatchUp] ★前回計画書Excelから目標取得: 短期「${shortGoal.substring(0, 30)}...」`);
+                    }
+                  }
+                }
+              }
             }
-          } catch { /* skip */ }
+          } catch (excelErr) {
+            console.warn('[CatchUp] 前回計画書Excel読み込み失敗:', excelErr);
+          }
+          // 方法2: DBフォールバック
+          if (!ctx.previousPlanGoals) {
+            try {
+              const goals = await loadGoalPeriods(client.id);
+              const activeShort = goals.find((g: any) => g.isActive && g.goalType === 'short_term' && g.goalText);
+              const activeLong = goals.find((g: any) => g.isActive && g.goalType === 'long_term' && g.goalText);
+              if (activeShort?.goalText || activeLong?.goalText) {
+                ctx.previousPlanGoals = {
+                  longTermGoal: activeLong?.goalText || '',
+                  shortTermGoal: activeShort?.goalText || '',
+                  planDate: activeShort?.startDate || activeLong?.startDate || '',
+                  planFileName: `居宅介護計画書_${client.name}`,
+                };
+                console.log(`[CatchUp] previousPlanGoalsをDB(goal_periods)から取得（フォールバック）`);
+              }
+            } catch { /* skip */ }
+          }
         }
       }
 
