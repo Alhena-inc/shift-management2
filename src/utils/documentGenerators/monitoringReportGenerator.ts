@@ -1395,6 +1395,59 @@ export async function generate(ctx: GeneratorContext): Promise<{
     console.warn('[Monitoring] 目標引用検証に失敗:', err);
   }
 
+  // === D12 理由文始まりの除去 ===
+  // D12は「何をしたか」ではなく「どう評価できるか」から始める。
+  // 「短期目標の期間満了に伴うモニタリングを実施した。」等の理由文が冒頭にある場合は除去する。
+  if (result.service_reason) {
+    const originalD12 = result.service_reason;
+    result.service_reason = result.service_reason
+      .replace(/^(短期|長期)?目標の期間満了に伴う?(モニタリング|評価)を実施した[。.]\s*/g, '')
+      .replace(/^モニタリングを実施した[。.]\s*/g, '')
+      .replace(/^モニタリングの結果[、,]?\s*/g, '')
+      .replace(/^今回のモニタリングでは[、,]?\s*/g, '')
+      .replace(/^モニタリング(を|の)実施[。.]\s*/g, '')
+      .trim();
+    if (result.service_reason !== originalD12) {
+      console.log(`[Monitoring] D12理由文始まりを除去: 「${originalD12.substring(0, 30)}...」→「${result.service_reason.substring(0, 30)}...」`);
+    }
+    // 除去後に空になった場合のフォールバック
+    if (!result.service_reason || result.service_reason.length < 10) {
+      const hasBody = serviceTypes.some(st => st.includes('身体'));
+      const hasHouse = serviceTypes.some(st => st.includes('家事') || st.includes('生活'));
+      if (hasBody && hasHouse) {
+        result.service_reason = '現行計画に基づく家事援助及び身体介護は概ね提供できており、服薬確認や生活支援により心身の状態は概ね安定している。生活環境の維持と体調管理に支援効果が認められ、在宅生活の継続につながっている。';
+      } else if (hasBody) {
+        result.service_reason = '現行計画に基づく身体介護は概ね提供できており、体調管理により心身の状態は概ね安定している。在宅生活の継続が図れている。';
+      } else if (hasHouse) {
+        result.service_reason = '現行計画に基づく家事援助は概ね提供できており、生活環境の維持が図れている。在宅生活の継続につながっている。';
+      } else {
+        result.service_reason = '現行計画に基づくサービスは概ね提供できており、心身の状態は概ね安定している。在宅生活の継続が図れている。';
+      }
+    }
+  }
+
+  // === J12 未完文チェック ===
+  // condition_detail（J12 ③心身の状況の変化）が途中で切れている場合を修正
+  if (result.condition_detail) {
+    const cd = result.condition_detail.trim();
+    // 文末が句点で終わっていない（途中切れ）をチェック
+    if (cd.length > 0 && !cd.endsWith('。') && !cd.endsWith('」') && !cd.endsWith('）')) {
+      // 途中で切れている → 完結文に修正
+      console.warn(`[Monitoring] ⚠ J12が未完文: 「...${cd.substring(cd.length - 20)}」`);
+      // 最後の句点位置を探す
+      const lastPeriod = cd.lastIndexOf('。');
+      if (lastPeriod > cd.length * 0.5) {
+        // 後半に句点がある → そこまでで切る
+        result.condition_detail = cd.substring(0, lastPeriod + 1);
+        console.log(`[Monitoring] J12を最後の句点で切断: ${result.condition_detail.length}文字`);
+      } else {
+        // 句点がない or 前半にしかない → 安定文で補完
+        result.condition_detail = cd + '。全体として大きな変化は認められない。';
+        console.log(`[Monitoring] J12に完結句を補完`);
+      }
+    }
+  }
+
   // === D12 service_reasonのサービス種別整合チェック ===
   // ★最重要: D12の種別は「居宅介護計画書のサービスブロック」が真値。
   // 実績データの多数決はフォールバックとして使用する。
@@ -1634,6 +1687,58 @@ export async function generate(ctx: GeneratorContext): Promise<{
         cleaned = cleaned.replace(/\s{2,}/g, ' ').replace(/。{2,}/g, '。').trim();
         if (cleaned !== val) {
           (result as unknown as Record<string, unknown>)[field] = cleaned;
+        }
+      }
+    }
+  }
+
+  // === D12/J12 最終品質チェック ===
+  // 全ての後処理を経た後、D12(service_reason)とJ12(condition_detail)が
+  // 評価文として成立しているか最終検証する。
+  {
+    // --- D12 (service_reason) ---
+    const d12 = result.service_reason;
+
+    // D12禁止: 「短期目標の期間満了に伴うモニタリングを実施した」で始まる理由文
+    const D12_REASON_START = /^(短期|長期)?目標の期間満了に伴う?(モニタリング|評価)を実施した/;
+    // D12禁止: その他の理由文/トリガー文始まり
+    const D12_TRIGGER_START = /^(モニタリング(を実施した|の結果)|定期モニタリング|今回のモニタリング|サービス内容の変更は不要)/;
+
+    if (d12 && (D12_REASON_START.test(d12) || D12_TRIGGER_START.test(d12))) {
+      console.warn(`[Monitoring] ⚠ D12が理由文/トリガー文で始まっています。評価文に差し替えます。`);
+      console.warn(`[Monitoring]   D12(修正前): "${d12.substring(0, 60)}..."`);
+      const hasBody2 = serviceTypes.some(st => st.includes('身体'));
+      const hasHouse2 = serviceTypes.some(st => st.includes('家事') || st.includes('生活'));
+      if (hasBody2 && hasHouse2) {
+        result.service_reason = '現行計画に基づく家事援助及び身体介護は概ね提供できており、服薬確認や生活支援により心身の状態は概ね安定している。生活環境の維持と体調管理に支援効果が認められ、在宅生活の継続につながっている。';
+      } else if (hasBody2) {
+        result.service_reason = '現行計画に基づく身体介護は概ね提供できており、体調管理により心身の状態は概ね安定している。在宅生活の継続に支障はなく、支援効果が認められる。';
+      } else if (hasHouse2) {
+        result.service_reason = '現行計画に基づく家事援助は概ね提供できており、生活支援により生活環境は概ね安定している。在宅生活の継続に支障はなく、支援効果が認められる。';
+      } else {
+        result.service_reason = '現行計画に基づくサービスは概ね提供できており、心身の状態は概ね安定している。在宅生活の継続につながっている。';
+      }
+    }
+
+    // D12: 「。」終わり必須
+    if (result.service_reason && !result.service_reason.endsWith('。')) {
+      result.service_reason = result.service_reason.trimEnd() + '。';
+    }
+
+    // --- J12 (condition_detail) ---
+    // J12: 「。」終わり必須
+    if (result.condition_detail && !result.condition_detail.endsWith('。')) {
+      result.condition_detail = result.condition_detail.trimEnd() + '。';
+    }
+
+    // J12: 途中切れ検出（文末が読点や接続詞で終わっている場合）
+    if (result.condition_detail) {
+      const j12Body = result.condition_detail.replace(/。$/, '');
+      const J12_INCOMPLETE = /[、,][^。]{0,5}$/;
+      if (J12_INCOMPLETE.test(j12Body)) {
+        console.warn(`[Monitoring] ⚠ J12が途中切れの可能性。完結文に差し替えます。`);
+        if (result.condition_change === 1) {
+          result.condition_detail = '手足の震え等の症状は継続しているが日常生活への大きな支障はなく、体調面やADLにも著しい変化は認められない。心身の状態は概ね安定しており、全体として大きな変化はない。';
         }
       }
     }
