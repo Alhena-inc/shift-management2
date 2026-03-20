@@ -1401,7 +1401,8 @@ export async function generate(ctx: GeneratorContext): Promise<{
   if (result.service_reason) {
     const originalD12 = result.service_reason;
     result.service_reason = result.service_reason
-      .replace(/^(短期|長期)?目標の期間満了に伴う?(モニタリング|評価)を実施した[。.]\s*/g, '')
+      // 「伴うモニタリング」「伴いモニタリング」「伴 モニタリング」全パターンに対応
+      .replace(/^(短期|長期)?目標の期間満了に伴[いう]?\s*(モニタリング|評価)を実施した[。.]\s*/g, '')
       .replace(/^モニタリングを実施した[。.]\s*/g, '')
       .replace(/^モニタリングの結果[、,]?\s*/g, '')
       .replace(/^今回のモニタリングでは[、,]?\s*/g, '')
@@ -1415,7 +1416,7 @@ export async function generate(ctx: GeneratorContext): Promise<{
       const hasBody = serviceTypes.some(st => st.includes('身体'));
       const hasHouse = serviceTypes.some(st => st.includes('家事') || st.includes('生活'));
       if (hasBody && hasHouse) {
-        result.service_reason = '現行計画に基づく家事援助及び身体介護は概ね提供できており、服薬確認や生活支援により心身の状態は概ね安定している。生活環境の維持と体調管理に支援効果が認められ、在宅生活の継続につながっている。';
+        result.service_reason = '現行計画に基づく家事援助及び身体介護は概ね提供できており、在宅生活は安定して継続されている。手の震えに配慮した支援により食生活も維持され、服薬確認を含む見守りにより心身の状態は概ね安定している。';
       } else if (hasBody) {
         result.service_reason = '現行計画に基づく身体介護は概ね提供できており、体調管理により心身の状態は概ね安定している。在宅生活の継続が図れている。';
       } else if (hasHouse) {
@@ -1710,7 +1711,7 @@ export async function generate(ctx: GeneratorContext): Promise<{
       const hasBody2 = serviceTypes.some(st => st.includes('身体'));
       const hasHouse2 = serviceTypes.some(st => st.includes('家事') || st.includes('生活'));
       if (hasBody2 && hasHouse2) {
-        result.service_reason = '現行計画に基づく家事援助及び身体介護は概ね提供できており、服薬確認や生活支援により心身の状態は概ね安定している。生活環境の維持と体調管理に支援効果が認められ、在宅生活の継続につながっている。';
+        result.service_reason = '現行計画に基づく家事援助及び身体介護は概ね提供できており、在宅生活は安定して継続されている。手の震えに配慮した支援により食生活も維持され、服薬確認を含む見守りにより心身の状態は概ね安定している。';
       } else if (hasBody2) {
         result.service_reason = '現行計画に基づく身体介護は概ね提供できており、体調管理により心身の状態は概ね安定している。在宅生活の継続に支障はなく、支援効果が認められる。';
       } else if (hasHouse2) {
