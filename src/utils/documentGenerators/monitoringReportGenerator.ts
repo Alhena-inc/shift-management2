@@ -470,8 +470,19 @@ async function fillTemplateWorkbook(
   ws.getRow(9).height = 22;     // 選択肢2
   ws.getRow(10).height = 22;    // 選択肢3
   ws.getRow(11).height = 30;    // モニタリング実施者
+  // 理由記入欄の行高さ — テキスト量に応じて調整
+  // D12:F18のマージセルに長文が入る場合に途切れないようにする
+  const reasonTexts = [
+    result.service_reason || '',
+    result.satisfaction_reason || '',
+    result.condition_detail || '',
+    result.service_change_reason || '',
+  ];
+  const maxReasonLen = Math.max(...reasonTexts.map(t => t.length));
+  // 文字数に応じて行高さを決定（7行分のマージセルなので各行に均等配分）
+  const reasonRowHeight = maxReasonLen > 200 ? 30 : maxReasonLen > 120 ? 26 : 22;
   for (let r = 12; r <= 18; r++) {
-    ws.getRow(r).height = 22;   // 理由記入欄
+    ws.getRow(r).height = reasonRowHeight;
   }
 
   const displayName = client.childName ? `${client.name}（${client.childName}）` : client.name;
