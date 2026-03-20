@@ -1854,6 +1854,26 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
     }
   }
 
+  // === 「契約支給量にあるが実績にない」サービスの条件付き例外処理 ===
+  const supplyOnlyServices: Array<{ label: string; hours: string }> = [];
+  const visitBodySupplyOnly = !!visitBodyHours && !billingHasVisit && !planHasVisitBodyContent;
+  if (visitBodySupplyOnly) supplyOnlyServices.push({ label: '通院等介助(身体介護を伴う)', hours: visitBodyHours });
+  const visitNoBodySupplyOnly = !!visitNoBodyHours && !billingHasVisit && !planHasVisitNoBodyContent;
+  if (visitNoBodySupplyOnly) supplyOnlyServices.push({ label: '通院等介助(身体介護を伴わない)', hours: visitNoBodyHours });
+  const accompanySupplyOnly = !!accompanyHours && !billingHasAccompany && !allSvcTypes.some(st => st.includes('同行'));
+  if (accompanySupplyOnly) supplyOnlyServices.push({ label: '同行援護', hours: accompanyHours });
+  const behaviorSupplyOnly = !!behaviorHours && !billingHasBehavior && !allSvcTypes.some(st => st.includes('行動'));
+  if (behaviorSupplyOnly) supplyOnlyServices.push({ label: '行動援護', hours: behaviorHours });
+  if (supplyOnlyServices.length > 0) {
+    console.log(`[CarePlan] 契約あり＆実績なし: ${supplyOnlyServices.map(s => `${s.label}(${s.hours}h)`).join(', ')} → チェックOFF・本体除外・備考記載`);
+  }
+
+  // チェックボックス: 「契約あり＆実績なし」はチェックOFF
+  const effectiveVisitBody = visitBodySupplyOnly ? false : hasVisitBody;
+  const effectiveVisitNoBody = visitNoBodySupplyOnly ? false : hasVisitNoBody;
+  const effectiveAccompany = accompanySupplyOnly ? false : hasAccompany;
+  const effectiveBehavior = behaviorSupplyOnly ? false : hasBehavior;
+
   const checkboxAlignment: Partial<ExcelJS.Alignment> = { vertical: 'middle', wrapText: true };
   ws0.getCell('D16').value = checkboxText('身体介護', { checked: hasBody, hours: bodyHours });
   ws0.getCell('D16').alignment = checkboxAlignment;
@@ -1861,23 +1881,35 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
   ws0.getCell('G16').alignment = checkboxAlignment;
   ws0.getCell('J16').value = checkboxText('重度訪問介護', { checked: hasHeavy, hours: heavyHours });
   ws0.getCell('J16').alignment = checkboxAlignment;
-  ws0.getCell('D17').value = checkboxText('通院等介助(身体介護を伴う)', { checked: hasVisitBody, hours: visitBodyHours });
+  ws0.getCell('D17').value = checkboxText('通院等介助(身体介護を伴う)', { checked: effectiveVisitBody, hours: effectiveVisitBody ? visitBodyHours : '' });
   ws0.getCell('D17').alignment = checkboxAlignment;
-  ws0.getCell('G17').value = checkboxText('通院等介助(身体介護を伴わない)', { checked: hasVisitNoBody, hours: visitNoBodyHours });
+  ws0.getCell('G17').value = checkboxText('通院等介助(身体介護を伴わない)', { checked: effectiveVisitNoBody, hours: effectiveVisitNoBody ? visitNoBodyHours : '' });
   ws0.getCell('G17').alignment = checkboxAlignment;
   ws0.getCell('J17').value = checkboxText('通院等乗降介助', { checked: hasRide, hours: rideHours });
   ws0.getCell('J17').alignment = checkboxAlignment;
-  ws0.getCell('D18').value = checkboxText('同行援護', { checked: hasAccompany, hours: accompanyHours });
+  ws0.getCell('D18').value = checkboxText('同行援護', { checked: effectiveAccompany, hours: effectiveAccompany ? accompanyHours : '' });
   ws0.getCell('D18').alignment = checkboxAlignment;
-  ws0.getCell('G18').value = checkboxText('行動援護', { checked: hasBehavior, hours: behaviorHours });
+  ws0.getCell('G18').value = checkboxText('行動援護', { checked: effectiveBehavior, hours: effectiveBehavior ? behaviorHours : '' });
   ws0.getCell('G18').alignment = checkboxAlignment;
 
-  // 計画予定表（実績表ベース）- サービスブロック情報を渡して代表内容を表示
-  const planServiceBlocksForSchedule = allPlanServices.map(s => ({
-    service_type: s.service_type,
-    steps: s.steps.map(st => ({ item: st.item, category: st.category })),
-  }));
-  console.log(`[CarePlan] 計画予定表書き込み - 実績件数: ${clientRecords.length}`);
+  // 計画予定表（実績表ベース）- 「契約あり＆実績なし」サービスを予定表から除外
+  const supplyOnlyLabels = new Set(supplyOnlyServices.map(s => s.label));
+  const planServiceBlocksForSchedule = allPlanServices
+    .filter(s => {
+      const sType = (s.service_type || '').replace(/\s+/g, '');
+      if (sType.includes('通院') && (supplyOnlyLabels.has('通院等介助(身体介護を伴う)') || supplyOnlyLabels.has('通院等介助(身体介護を伴わない)'))) {
+        console.log(`[CarePlan] 予定表から通院ブロック除外: ${s.service_type}`);
+        return false;
+      }
+      if (sType.includes('同行') && supplyOnlyLabels.has('同行援護')) return false;
+      if (sType.includes('行動') && supplyOnlyLabels.has('行動援護')) return false;
+      return true;
+    })
+    .map(s => ({
+      service_type: s.service_type,
+      steps: s.steps.map(st => ({ item: st.item, category: st.category })),
+    }));
+  console.log(`[CarePlan] 計画予定表書き込み - 実績件数: ${clientRecords.length}, 除外: ${supplyOnlyServices.map(s => s.label).join(', ') || 'なし'}`);
   fillScheduleFromBilling(ws0, clientRecords, planServiceBlocksForSchedule);
 
   // 備考欄（K21:K68をマージして全文表示）
@@ -1904,10 +1936,67 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
         remarks = remarks.replace(match[0], match[0].replace(match[1], actualType));
       }
     }
+    // === 「契約支給量あり＋実績なし」のサービス種別に対する備考文自動追加 ===
+    // 契約上の保有枠はあるが、当該計画期間の実績に提供記録がないサービスを検出し、
+    // 備考欄に説明文を追加する。定例サービスではないため計画予定表やサービス内容には載せない。
+    {
+      const supplyOnlyServices: Array<{ label: string; hours: string }> = [];
+      // 各サービス種別について「契約あり＋実績なし」を判定
+      const supplyVsBilling: Array<{ key: string; label: string; supplyHour: string; hasBilling: boolean }> = [
+        { key: '通院等介助(身体介護を伴わない)', label: '通院等介助（身体介護を伴わない）', supplyHour: visitNoBodyHours, hasBilling: billingHasVisit },
+        { key: '通院等介助(身体介護を伴う)', label: '通院等介助（身体介護を伴う）', supplyHour: visitBodyHours, hasBilling: billingHasVisit },
+        { key: '通院等乗降介助', label: '通院等乗降介助', supplyHour: rideHours, hasBilling: serviceTypes.some(st => st.includes('乗降')) },
+        { key: '同行援護', label: '同行援護', supplyHour: accompanyHours, hasBilling: billingHasAccompany },
+        { key: '行動援護', label: '行動援護', supplyHour: behaviorHours, hasBilling: billingHasBehavior },
+      ];
+      for (const svc of supplyVsBilling) {
+        if (svc.supplyHour && !svc.hasBilling) {
+          supplyOnlyServices.push({ label: svc.label, hours: svc.supplyHour });
+          console.log(`[CarePlan] 契約あり＋実績なし検出: ${svc.label}（${svc.supplyHour}時間）→ 備考欄に説明追加`);
+        }
+      }
+
+      if (supplyOnlyServices.length > 0) {
+        const supplyNotes = supplyOnlyServices.map(s =>
+          `${s.label}については契約支給量上の保有枠（${s.hours}時間/月）があるが、当該計画期間において実績・定例利用がないため計画予定表には記載していない。必要が生じた場合は、支給決定範囲内で対応する。`
+        );
+        // 既存の備考に追記（改行で区切る）
+        if (remarks) {
+          remarks = remarks + '\n\n' + supplyNotes.join('\n');
+        } else {
+          remarks = supplyNotes.join('\n');
+        }
+      }
+    }
+
     ws0.mergeCells('K21:K68');
     const remarkCell = ws0.getCell('K21');
     remarkCell.value = remarks;
     remarkCell.alignment = { vertical: 'top', wrapText: true };
+  } else {
+    // 備考欄がAI出力にない場合でも、「契約あり＋実績なし」のサービスがあれば備考欄を生成
+    const supplyOnlyForEmpty: Array<{ label: string; hours: string }> = [];
+    const checkPairs: Array<{ label: string; hours: string; hasBilling: boolean }> = [
+      { label: '通院等介助（身体介護を伴わない）', hours: visitNoBodyHours, hasBilling: billingHasVisit },
+      { label: '通院等介助（身体介護を伴う）', hours: visitBodyHours, hasBilling: billingHasVisit },
+      { label: '同行援護', hours: accompanyHours, hasBilling: billingHasAccompany },
+      { label: '行動援護', hours: behaviorHours, hasBilling: billingHasBehavior },
+    ];
+    for (const p of checkPairs) {
+      if (p.hours && !p.hasBilling) {
+        supplyOnlyForEmpty.push({ label: p.label, hours: p.hours });
+      }
+    }
+    if (supplyOnlyForEmpty.length > 0) {
+      const notes = supplyOnlyForEmpty.map(s =>
+        `${s.label}については契約支給量上の保有枠（${s.hours}時間/月）があるが、当該計画期間において実績・定例利用がないため計画予定表には記載していない。必要が生じた場合は、支給決定範囲内で対応する。`
+      );
+      ws0.mergeCells('K21:K68');
+      const remarkCell = ws0.getCell('K21');
+      remarkCell.value = notes.join('\n');
+      remarkCell.alignment = { vertical: 'top', wrapText: true };
+      console.log(`[CarePlan] 備考欄なし→契約あり実績なし説明を自動追加: ${supplyOnlyForEmpty.map(s => s.label).join(', ')}`);
+    }
   }
 
   // ==============================
@@ -1936,6 +2025,24 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
   for (let blockIdx = 0; blockIdx < serviceBlocks.length; blockIdx++) {
     const block = serviceBlocks[blockIdx];
     const service = allServices[blockIdx];
+
+    // === 「契約あり＆実績なし」のサービスブロックは本体表示から除外 ===
+    if (service?.service_type && supplyOnlyLabels.size > 0) {
+      const sType = (service.service_type || '').replace(/\s+/g, '');
+      if (sType.includes('通院') && (supplyOnlyLabels.has('通院等介助(身体介護を伴う)') || supplyOnlyLabels.has('通院等介助(身体介護を伴わない)'))) {
+        console.log(`[CarePlan] サービス${blockIdx + 1}: 通院ブロック「${service.service_type}」を本体表示から除外（契約あり＆実績なし）`);
+        continue; // このブロックをスキップ — 行は空欄のまま
+      }
+      if (sType.includes('同行') && supplyOnlyLabels.has('同行援護')) {
+        console.log(`[CarePlan] サービス${blockIdx + 1}: 同行援護ブロックを本体表示から除外`);
+        continue;
+      }
+      if (sType.includes('行動') && supplyOnlyLabels.has('行動援護')) {
+        console.log(`[CarePlan] サービス${blockIdx + 1}: 行動援護ブロックを本体表示から除外`);
+        continue;
+      }
+    }
+
     const steps = service?.steps || [];
     const maxRows = block.dataEndRow - block.dataStartRow + 1; // 8 rows
 
@@ -2159,11 +2266,17 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
     severity_level: plan.severity_level,
     goal_long_text: goalLongText,
     goal_short_text: goalShortText,
-    // 手順書生成にサービス内容を引き継ぐ
-    serviceBlocks: [plan.service1, plan.service2, plan.service3, plan.service4].filter(Boolean) as Array<{
+    // 手順書生成にサービス内容を引き継ぐ（「契約あり＆実績なし」ブロックは除外）
+    serviceBlocks: ([plan.service1, plan.service2, plan.service3, plan.service4].filter(Boolean) as Array<{
       service_type: string;
       visit_label: string;
       steps: Array<{ item: string; content: string; note: string; category?: string }>;
-    }>,
+    }>).filter(s => {
+      const sType = (s.service_type || '').replace(/\s+/g, '');
+      if (sType.includes('通院') && (supplyOnlyLabels.has('通院等介助(身体介護を伴う)') || supplyOnlyLabels.has('通院等介助(身体介護を伴わない)'))) return false;
+      if (sType.includes('同行') && supplyOnlyLabels.has('同行援護')) return false;
+      if (sType.includes('行動') && supplyOnlyLabels.has('行動援護')) return false;
+      return true;
+    }),
   };
 }

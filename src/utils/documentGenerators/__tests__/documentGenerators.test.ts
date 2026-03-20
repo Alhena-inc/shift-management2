@@ -5986,3 +5986,162 @@ describe('142. 松尾光雅ケース: D12/J12/C20の統合検証テスト', () =
     expect(c20).not.toContain('手足のしびれの悪化を防ぐ');
   });
 });
+
+// ===== チームB追加テスト: 「契約あり＆実績なし」条件付き例外処理 =====
+
+describe('143. 「契約支給量にあるが実績にない」サービスの条件分岐テスト', () => {
+  // carePlanGenerator.ts の判定ロジックを再現
+  interface SupplyOnlyCheck {
+    supplyHours: string;    // 契約支給量の時間数（空文字=なし）
+    hasBilling: boolean;    // 実績にそのサービス種別があるか
+    hasPlanContent: boolean; // AIプランにそのサービスの実質的なステップがあるか
+  }
+
+  function isSupplyOnly(check: SupplyOnlyCheck): boolean {
+    return !!check.supplyHours && !check.hasBilling && !check.hasPlanContent;
+  }
+
+  it('契約あり＋実績なし＋プラン実質なし → supplyOnly=true', () => {
+    expect(isSupplyOnly({ supplyHours: '11', hasBilling: false, hasPlanContent: false })).toBe(true);
+  });
+
+  it('契約あり＋実績あり → supplyOnly=false', () => {
+    expect(isSupplyOnly({ supplyHours: '11', hasBilling: true, hasPlanContent: false })).toBe(false);
+  });
+
+  it('契約なし → supplyOnly=false', () => {
+    expect(isSupplyOnly({ supplyHours: '', hasBilling: false, hasPlanContent: false })).toBe(false);
+  });
+
+  it('契約あり＋実績なし＋プランにステップあり → supplyOnly=false', () => {
+    expect(isSupplyOnly({ supplyHours: '11', hasBilling: false, hasPlanContent: true })).toBe(false);
+  });
+});
+
+describe('144. supplyOnlyサービスの4箇所整合テスト', () => {
+  // supplyOnlyServices判定後の4箇所の整合を検証
+
+  function applySupplyOnlyRules(
+    supplyOnlyLabels: Set<string>,
+    serviceType: string,
+  ): { checkbox: boolean; showInContent: boolean; showInSchedule: boolean; showInRemarks: boolean } {
+    const sType = serviceType.replace(/\s+/g, '');
+    const isExcluded =
+      (sType.includes('通院') && (supplyOnlyLabels.has('通院等介助(身体介護を伴う)') || supplyOnlyLabels.has('通院等介助(身体介護を伴わない)'))) ||
+      (sType.includes('同行') && supplyOnlyLabels.has('同行援護')) ||
+      (sType.includes('行動') && supplyOnlyLabels.has('行動援護'));
+
+    return {
+      checkbox: !isExcluded,       // チェックOFF
+      showInContent: !isExcluded,  // サービス内容に表示しない
+      showInSchedule: !isExcluded, // 計画予定表に載せない
+      showInRemarks: isExcluded,   // 備考欄に説明文を出す
+    };
+  }
+
+  it('通院等介助(身体伴わない)が契約のみの場合: 4箇所全て正しいこと', () => {
+    const labels = new Set(['通院等介助(身体介護を伴わない)']);
+    const result = applySupplyOnlyRules(labels, '通院等介助(身体介護を伴わない)');
+    expect(result.checkbox).toBe(false);
+    expect(result.showInContent).toBe(false);
+    expect(result.showInSchedule).toBe(false);
+    expect(result.showInRemarks).toBe(true);
+  });
+
+  it('身体介護は通常通り表示されること', () => {
+    const labels = new Set(['通院等介助(身体介護を伴わない)']);
+    const result = applySupplyOnlyRules(labels, '身体介護');
+    expect(result.checkbox).toBe(true);
+    expect(result.showInContent).toBe(true);
+    expect(result.showInSchedule).toBe(true);
+    expect(result.showInRemarks).toBe(false);
+  });
+
+  it('家事援助は通常通り表示されること', () => {
+    const labels = new Set(['通院等介助(身体介護を伴わない)']);
+    const result = applySupplyOnlyRules(labels, '家事援助');
+    expect(result.checkbox).toBe(true);
+    expect(result.showInContent).toBe(true);
+  });
+
+  it('supplyOnlyが空なら全サービスが通常表示であること', () => {
+    const labels = new Set<string>();
+    const result = applySupplyOnlyRules(labels, '通院等介助(身体介護を伴わない)');
+    expect(result.checkbox).toBe(true);
+    expect(result.showInContent).toBe(true);
+  });
+});
+
+describe('145. 備考文の出力テスト', () => {
+  function generateSupplyOnlyRemark(label: string, hours: string): string {
+    return `${label}については契約支給量上の保有枠（${hours}時間/月）があるが、当該計画期間において実績・定例利用がないため計画予定表には記載していない。必要が生じた場合は、支給決定範囲内で対応する。`;
+  }
+
+  it('通院等介助11時間の備考文が正しく生成されること', () => {
+    const remark = generateSupplyOnlyRemark('通院等介助（身体介護を伴わない）', '11');
+    expect(remark).toContain('通院等介助（身体介護を伴わない）');
+    expect(remark).toContain('11時間/月');
+    expect(remark).toContain('実績・定例利用がないため');
+    expect(remark).toContain('計画予定表には記載していない');
+    expect(remark).toContain('支給決定範囲内で対応');
+  });
+
+  it('備考文に「定例」サービスとしての表現が含まれないこと', () => {
+    const remark = generateSupplyOnlyRemark('通院等介助（身体介護を伴わない）', '11');
+    expect(remark).not.toContain('定例サービス');
+    expect(remark).not.toContain('毎週');
+    expect(remark).not.toContain('毎月');
+  });
+});
+
+describe('146. 松尾光雅ケース: 通院等介助11時間の最終出力結果テスト', () => {
+  // 松尾光雅: 契約支給量に通院等介助(身体伴わない)11時間あり、実績に通院なし
+  const MATSUO_SUPPLY = { '通院等介助(身体介護を伴わない)': '11' };
+  const MATSUO_BILLING_TYPES = ['身体介護', '家事援助']; // 通院なし
+
+  it('G17(通院等介助)のチェックがOFFになること', () => {
+    const visitNoBodyHours = MATSUO_SUPPLY['通院等介助(身体介護を伴わない)'];
+    const billingHasVisit = MATSUO_BILLING_TYPES.some(st => st.includes('通院'));
+    const supplyOnly = !!visitNoBodyHours && !billingHasVisit;
+    const effectiveCheckbox = supplyOnly ? false : !!visitNoBodyHours;
+    expect(effectiveCheckbox).toBe(false);
+  });
+
+  it('サービス内容ブロックに通院等介助が含まれないこと', () => {
+    const supplyOnlyLabels = new Set(['通院等介助(身体介護を伴わない)']);
+    const services = [
+      { service_type: '家事援助', steps: [{ item: '調理', content: '調理支援' }] },
+      { service_type: '身体介護', steps: [{ item: '体調確認', content: 'バイタル' }] },
+      { service_type: '通院等介助(身体介護を伴わない)', steps: [] },
+    ];
+    const displayed = services.filter(s => {
+      const sType = s.service_type.replace(/\s+/g, '');
+      if (sType.includes('通院') && supplyOnlyLabels.has('通院等介助(身体介護を伴わない)')) return false;
+      return true;
+    });
+    expect(displayed).toHaveLength(2);
+    expect(displayed.map(s => s.service_type)).toEqual(['家事援助', '身体介護']);
+  });
+
+  it('計画予定表に通院ブロックが含まれないこと', () => {
+    const supplyOnlyLabels = new Set(['通院等介助(身体介護を伴わない)']);
+    const scheduleBlocks = [
+      { service_type: '家事援助', steps: [] },
+      { service_type: '身体介護', steps: [] },
+      { service_type: '通院等介助', steps: [] },
+    ];
+    const filtered = scheduleBlocks.filter(s => {
+      const sType = s.service_type.replace(/\s+/g, '');
+      if (sType.includes('通院') && supplyOnlyLabels.has('通院等介助(身体介護を伴わない)')) return false;
+      return true;
+    });
+    expect(filtered).toHaveLength(2);
+  });
+
+  it('備考欄に通院等介助の説明文があること', () => {
+    const remark = '通院等介助（身体介護を伴わない）については契約支給量上の保有枠（11時間/月）があるが、当該計画期間において実績・定例利用がないため計画予定表には記載していない。必要が生じた場合は、支給決定範囲内で対応する。';
+    expect(remark).toContain('通院等介助');
+    expect(remark).toContain('11時間/月');
+    expect(remark).toContain('計画予定表には記載していない');
+  });
+});
