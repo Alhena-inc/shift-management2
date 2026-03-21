@@ -84,6 +84,7 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
   const [generatingAll, setGeneratingAll] = useState<string | null>(null);
   const [catchUpProgress, setCatchUpProgress] = useState<string>('');
   const [downloadingAll, setDownloadingAll] = useState<string | null>(null);
+  const [docTab, setDocTab] = useState<'documents' | 'journals'>('documents');
   const hiddenDivRef = useRef<HTMLDivElement | null>(null);
 
   const loadClientDocuments = useCallback(async (clientId: string) => {
@@ -396,31 +397,38 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
         })}
       </div>
 
-      {/* 展開時: 書類テーブル（グリッドの下に全幅表示） */}
+      {/* 展開時: タブ切替（書類 / 日誌） */}
       {expandedClientId && (() => {
         const isLoading = loadingClientId === expandedClientId;
-        const docs = clientDocs[expandedClientId] || [];
+        const allDocs = clientDocs[expandedClientId] || [];
         const clientName = careClients.find(c => c.id === expandedClientId)?.name || '';
         const isGeneratingAll = generatingAll === expandedClientId;
 
+        // 書類と日誌を分離
+        const regularDocs = allDocs.filter(d => d.typeLabel !== 'サービス提供記録（日誌）');
+        const journalDocs = allDocs.filter(d => d.typeLabel === 'サービス提供記録（日誌）');
+
+        const activeTab = docTab;
+        const displayDocs = activeTab === 'documents' ? regularDocs : journalDocs;
+
         return (
           <div className="mt-3 bg-white rounded-xl border border-gray-200 overflow-hidden">
+            {/* ヘッダー */}
             <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-200">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-indigo-600 text-base">person</span>
                 <span className="text-sm font-bold text-gray-800">{clientName}</span>
-                {!isLoading && <span className="text-xs text-gray-400">{docs.length}件</span>}
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => handleBulkDownload(expandedClientId)}
-                  disabled={downloadingAll === expandedClientId || isLoading || docs.length === 0}
+                  disabled={downloadingAll === expandedClientId || isLoading || allDocs.length === 0}
                   className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-xs font-medium flex items-center gap-1 shadow-sm"
                 >
                   <span className="material-symbols-outlined text-sm">
                     {downloadingAll === expandedClientId ? 'progress_activity' : 'download'}
                   </span>
-                  {downloadingAll === expandedClientId ? 'ダウンロード中...' : '一括ダウンロード'}
+                  {downloadingAll === expandedClientId ? 'ダウンロード中...' : '一括DL'}
                 </button>
                 <button
                   onClick={() => handleCatchUpGenerateForClient(expandedClientId)}
@@ -430,7 +438,7 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
                   <span className="material-symbols-outlined text-sm">
                     {isGeneratingAll ? 'progress_activity' : 'playlist_add_check'}
                   </span>
-                  {isGeneratingAll ? '一括生成中...' : '全書類一括生成'}
+                  {isGeneratingAll ? '生成中...' : '書類一括生成'}
                 </button>
                 <button
                   onClick={() => handleJournalGenerate(expandedClientId)}
@@ -440,7 +448,7 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
                   <span className="material-symbols-outlined text-sm">
                     {generatingJournal === expandedClientId ? 'progress_activity' : 'edit_note'}
                   </span>
-                  {generatingJournal === expandedClientId ? '日誌作成中...' : '日誌作成'}
+                  {generatingJournal === expandedClientId ? '作成中...' : '日誌作成'}
                 </button>
                 <button
                   onClick={() => setExpandedClientId(null)}
@@ -450,6 +458,40 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
                 </button>
               </div>
             </div>
+
+            {/* タブ */}
+            <div className="flex border-b border-gray-200">
+              <button
+                onClick={() => setDocTab('documents')}
+                className={`flex-1 px-4 py-2.5 text-sm font-medium flex items-center justify-center gap-1.5 transition-colors ${
+                  activeTab === 'documents'
+                    ? 'text-indigo-700 border-b-2 border-indigo-600 bg-indigo-50/50'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <span className="material-symbols-outlined text-base">description</span>
+                書類
+                <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === 'documents' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'}`}>
+                  {regularDocs.length}
+                </span>
+              </button>
+              <button
+                onClick={() => setDocTab('journals')}
+                className={`flex-1 px-4 py-2.5 text-sm font-medium flex items-center justify-center gap-1.5 transition-colors ${
+                  activeTab === 'journals'
+                    ? 'text-orange-700 border-b-2 border-orange-500 bg-orange-50/50'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <span className="material-symbols-outlined text-base">edit_note</span>
+                日誌
+                <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === 'journals' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-500'}`}>
+                  {journalDocs.length}
+                </span>
+              </button>
+            </div>
+
+            {/* 進捗バー */}
             {isGeneratingAll && catchUpProgress && (
               <div className="px-4 py-2 bg-green-50 border-b border-green-200">
                 <div className="flex items-center gap-2">
@@ -466,13 +508,17 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
                 </div>
               </div>
             )}
+
+            {/* テーブル */}
             {isLoading ? (
               <div className="flex items-center justify-center py-8 text-gray-400 gap-2">
                 <span className="animate-spin material-symbols-outlined text-sm">progress_activity</span>
                 <span className="text-sm">読み込み中...</span>
               </div>
-            ) : docs.length === 0 ? (
-              <div className="text-center py-8 text-gray-400 text-sm">書類がありません</div>
+            ) : displayDocs.length === 0 ? (
+              <div className="text-center py-8 text-gray-400 text-sm">
+                {activeTab === 'documents' ? '書類がありません' : '日誌がありません。「日誌作成」ボタンで作成してください。'}
+              </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -486,11 +532,13 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {docs.map(doc => (
+                    {displayDocs.map(doc => (
                       <tr key={doc.id} className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{formatDate(doc.createdAt)}</td>
                         <td className="px-4 py-2">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                            activeTab === 'journals' ? 'bg-orange-50 text-orange-700' : 'bg-indigo-50 text-indigo-700'
+                          }`}>
                             {doc.typeLabel}
                           </span>
                         </td>
