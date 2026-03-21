@@ -290,44 +290,136 @@ export function generateLineStyleReport(
 
 // ==================== 日誌本文生成 ====================
 
+/** 曜日名 */
+const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+
+/** 手順書ステップから具体的なケア内容文を生成する */
+function buildCareDetailFromSteps(steps: ProcedureStep[], serviceType: string): string {
+  if (!steps || steps.length === 0) return '';
+  // 到着・退室を除いた主要ステップの具体内容を使う
+  const mainSteps = steps.filter(s => !/到着|挨拶|退室|訪問開始/.test(s.item));
+  if (mainSteps.length === 0) return '';
+  // ステップのcontentから時刻接頭辞を除去して具体内容を取得
+  const details = mainSteps.slice(0, 4).map(s => {
+    const content = (s.content || '').replace(/^\d{1,2}:\d{2}\s*/, '').trim();
+    return content || s.item;
+  }).filter(Boolean);
+  return details.join('。') + '。';
+}
+
 export function generateDiaryNarrative(
   journal: StructuredJournal,
   lineReport?: LineReport,
   vitalNote?: string,
+  procedureSteps?: ProcedureStep[],
 ): string {
   // LINE報告がある場合はそれを最優先
-  if (lineReport?.diary) {
+  if (lineReport?.diary && lineReport.diary.length > 20) {
     return lineReport.diary;
   }
 
   const parts: string[] = [];
+  const d = new Date(journal.serviceDate + 'T00:00:00');
+  const dayName = WEEKDAYS[d.getDay()];
 
-  // 訪問・状態確認
-  parts.push(`${journal.serviceStartTime}に訪問。${journal.complexion === '良好' ? '表情良好で' : ''}体調に大きな変化はない様子。`);
+  // === 訪問・状態確認（日ごとに微妙に変える） ===
+  const dayOfMonth = d.getDate();
+  const conditionVariants = [
+    '体調に大きな変化はなく穏やかな様子',
+    '表情穏やかで体調は安定している様子',
+    '声かけに応答あり、体調面での訴えなし',
+    '普段と変わりない様子で迎え入れあり',
+    '落ち着いた様子で体調の訴えなし',
+  ];
+  const conditionText = lineReport?.condition || conditionVariants[dayOfMonth % conditionVariants.length];
+  parts.push(`${journal.serviceStartTime}に訪問。${conditionText}。`);
 
-  // バイタル
-  if (vitalNote) {
-    parts.push(vitalNote);
-  } else if (journal.vitals.temperature !== undefined || journal.vitals.systolic !== undefined) {
+  // === バイタル（実測値ある場合のみ数値記載） ===
+  if (journal.vitals.temperature !== undefined || journal.vitals.systolic !== undefined) {
     const vals: string[] = [];
     if (journal.vitals.temperature !== undefined) vals.push(`体温${journal.vitals.temperature}℃`);
     if (journal.vitals.systolic !== undefined && journal.vitals.diastolic !== undefined) {
       vals.push(`血圧${journal.vitals.systolic}/${journal.vitals.diastolic}mmHg`);
     }
-    parts.push(`バイタル確認: ${vals.join('、')}。`);
+    parts.push(`バイタル測定: ${vals.join('、')}。`);
+  } else if (vitalNote) {
+    // 実測値なし → 体調確認文言のみ（「バイタル確認」とは書かない）
+    parts.push(vitalNote);
   }
 
-  // サービス内容（チェック項目から要約）
-  const activities: string[] = [];
-  if (journal.bodyChecks.medicationCheck) activities.push('服薬確認');
-  if (journal.houseChecks.cooking) activities.push('調理支援');
-  if (journal.houseChecks.cleaning) activities.push('居室清掃');
-  if (journal.houseChecks.laundry) activities.push('洗濯支援');
-  if (journal.houseChecks.shopping) activities.push('買物支援');
-  if (journal.commonChecks.environmentSetup) activities.push('環境整備');
+  // === 具体的ケア内容（サービス種別に応じた詳細文） ===
+  const isBody = journal.serviceTypeLabel.includes('身体') || journal.serviceTypeLabel.includes('重度');
+  const isHouse = journal.serviceTypeLabel.includes('家事') || journal.serviceTypeLabel.includes('生活');
 
-  if (activities.length > 0) {
-    parts.push(`${activities.join('、')}を実施。`);
+  // 手順書から具体内容を生成
+  const stepDetail = buildCareDetailFromSteps(procedureSteps || [], journal.serviceTypeLabel);
+
+  if (isHouse) {
+    // 家事援助: 具体的に何をしたか
+    const houseActions: string[] = [];
+    if (journal.houseChecks.cooking) {
+      const cookVariants = ['夕食の調理を行い食卓に配膳した', '献立に沿って食事の準備を行った', '食材を確認し夕食の調理・盛り付けを行った'];
+      houseActions.push(cookVariants[dayOfMonth % cookVariants.length]);
+    }
+    if (journal.houseChecks.cleaning) {
+      const cleanVariants = ['居室の掃除機がけと拭き掃除を実施した', '居室・トイレ等の清掃を行った', '居室内の清掃と動線の確認を行った'];
+      houseActions.push(cleanVariants[dayOfMonth % cleanVariants.length]);
+    }
+    if (journal.houseChecks.laundry) {
+      const laundryVariants = ['洗濯物を取り込みたたんで収納した', '洗濯機を回し干す作業を行った'];
+      houseActions.push(laundryVariants[dayOfMonth % laundryVariants.length]);
+    }
+    if (journal.houseChecks.dishwashing) houseActions.push('食器洗いと片付けを行った');
+    if (journal.houseChecks.shopping) houseActions.push('必要な日用品の買い物支援を行った');
+    if (journal.houseChecks.organizing) houseActions.push('整理整頓を行い生活環境を整えた');
+    if (journal.commonChecks.environmentSetup) houseActions.push('居室の安全確認と環境整備を行った');
+
+    if (houseActions.length > 0) {
+      parts.push(houseActions.join('。') + '。');
+    } else if (stepDetail) {
+      parts.push(stepDetail);
+    } else {
+      parts.push('計画に基づく生活支援を実施した。');
+    }
+  }
+
+  if (isBody) {
+    // 身体介護: 具体的に何をしたか
+    const bodyActions: string[] = [];
+    if (journal.bodyChecks.medicationCheck) {
+      const medVariants = ['処方薬の服薬状況を確認し、飲み忘れがないことを確認した', '服薬の声かけを行い、本人が服用したことを確認した', '薬の残量を確認し、本日分の服薬を確認した'];
+      bodyActions.push(medVariants[dayOfMonth % medVariants.length]);
+    }
+    if (journal.bodyChecks.toiletAssist) bodyActions.push('排泄介助を行い、清潔を保った');
+    if (journal.bodyChecks.bathAssist) bodyActions.push('入浴の見守り・介助を行った');
+    if (journal.bodyChecks.mealAssist) bodyActions.push('食事の見守り・声かけを行い、摂取状況を確認した');
+    if (journal.bodyChecks.mobilityAssist) bodyActions.push('室内移動の見守りを行い、安全を確認した');
+    if (journal.bodyChecks.dressingAssist) bodyActions.push('更衣の介助を行った');
+    if (journal.bodyChecks.groomingAssist) bodyActions.push('洗面・整容の声かけと見守りを行った');
+    if (journal.commonChecks.environmentSetup) bodyActions.push('室内の安全確認を行った');
+
+    if (bodyActions.length > 0) {
+      parts.push(bodyActions.join('。') + '。');
+    } else if (stepDetail) {
+      parts.push(stepDetail);
+    } else {
+      parts.push('計画に基づく身体介護を実施した。');
+    }
+  }
+
+  // LINE報告の追加情報があれば反映
+  if (lineReport) {
+    if (lineReport.careContent && lineReport.careContent.length > 0) {
+      const lineItems = lineReport.careContent.filter(c =>
+        !/(調理|清掃|掃除|洗濯|服薬|バイタル|環境)/.test(c)
+      );
+      if (lineItems.length > 0) {
+        parts.push(`その他、${lineItems.join('・')}を実施。`);
+      }
+    }
+    if (lineReport.condition && lineReport.condition.length > 5) {
+      // 既にconditionTextで使用済みなのでスキップ
+    }
   }
 
   // 特記があれば追加
@@ -335,8 +427,13 @@ export function generateDiaryNarrative(
     parts.push(journal.specialNotes);
   }
 
-  // 退室
-  parts.push(`${journal.serviceEndTime}にサービス終了。`);
+  // === 退室 ===
+  const exitVariants = [
+    `${journal.serviceEndTime}にサービス終了。退室時、利用者に声かけを行い退室した。`,
+    `${journal.serviceEndTime}にサービス終了。次回訪問日を伝え退室した。`,
+    `${journal.serviceEndTime}にサービス終了。戸締り確認後に退室した。`,
+  ];
+  parts.push(exitVariants[dayOfMonth % exitVariants.length]);
 
   return parts.join('');
 }
@@ -486,7 +583,7 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
     };
 
     // 日誌本文生成
-    const diaryNarrative = generateDiaryNarrative(structuredJournal, matchingLine, vitalNote);
+    const diaryNarrative = generateDiaryNarrative(structuredJournal, matchingLine, vitalNote, steps);
     structuredJournal.diaryNarrative = diaryNarrative;
 
     // LINE報告形式
