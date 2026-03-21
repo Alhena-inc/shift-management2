@@ -1487,38 +1487,8 @@ export async function executeCatchUpGeneration(
           generationLog.push(tejunshoLogEntry);
         }
 
-        // === 日誌一括生成（実績件数分 → Excel出力 → Supabase保存） ===
-        try {
-          const clientRecordsForJournal = ctx.billingRecords.filter(r => r.clientName === client.name);
-          if (clientRecordsForJournal.length > 0) {
-            const { generateJournals, generateAndSaveJournalExcel } = await import('./documentGenerators/journalGenerator');
-            const journalCtx = {
-              client,
-              billingRecords: clientRecordsForJournal,
-              procedureBlocks: lastServiceBlocks?.map(b => ({
-                service_type: b.service_type,
-                visit_label: b.visit_label,
-                steps: b.steps.map(s => ({ item: s.item, content: s.content, note: s.note, category: s.category })),
-              })),
-              carePlanServiceBlocks: planResult.serviceBlocks,
-            };
-            const journals = generateJournals(journalCtx);
-
-            // Excel化 + Supabase保存
-            const saved = await generateAndSaveJournalExcel(journals, client.id, client.name, step.year, step.month);
-            console.log(`[CatchUp] 日誌Excel保存完了: ${saved.fileName} (${saved.count}件)`);
-            onProgress?.(`[${successCount + 1}] 日誌${saved.count}件をExcel保存しました`);
-
-            generationLog.push({
-              order: generationLog.length + 1, docType: 'サービス提供記録（日誌）',
-              fileName: saved.fileName,
-              year: step.year, month: step.month, status: '生成',
-              reason: `実績${clientRecordsForJournal.length}件から日誌${saved.count}件を自動生成・Excel保存`,
-            });
-          }
-        } catch (journalErr: any) {
-          console.warn('[CatchUp] 日誌生成失敗（帳票生成には影響なし）:', journalErr.message || journalErr);
-        }
+        // 日誌は一括作成から切り離し。専用の「日誌作成」ボタンで実行する。
+        // → executeJournalGeneration() を使用
 
         successCount++;
 
@@ -1765,5 +1735,45 @@ function schedulePostMonitoringPlan(
       skipTejunsho,
       goalContinuation,
     });
+  }
+}
+
+// ==================== 日誌独立生成（UIのボタンから呼ぶ） ====================
+
+/**
+ * 日誌作成の専用エントリポイント。一括書類作成とは独立。
+ * 実績がある全月分を動的に対象にする（11月固定ではない）。
+ * journalGenerator.createJournalsFromBillingRecords に委譲。
+ */
+export async function executeJournalGeneration(
+  client: CareClient,
+  onProgress?: (msg: string) => void,
+): Promise<{ success: boolean; totalEntries: number; months: string[] }> {
+  console.log(`[Journal] === 日誌独立生成開始: ${client.name} ===`);
+  onProgress?.(`${client.name}: 日誌作成を開始します...`);
+
+  try {
+    // 直近12ヶ月の実績を収集
+    const { loadBillingRecordsForMonth } = await import('../services/dataService');
+    const allRecords: BillingRecord[] = [];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      try {
+        const records = await loadBillingRecordsForMonth(d.getFullYear(), d.getMonth() + 1);
+        allRecords.push(...records);
+      } catch { /* skip */ }
+    }
+
+    // journalGeneratorに委譲
+    const { createJournalsFromBillingRecords } = await import('./documentGenerators/journalGenerator');
+    const result = await createJournalsFromBillingRecords(client, allRecords, { onProgress });
+
+    const months = result.monthResults.map(m => `${m.year}年${m.month}月`);
+    return { success: true, totalEntries: result.totalCreated + result.totalUpdated, months };
+  } catch (err: any) {
+    console.error('[Journal] 日誌生成エラー:', err);
+    onProgress?.(`⚠ 日誌作成エラー: ${err.message || err}`);
+    return { success: false, totalEntries: 0, months: [] };
   }
 }

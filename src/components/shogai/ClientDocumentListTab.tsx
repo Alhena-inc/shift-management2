@@ -256,6 +256,36 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
     }
   }, [careClients, loadClientDocuments]);
 
+  // 日誌作成（一括書類作成とは独立）
+  const [generatingJournal, setGeneratingJournal] = useState<string | null>(null);
+  const [journalProgress, setJournalProgress] = useState<string>('');
+
+  const handleJournalGenerate = useCallback(async (clientId: string) => {
+    const client = careClients.find(c => c.id === clientId);
+    if (!client) return;
+
+    if (!confirm(`${client.name}の日誌を作成しますか？\n実績記録がある月すべてを対象に日誌を生成します。`)) return;
+
+    setGeneratingJournal(clientId);
+    setJournalProgress('準備中...');
+
+    try {
+      const { executeJournalGeneration } = await import('../../utils/documentScheduleExecutor');
+      const result = await executeJournalGeneration(client, (msg) => setJournalProgress(msg));
+      if (result.success && result.totalEntries > 0) {
+        alert(`日誌作成完了: ${result.months.join(', ')} (${result.totalEntries}件)`);
+      } else if (result.totalEntries === 0) {
+        alert('実績記録が見つからないため日誌を作成できませんでした。');
+      }
+      await loadClientDocuments(clientId);
+    } catch (err: any) {
+      alert(`日誌作成に失敗しました: ${err.message || err}`);
+    } finally {
+      setGeneratingJournal(null);
+      setJournalProgress('');
+    }
+  }, [careClients, loadClientDocuments]);
+
   // 利用者ごと全書類一括ダウンロード
   const handleBulkDownload = useCallback(async (clientId: string) => {
     const docs = clientDocs[clientId];
@@ -403,6 +433,16 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
                   {isGeneratingAll ? '一括生成中...' : '全書類一括生成'}
                 </button>
                 <button
+                  onClick={() => handleJournalGenerate(expandedClientId)}
+                  disabled={generatingJournal === expandedClientId || isGeneratingAll}
+                  className="px-3 py-1.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-xs font-medium flex items-center gap-1 shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-sm">
+                    {generatingJournal === expandedClientId ? 'progress_activity' : 'edit_note'}
+                  </span>
+                  {generatingJournal === expandedClientId ? '日誌作成中...' : '日誌作成'}
+                </button>
+                <button
                   onClick={() => setExpandedClientId(null)}
                   className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
                 >
@@ -415,6 +455,14 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
                 <div className="flex items-center gap-2">
                   <span className="animate-spin material-symbols-outlined text-sm text-green-600">progress_activity</span>
                   <span className="text-xs text-green-700">{catchUpProgress}</span>
+                </div>
+              </div>
+            )}
+            {generatingJournal === expandedClientId && journalProgress && (
+              <div className="px-4 py-2 bg-orange-50 border-b border-orange-200">
+                <div className="flex items-center gap-2">
+                  <span className="animate-spin material-symbols-outlined text-sm text-orange-600">progress_activity</span>
+                  <span className="text-xs text-orange-700">{journalProgress}</span>
                 </div>
               </div>
             )}

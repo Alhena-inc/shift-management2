@@ -698,3 +698,336 @@ export async function generateAndSaveJournalExcel(
   console.log(`[Journal] Excel保存完了: ${fileName} (${journals.length}シート)`);
   return { fileName, fileUrl, count: journals.length };
 }
+
+// ==================== 月固定の除去: 実績ベースの対象月抽出 ====================
+
+/** 実績レコード群からserviceDateの年月集合を抽出する（11月固定をやめる） */
+export function extractTargetMonths(records: BillingRecord[]): Array<{ year: number; month: number }> {
+  const monthSet = new Set<string>();
+  for (const r of records) {
+    if (!r.serviceDate) continue;
+    const [y, m] = r.serviceDate.split('-');
+    if (y && m) monthSet.add(`${y}-${m}`);
+  }
+  return [...monthSet]
+    .sort()
+    .map(ym => {
+      const [y, m] = ym.split('-');
+      return { year: parseInt(y), month: parseInt(m) };
+    });
+}
+
+/** 実績レコードを月ごとにグループ化する */
+export function groupRecordsByMonth(records: BillingRecord[]): Map<string, BillingRecord[]> {
+  const groups = new Map<string, BillingRecord[]>();
+  for (const r of records) {
+    if (!r.serviceDate) continue;
+    const key = r.serviceDate.substring(0, 7); // 'YYYY-MM'
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(r);
+  }
+  return groups;
+}
+
+// ==================== 書類resolver ====================
+
+/** 実績に対して適用可能な書類を解決する */
+export interface ApplicableDocuments {
+  carePlan?: {
+    serviceBlocks: Array<{ service_type: string; visit_label: string; steps: Array<{ item: string; content: string; note: string; category?: string }> }>;
+    longTermGoal?: string;
+    shortTermGoal?: string;
+    fileName?: string;
+  };
+  procedureBlocks?: ProcedureBlock[];
+  lineReports?: LineReport[];
+  vitalsByDate?: Record<string, VitalSigns>;
+}
+
+/**
+ * 指定月の実績に対して、作成済み書類から適用可能な計画書・手順書等を解決する。
+ * Supabaseに保存された書類を参照し、実績と矛盾しないデータを返す。
+ */
+export async function resolveApplicableDocuments(
+  clientId: string,
+  clientName: string,
+  year: number,
+  month: number,
+): Promise<ApplicableDocuments> {
+  const result: ApplicableDocuments = {};
+
+  try {
+    const { loadShogaiCarePlanDocuments, loadShogaiDocuments } = await import('../../services/dataService');
+
+    // 計画書: 最新の計画書を取得（作成日が対象月以前のもの）
+    const carePlanDocs = await loadShogaiCarePlanDocuments(clientId);
+    if (carePlanDocs && carePlanDocs.length > 0) {
+      const targetDate = `${year}-${String(month).padStart(2, '0')}`;
+      const applicable = carePlanDocs
+        .filter((d: any) => d.fileUrl && (d.createdAt || '').substring(0, 7) <= targetDate)
+        .sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+      if (applicable[0]?.fileUrl) {
+        try {
+          const ExcelJS = (await import('exceljs')).default;
+          const response = await fetch(applicable[0].fileUrl);
+          if (response.ok) {
+            const buffer = await response.arrayBuffer();
+            const wb = new ExcelJS.Workbook();
+            await wb.xlsx.load(buffer);
+            const ws = wb.worksheets[0];
+            if (ws) {
+              const e12 = ws.getCell('E12').value?.toString() || '';
+              const e13 = ws.getCell('E13').value?.toString() || '';
+              result.carePlan = {
+                serviceBlocks: [], // 簡易版: サービスブロック詳細はexecutor側で設定
+                longTermGoal: e12.replace(/^長期[^:：]*[：:]?\s*/, ''),
+                shortTermGoal: e13.replace(/^短期[^:：]*[：:]?\s*/, ''),
+                fileName: applicable[0].fileName || '',
+              };
+              console.log(`[Journal] 計画書resolver: ${applicable[0].fileName || 'unknown'} (${applicable[0].createdAt})`);
+            }
+          }
+        } catch (err) {
+          console.warn('[Journal] 計画書読み込み失敗:', err);
+        }
+      }
+    }
+
+    // 手順書: 最新の手順書を取得
+    const tejunshoDocs = await loadShogaiDocuments(clientId, 'tejunsho');
+    if (tejunshoDocs && tejunshoDocs.length > 0) {
+      const latest = tejunshoDocs
+        .filter((d: any) => d.fileUrl)
+        .sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+      if (latest[0]?.fileUrl) {
+        try {
+          const ExcelJS = (await import('exceljs')).default;
+          const response = await fetch(latest[0].fileUrl);
+          if (response.ok) {
+            const buffer = await response.arrayBuffer();
+            const wb = new ExcelJS.Workbook();
+            await wb.xlsx.load(buffer);
+            // 手順書の各シートからステップを抽出
+            const blocks: ProcedureBlock[] = [];
+            for (const ws of wb.worksheets) {
+              const serviceType = ws.getCell('C5').value?.toString() || '';
+              const visitLabel = ws.getCell('C4').value?.toString() || '';
+              const steps: ProcedureStep[] = [];
+              // 手順書のステップ行（B10〜B25あたり）
+              for (let r = 10; r <= 25; r++) {
+                const item = ws.getCell(`B${r}`).value?.toString() || '';
+                const content = ws.getCell(`F${r}`).value?.toString() || '';
+                if (item || content) {
+                  steps.push({ item, content, note: ws.getCell(`J${r}`).value?.toString() || '' });
+                }
+              }
+              if (serviceType || steps.length > 0) {
+                blocks.push({ service_type: serviceType, visit_label: visitLabel, steps });
+              }
+            }
+            if (blocks.length > 0) {
+              result.procedureBlocks = blocks;
+              console.log(`[Journal] 手順書resolver: ${latest[0].fileName || 'unknown'} (${blocks.length}ブロック)`);
+            }
+          }
+        } catch (err) {
+          console.warn('[Journal] 手順書読み込み失敗:', err);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Journal] 書類resolver失敗:', err);
+  }
+
+  return result;
+}
+
+// ==================== upsert: actualRecordIdベース ====================
+
+/** 日誌の保存レコード型 */
+export interface JournalRecord {
+  id: string;
+  careClientId: string;
+  actualRecordId: string;    // 実績レコードIDが主キー的参照
+  serviceDate: string;
+  serviceStartTime: string;
+  serviceEndTime: string;
+  serviceTypeLabel: string;
+  helperName: string;
+  journalData: string;       // JSON化したStructuredJournal
+  lineReportText: string;    // LINE報告形式テキスト
+  diaryNarrative: string;
+  specialNotes: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
+ * 日誌をupsertする。actualRecordIdで既存を検索し、あれば更新、なければ新規作成。
+ * ボタンを何度押しても重複しない。
+ */
+export async function upsertJournals(
+  clientId: string,
+  journals: JournalEntry[],
+  billingRecords: BillingRecord[],
+): Promise<{ created: number; updated: number }> {
+  const { supabase } = await import('../../lib/supabase');
+
+  let created = 0;
+  let updated = 0;
+
+  for (let i = 0; i < journals.length; i++) {
+    const journal = journals[i];
+    const record = billingRecords[i];
+    if (!record) continue;
+
+    const actualRecordId = record.id;
+    const journalData: JournalRecord = {
+      id: '',
+      careClientId: clientId,
+      actualRecordId,
+      serviceDate: journal.structuredJournal.serviceDate,
+      serviceStartTime: journal.structuredJournal.serviceStartTime,
+      serviceEndTime: journal.structuredJournal.serviceEndTime,
+      serviceTypeLabel: journal.structuredJournal.serviceTypeLabel,
+      helperName: journal.structuredJournal.helperName,
+      journalData: JSON.stringify(journal.structuredJournal),
+      lineReportText: journal.lineStyleReport.fullText,
+      diaryNarrative: journal.diaryNarrative,
+      specialNotes: journal.specialNotes,
+    };
+
+    // actualRecordIdで既存を検索
+    // ★型注釈: care_journalsテーブルはDB作成後にsupabase型定義に追加される。
+    //   それまではanyキャストで型エラーを回避する。
+    const db = supabase as any;
+    const { data: existing } = await db
+      .from('care_journals')
+      .select('id')
+      .eq('actual_record_id', actualRecordId)
+      .eq('care_client_id', clientId)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      // 更新
+      await db
+        .from('care_journals')
+        .update({
+          service_date: journalData.serviceDate,
+          service_start_time: journalData.serviceStartTime,
+          service_end_time: journalData.serviceEndTime,
+          service_type_label: journalData.serviceTypeLabel,
+          helper_name: journalData.helperName,
+          journal_data: journalData.journalData,
+          line_report_text: journalData.lineReportText,
+          diary_narrative: journalData.diaryNarrative,
+          special_notes: journalData.specialNotes,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing[0].id);
+      updated++;
+    } else {
+      // 新規作成
+      await db
+        .from('care_journals')
+        .insert({
+          care_client_id: clientId,
+          actual_record_id: actualRecordId,
+          service_date: journalData.serviceDate,
+          service_start_time: journalData.serviceStartTime,
+          service_end_time: journalData.serviceEndTime,
+          service_type_label: journalData.serviceTypeLabel,
+          helper_name: journalData.helperName,
+          journal_data: journalData.journalData,
+          line_report_text: journalData.lineReportText,
+          diary_narrative: journalData.diaryNarrative,
+          special_notes: journalData.specialNotes,
+        });
+      created++;
+    }
+  }
+
+  console.log(`[Journal] upsert完了: 新規${created}件, 更新${updated}件`);
+  return { created, updated };
+}
+
+// ==================== メイン: 専用入口（一括生成から分離） ====================
+
+/**
+ * ★ 日誌作成の専用入口関数。一括書類生成(bulk generation)からは呼ばない。
+ * UIの「日誌作成ボタン」からのみ呼ばれる想定。
+ *
+ * 読み込み済み実績のある月すべてを対象にし、11月固定をしない。
+ * 1実績 = 1日誌の upsert で、何度押しても重複しない。
+ */
+export async function createJournalsFromBillingRecords(
+  client: CareClient,
+  allBillingRecords: BillingRecord[],
+  options?: {
+    lineReports?: LineReport[];
+    vitalsByDate?: Record<string, VitalSigns>;
+    onProgress?: (msg: string) => void;
+  },
+): Promise<{
+  totalCreated: number;
+  totalUpdated: number;
+  monthResults: Array<{ year: number; month: number; count: number; fileName: string }>;
+}> {
+  const { onProgress, lineReports, vitalsByDate } = options || {};
+
+  // 利用者の実績だけに絞る
+  const clientRecords = allBillingRecords.filter(r => r.clientName === client.name);
+  if (clientRecords.length === 0) {
+    console.log(`[Journal] 実績なし: ${client.name}`);
+    return { totalCreated: 0, totalUpdated: 0, monthResults: [] };
+  }
+
+  // 実績から対象月を抽出（11月固定をやめる）
+  const targetMonths = extractTargetMonths(clientRecords);
+  const recordsByMonth = groupRecordsByMonth(clientRecords);
+
+  console.log(`[Journal] 対象月: ${targetMonths.map(m => `${m.year}/${m.month}`).join(', ')} (計${clientRecords.length}件)`);
+  onProgress?.(`日誌作成開始: ${targetMonths.length}か月分, 実績${clientRecords.length}件`);
+
+  let totalCreated = 0;
+  let totalUpdated = 0;
+  const monthResults: Array<{ year: number; month: number; count: number; fileName: string }> = [];
+
+  for (const { year, month } of targetMonths) {
+    const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+    const monthRecords = recordsByMonth.get(monthKey) || [];
+    if (monthRecords.length === 0) continue;
+
+    onProgress?.(`${year}年${month}月: ${monthRecords.length}件の日誌を作成中...`);
+
+    // 作成済み書類を参照して resolver で解決
+    const docs = await resolveApplicableDocuments(client.id, client.name, year, month);
+
+    // 日誌生成
+    const ctx: JournalGeneratorContext = {
+      client,
+      billingRecords: monthRecords,
+      procedureBlocks: docs.procedureBlocks,
+      carePlanServiceBlocks: docs.carePlan?.serviceBlocks,
+      lineReports,
+      vitalsByDate,
+    };
+    const journals = generateJournals(ctx);
+
+    // upsert（重複防止）
+    const { created, updated } = await upsertJournals(client.id, journals, monthRecords);
+    totalCreated += created;
+    totalUpdated += updated;
+
+    // Excel出力 + Supabase保存
+    const saved = await generateAndSaveJournalExcel(journals, client.id, client.name, year, month);
+    monthResults.push({ year, month, count: journals.length, fileName: saved.fileName });
+
+    onProgress?.(`${year}年${month}月: ${journals.length}件完了 (新規${created}, 更新${updated})`);
+  }
+
+  console.log(`[Journal] 全月完了: 新規${totalCreated}件, 更新${totalUpdated}件, ${monthResults.length}か月`);
+  return { totalCreated, totalUpdated, monthResults };
+}

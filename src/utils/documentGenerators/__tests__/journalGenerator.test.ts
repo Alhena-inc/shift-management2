@@ -416,3 +416,152 @@ describe('日誌生成: 計画書・手順書・実績と矛盾しない', () =>
     expect(journals[0].structuredJournal.bodyChecks.medicationCheck).toBe(false);
   });
 });
+
+// ==================== 新規テスト: 月固定除去・upsert・書類resolver ====================
+
+import {
+  extractTargetMonths,
+  groupRecordsByMonth,
+} from '../journalGenerator';
+
+describe('日誌生成: extractTargetMonths（11月固定の除去）', () => {
+  it('複数月の実績から年月集合が正しく抽出されること', () => {
+    const records = [
+      { ...mockBillingRecords[0], serviceDate: '2025-11-15' },
+      { ...mockBillingRecords[0], serviceDate: '2025-12-01' },
+      { ...mockBillingRecords[0], serviceDate: '2026-01-10' },
+      { ...mockBillingRecords[0], serviceDate: '2025-11-20' }, // 11月重複
+    ];
+    const months = extractTargetMonths(records);
+    expect(months).toHaveLength(3);
+    expect(months).toEqual([
+      { year: 2025, month: 11 },
+      { year: 2025, month: 12 },
+      { year: 2026, month: 1 },
+    ]);
+  });
+
+  it('空の実績 → 空の月集合', () => {
+    expect(extractTargetMonths([])).toHaveLength(0);
+  });
+
+  it('1か月分のみ → 1要素', () => {
+    const records = [
+      { ...mockBillingRecords[0], serviceDate: '2026-03-21' },
+      { ...mockBillingRecords[0], serviceDate: '2026-03-22' },
+    ];
+    const months = extractTargetMonths(records);
+    expect(months).toHaveLength(1);
+    expect(months[0]).toEqual({ year: 2026, month: 3 });
+  });
+
+  it('serviceDateが空のレコードはスキップされること', () => {
+    const records = [
+      { ...mockBillingRecords[0], serviceDate: '' },
+      { ...mockBillingRecords[0], serviceDate: '2026-03-21' },
+    ];
+    const months = extractTargetMonths(records);
+    expect(months).toHaveLength(1);
+  });
+});
+
+describe('日誌生成: groupRecordsByMonth', () => {
+  it('実績が月ごとに正しくグループ化されること', () => {
+    const records = [
+      { ...mockBillingRecords[0], id: 'a', serviceDate: '2025-11-15' },
+      { ...mockBillingRecords[0], id: 'b', serviceDate: '2025-12-01' },
+      { ...mockBillingRecords[0], id: 'c', serviceDate: '2025-11-20' },
+      { ...mockBillingRecords[0], id: 'd', serviceDate: '2026-01-10' },
+    ];
+    const groups = groupRecordsByMonth(records);
+    expect(groups.size).toBe(3);
+    expect(groups.get('2025-11')!).toHaveLength(2);
+    expect(groups.get('2025-12')!).toHaveLength(1);
+    expect(groups.get('2026-01')!).toHaveLength(1);
+  });
+
+  it('空の実績 → 空のグループ', () => {
+    expect(groupRecordsByMonth([]).size).toBe(0);
+  });
+});
+
+describe('日誌生成: 月ごとの日誌件数が実績件数と一致すること', () => {
+  it('11月3件+12月2件+1月1件 → 合計6件の日誌', () => {
+    const records = [
+      { ...mockBillingRecords[0], id: 'a', serviceDate: '2025-11-01', serviceCode: '1121' },
+      { ...mockBillingRecords[0], id: 'b', serviceDate: '2025-11-05', serviceCode: '1221' },
+      { ...mockBillingRecords[0], id: 'c', serviceDate: '2025-11-10', serviceCode: '1121' },
+      { ...mockBillingRecords[0], id: 'd', serviceDate: '2025-12-01', serviceCode: '1221' },
+      { ...mockBillingRecords[0], id: 'e', serviceDate: '2025-12-15', serviceCode: '1121' },
+      { ...mockBillingRecords[0], id: 'f', serviceDate: '2026-01-05', serviceCode: '1121' },
+    ];
+
+    const groups = groupRecordsByMonth(records);
+    let totalJournals = 0;
+    for (const [, monthRecords] of groups) {
+      const ctx: JournalGeneratorContext = {
+        client: mockClient as any,
+        billingRecords: monthRecords,
+        procedureBlocks: mockProcedureBlocks,
+      };
+      const journals = generateJournals(ctx);
+      expect(journals).toHaveLength(monthRecords.length);
+      totalJournals += journals.length;
+    }
+    expect(totalJournals).toBe(6);
+  });
+});
+
+describe('日誌生成: upsertの冪等性テスト（ロジック再現）', () => {
+  it('同じactualRecordIdで2回呼んでも重複しないこと', () => {
+    // upsertロジックの単体テスト（DB接続なし）
+    const existingIds = new Map<string, string>(); // actualRecordId → journalId
+
+    function simulateUpsert(actualRecordId: string): 'created' | 'updated' {
+      if (existingIds.has(actualRecordId)) {
+        return 'updated';
+      }
+      existingIds.set(actualRecordId, `journal-${existingIds.size + 1}`);
+      return 'created';
+    }
+
+    // 1回目
+    expect(simulateUpsert('br-1')).toBe('created');
+    expect(simulateUpsert('br-2')).toBe('created');
+    expect(existingIds.size).toBe(2);
+
+    // 2回目（同じID）
+    expect(simulateUpsert('br-1')).toBe('updated');
+    expect(simulateUpsert('br-2')).toBe('updated');
+    expect(existingIds.size).toBe(2); // 増えていない
+  });
+});
+
+describe('日誌生成: 実績のserviceTypeと日誌のserviceTypeLabelの一致', () => {
+  it('実績のserviceCodeに対応するserviceTypeLabelが日誌に入ること', () => {
+    const records = [
+      { ...mockBillingRecords[0], serviceCode: '1121' }, // 身体介護
+      { ...mockBillingRecords[1], serviceCode: '1221' }, // 家事援助
+    ];
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: records,
+    };
+    const journals = generateJournals(ctx);
+    expect(journals[0].structuredJournal.serviceTypeLabel).toBe('身体介護');
+    expect(journals[1].structuredJournal.serviceTypeLabel).toBe('家事援助');
+  });
+
+  it('実績のserviceTypeと異なるケア文言が出ないこと', () => {
+    // 家事援助の実績 → 日誌も家事援助
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: [{ ...mockBillingRecords[1], serviceCode: '1221' }],
+      procedureBlocks: mockProcedureBlocks,
+    };
+    const journals = generateJournals(ctx);
+    expect(journals[0].structuredJournal.serviceTypeLabel).toBe('家事援助');
+    // 家事援助の日誌なので身体介護チェックは手順書マッチで家事ブロックから取られる
+    expect(journals[0].structuredJournal.houseChecks.cooking).toBe(true);
+  });
+});
