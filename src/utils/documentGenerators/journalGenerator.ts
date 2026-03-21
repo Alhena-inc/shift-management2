@@ -163,7 +163,8 @@ export function resolveChecksFromProcedure(steps: ProcedureStep[]): {
 
   const bodyChecks = {
     medicationCheck: /服薬|薬.*確認|投薬/.test(allText),
-    vitalCheck: /バイタル|体温|血圧|脈拍|体調確認/.test(allText),
+    // ★「体調確認」はバイタル確認ではない。バイタル=体温・血圧・脈拍の測定を伴う場合のみ
+    vitalCheck: /バイタル|体温.*測定|血圧.*測定|脈拍.*測定/.test(allText),
     toiletAssist: /排泄|トイレ|排尿|排便/.test(allText),
     bathAssist: /入浴|シャワー|清拭/.test(allText),
     mealAssist: /食事介助|食事.*支援|配膳.*介助/.test(allText),
@@ -211,33 +212,38 @@ export function overrideChecksFromLineReport(
   return checks;
 }
 
-/** バイタル値を解決する */
+/**
+ * バイタル値を解決する。
+ * ★実測値がない場合はvitalCheck=falseに降格し「体調確認」に寄せる。
+ * 数値の捏造は禁止。
+ */
 export function resolveVitals(
   healthCheckRequired: boolean,
   vitalsByDate?: Record<string, VitalSigns>,
   serviceDate?: string,
-): { vitals: VitalSigns; vitalNote: string } {
+): { vitals: VitalSigns; vitalNote: string; hasActualMeasurement: boolean } {
   const vitals: VitalSigns = {};
   let vitalNote = '';
+  let hasActualMeasurement = false;
 
   if (!healthCheckRequired) {
-    return { vitals, vitalNote };
+    return { vitals, vitalNote, hasActualMeasurement };
   }
 
   // 実測値がある場合のみ数値を埋める（数値の自動推定は禁止）
   if (vitalsByDate && serviceDate && vitalsByDate[serviceDate]) {
     const measured = vitalsByDate[serviceDate];
-    if (measured.temperature !== undefined) vitals.temperature = measured.temperature;
-    if (measured.systolic !== undefined) vitals.systolic = measured.systolic;
-    if (measured.diastolic !== undefined) vitals.diastolic = measured.diastolic;
+    if (measured.temperature !== undefined) { vitals.temperature = measured.temperature; hasActualMeasurement = true; }
+    if (measured.systolic !== undefined) { vitals.systolic = measured.systolic; hasActualMeasurement = true; }
+    if (measured.diastolic !== undefined) { vitals.diastolic = measured.diastolic; hasActualMeasurement = true; }
   }
 
-  // 実測値がない場合は文言で対応
-  if (vitals.temperature === undefined && vitals.systolic === undefined) {
+  // ★実測値がない場合: 「バイタル確認」ではなく「体調確認」に寄せる
+  if (!hasActualMeasurement) {
     vitalNote = '体調確認を実施。著変なし。';
   }
 
-  return { vitals, vitalNote };
+  return { vitals, vitalNote, hasActualMeasurement };
 }
 
 // ==================== LINE報告テンプレート ====================
@@ -371,13 +377,22 @@ export function generateSpecialNotes(
 
 /**
  * 実績表の件数分だけ日誌を生成する。
- * 実績件数 === 日誌件数を保証する。
+ * ★未来日付の実績は除外する（予定ベース先回り生成の防止）
+ * ★1実績 = 1日誌を保証する
  */
 export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
   const { client, billingRecords, procedureBlocks, carePlanServiceBlocks, lineReports, vitalsByDate } = ctx;
 
+  // ★未来日付フィルタ: 今日以降の実績は日誌を作らない
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const pastRecords = billingRecords.filter(r => r.serviceDate <= today);
+  const skippedFuture = billingRecords.length - pastRecords.length;
+  if (skippedFuture > 0) {
+    console.log(`[Journal] ★未来日付${skippedFuture}件を除外（${today}以降）`);
+  }
+
   // 実績1件ごとに日誌1件を生成
-  const journals: JournalEntry[] = billingRecords.map((record) => {
+  const journals: JournalEntry[] = pastRecords.map((record) => {
     const serviceTypeLabel = serviceCodeToLabel(record.serviceCode);
 
     // 手順書のステップを取得（service_typeに一致するブロック）
@@ -413,7 +428,39 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
     }
 
     // バイタル解決
-    const { vitals, vitalNote } = resolveVitals(checks.healthCheckRequired, vitalsByDate, record.serviceDate);
+    const { vitals, vitalNote, hasActualMeasurement } = resolveVitals(checks.healthCheckRequired, vitalsByDate, record.serviceDate);
+
+    // ★バイタル降格: 実測値がないならvitalCheckをfalseに
+    if (!hasActualMeasurement && checks.bodyChecks.vitalCheck) {
+      console.log(`[Journal] ${record.serviceDate} ${record.startTime}: バイタル実測値なし → vitalCheck=falseに降格（体調確認扱い）`);
+      checks.bodyChecks.vitalCheck = false;
+      checks.healthCheckRequired = false;
+    }
+
+    // ★矛盾防止ガード: serviceTypeとチェック項目の整合
+    const isBodyService = serviceTypeLabel.includes('身体') || serviceTypeLabel.includes('重度');
+    const isHouseService = serviceTypeLabel.includes('家事') || serviceTypeLabel.includes('生活');
+    if (isHouseService && !isBodyService) {
+      // 家事援助なのに身体介護チェックが入っている場合は除去
+      if (checks.bodyChecks.toiletAssist || checks.bodyChecks.bathAssist || checks.bodyChecks.mealAssist || checks.bodyChecks.mobilityAssist || checks.bodyChecks.dressingAssist || checks.bodyChecks.groomingAssist) {
+        console.warn(`[Journal] ★矛盾防止: 家事援助(${record.serviceCode})に身体介護チェックが混入 → 除去`);
+        checks.bodyChecks.toiletAssist = false;
+        checks.bodyChecks.bathAssist = false;
+        checks.bodyChecks.mealAssist = false;
+        checks.bodyChecks.mobilityAssist = false;
+        checks.bodyChecks.dressingAssist = false;
+        checks.bodyChecks.groomingAssist = false;
+      }
+    }
+    if (isBodyService && !isHouseService) {
+      // 身体介護なのに家事援助チェックだけの場合（serviceType優先だが完全除去はしない）
+      const hasAnyBodyCheck = checks.bodyChecks.medicationCheck || checks.bodyChecks.vitalCheck || checks.bodyChecks.toiletAssist || checks.bodyChecks.bathAssist;
+      if (!hasAnyBodyCheck) {
+        // 身体介護なのに身体チェックが0 → 最低限の体調確認を入れる
+        checks.bodyChecks.medicationCheck = true;
+        console.warn(`[Journal] ★矛盾防止: 身体介護(${record.serviceCode})に身体チェックなし → 服薬確認を自動追加`);
+      }
+    }
 
     // 特記生成
     const specialNotes = generateSpecialNotes(matchingLine, matchingLine?.careContent);
@@ -429,7 +476,7 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
       serviceTypeLabel,
       complexion: '良好',
       perspiration: 'なし',
-      healthCheckRequired: checks.healthCheckRequired,
+      healthCheckRequired: hasActualMeasurement, // ★実測値ありの場合のみtrue
       vitals,
       bodyChecks: checks.bodyChecks,
       houseChecks: checks.houseChecks,
