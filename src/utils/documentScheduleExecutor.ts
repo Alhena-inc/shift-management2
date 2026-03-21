@@ -1748,7 +1748,11 @@ function schedulePostMonitoringPlan(
 export async function executeJournalGeneration(
   client: CareClient,
   onProgress?: (msg: string) => void,
-): Promise<{ success: boolean; totalEntries: number; months: string[] }> {
+  options?: {
+    lineReports?: import('./documentGenerators/journalGenerator').LineReport[];
+    vitalsByDate?: Record<string, import('./documentGenerators/journalGenerator').VitalSigns>;
+  },
+): Promise<{ success: boolean; totalEntries: number; months: string[]; manualReviewCount: number }> {
   console.log(`[Journal] === 日誌独立生成開始: ${client.name} ===`);
   onProgress?.(`${client.name}: 日誌作成を開始します...`);
 
@@ -1765,15 +1769,23 @@ export async function executeJournalGeneration(
       } catch { /* skip */ }
     }
 
-    // journalGeneratorに委譲
+    // journalGeneratorに委譲（lineReports / vitalsByDateを渡す）
     const { createJournalsFromBillingRecords } = await import('./documentGenerators/journalGenerator');
-    const result = await createJournalsFromBillingRecords(client, allRecords, { onProgress });
+    const result = await createJournalsFromBillingRecords(client, allRecords, {
+      onProgress,
+      lineReports: options?.lineReports,
+      vitalsByDate: options?.vitalsByDate,
+    });
 
     const months = result.monthResults.map(m => `${m.year}年${m.month}月`);
-    return { success: true, totalEntries: result.totalCreated + result.totalUpdated, months };
+    const manualReviewCount = result.manualReviewCount || 0;
+    if (manualReviewCount > 0) {
+      onProgress?.(`⚠ ${manualReviewCount}件の日誌に手動確認が必要です`);
+    }
+    return { success: true, totalEntries: result.totalCreated + result.totalUpdated, months, manualReviewCount };
   } catch (err: any) {
     console.error('[Journal] 日誌生成エラー:', err);
     onProgress?.(`⚠ 日誌作成エラー: ${err.message || err}`);
-    return { success: false, totalEntries: 0, months: [] };
+    return { success: false, totalEntries: 0, months: [], manualReviewCount: 0 };
   }
 }
