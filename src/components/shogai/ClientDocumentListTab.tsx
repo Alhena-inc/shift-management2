@@ -287,29 +287,39 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
     }
   }, [careClients, loadClientDocuments]);
 
-  // 利用者ごと全書類一括ダウンロード
-  const handleBulkDownload = useCallback(async (clientId: string) => {
-    const docs = clientDocs[clientId];
-    if (!docs || docs.length === 0) {
+  // 書類 or 日誌を一括ダウンロード（typeで分離）
+  const [downloadingType, setDownloadingType] = useState<string | null>(null);
+
+  const handleFilteredDownload = useCallback(async (clientId: string, type: 'documents' | 'journals') => {
+    const allDocs = clientDocs[clientId];
+    if (!allDocs || allDocs.length === 0) {
       alert('ダウンロードする書類がありません');
       return;
     }
 
+    const isJournal = (d: UnifiedDocument) => d.typeLabel === 'サービス提供記録（日誌）';
+    const targetDocs = type === 'journals' ? allDocs.filter(isJournal) : allDocs.filter(d => !isJournal(d));
+
+    if (targetDocs.length === 0) {
+      alert(type === 'journals' ? '日誌がありません' : '書類がありません');
+      return;
+    }
+
     const clientName = careClients.find(c => c.id === clientId)?.name || clientId;
+    setDownloadingType(type);
     setDownloadingAll(clientId);
 
     try {
       const zip = new JSZip();
       const fileNameCount: Record<string, number> = {};
 
-      for (const doc of docs) {
+      for (const doc of targetDocs) {
         if (!doc.fileUrl) continue;
         try {
           const res = await fetch(doc.fileUrl);
           if (!res.ok) continue;
           const blob = await res.blob();
 
-          // ファイル名重複を回避
           let fileName = doc.fileName || `${doc.typeLabel}.unknown`;
           if (fileNameCount[fileName]) {
             fileNameCount[fileName]++;
@@ -334,11 +344,12 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
         return;
       }
 
+      const label = type === 'journals' ? '日誌一式' : '書類一式';
       const content = await zip.generateAsync({ type: 'blob' });
       const url = URL.createObjectURL(content);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${clientName}_書類一式.zip`;
+      a.download = `${clientName}_${label}.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -348,6 +359,7 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
       alert('一括ダウンロードに失敗しました');
     } finally {
       setDownloadingAll(null);
+      setDownloadingType(null);
     }
   }, [clientDocs, careClients]);
 
@@ -421,14 +433,24 @@ const ClientDocumentListTab: React.FC<Props> = ({ careClients }) => {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => handleBulkDownload(expandedClientId)}
-                  disabled={downloadingAll === expandedClientId || isLoading || allDocs.length === 0}
+                  onClick={() => handleFilteredDownload(expandedClientId, 'documents')}
+                  disabled={downloadingAll === expandedClientId || isLoading || regularDocs.length === 0}
                   className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-xs font-medium flex items-center gap-1 shadow-sm"
                 >
                   <span className="material-symbols-outlined text-sm">
-                    {downloadingAll === expandedClientId ? 'progress_activity' : 'download'}
+                    {downloadingAll === expandedClientId && downloadingType === 'documents' ? 'progress_activity' : 'download'}
                   </span>
-                  {downloadingAll === expandedClientId ? 'ダウンロード中...' : '一括DL'}
+                  {downloadingAll === expandedClientId && downloadingType === 'documents' ? 'DL中...' : '書類DL'}
+                </button>
+                <button
+                  onClick={() => handleFilteredDownload(expandedClientId, 'journals')}
+                  disabled={downloadingAll === expandedClientId || isLoading || journalDocs.length === 0}
+                  className="px-3 py-1.5 bg-orange-400 text-white rounded-lg hover:bg-orange-500 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-xs font-medium flex items-center gap-1 shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-sm">
+                    {downloadingAll === expandedClientId && downloadingType === 'journals' ? 'progress_activity' : 'download'}
+                  </span>
+                  {downloadingAll === expandedClientId && downloadingType === 'journals' ? 'DL中...' : '日誌DL'}
                 </button>
                 <button
                   onClick={() => handleCatchUpGenerateForClient(expandedClientId)}
