@@ -1487,6 +1487,36 @@ export async function executeCatchUpGeneration(
           generationLog.push(tejunshoLogEntry);
         }
 
+        // === 日誌一括生成（実績件数分） ===
+        try {
+          const clientRecordsForJournal = ctx.billingRecords.filter(r => r.clientName === client.name);
+          if (clientRecordsForJournal.length > 0) {
+            const { generateJournals } = await import('./documentGenerators/journalGenerator');
+            const journalCtx = {
+              client,
+              billingRecords: clientRecordsForJournal,
+              procedureBlocks: lastServiceBlocks?.map(b => ({
+                service_type: b.service_type,
+                visit_label: b.visit_label,
+                steps: b.steps.map(s => ({ item: s.item, content: s.content, note: s.note, category: s.category })),
+              })),
+              carePlanServiceBlocks: planResult.serviceBlocks,
+            };
+            const journals = generateJournals(journalCtx);
+            console.log(`[CatchUp] 日誌生成完了: ${journals.length}件（実績${clientRecordsForJournal.length}件から）`);
+            onProgress?.(`[${successCount + 1}] 日誌${journals.length}件を生成しました`);
+
+            generationLog.push({
+              order: generationLog.length + 1, docType: 'サービス提供記録（日誌）',
+              fileName: `日誌_${client.name}_${step.year}年${step.month}月.json`,
+              year: step.year, month: step.month, status: '生成',
+              reason: `実績${clientRecordsForJournal.length}件分の日誌を自動生成`,
+            });
+          }
+        } catch (journalErr: any) {
+          console.warn('[CatchUp] 日誌生成失敗（帳票生成には影響なし）:', journalErr.message || journalErr);
+        }
+
         successCount++;
 
         // 次のモニタリングステップを動的に追加
