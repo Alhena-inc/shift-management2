@@ -1487,11 +1487,11 @@ export async function executeCatchUpGeneration(
           generationLog.push(tejunshoLogEntry);
         }
 
-        // === 日誌一括生成（実績件数分） ===
+        // === 日誌一括生成（実績件数分 → Excel出力 → Supabase保存） ===
         try {
           const clientRecordsForJournal = ctx.billingRecords.filter(r => r.clientName === client.name);
           if (clientRecordsForJournal.length > 0) {
-            const { generateJournals } = await import('./documentGenerators/journalGenerator');
+            const { generateJournals, generateAndSaveJournalExcel } = await import('./documentGenerators/journalGenerator');
             const journalCtx = {
               client,
               billingRecords: clientRecordsForJournal,
@@ -1503,14 +1503,17 @@ export async function executeCatchUpGeneration(
               carePlanServiceBlocks: planResult.serviceBlocks,
             };
             const journals = generateJournals(journalCtx);
-            console.log(`[CatchUp] 日誌生成完了: ${journals.length}件（実績${clientRecordsForJournal.length}件から）`);
-            onProgress?.(`[${successCount + 1}] 日誌${journals.length}件を生成しました`);
+
+            // Excel化 + Supabase保存
+            const saved = await generateAndSaveJournalExcel(journals, client.id, client.name, step.year, step.month);
+            console.log(`[CatchUp] 日誌Excel保存完了: ${saved.fileName} (${saved.count}件)`);
+            onProgress?.(`[${successCount + 1}] 日誌${saved.count}件をExcel保存しました`);
 
             generationLog.push({
               order: generationLog.length + 1, docType: 'サービス提供記録（日誌）',
-              fileName: `日誌_${client.name}_${step.year}年${step.month}月.json`,
+              fileName: saved.fileName,
               year: step.year, month: step.month, status: '生成',
-              reason: `実績${clientRecordsForJournal.length}件分の日誌を自動生成`,
+              reason: `実績${clientRecordsForJournal.length}件から日誌${saved.count}件を自動生成・Excel保存`,
             });
           }
         } catch (journalErr: any) {

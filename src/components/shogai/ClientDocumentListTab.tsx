@@ -10,6 +10,7 @@ import ExcelViewer from './ExcelViewer';
 
 const ALL_DOC_TYPES = [
   'tantousha_kaigi','assessment','monitoring','tejunsho',
+  'journal',
   'chiiki_idou_keikaku','chiiki_shien_keika','chiiki_assessment','chiiki_monitoring','chiiki_tejunsho',
   'kaigo_houmon_keikaku','kaigo_tuusho_keikaku','kaigo_shien_keika','kaigo_assessment','kaigo_monitoring','kaigo_tejunsho',
   'jihi_tejunsho',
@@ -32,6 +33,7 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   kaigo_assessment: '介護アセスメント',
   kaigo_monitoring: '介護モニタリング',
   kaigo_tejunsho: '介護手順書',
+  journal: 'サービス提供記録（日誌）',
   jihi_tejunsho: '自費手順書',
   generation_log: '書類作成経緯書',
   // CarePlanDocument categories

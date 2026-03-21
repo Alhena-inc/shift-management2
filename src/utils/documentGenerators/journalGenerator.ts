@@ -457,3 +457,244 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
 
   return journals;
 }
+
+// ==================== Excel出力 + Supabase保存 ====================
+
+const WEEKDAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
+
+/**
+ * 日誌エントリ群をExcelファイルとして生成し、Supabase Storageに保存する。
+ * 1実績 = 1シートとして、月単位で1つのExcelファイルにまとめる。
+ */
+export async function generateAndSaveJournalExcel(
+  journals: JournalEntry[],
+  clientId: string,
+  clientName: string,
+  year: number,
+  month: number,
+): Promise<{ fileName: string; fileUrl: string; count: number }> {
+  const ExcelJS = (await import('exceljs')).default;
+  const { uploadShogaiDocFile, saveShogaiDocument } = await import('../../services/dataService');
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'シフト管理システム';
+
+  const thinBorder = { style: 'thin' as const };
+  const allBorders = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
+  const headerFont = { name: 'MS ゴシック', size: 11, bold: true };
+  const dataFont = { name: 'MS ゴシック', size: 10 };
+  const smallFont = { name: 'MS ゴシック', size: 9 };
+  const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFD9E2F3' } };
+
+  for (let i = 0; i < journals.length; i++) {
+    const j = journals[i].structuredJournal;
+    const d = new Date(j.serviceDate + 'T00:00:00');
+    const dayName = WEEKDAY_NAMES[d.getDay()];
+    const dateLabel = `${j.serviceDate.replace(/-/g, '/')}(${dayName})`;
+
+    // シート名: 日付_開始時刻（最大31文字）
+    const sheetName = `${j.serviceDate.substring(5)}_${j.serviceStartTime.replace(':', '')}`.substring(0, 31);
+    const ws = workbook.addWorksheet(sheetName);
+
+    // 列幅
+    ws.getColumn(1).width = 14;
+    ws.getColumn(2).width = 16;
+    ws.getColumn(3).width = 16;
+    ws.getColumn(4).width = 16;
+    ws.getColumn(5).width = 16;
+    ws.getColumn(6).width = 16;
+
+    // 印刷設定
+    ws.pageSetup = { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+
+    let row = 1;
+
+    // === ヘッダー ===
+    ws.mergeCells(`A${row}:F${row}`);
+    ws.getCell(`A${row}`).value = 'サービス提供記録（日誌）';
+    ws.getCell(`A${row}`).font = { name: 'MS ゴシック', size: 14, bold: true };
+    ws.getCell(`A${row}`).alignment = { horizontal: 'center', vertical: 'middle' };
+    ws.getRow(row).height = 28;
+    row++;
+
+    // === 基本情報 ===
+    const addLabelValue = (label: string, value: string, colStart: number = 1, colEnd: number = 3) => {
+      ws.getCell(row, colStart).value = label;
+      ws.getCell(row, colStart).font = headerFont;
+      ws.getCell(row, colStart).fill = headerFill;
+      ws.getCell(row, colStart).border = allBorders;
+      ws.getCell(row, colStart).alignment = { horizontal: 'center', vertical: 'middle' };
+      ws.mergeCells(row, colStart + 1, row, colEnd);
+      ws.getCell(row, colStart + 1).value = value;
+      ws.getCell(row, colStart + 1).font = dataFont;
+      ws.getCell(row, colStart + 1).border = allBorders;
+      ws.getCell(row, colStart + 1).alignment = { vertical: 'middle' };
+    };
+
+    addLabelValue('利用者名', `${clientName}　様`, 1, 3);
+    addLabelValue('サービス日', dateLabel, 4, 6);
+    row++;
+    addLabelValue('ヘルパー', j.helperName, 1, 3);
+    addLabelValue('サービス種別', j.serviceTypeLabel, 4, 6);
+    row++;
+    addLabelValue('開始時刻', j.serviceStartTime, 1, 3);
+    addLabelValue('終了時刻', j.serviceEndTime, 4, 6);
+    row++;
+    row++; // 空行
+
+    // === 状態確認 ===
+    ws.mergeCells(`A${row}:F${row}`);
+    ws.getCell(`A${row}`).value = '状態確認';
+    ws.getCell(`A${row}`).font = headerFont;
+    ws.getCell(`A${row}`).fill = headerFill;
+    ws.getCell(`A${row}`).border = allBorders;
+    ws.getCell(`A${row}`).alignment = { horizontal: 'center' };
+    row++;
+    addLabelValue('顔色', j.complexion, 1, 3);
+    addLabelValue('発汗', j.perspiration, 4, 6);
+    row++;
+
+    // バイタル
+    if (j.healthCheckRequired) {
+      const tempText = j.vitals.temperature !== undefined ? `${j.vitals.temperature}℃` : '未測定';
+      const bpText = j.vitals.systolic !== undefined && j.vitals.diastolic !== undefined
+        ? `${j.vitals.systolic}/${j.vitals.diastolic} mmHg` : '未測定';
+      addLabelValue('体温', tempText, 1, 3);
+      addLabelValue('血圧', bpText, 4, 6);
+      row++;
+    }
+    row++; // 空行
+
+    // === チェック項目 ===
+    const mark = (checked: boolean) => checked ? '☑' : '☐';
+
+    // 身体介護チェック
+    if (j.serviceTypeLabel.includes('身体') || j.serviceTypeLabel.includes('重度')) {
+      ws.mergeCells(`A${row}:F${row}`);
+      ws.getCell(`A${row}`).value = '身体介護';
+      ws.getCell(`A${row}`).font = headerFont;
+      ws.getCell(`A${row}`).fill = headerFill;
+      ws.getCell(`A${row}`).border = allBorders;
+      ws.getCell(`A${row}`).alignment = { horizontal: 'center' };
+      row++;
+
+      const bodyItems = [
+        [`${mark(j.bodyChecks.vitalCheck)} バイタル確認`, `${mark(j.bodyChecks.medicationCheck)} 服薬確認`, `${mark(j.bodyChecks.mealAssist)} 食事介助`],
+        [`${mark(j.bodyChecks.toiletAssist)} 排泄介助`, `${mark(j.bodyChecks.bathAssist)} 入浴介助`, `${mark(j.bodyChecks.mobilityAssist)} 移動介助`],
+        [`${mark(j.bodyChecks.dressingAssist)} 更衣介助`, `${mark(j.bodyChecks.groomingAssist)} 整容介助`, ''],
+      ];
+      for (const itemRow of bodyItems) {
+        for (let c = 0; c < 3; c++) {
+          ws.mergeCells(row, c * 2 + 1, row, c * 2 + 2);
+          ws.getCell(row, c * 2 + 1).value = itemRow[c];
+          ws.getCell(row, c * 2 + 1).font = dataFont;
+          ws.getCell(row, c * 2 + 1).border = allBorders;
+        }
+        row++;
+      }
+      row++;
+    }
+
+    // 家事援助チェック
+    if (j.serviceTypeLabel.includes('家事') || j.serviceTypeLabel.includes('生活') || j.serviceTypeLabel.includes('重度')) {
+      ws.mergeCells(`A${row}:F${row}`);
+      ws.getCell(`A${row}`).value = '家事援助';
+      ws.getCell(`A${row}`).font = headerFont;
+      ws.getCell(`A${row}`).fill = headerFill;
+      ws.getCell(`A${row}`).border = allBorders;
+      ws.getCell(`A${row}`).alignment = { horizontal: 'center' };
+      row++;
+
+      const houseItems = [
+        [`${mark(j.houseChecks.cooking)} 調理`, `${mark(j.houseChecks.cleaning)} 清掃`, `${mark(j.houseChecks.laundry)} 洗濯`],
+        [`${mark(j.houseChecks.shopping)} 買物`, `${mark(j.houseChecks.dishwashing)} 食器洗い`, `${mark(j.houseChecks.organizing)} 整理整頓`],
+      ];
+      for (const itemRow of houseItems) {
+        for (let c = 0; c < 3; c++) {
+          ws.mergeCells(row, c * 2 + 1, row, c * 2 + 2);
+          ws.getCell(row, c * 2 + 1).value = itemRow[c];
+          ws.getCell(row, c * 2 + 1).font = dataFont;
+          ws.getCell(row, c * 2 + 1).border = allBorders;
+        }
+        row++;
+      }
+      row++;
+    }
+
+    // 共通チェック
+    ws.mergeCells(`A${row}:F${row}`);
+    ws.getCell(`A${row}`).value = '共通';
+    ws.getCell(`A${row}`).font = headerFont;
+    ws.getCell(`A${row}`).fill = headerFill;
+    ws.getCell(`A${row}`).border = allBorders;
+    ws.getCell(`A${row}`).alignment = { horizontal: 'center' };
+    row++;
+    const commonItems = [
+      `${mark(j.commonChecks.environmentSetup)} 環境整備`,
+      `${mark(j.commonChecks.consultation)} 相談援助`,
+      `${mark(j.commonChecks.infoExchange)} 情報収集提供`,
+    ];
+    for (let c = 0; c < 3; c++) {
+      ws.mergeCells(row, c * 2 + 1, row, c * 2 + 2);
+      ws.getCell(row, c * 2 + 1).value = commonItems[c];
+      ws.getCell(row, c * 2 + 1).font = dataFont;
+      ws.getCell(row, c * 2 + 1).border = allBorders;
+    }
+    row++;
+    row++;
+
+    // === 日誌本文 ===
+    ws.mergeCells(`A${row}:F${row}`);
+    ws.getCell(`A${row}`).value = '日誌';
+    ws.getCell(`A${row}`).font = headerFont;
+    ws.getCell(`A${row}`).fill = headerFill;
+    ws.getCell(`A${row}`).border = allBorders;
+    ws.getCell(`A${row}`).alignment = { horizontal: 'center' };
+    row++;
+    ws.mergeCells(`A${row}:F${row + 2}`);
+    ws.getCell(`A${row}`).value = j.diaryNarrative;
+    ws.getCell(`A${row}`).font = smallFont;
+    ws.getCell(`A${row}`).alignment = { vertical: 'top', wrapText: true };
+    ws.getCell(`A${row}`).border = allBorders;
+    ws.getRow(row).height = 60;
+    row += 3;
+
+    // === 特記・連絡事項 ===
+    ws.mergeCells(`A${row}:F${row}`);
+    ws.getCell(`A${row}`).value = '特記・連絡事項';
+    ws.getCell(`A${row}`).font = headerFont;
+    ws.getCell(`A${row}`).fill = headerFill;
+    ws.getCell(`A${row}`).border = allBorders;
+    ws.getCell(`A${row}`).alignment = { horizontal: 'center' };
+    row++;
+    ws.mergeCells(`A${row}:F${row + 1}`);
+    ws.getCell(`A${row}`).value = j.specialNotes || '';
+    ws.getCell(`A${row}`).font = smallFont;
+    ws.getCell(`A${row}`).alignment = { vertical: 'top', wrapText: true };
+    ws.getCell(`A${row}`).border = allBorders;
+    ws.getRow(row).height = 40;
+  }
+
+  // Excel出力
+  const outputBuffer = await workbook.xlsx.writeBuffer();
+  const fileName = `サービス提供記録_${clientName}_${year}年${month}月.xlsx`;
+
+  // Supabase保存
+  const file = new File([outputBuffer], fileName, {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const { url: fileUrl } = await uploadShogaiDocFile(clientId, 'journal', file);
+  await saveShogaiDocument({
+    id: '',
+    careClientId: clientId,
+    docType: 'journal',
+    fileName,
+    fileUrl,
+    fileSize: file.size,
+    notes: `${year}年${month}月分 実績${journals.length}件から自動生成`,
+    sortOrder: 0,
+  });
+
+  console.log(`[Journal] Excel保存完了: ${fileName} (${journals.length}シート)`);
+  return { fileName, fileUrl, count: journals.length };
+}
