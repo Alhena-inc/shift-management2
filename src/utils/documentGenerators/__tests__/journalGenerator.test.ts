@@ -341,7 +341,7 @@ describe('日誌生成: LINE報告形式テンプレート', () => {
       perspiration: 'なし',
       healthCheckRequired: false,
       vitals: {},
-      bodyChecks: { medicationCheck: true, vitalCheck: false, toiletAssist: false, bathAssist: false, mealAssist: false, mobilityAssist: false, dressingAssist: false, groomingAssist: false },
+      bodyChecks: { medicationCheck: true, vitalCheck: false, toiletAssist: false, bathAssist: false, mealAssist: false, mealWatch: false, mobilityAssist: false, dressingAssist: false, groomingAssist: false },
       houseChecks: { cooking: false, cleaning: false, laundry: false, shopping: false, dishwashing: false, organizing: false },
       commonChecks: { environmentSetup: false, consultation: false, infoExchange: false, recording: false },
       specialNotes: '',
@@ -370,7 +370,7 @@ describe('日誌生成: LINE報告形式テンプレート', () => {
       perspiration: 'なし',
       healthCheckRequired: false,
       vitals: {},
-      bodyChecks: { medicationCheck: false, vitalCheck: false, toiletAssist: false, bathAssist: false, mealAssist: false, mobilityAssist: false, dressingAssist: false, groomingAssist: false },
+      bodyChecks: { medicationCheck: false, vitalCheck: false, toiletAssist: false, bathAssist: false, mealAssist: false, mealWatch: false, mobilityAssist: false, dressingAssist: false, groomingAssist: false },
       houseChecks: { cooking: false, cleaning: false, laundry: false, shopping: false, dishwashing: false, organizing: false },
       commonChecks: { environmentSetup: false, consultation: false, infoExchange: false, recording: false },
       specialNotes: '',
@@ -841,10 +841,10 @@ describe('チェック項目固定化の解消', () => {
     let checks = resolveChecksFromProcedure(stepsWithAll);
     checks = overrideChecksFromLineReport(checks, lineBodyOnly);
     expect(checks.bodyChecks.medicationCheck).toBe(true);
-    // 排泄・入浴はLINE報告に記載がない（ただし降格はbodyChecksには適用しない → 手順書由来で残る）
-    // ※身体介護チェックはLINE降格対象外（安全側に倒す）
-    expect(checks.bodyChecks.toiletAssist).toBe(true);
-    expect(checks.bodyChecks.bathAssist).toBe(true);
+    // ★可変化対応: LINE報告に記載がない身体介護チェックは降格される
+    // （服薬確認のみ安全上維持で降格対象外）
+    expect(checks.bodyChecks.toiletAssist).toBe(false);
+    expect(checks.bodyChecks.bathAssist).toBe(false);
   });
 });
 
@@ -1050,13 +1050,14 @@ describe('既存ロジック非破壊', () => {
 describe('cross-document consistency guard: checkPlanJournalConsistency', () => {
   const makeChecks = (overrides: Partial<{
     cooking: boolean; cleaning: boolean; laundry: boolean;
-    medicationCheck: boolean; mealAssist: boolean; bathAssist: boolean;
+    medicationCheck: boolean; mealAssist: boolean; mealWatch: boolean; bathAssist: boolean;
   }> = {}) => ({
     bodyChecks: {
       medicationCheck: overrides.medicationCheck ?? false,
       vitalCheck: false, toiletAssist: false,
       bathAssist: overrides.bathAssist ?? false,
       mealAssist: overrides.mealAssist ?? false,
+      mealWatch: overrides.mealWatch ?? false,
       mobilityAssist: false, dressingAssist: false, groomingAssist: false,
     },
     houseChecks: {
@@ -1108,13 +1109,14 @@ describe('cross-document consistency guard: checkPlanJournalConsistency', () => 
   });
 });
 
-describe('手順書の食事見守りが正しくmealAssistにマッチ', () => {
-  it('「食事の見守り」がmealAssist=trueになること', () => {
+describe('手順書の食事見守り/食事介助マッチ', () => {
+  it('「食事の見守り」がmealWatch=trueになること', () => {
     const steps: ProcedureStep[] = [
       { item: '食事の見守り', content: '食事の見守りを行う', note: '' },
     ];
     const checks = resolveChecksFromProcedure(steps);
-    expect(checks.bodyChecks.mealAssist).toBe(true);
+    expect(checks.bodyChecks.mealWatch).toBe(true);
+    expect(checks.bodyChecks.mealAssist).toBe(false);
   });
 
   it('「配膳」がmealAssist=trueになること', () => {
@@ -1249,5 +1251,206 @@ describe('K21調理整合 + planReviewRequired', () => {
     };
     const journals = generateJournals(ctx);
     expect(journals[0].planReviewRequired).toBe(false);
+  });
+});
+
+// ==================== 最低限追加テスト（運営指導必須3パターン） ====================
+
+describe('運営指導必須: バイタル記録ルール3パターン', () => {
+  it('実測体温あり → 数値記録 + バイタル確認ON', () => {
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: [mockBillingRecords[0]],
+      procedureBlocks: [{
+        service_type: '身体介護',
+        visit_label: '月〜金 10:00〜14:00',
+        steps: [
+          { item: 'バイタルチェック', content: '体温・血圧を測定', note: '' },
+          { item: '服薬確認', content: '服薬の確認', note: '' },
+        ],
+      }],
+      vitalsByDate: {
+        '2025-11-05': { temperature: 36.7 },
+      },
+    };
+    const journals = generateJournals(ctx);
+    // 体温の実測値が記録される
+    expect(journals[0].structuredJournal.vitals.temperature).toBe(36.7);
+    // バイタル確認チェックがON
+    expect(journals[0].structuredJournal.healthCheckRequired).toBe(true);
+    expect(journals[0].structuredJournal.bodyChecks.vitalCheck).toBe(true);
+    // 本文に体温が含まれる
+    expect(journals[0].diaryNarrative).toContain('体温36.7℃');
+  });
+
+  it('実測血圧あり → 数値記録 + バイタル確認ON', () => {
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: [mockBillingRecords[0]],
+      procedureBlocks: [{
+        service_type: '身体介護',
+        visit_label: '月〜金 10:00〜14:00',
+        steps: [
+          { item: 'バイタルチェック', content: '血圧・体温を測定', note: '' },
+          { item: '服薬確認', content: '服薬の確認', note: '' },
+        ],
+      }],
+      vitalsByDate: {
+        '2025-11-05': { systolic: 128, diastolic: 82 },
+      },
+    };
+    const journals = generateJournals(ctx);
+    // 血圧の実測値が記録される
+    expect(journals[0].structuredJournal.vitals.systolic).toBe(128);
+    expect(journals[0].structuredJournal.vitals.diastolic).toBe(82);
+    // バイタル確認チェックがON
+    expect(journals[0].structuredJournal.healthCheckRequired).toBe(true);
+    expect(journals[0].structuredJournal.bodyChecks.vitalCheck).toBe(true);
+    // 本文に血圧値が含まれる
+    expect(journals[0].diaryNarrative).toContain('血圧128/82mmHg');
+  });
+
+  it('実測値なし → 数値空欄 + バイタル確認OFF + 体調確認表現', () => {
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: [mockBillingRecords[0]],
+      procedureBlocks: [{
+        service_type: '身体介護',
+        visit_label: '月〜金 10:00〜14:00',
+        steps: [
+          { item: 'バイタルチェック', content: '体温・血圧を測定', note: '' },
+          { item: '服薬確認', content: '服薬の確認', note: '' },
+        ],
+      }],
+      // vitalsByDate未設定 → 実測値なし
+    };
+    const journals = generateJournals(ctx);
+    // 数値は全て空欄
+    expect(journals[0].structuredJournal.vitals.temperature).toBeUndefined();
+    expect(journals[0].structuredJournal.vitals.systolic).toBeUndefined();
+    expect(journals[0].structuredJournal.vitals.diastolic).toBeUndefined();
+    expect(journals[0].structuredJournal.vitals.pulse).toBeUndefined();
+    // バイタル確認チェックがOFF
+    expect(journals[0].structuredJournal.healthCheckRequired).toBe(false);
+    expect(journals[0].structuredJournal.bodyChecks.vitalCheck).toBe(false);
+    // 本文に「体調確認」が含まれ、「バイタルチェック」とは書かない
+    expect(journals[0].diaryNarrative).toContain('体調確認');
+    expect(journals[0].diaryNarrative).not.toContain('バイタルチェック');
+    // 正常値が自動生成されていないことを確認
+    expect(journals[0].diaryNarrative).not.toMatch(/体温\d/);
+    expect(journals[0].diaryNarrative).not.toMatch(/血圧\d/);
+  });
+});
+
+// ==================== 特記欄空欄防止テスト ====================
+
+describe('特記欄: LINE報告なしでも空欄にならない', () => {
+  it('手順書ありでLINE報告なし → 特記に最低限の記載がある', () => {
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: [mockBillingRecords[0]],
+      procedureBlocks: [{
+        service_type: '身体介護',
+        visit_label: '月〜金 10:00〜14:00',
+        steps: [
+          { item: '服薬確認', content: '処方薬の服用を確認', note: '' },
+          { item: '体調確認', content: '体調の確認', note: '' },
+        ],
+      }],
+      // lineReports未設定
+    };
+    const journals = generateJournals(ctx);
+    // 特記が空欄でないこと
+    expect(journals[0].specialNotes.length).toBeGreaterThan(0);
+  });
+
+  it('家事援助でLINE報告なし → 特記に最低限の記載がある', () => {
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: [mockBillingRecords[1]], // 家事援助
+      procedureBlocks: [{
+        service_type: '家事援助',
+        visit_label: '月〜金 18:30〜19:30',
+        steps: [
+          { item: '清掃', content: '居室清掃', note: '' },
+        ],
+      }],
+    };
+    const journals = generateJournals(ctx);
+    expect(journals[0].specialNotes.length).toBeGreaterThan(0);
+  });
+});
+
+// ==================== 身体介護チェック可変化テスト ====================
+
+describe('身体介護チェック: LINE報告ベースで可変化', () => {
+  it('LINE報告で服薬のみ実施 → 排泄・入浴が降格される', () => {
+    const stepsWithAll: ProcedureStep[] = [
+      { item: '服薬確認', content: '服薬の確認', note: '' },
+      { item: '排泄介助', content: 'トイレ介助', note: '' },
+      { item: '入浴介助', content: '入浴の見守り', note: '' },
+    ];
+    const lineBodyOnly: LineReport = {
+      date: '2025-11-05', clientName: '上村太郎', startTime: '10:00', endTime: '14:00',
+      condition: '体調良好', careContent: ['服薬確認'], requests: 'なし',
+      diary: '処方薬の服薬確認を行いました。本人が服用したことを確認しました。状態安定。',
+      futurePlan: '帰宅します',
+    };
+    let checks = resolveChecksFromProcedure(stepsWithAll);
+    // 手順書段階では全部ON
+    expect(checks.bodyChecks.toiletAssist).toBe(true);
+    expect(checks.bodyChecks.bathAssist).toBe(true);
+    // LINE降格後
+    checks = overrideChecksFromLineReport(checks, lineBodyOnly);
+    expect(checks.bodyChecks.medicationCheck).toBe(true); // 服薬は維持
+    expect(checks.bodyChecks.toiletAssist).toBe(false);    // 降格
+    expect(checks.bodyChecks.bathAssist).toBe(false);      // 降格
+  });
+
+  it('LINE報告で排泄実施 → 排泄はONのまま', () => {
+    const steps: ProcedureStep[] = [
+      { item: '服薬確認', content: '服薬の確認', note: '' },
+      { item: '排泄介助', content: 'トイレ介助', note: '' },
+    ];
+    const lineWithToilet: LineReport = {
+      date: '2025-11-05', clientName: '上村太郎', startTime: '10:00', endTime: '14:00',
+      condition: '体調良好', careContent: ['服薬確認', '排泄介助'], requests: 'なし',
+      diary: '処方薬の服薬確認を行い、トイレ誘導を行いました。排泄後の清拭を実施。',
+      futurePlan: '帰宅します',
+    };
+    let checks = resolveChecksFromProcedure(steps);
+    checks = overrideChecksFromLineReport(checks, lineWithToilet);
+    expect(checks.bodyChecks.medicationCheck).toBe(true);
+    expect(checks.bodyChecks.toiletAssist).toBe(true); // LINE報告にあるのでON維持
+  });
+});
+
+// ==================== 食事見守り区別テスト ====================
+
+describe('食事見守りと食事介助の区別', () => {
+  it('手順書に「食事の見守り」→ mealWatch=true, mealAssist=false', () => {
+    const steps: ProcedureStep[] = [
+      { item: '食事の見守り', content: '食事の見守りを行う', note: '' },
+    ];
+    const checks = resolveChecksFromProcedure(steps);
+    expect(checks.bodyChecks.mealWatch).toBe(true);
+    expect(checks.bodyChecks.mealAssist).toBe(false);
+  });
+
+  it('手順書に「食事介助」→ mealAssist=true, mealWatch=false', () => {
+    const steps: ProcedureStep[] = [
+      { item: '食事介助', content: '食事の介助を行う', note: '' },
+    ];
+    const checks = resolveChecksFromProcedure(steps);
+    expect(checks.bodyChecks.mealAssist).toBe(true);
+    expect(checks.bodyChecks.mealWatch).toBe(false);
+  });
+
+  it('手順書に「配膳」→ mealAssist=true', () => {
+    const steps: ProcedureStep[] = [
+      { item: '配膳', content: '食事の配膳を行う', note: '' },
+    ];
+    const checks = resolveChecksFromProcedure(steps);
+    expect(checks.bodyChecks.mealAssist).toBe(true);
   });
 });

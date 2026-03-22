@@ -80,6 +80,7 @@ export interface StructuredJournal {
     toiletAssist: boolean;       // 排泄介助
     bathAssist: boolean;         // 入浴介助
     mealAssist: boolean;         // 食事介助
+    mealWatch: boolean;          // 食事見守り（介助とは区別）
     mobilityAssist: boolean;     // 移動介助
     dressingAssist: boolean;     // 更衣介助
     groomingAssist: boolean;     // 整容介助
@@ -182,6 +183,13 @@ export function resolveChecksFromProcedure(steps: ProcedureStep[]): {
 } {
   const allText = steps.map(s => `${s.item} ${s.content}`).join(' ');
 
+  // ★食事見守りと食事介助を区別:
+  //   「食事の見守り」「食事見守り」→ mealWatch=true
+  //   「食事介助」「食事支援」「配膳介助」→ mealAssist=true
+  //   「配膳」単独 → mealAssist=true（介助側に寄せる）
+  const hasMealWatch = /食事.*見守/.test(allText);
+  const hasMealAssist = /食事介助|食事.*支援|配膳.*介助|配膳/.test(allText);
+
   const bodyChecks = {
     medicationCheck: /服薬|薬.*確認|投薬/.test(allText),
     // ★「体調確認」はバイタル確認ではない。バイタル=体温・血圧・脈拍の測定を伴う場合のみ
@@ -189,7 +197,8 @@ export function resolveChecksFromProcedure(steps: ProcedureStep[]): {
     vitalCheck: /バイタル|体温.*測定|血圧.*測定|脈拍.*測定|血圧.*体温|体温.*血圧/.test(allText),
     toiletAssist: /排泄|トイレ|排尿|排便/.test(allText),
     bathAssist: /入浴|シャワー|清拭/.test(allText),
-    mealAssist: /食事介助|食事.*支援|食事.*見守|配膳.*介助|配膳/.test(allText),
+    mealAssist: hasMealAssist || (!hasMealWatch && /食事/.test(allText)),
+    mealWatch: hasMealWatch,
     mobilityAssist: /移動|移乗|歩行|外出.*介助|外出.*支援/.test(allText),
     dressingAssist: /更衣|着替/.test(allText),
     groomingAssist: /整容|洗面|歯磨|口腔/.test(allText),
@@ -228,7 +237,8 @@ export function overrideChecksFromLineReport(
   if (/服薬/.test(content)) checks.bodyChecks.medicationCheck = true;
   if (/入浴|シャワー|清拭/.test(content)) checks.bodyChecks.bathAssist = true;
   if (/排泄|トイレ/.test(content)) checks.bodyChecks.toiletAssist = true;
-  if (/食事介助|食事.*見守/.test(content)) checks.bodyChecks.mealAssist = true;
+  if (/食事介助/.test(content)) checks.bodyChecks.mealAssist = true;
+  if (/食事.*見守/.test(content)) checks.bodyChecks.mealWatch = true;
   if (/移動|歩行|移乗/.test(content)) checks.bodyChecks.mobilityAssist = true;
   if (/更衣|着替/.test(content)) checks.bodyChecks.dressingAssist = true;
   if (/整容|洗面|歯磨/.test(content)) checks.bodyChecks.groomingAssist = true;
@@ -248,12 +258,24 @@ export function overrideChecksFromLineReport(
   // LINE報告は「実際にやったこと」の記録なので、LINE報告があるのに言及がない項目はOFFに降格
   if (lineReport.diary && lineReport.diary.length > 20) {
     // 十分な情報量があるLINE報告がある場合のみ、手順書由来チェックを降格
+    // --- 家事援助チェック降格 ---
     if (!/調理|料理|献立/.test(content) && !lineReport.careContent.some(c => /調理|料理/.test(c))) checks.houseChecks.cooking = false;
     if (!/掃除|清掃/.test(content) && !lineReport.careContent.some(c => /掃除|清掃/.test(c))) checks.houseChecks.cleaning = false;
     if (!/洗濯/.test(content) && !lineReport.careContent.some(c => /洗濯/.test(c))) checks.houseChecks.laundry = false;
     if (!/食器|皿洗|片付け/.test(content) && !lineReport.careContent.some(c => /食器|片付/.test(c))) checks.houseChecks.dishwashing = false;
     if (!/整理|整頓/.test(content) && !lineReport.careContent.some(c => /整理|整頓/.test(c))) checks.houseChecks.organizing = false;
     if (!/買い?物/.test(content) && !lineReport.careContent.some(c => /買.*物/.test(c))) checks.houseChecks.shopping = false;
+
+    // --- 身体介護チェック降格（★可変化対応） ---
+    // ★服薬確認は安全上維持し降格対象外。その他は実際の記録に応じて可変化する。
+    // 排泄・入浴・食事・移動・更衣・整容: LINE報告に言及がなければ降格
+    if (!/排泄|トイレ|排尿|排便/.test(content) && !lineReport.careContent.some(c => /排泄|トイレ/.test(c))) checks.bodyChecks.toiletAssist = false;
+    if (!/入浴|シャワー|清拭/.test(content) && !lineReport.careContent.some(c => /入浴|シャワー|清拭/.test(c))) checks.bodyChecks.bathAssist = false;
+    if (!/食事介助|配膳/.test(content) && !lineReport.careContent.some(c => /食事介助|配膳/.test(c))) checks.bodyChecks.mealAssist = false;
+    if (!/食事.*見守/.test(content) && !lineReport.careContent.some(c => /食事.*見守/.test(c))) checks.bodyChecks.mealWatch = false;
+    if (!/移動|歩行|移乗|外出/.test(content) && !lineReport.careContent.some(c => /移動|歩行|外出/.test(c))) checks.bodyChecks.mobilityAssist = false;
+    if (!/更衣|着替/.test(content) && !lineReport.careContent.some(c => /更衣|着替/.test(c))) checks.bodyChecks.dressingAssist = false;
+    if (!/整容|洗面|歯磨|口腔/.test(content) && !lineReport.careContent.some(c => /整容|洗面|歯磨/.test(c))) checks.bodyChecks.groomingAssist = false;
   }
 
   return checks;
@@ -362,6 +384,8 @@ export function generateLineStyleReport(
   const careItems: string[] = [];
   if (journal.bodyChecks.medicationCheck) careItems.push('服薬確認');
   if (journal.bodyChecks.vitalCheck) careItems.push('バイタル確認');
+  if (journal.bodyChecks.mealAssist) careItems.push('食事介助');
+  if (journal.bodyChecks.mealWatch) careItems.push('食事見守り');
   if (journal.houseChecks.cooking) careItems.push('調理');
   if (journal.houseChecks.cleaning) careItems.push('清掃');
   if (journal.houseChecks.laundry) careItems.push('洗濯');
@@ -570,12 +594,20 @@ export function generateDiaryNarrative(
       bodyActions.push(bathVariants[variantSeed % bathVariants.length]);
     }
     if (journal.bodyChecks.mealAssist) {
-      const mealVariants = [
+      const mealAssistVariants = [
+        '食事の介助を行い、摂取状況を確認した',
+        '食事の配膳・介助を行い、声かけを行った',
+        '食事量と水分摂取量を確認し、食事介助を行った',
+      ];
+      bodyActions.push(mealAssistVariants[variantSeed % mealAssistVariants.length]);
+    }
+    if (journal.bodyChecks.mealWatch) {
+      const mealWatchVariants = [
         '食事の見守り・声かけを行い、摂取状況を確認した',
         '食事の配膳を行い、摂取の見守りと声かけを行った',
         '食事量と水分摂取量を確認し、見守りを行った',
       ];
-      bodyActions.push(mealVariants[variantSeed % mealVariants.length]);
+      bodyActions.push(mealWatchVariants[variantSeed % mealWatchVariants.length]);
     }
     if (journal.bodyChecks.mobilityAssist) {
       const mobilityVariants = [
@@ -622,7 +654,7 @@ export function generateDiaryNarrative(
   if (lineReport) {
     if (lineReport.careContent && lineReport.careContent.length > 0) {
       const lineItems = lineReport.careContent.filter(c =>
-        !/(調理|清掃|掃除|洗濯|服薬|バイタル|環境|食器|整理|買物|排泄|入浴|移動|更衣|整容)/.test(c)
+        !/(調理|清掃|掃除|洗濯|服薬|バイタル|環境|食器|整理|買物|排泄|入浴|移動|更衣|整容|食事)/.test(c)
       );
       if (lineItems.length > 0) {
         parts.push(`その他、${lineItems.join('・')}を実施。`);
@@ -661,6 +693,9 @@ export function generateDiaryNarrative(
 export function generateSpecialNotes(
   lineReport?: LineReport,
   careItems?: string[],
+  procedureSteps?: ProcedureStep[],
+  serviceDate?: string,
+  serviceTypeLabel?: string,
 ): string {
   const notes: string[] = [];
 
@@ -721,6 +756,42 @@ export function generateSpecialNotes(
     }
   }
 
+  // ★LINE報告がない場合でも、手順書の内容から最低限の特記を生成（全件空欄防止）
+  if (!lineReport && notes.length === 0 && procedureSteps && procedureSteps.length > 0 && serviceDate) {
+    const d = new Date(serviceDate + 'T00:00:00');
+    const dayOfMonth = d.getDate();
+    const variantSeed = dayOfMonth + (d.getMonth() * 5);
+
+    // 手順書の主要ステップから日ごとに異なる特記を生成
+    const mainSteps = procedureSteps.filter(s => !/到着|挨拶|退室|訪問開始|記録/.test(s.item));
+    const isBody = serviceTypeLabel?.includes('身体') || serviceTypeLabel?.includes('重度');
+    const isHouse = serviceTypeLabel?.includes('家事') || serviceTypeLabel?.includes('生活');
+
+    if (isBody) {
+      const bodyNoteVariants = [
+        '本日のサービスは計画通り実施。体調面での大きな変化なし。',
+        '計画に沿った支援を実施。利用者の状態は安定。',
+        '所定のケアを実施。特段の変化なく終了。',
+        '計画に基づく支援を実施。次回も継続予定。',
+        '本日の支援は滞りなく完了。利用者の表情も穏やか。',
+        '予定通りの身体介護を実施。体調の訴えなし。',
+        '計画通りのサービスを提供。状態安定。',
+      ];
+      notes.push(bodyNoteVariants[variantSeed % bodyNoteVariants.length]);
+    } else if (isHouse) {
+      const houseNoteVariants = [
+        '本日の家事援助は計画通り実施。居室環境は良好。',
+        '所定の生活支援を実施。特段の変化なし。',
+        '計画に沿った家事支援を完了。次回も継続予定。',
+        '生活環境の整備を実施。利用者の様子は安定。',
+        '計画通りの家事援助を提供。居室内の動線確保済み。',
+        '本日の支援は滞りなく完了。生活環境を整えた。',
+        '予定通りの家事支援を実施。特段の報告事項なし。',
+      ];
+      notes.push(houseNoteVariants[variantSeed % houseNoteVariants.length]);
+    }
+  }
+
   // 重複除去
   const unique = [...new Set(notes)];
   return unique.join(' ');
@@ -775,8 +846,8 @@ export function checkPlanJournalConsistency(
       if (/入浴/.test(summary) && !checks.bodyChecks.bathAssist) {
         reasons.push(`計画書に「入浴」が含まれるが日誌で入浴介助OFF (${summary})`);
       }
-      if (/食事/.test(summary) && !checks.bodyChecks.mealAssist) {
-        reasons.push(`計画書に「食事」が含まれるが日誌で食事介助OFF (${summary})`);
+      if (/食事/.test(summary) && !checks.bodyChecks.mealAssist && !checks.bodyChecks.mealWatch) {
+        reasons.push(`計画書に「食事」が含まれるが日誌で食事介助/見守りOFF (${summary})`);
       }
     }
   }
@@ -856,11 +927,12 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
     const isHouseService = serviceTypeLabel.includes('家事') || serviceTypeLabel.includes('生活');
     if (isHouseService && !isBodyService) {
       // 家事援助なのに身体介護チェックが入っている場合は除去
-      if (checks.bodyChecks.toiletAssist || checks.bodyChecks.bathAssist || checks.bodyChecks.mealAssist || checks.bodyChecks.mobilityAssist || checks.bodyChecks.dressingAssist || checks.bodyChecks.groomingAssist) {
+      if (checks.bodyChecks.toiletAssist || checks.bodyChecks.bathAssist || checks.bodyChecks.mealAssist || checks.bodyChecks.mealWatch || checks.bodyChecks.mobilityAssist || checks.bodyChecks.dressingAssist || checks.bodyChecks.groomingAssist) {
         console.warn(`[Journal] ★矛盾防止: 家事援助(${record.serviceCode})に身体介護チェックが混入 → 除去`);
         checks.bodyChecks.toiletAssist = false;
         checks.bodyChecks.bathAssist = false;
         checks.bodyChecks.mealAssist = false;
+        checks.bodyChecks.mealWatch = false;
         checks.bodyChecks.mobilityAssist = false;
         checks.bodyChecks.dressingAssist = false;
         checks.bodyChecks.groomingAssist = false;
@@ -868,7 +940,7 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
     }
     if (isBodyService && !isHouseService) {
       // 身体介護なのに家事援助チェックだけの場合（serviceType優先だが完全除去はしない）
-      const hasAnyBodyCheck = checks.bodyChecks.medicationCheck || checks.bodyChecks.vitalCheck || checks.bodyChecks.toiletAssist || checks.bodyChecks.bathAssist;
+      const hasAnyBodyCheck = checks.bodyChecks.medicationCheck || checks.bodyChecks.vitalCheck || checks.bodyChecks.toiletAssist || checks.bodyChecks.bathAssist || checks.bodyChecks.mealAssist || checks.bodyChecks.mealWatch;
       if (!hasAnyBodyCheck) {
         // 身体介護なのに身体チェックが0 → 最低限の体調確認を入れる
         checks.bodyChecks.medicationCheck = true;
@@ -894,8 +966,8 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
       }
     }
 
-    // 特記生成
-    const specialNotes = generateSpecialNotes(matchingLine, matchingLine?.careContent);
+    // 特記生成（手順書ステップ・日付・サービス種別を渡して空欄防止）
+    const specialNotes = generateSpecialNotes(matchingLine, matchingLine?.careContent, steps, record.serviceDate, serviceTypeLabel);
 
     // 状態確認（顔色・発汗）をLINE報告ベースで可変化
     const { complexion, perspiration } = resolveCondition(matchingLine, record.serviceDate);
@@ -1102,8 +1174,12 @@ export async function generateAndSaveJournalExcel(
       ws.getCell(`A${row}`).alignment = { horizontal: 'center' };
       row++;
 
+      // ★食事介助と食事見守りを区別して表示
+      const mealLabel = j.bodyChecks.mealWatch
+        ? `${mark(j.bodyChecks.mealWatch)} 食事見守り`
+        : `${mark(j.bodyChecks.mealAssist)} 食事介助`;
       const bodyItems = [
-        [`${mark(j.bodyChecks.vitalCheck)} バイタル確認`, `${mark(j.bodyChecks.medicationCheck)} 服薬確認`, `${mark(j.bodyChecks.mealAssist)} 食事介助`],
+        [`${mark(j.bodyChecks.vitalCheck)} バイタル確認`, `${mark(j.bodyChecks.medicationCheck)} 服薬確認`, mealLabel],
         [`${mark(j.bodyChecks.toiletAssist)} 排泄介助`, `${mark(j.bodyChecks.bathAssist)} 入浴介助`, `${mark(j.bodyChecks.mobilityAssist)} 移動介助`],
         [`${mark(j.bodyChecks.dressingAssist)} 更衣介助`, `${mark(j.bodyChecks.groomingAssist)} 整容介助`, ''],
       ];
