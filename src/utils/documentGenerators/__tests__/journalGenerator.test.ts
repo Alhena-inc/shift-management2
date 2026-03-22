@@ -1706,7 +1706,7 @@ describe('手順書バイタル方針ズレ検出', () => {
     };
     const journals = generateJournals(ctx);
     expect(journals[0].manualReviewRequired).toBe(true);
-    expect(journals[0].manualReviewReasons.some(r => r.includes('手順書にバイタル測定あり'))).toBe(true);
+    expect(journals[0].manualReviewReasons.some(r => r.includes('手順書に毎回バイタル測定あり'))).toBe(true);
     // バイタル確認チェックはOFF（実測値なし）
     expect(journals[0].structuredJournal.bodyChecks.vitalCheck).toBe(false);
     // 本文に「バイタルチェック」とは書かない
@@ -1728,7 +1728,7 @@ describe('手順書バイタル方針ズレ検出', () => {
     };
     const journals = generateJournals(ctx);
     // バイタル方針ズレはない
-    expect(journals[0].manualReviewReasons.some(r => r.includes('手順書にバイタル測定あり'))).toBe(false);
+    expect(journals[0].manualReviewReasons.some(r => r.includes('手順書に毎回バイタル測定あり'))).toBe(false);
     expect(journals[0].structuredJournal.bodyChecks.vitalCheck).toBe(true);
   });
 });
@@ -1931,5 +1931,103 @@ describe('特記欄の改善が維持されている', () => {
     for (const j of journals) {
       expect(j.specialNotes.length).toBeGreaterThan(0);
     }
+  });
+});
+
+// ==================== 手順書バイタル方針B整合テスト ====================
+
+describe('手順書バイタル方針B: 「体調確認（必要時バイタル測定）」と日誌の整合', () => {
+  it('手順書が「必要時バイタル測定」+ 実測値なし → manualReviewRequired=false（方針ズレなし）', () => {
+    // ★方針B整合: 手順書「必要時」は強制測定ではない → 日誌「体調確認」運用と矛盾しない
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: [mockBillingRecords[0]],
+      procedureBlocks: [{
+        service_type: '身体介護',
+        visit_label: '月〜金 10:00〜14:00',
+        steps: [
+          { item: '体調確認', content: '必要時は血圧・体温・脈拍を測定し、体調を確認する', note: '' },
+          { item: '服薬確認', content: '服薬の確認', note: '' },
+        ],
+      }],
+      // vitalsByDate未指定 → 実測値なし
+    };
+    const journals = generateJournals(ctx);
+    // ★「必要時」の手順書 + 実測値なし → 方針ズレなし → manualReviewRequired=false
+    expect(journals[0].manualReviewReasons.some(r => r.includes('バイタル'))).toBe(false);
+    // バイタル確認チェックはOFF（実測値なし）
+    expect(journals[0].structuredJournal.bodyChecks.vitalCheck).toBe(false);
+    expect(journals[0].structuredJournal.healthCheckRequired).toBe(false);
+    // 本文は「体調確認」
+    expect(journals[0].diaryNarrative).not.toContain('バイタルチェック');
+  });
+
+  it('手順書が「必要時バイタル測定」+ 実測値あり → バイタル確認ON + 数値記録', () => {
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: [mockBillingRecords[0]],
+      procedureBlocks: [{
+        service_type: '身体介護',
+        visit_label: '月〜金 10:00〜14:00',
+        steps: [
+          { item: '体調確認', content: '必要時は血圧・体温・脈拍を測定', note: '' },
+          { item: '服薬確認', content: '服薬の確認', note: '' },
+        ],
+      }],
+      vitalsByDate: { '2025-11-05': { temperature: 36.6, systolic: 125, diastolic: 78 } },
+    };
+    const journals = generateJournals(ctx);
+    // 実測値があるのでバイタル確認ON
+    expect(journals[0].structuredJournal.healthCheckRequired).toBe(true);
+    expect(journals[0].structuredJournal.vitals.temperature).toBe(36.6);
+    expect(journals[0].structuredJournal.vitals.systolic).toBe(125);
+  });
+
+  it('手順書が毎回「バイタルチェック」(非必要時) + 実測値なし → manualReviewRequired=true', () => {
+    // ★古い手順書で毎回測定と書いてあるケース
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: [mockBillingRecords[0]],
+      procedureBlocks: [{
+        service_type: '身体介護',
+        visit_label: '月〜金 10:00〜14:00',
+        steps: [
+          { item: 'バイタルチェック', content: '血圧・体温・脈拍を測定', note: '' },
+          { item: '服薬確認', content: '服薬の確認', note: '' },
+        ],
+      }],
+    };
+    const journals = generateJournals(ctx);
+    expect(journals[0].manualReviewRequired).toBe(true);
+    expect(journals[0].manualReviewReasons.some(r => r.includes('手順書に毎回バイタル測定あり'))).toBe(true);
+  });
+});
+
+describe('resolveChecksFromProcedure: 「必要時」バイタルはvitalCheck=false', () => {
+  it('「必要時は血圧・体温を測定」→ vitalCheck=false', () => {
+    const steps: ProcedureStep[] = [
+      { item: '体調確認', content: '必要時は血圧・体温・脈拍を測定し、体調を確認する', note: '' },
+    ];
+    const checks = resolveChecksFromProcedure(steps);
+    expect(checks.bodyChecks.vitalCheck).toBe(false);
+    expect(checks.healthCheckRequired).toBe(false);
+  });
+
+  it('「バイタルチェック 血圧・体温を測定」(必要時なし) → vitalCheck=true', () => {
+    const steps: ProcedureStep[] = [
+      { item: 'バイタルチェック', content: '血圧・体温・脈拍を測定', note: '' },
+    ];
+    const checks = resolveChecksFromProcedure(steps);
+    expect(checks.bodyChecks.vitalCheck).toBe(true);
+    expect(checks.healthCheckRequired).toBe(true);
+  });
+
+  it('「体調確認」(バイタル言及なし) → vitalCheck=false', () => {
+    const steps: ProcedureStep[] = [
+      { item: '体調確認', content: '体調・気分を確認する', note: '' },
+    ];
+    const checks = resolveChecksFromProcedure(steps);
+    expect(checks.bodyChecks.vitalCheck).toBe(false);
+    expect(checks.healthCheckRequired).toBe(false);
   });
 });

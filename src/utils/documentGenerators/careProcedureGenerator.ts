@@ -876,9 +876,11 @@ ${planServiceText}`;
           }
         } else {
           // 計画書ステップなし → 身体介護の標準ステップを使用
+          // ★「バイタルチェック」と「体調確認」を統合 → 「体調確認」に一本化
+          // 日誌側は実測値がある場合のみバイタル確認ON、なければ「体調確認を実施」とする運用に整合。
+          // 手順書に「毎回測定」と書くと、測定していない日の日誌と矛盾するため。
           const bodySteps = [
-            { item: 'バイタルチェック', detail: '血圧・体温・脈拍を測定し、体調を確認する。前回値と比較し変動がないか確認する', note: '測定値は記録用紙に記入。数値に変動があれば報告する' },
-            { item: '体調確認', detail: '体調・気分・食欲等について聴取し、心身の状態を確認する。服薬状況も併せて確認する', note: '自覚症状の訴えに注意し、変化があれば記録する' },
+            { item: '体調確認', detail: '顔色・表情・体調を確認する。必要時は血圧・体温・脈拍を測定し前回値と比較する。体調・気分・食欲等について聴取し心身の状態を確認する', note: '自覚症状の訴えに注意し、変化があれば記録。測定時は記録用紙に記入する' },
             { item: '服薬確認', detail: '処方薬の服薬状況を確認し、飲み忘れや残薬がないか確認する。必要に応じて声かけを行う', note: '服薬時間・量を確認し、飲み忘れがあれば速やかに対応する' },
             { item: '夕食摂取見守り', detail: '夕食の摂取状況を見守り、安全に食事ができるよう配慮する。水分摂取量も確認する', note: '食事中のむせ込みや食欲低下に注意し、記録する' },
             { item: '室内移動見守り', detail: '室内での移動を見守り、転倒予防に配慮する。必要に応じて声かけや軽介助を行う', note: '動線上の障害物がないか確認し、安全な移動を支援する' },
@@ -956,23 +958,25 @@ ${planServiceText}`;
     }
   }
 
-  // === バイタルチェック必須ステップの後処理 ===
+  // === 体調確認必須ステップの後処理 ===
+  // ★「バイタルチェック」→「体調確認」に統一。
+  // 日誌側では実測値がある場合のみバイタル確認ONにする運用と整合させる。
   for (const proc of manual.procedures) {
-    const hasVital = proc.steps.some(s =>
-      /バイタル|血圧|体温|脈拍|SpO2/.test(`${s.item} ${s.detail}`)
+    const hasHealthCheck = proc.steps.some(s =>
+      /バイタル|血圧|体温|脈拍|SpO2|体調確認/.test(`${s.item} ${s.detail}`)
     );
-    if (!hasVital) {
-      console.log(`[CareProcedure] ${proc.visit_label}: バイタルチェックが不足 → 挿入`);
+    if (!hasHealthCheck) {
+      console.log(`[CareProcedure] ${proc.visit_label}: 体調確認が不足 → 挿入`);
       // 到着・挨拶の直後（2番目）に挿入
-      const vitalStep: ProcedureStep = {
+      const healthCheckStep: ProcedureStep = {
         time: proc.steps.length > 1 ? proc.steps[1]?.time || proc.start_time : proc.start_time,
-        item: 'バイタルチェック',
-        detail: '血圧・体温・脈拍を測定し、体調を確認する。異常値がある場合はサービス提供責任者に報告する。',
-        note: '測定値は記録用紙に記入。普段の数値と比較し変動があれば報告。',
+        item: '体調確認',
+        detail: '顔色・表情・体調を確認する。必要時は血圧・体温・脈拍を測定し、異常値がある場合はサービス提供責任者に報告する。',
+        note: '自覚症状の訴えに注意。測定時は記録用紙に記入し変動があれば報告。',
       };
       // 挨拶ステップの後に挿入
       const greetIdx = proc.steps.findIndex(s => /到着|挨拶|訪問/.test(s.item));
-      proc.steps.splice(greetIdx >= 0 ? greetIdx + 1 : 0, 0, vitalStep);
+      proc.steps.splice(greetIdx >= 0 ? greetIdx + 1 : 0, 0, healthCheckStep);
     }
   }
 

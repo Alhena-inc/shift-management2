@@ -211,9 +211,14 @@ export function resolveChecksFromProcedure(steps: ProcedureStep[]): {
 
   const bodyChecks = {
     medicationCheck: /服薬|薬.*確認|投薬/.test(allText),
-    // ★「体調確認」はバイタル確認ではない。バイタル=体温・血圧・脈拍の測定を伴う場合のみ
+    // ★「体調確認」はバイタル確認ではない。バイタル=体温・血圧・脈拍の測定を毎回行う場合のみ
     // 手順書に「バイタルチェック（血圧・体温・脈拍測定）」等がある場合にマッチ
-    vitalCheck: /バイタル|体温.*測定|血圧.*測定|脈拍.*測定|血圧.*体温|体温.*血圧/.test(allText),
+    // ★「必要時」「必要に応じて」が前置された測定はバイタル確認に含めない
+    vitalCheck: (() => {
+      // 「必要時」を除外したテキストで判定
+      const textWithoutOptional = allText.replace(/必要時[はに]?[^\s。、]*測定/g, '');
+      return /バイタルチェック|バイタル測定|体温.*測定|血圧.*測定|脈拍.*測定|血圧.*体温|体温.*血圧/.test(textWithoutOptional);
+    })(),
     toiletAssist: /排泄|トイレ|排尿|排便/.test(allText),
     bathAssist: /入浴|シャワー|清拭/.test(allText),
     mealAssist: hasMealAssist || (!hasMealWatch && /食事/.test(allText)),
@@ -239,7 +244,9 @@ export function resolveChecksFromProcedure(steps: ProcedureStep[]): {
     recording: /記録|報告書/.test(allText),
   };
 
-  const healthCheckRequired = bodyChecks.vitalCheck || /バイタル|血圧|体温/.test(allText);
+  // ★「必要時」のバイタル測定はhealthCheckRequired=falseにする
+  const textWithoutOptional = allText.replace(/必要時[はに]?[^\s。、]*(?:測定|バイタル)/g, '');
+  const healthCheckRequired = bodyChecks.vitalCheck || /バイタルチェック|バイタル測定|血圧.*測定|体温.*測定/.test(textWithoutOptional);
 
   return { bodyChecks, houseChecks, commonChecks, healthCheckRequired };
 }
@@ -404,10 +411,9 @@ export function resolveVitals(
   let vitalNote = '';
   let hasActualMeasurement = false;
 
-  if (!healthCheckRequired) {
-    return { vitals, vitalNote, hasActualMeasurement };
-  }
-
+  // ★実測値がある場合は、healthCheckRequired に関係なく数値を記録する。
+  // 「必要時バイタル測定」の手順書で healthCheckRequired=false でも、
+  // 実測値が入力されていれば日誌に反映する。
   // 実測値がある場合のみ数値を埋める（数値の自動推定は禁止）
   if (vitalsByDate && serviceDate && vitalsByDate[serviceDate]) {
     const measured = vitalsByDate[serviceDate];
@@ -415,6 +421,11 @@ export function resolveVitals(
     if (measured.systolic !== undefined) { vitals.systolic = measured.systolic; hasActualMeasurement = true; }
     if (measured.diastolic !== undefined) { vitals.diastolic = measured.diastolic; hasActualMeasurement = true; }
     if (measured.pulse !== undefined) { vitals.pulse = measured.pulse; hasActualMeasurement = true; }
+  }
+
+  // 手順書にバイタル項目がなく、実測値もない → 空で返す
+  if (!healthCheckRequired && !hasActualMeasurement) {
+    return { vitals, vitalNote, hasActualMeasurement };
   }
 
   // ★厳格ルール: 実測値がない場合は「体調確認」に留める
@@ -1042,11 +1053,17 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
     // バイタル解決（実測値がある場合のみ数値記録。値が無いなら「体調確認」に留める）
     const { vitals, vitalNote, hasActualMeasurement } = resolveVitals(checks.healthCheckRequired, vitalsByDate, record.serviceDate);
 
-    // ★バイタル降格: 実測値がないならvitalCheckをfalseに
+    // ★バイタル降格/昇格:
     if (!hasActualMeasurement && checks.bodyChecks.vitalCheck) {
+      // 実測値なし + vitalCheck=true → 降格
       console.log(`[Journal] ${record.serviceDate} ${record.startTime}: バイタル実測値なし → vitalCheck=falseに降格（体調確認扱い）`);
       checks.bodyChecks.vitalCheck = false;
       checks.healthCheckRequired = false;
+    } else if (hasActualMeasurement && !checks.bodyChecks.vitalCheck) {
+      // 実測値あり + vitalCheck=false（「必要時」手順書の場合）→ 昇格
+      console.log(`[Journal] ${record.serviceDate} ${record.startTime}: 実測値あり → vitalCheck=trueに昇格`);
+      checks.bodyChecks.vitalCheck = true;
+      checks.healthCheckRequired = true;
     }
 
     // ★矛盾防止ガード: serviceTypeとチェック項目の整合
@@ -1153,13 +1170,17 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
       }
     }
 
-    // ★手順書バイタル方針ズレ: 手順書にバイタル測定があるが実測値なし → 要確認
-    const procedureHasVital = steps.some(s =>
-      /バイタル|体温.*測定|血圧.*測定|脈拍.*測定/.test(`${s.item} ${s.content}`)
-    );
-    if (procedureHasVital && !hasActualMeasurement) {
+    // ★手順書バイタル方針ズレ: 手順書に「毎回」バイタル測定がある（「必要時」でない）のに実測値なし → 要確認
+    // 手順書が「体調確認（必要時バイタル測定）」の場合は、日誌の「体調確認」運用と整合済みなのでフラグ不要
+    const procedureHasMandatoryVital = steps.some(s => {
+      const text = `${s.item} ${s.content}`;
+      const hasMeasurement = /バイタルチェック|バイタル測定|体温.*測定|血圧.*測定|脈拍.*測定/.test(text);
+      const isOptional = /必要時|必要に応じ/.test(text);
+      return hasMeasurement && !isOptional;
+    });
+    if (procedureHasMandatoryVital && !hasActualMeasurement) {
       manualReviewReasons.push(
-        `手順書にバイタル測定あり(D10等)だが実測値なし → 手順書を「必要時体調確認」に修正するか、実測値を入力してください`
+        `手順書に毎回バイタル測定あり(D10等)だが実測値なし → 手順書を「必要時体調確認」に修正するか、実測値を入力してください`
       );
     }
 
