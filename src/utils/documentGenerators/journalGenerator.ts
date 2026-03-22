@@ -268,7 +268,6 @@ export function resolveVitals(
   healthCheckRequired: boolean,
   vitalsByDate?: Record<string, VitalSigns>,
   serviceDate?: string,
-  procedureHasVital?: boolean,
 ): { vitals: VitalSigns; vitalNote: string; hasActualMeasurement: boolean } {
   const vitals: VitalSigns = {};
   let vitalNote = '';
@@ -287,15 +286,11 @@ export function resolveVitals(
     if (measured.pulse !== undefined) { vitals.pulse = measured.pulse; hasActualMeasurement = true; }
   }
 
-  // ★実測値がない場合の本文表現を手順書との整合で決定
+  // ★厳格ルール: 実測値がない場合は「体調確認」に留める
+  // 「バイタルチェック（体温・血圧測定）を実施」は実測値がある場合のみ
+  // 手順書にバイタルチェックがあっても、値が無いなら「測ったことにする」記載は禁止
   if (!hasActualMeasurement) {
-    if (procedureHasVital) {
-      // 手順書にバイタルチェックがある → 本文で「バイタルチェック実施」と記載（手順書との整合）
-      // ただし数値は空欄のまま（正常値自動生成禁止）
-      vitalNote = 'バイタルチェック（体温・血圧測定）を実施。著変なし。';
-    } else {
-      vitalNote = '体調確認を実施。著変なし。';
-    }
+    vitalNote = '体調確認を実施。著変なし。';
   }
 
   return { vitals, vitalNote, hasActualMeasurement };
@@ -846,9 +841,8 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
       checks = overrideChecksFromLineReport(checks, matchingLine);
     }
 
-    // バイタル解決（手順書にバイタルチェックがあるかのフラグも渡す）
-    const procedureHasVital = checks.bodyChecks.vitalCheck || checks.healthCheckRequired;
-    const { vitals, vitalNote, hasActualMeasurement } = resolveVitals(checks.healthCheckRequired, vitalsByDate, record.serviceDate, procedureHasVital);
+    // バイタル解決（実測値がある場合のみ数値記録。値が無いなら「体調確認」に留める）
+    const { vitals, vitalNote, hasActualMeasurement } = resolveVitals(checks.healthCheckRequired, vitalsByDate, record.serviceDate);
 
     // ★バイタル降格: 実測値がないならvitalCheckをfalseに
     if (!hasActualMeasurement && checks.bodyChecks.vitalCheck) {
@@ -879,6 +873,24 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
         // 身体介護なのに身体チェックが0 → 最低限の体調確認を入れる
         checks.bodyChecks.medicationCheck = true;
         console.warn(`[Journal] ★矛盾防止: 身体介護(${record.serviceCode})に身体チェックなし → 服薬確認を自動追加`);
+      }
+    }
+
+    // ★K21調理整合: 計画書に「調理」がある家事援助の場合、
+    // 手順書/LINE報告で明示的に否定されていない限り cooking=ON にする
+    if (isHouseService && carePlanServiceSummary) {
+      const planHasCooking = carePlanServiceSummary.serviceTypeSummaries.some(s =>
+        /家事|生活/.test(s) && /調理/.test(s)
+      );
+      if (planHasCooking && !checks.houseChecks.cooking) {
+        // LINE報告で調理が明示的に記載なし → 計画書に合わせてON
+        // ただしLINE報告が十分な情報量で調理に言及なしの場合は、LINEの降格が優先される
+        const lineExplicitlyNoCooking = matchingLine?.diary && matchingLine.diary.length > 20 &&
+          !/調理|料理|献立/.test(matchingLine.diary + ' ' + matchingLine.careContent.join(' '));
+        if (!lineExplicitlyNoCooking) {
+          checks.houseChecks.cooking = true;
+          console.log(`[Journal] K21整合: 計画書に「調理」あり → cooking=ON (${record.serviceDate})`);
+        }
       }
     }
 
@@ -955,7 +967,11 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
     };
   });
 
-  console.log(`[Journal] 日誌生成完了: 実績${billingRecords.length}件 → 日誌${journals.length}件`);
+  // ★件数保証: 1実績 = 1日誌 を検証
+  if (journals.length !== pastRecords.length) {
+    console.error(`[Journal] ★件数不一致: 実績${pastRecords.length}件に対し日誌${journals.length}件`);
+  }
+  console.log(`[Journal] 日誌生成完了: 実績${billingRecords.length}件(未来除外後${pastRecords.length}件) → 日誌${journals.length}件 [1:1=${journals.length === pastRecords.length ? 'OK' : 'NG'}]`);
 
   return journals;
 }
