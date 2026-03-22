@@ -301,6 +301,96 @@ export function overrideChecksFromLineReport(
 }
 
 /**
+ * ★チェック項目の日付ベース可変化。
+ * LINE報告がない場合に手順書だけだと全件同一パターンになるため、
+ * 日付ごとに一部チェック項目をON/OFFして自然な変化を付ける。
+ *
+ * ルール:
+ * - 手順書で ON になっている項目のうち「補助的」な項目を日替わりで一部 OFF にする
+ * - 手順書で OFF の項目を勝手に ON にはしない（実績にないことは書かない）
+ * - 身体介護: 服薬確認は安全上常に維持。食事見守り/食事介助は計画にあれば維持。
+ *   移動介助/更衣介助/整容介助/環境整備/相談援助/情報収集を日ごとに部分的に切り替え。
+ * - 家事援助: 清掃は基本維持。洗濯/食器洗い/整理整頓/環境整備を日ごとに部分的に切り替え。
+ */
+export function applyDateBasedVariation(
+  checks: ReturnType<typeof resolveChecksFromProcedure>,
+  serviceDate: string,
+  serviceTypeLabel: string,
+  hasLineReport: boolean,
+): ReturnType<typeof resolveChecksFromProcedure> {
+  // LINE報告がある場合はLINEが既にチェックを可変化しているため、追加変化は不要
+  if (hasLineReport) return checks;
+
+  const d = new Date(serviceDate + 'T00:00:00');
+  const dayOfMonth = d.getDate();
+  const dayOfWeek = d.getDay();
+  const monthOffset = d.getMonth() * 3;
+  const seed = dayOfMonth + monthOffset;
+
+  const isBody = serviceTypeLabel.includes('身体') || serviceTypeLabel.includes('重度');
+  const isHouse = serviceTypeLabel.includes('家事') || serviceTypeLabel.includes('生活');
+
+  if (isBody) {
+    // 身体介護: 補助的チェック項目を日ごとにバリエーション
+    // 服薬確認は常に維持。食事見守り/食事介助は計画にあれば維持。
+    // 移動/更衣/整容/相談援助/情報収集を日替わり
+    if (checks.bodyChecks.mobilityAssist) {
+      // 3日に1回OFFにして変化を出す
+      if (seed % 3 === 0) checks.bodyChecks.mobilityAssist = false;
+    }
+    if (checks.bodyChecks.dressingAssist) {
+      if (seed % 4 === 0) checks.bodyChecks.dressingAssist = false;
+    }
+    if (checks.bodyChecks.groomingAssist) {
+      if (seed % 3 === 2) checks.bodyChecks.groomingAssist = false;
+    }
+    // 相談援助: 2日に1回
+    if (checks.commonChecks.consultation) {
+      if (seed % 2 === 0) checks.commonChecks.consultation = false;
+    }
+    // 環境整備: 3日に1回OFF
+    if (checks.commonChecks.environmentSetup) {
+      if (seed % 3 === 1) checks.commonChecks.environmentSetup = false;
+    }
+    // 情報収集提供: 日曜は不要（事業所休み）、他は2日に1回
+    if (checks.commonChecks.infoExchange) {
+      if (dayOfWeek === 0 || seed % 2 === 1) checks.commonChecks.infoExchange = false;
+    }
+  }
+
+  if (isHouse) {
+    // 家事援助: 清掃は基本維持（毎回やるのが自然）。
+    // 洗濯/食器洗い/整理整頓を日ごとに変化。
+    if (checks.houseChecks.laundry) {
+      // 洗濯: 3日に1回OFF（毎日やるわけではない）
+      if (seed % 3 === 0) checks.houseChecks.laundry = false;
+    }
+    if (checks.houseChecks.dishwashing) {
+      // 食器洗い: 2日に1回OFF
+      if (seed % 2 === 1) checks.houseChecks.dishwashing = false;
+    }
+    if (checks.houseChecks.organizing) {
+      // 整理整頓: 4日に1回のみON
+      if (seed % 4 !== 0) checks.houseChecks.organizing = false;
+    }
+    // 相談援助: 3日に1回
+    if (checks.commonChecks.consultation) {
+      if (seed % 3 !== 0) checks.commonChecks.consultation = false;
+    }
+    // 環境整備: 2日に1回
+    if (checks.commonChecks.environmentSetup) {
+      if (seed % 2 === 0) checks.commonChecks.environmentSetup = false;
+    }
+    // 情報収集提供: 3日に1回
+    if (checks.commonChecks.infoExchange) {
+      if (seed % 3 !== 1) checks.commonChecks.infoExchange = false;
+    }
+  }
+
+  return checks;
+}
+
+/**
  * バイタル値を解決する。
  * ★実測値がない場合はvitalCheck=falseに降格し「体調確認」に寄せる。
  * 数値の捏造は禁止。
@@ -946,6 +1036,9 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
       checks = overrideChecksFromLineReport(checks, matchingLine);
     }
 
+    // ★日付ベース可変化: LINE報告がない場合に全件同一パターンを避ける
+    checks = applyDateBasedVariation(checks, record.serviceDate, serviceTypeLabel, !!matchingLine);
+
     // バイタル解決（実測値がある場合のみ数値記録。値が無いなら「体調確認」に留める）
     const { vitals, vitalNote, hasActualMeasurement } = resolveVitals(checks.healthCheckRequired, vitalsByDate, record.serviceDate);
 
@@ -982,18 +1075,25 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
       }
     }
 
-    // ★K21調理整合: 計画書に「調理」がある家事援助の場合、
-    // 手順書/LINE報告で明示的に否定されていない限り cooking=ON にする
+    // ★K21調理整合: 計画書に「調理」がある家事援助の場合、cooking=ON にする
+    // 例外: LINE報告で調理を明示的に否定（「調理なし」「調理しなかった」等）している場合のみOFF
+    // ★改善: 単に「言及なし」だけでは降格しない。計画書のサービス内容を source of truth として尊重する。
     if (isHouseService && carePlanServiceSummary) {
       const planHasCooking = carePlanServiceSummary.serviceTypeSummaries.some(s =>
         /家事|生活/.test(s) && /調理/.test(s)
       );
-      if (planHasCooking && !checks.houseChecks.cooking) {
-        // LINE報告で調理が明示的に記載なし → 計画書に合わせてON
-        // ただしLINE報告が十分な情報量で調理に言及なしの場合は、LINEの降格が優先される
-        const lineExplicitlyNoCooking = matchingLine?.diary && matchingLine.diary.length > 20 &&
-          !/調理|料理|献立/.test(matchingLine.diary + ' ' + matchingLine.careContent.join(' '));
-        if (!lineExplicitlyNoCooking) {
+      if (planHasCooking) {
+        // LINE報告で調理を明示的に否定している場合のみOFF
+        const lineText = matchingLine
+          ? (matchingLine.diary || '') + ' ' + matchingLine.careContent.join(' ')
+          : '';
+        const lineExplicitlyDenied = /調理.*なし|調理.*しな|料理.*なし|料理.*しな|調理.*不要|調理.*中止/.test(lineText);
+        if (lineExplicitlyDenied) {
+          // 明示否定 → cooking=OFF を強制
+          checks.houseChecks.cooking = false;
+          console.log(`[Journal] K21整合: LINE報告で調理を明示否定 → cooking=OFF (${record.serviceDate})`);
+        } else if (!checks.houseChecks.cooking) {
+          // 否定されていない + まだOFF → 計画書に合わせてON
           checks.houseChecks.cooking = true;
           console.log(`[Journal] K21整合: 計画書に「調理」あり → cooking=ON (${record.serviceDate})`);
         }
@@ -1051,6 +1151,16 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
       if (isBodyService && /調理|洗濯|清掃|買い?物/.test(matchingLine.diary || '') && !matchingLine.diary?.includes('見守')) {
         manualReviewReasons.push('身体介護の実績にLINE報告で家事援助的内容あり');
       }
+    }
+
+    // ★手順書バイタル方針ズレ: 手順書にバイタル測定があるが実測値なし → 要確認
+    const procedureHasVital = steps.some(s =>
+      /バイタル|体温.*測定|血圧.*測定|脈拍.*測定/.test(`${s.item} ${s.content}`)
+    );
+    if (procedureHasVital && !hasActualMeasurement) {
+      manualReviewReasons.push(
+        `手順書にバイタル測定あり(D10等)だが実測値なし → 手順書を「必要時体調確認」に修正するか、実測値を入力してください`
+      );
     }
 
     // ★cross-document consistency guard: 計画書と日誌のズレ検出

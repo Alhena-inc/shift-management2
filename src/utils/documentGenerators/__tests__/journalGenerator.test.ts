@@ -17,6 +17,7 @@ import {
   generateJournals,
   resolveChecksFromProcedure,
   overrideChecksFromLineReport,
+  applyDateBasedVariation,
   resolveVitals,
   resolveCondition,
   checkPlanJournalConsistency,
@@ -994,6 +995,8 @@ describe('manualReviewフラグ', () => {
       billingRecords: [mockBillingRecords[0]],
       procedureBlocks: mockProcedureBlocks,
       lineReports: [mockLineReport],
+      // ★手順書にバイタル測定があるので実測値を提供（方針ズレを回避）
+      vitalsByDate: { '2025-11-05': { temperature: 36.5, systolic: 120, diastolic: 80 } },
     };
     const journals = generateJournals(ctx);
     expect(journals[0].manualReviewRequired).toBe(false);
@@ -1225,7 +1228,8 @@ describe('K21調理整合 + planReviewRequired', () => {
     expect(journals[0].planReviewRequired).toBe(false);
   });
 
-  it('計画書K21「調理・清掃」+ LINE報告で調理言及なし → cookingが降格（LINE優先）', () => {
+  it('計画書K21「調理・清掃」+ LINE報告で調理言及なし → K21整合でcooking=ON維持', () => {
+    // ★改善: LINE報告で単に調理に言及がないだけでは降格しない。計画書を source of truth として尊重。
     const lineNoCooking: LineReport = {
       date: '2025-11-07', clientName: '上村太郎', startTime: '18:30', endTime: '19:30',
       condition: '元気そうでした', careContent: ['清掃'], requests: 'なし',
@@ -1248,7 +1252,34 @@ describe('K21調理整合 + planReviewRequired', () => {
       },
     };
     const journals = generateJournals(ctx);
-    // LINE報告で調理に言及なし → LINE降格が優先 → cooking=false
+    // ★K21整合: 計画書に「調理」あり + LINE報告で明示否定なし → cooking=ON
+    expect(journals[0].structuredJournal.houseChecks.cooking).toBe(true);
+    // 計画書整合済み → planReviewRequired=false
+    expect(journals[0].planReviewRequired).toBe(false);
+  });
+
+  it('計画書K21「調理・清掃」+ LINE報告で調理を明示否定 → cooking=OFF + planReview=true', () => {
+    const lineDenyCooking: LineReport = {
+      date: '2025-11-07', clientName: '上村太郎', startTime: '18:30', endTime: '19:30',
+      condition: '元気そうでした', careContent: ['清掃'], requests: 'なし',
+      diary: '居室の清掃を行いました。今日は調理なしで清掃のみ実施しました。',
+      futurePlan: '帰宅します',
+    };
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: [mockBillingRecords[1]],
+      procedureBlocks: [{
+        service_type: '家事援助',
+        visit_label: '月〜金 18:30〜19:30',
+        steps: [{ item: '清掃', content: '居室清掃', note: '' }],
+      }],
+      lineReports: [lineDenyCooking],
+      carePlanServiceSummary: {
+        serviceTypeSummaries: ['家事援助（調理・清掃）'],
+      },
+    };
+    const journals = generateJournals(ctx);
+    // LINE報告で調理を明示否定 → cooking=OFF
     expect(journals[0].structuredJournal.houseChecks.cooking).toBe(false);
     // 計画書と日誌がズレている → planReviewRequired=true
     expect(journals[0].planReviewRequired).toBe(true);
@@ -1594,5 +1625,311 @@ describe('本文バリエーション: 同一パターン回避', () => {
     const narratives = journals.map(j => j.diaryNarrative);
     const uniqueNarratives = new Set(narratives);
     expect(uniqueNarratives.size).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ==================== 残件修正テスト ====================
+
+describe('K21調理整合: LINE報告なしでも計画書に合わせる', () => {
+  it('LINE報告なし + 計画書K21「調理・清掃」→ 全件 cooking=ON', () => {
+    // 2026年1〜2月のシナリオ: LINE報告なし、手順書に調理なし、計画書K21に調理あり
+    const records = Array.from({ length: 10 }, (_, i) => ({
+      ...mockBillingRecords[1],
+      id: `jan-house-${i}`,
+      serviceDate: `2026-01-${String(i + 1).padStart(2, '0')}`,
+      serviceCode: '1221',
+    }));
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: records,
+      procedureBlocks: [{
+        service_type: '家事援助',
+        visit_label: '月〜金 18:30〜19:30',
+        steps: [
+          { item: '清掃', content: '居室清掃', note: '' },
+          { item: '環境整備', content: '安全確認', note: '' },
+        ],
+      }],
+      // lineReports 未指定 → LINE報告なし
+      carePlanServiceSummary: {
+        serviceTypeSummaries: ['家事援助（調理・清掃）'],
+      },
+    };
+    const journals = generateJournals(ctx);
+    // ★全件cooking=ONであること（計画書K21整合）
+    const cookingOnCount = journals.filter(j => j.structuredJournal.houseChecks.cooking).length;
+    expect(cookingOnCount).toBe(journals.length);
+  });
+
+  it('LINE報告で調理を明示否定している日のみcooking=OFF', () => {
+    const records = [
+      { ...mockBillingRecords[1], id: 'h1', serviceDate: '2026-01-05', serviceCode: '1221' },
+      { ...mockBillingRecords[1], id: 'h2', serviceDate: '2026-01-06', serviceCode: '1221' },
+    ];
+    const lineWithDenial: LineReport = {
+      date: '2026-01-06', clientName: '上村太郎', startTime: '18:30', endTime: '19:30',
+      condition: '元気', careContent: ['清掃'], requests: 'なし',
+      diary: '本日は調理なし。清掃のみ実施しました。',
+      futurePlan: '帰宅',
+    };
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: records,
+      procedureBlocks: [{
+        service_type: '家事援助', visit_label: '', steps: [{ item: '清掃', content: '居室清掃', note: '' }],
+      }],
+      lineReports: [lineWithDenial],
+      carePlanServiceSummary: { serviceTypeSummaries: ['家事援助（調理・清掃）'] },
+    };
+    const journals = generateJournals(ctx);
+    // 1/5: LINE報告なし → K21整合でcooking=ON
+    expect(journals[0].structuredJournal.houseChecks.cooking).toBe(true);
+    // 1/6: LINE報告で調理明示否定 → cooking=OFF
+    expect(journals[1].structuredJournal.houseChecks.cooking).toBe(false);
+  });
+});
+
+describe('手順書バイタル方針ズレ検出', () => {
+  it('手順書にバイタル測定あり + 実測値なし → manualReviewRequired=true', () => {
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: [mockBillingRecords[0]],
+      procedureBlocks: [{
+        service_type: '身体介護',
+        visit_label: '月〜金 10:00〜14:00',
+        steps: [
+          { item: 'バイタルチェック', content: '血圧・体温・脈拍を測定', note: '' },
+          { item: '服薬確認', content: '服薬の確認', note: '' },
+        ],
+      }],
+      // vitalsByDate未指定 → 実測値なし
+    };
+    const journals = generateJournals(ctx);
+    expect(journals[0].manualReviewRequired).toBe(true);
+    expect(journals[0].manualReviewReasons.some(r => r.includes('手順書にバイタル測定あり'))).toBe(true);
+    // バイタル確認チェックはOFF（実測値なし）
+    expect(journals[0].structuredJournal.bodyChecks.vitalCheck).toBe(false);
+    // 本文に「バイタルチェック」とは書かない
+    expect(journals[0].diaryNarrative).not.toContain('バイタルチェック');
+  });
+
+  it('手順書にバイタル測定あり + 実測値あり → manualReviewRequired=false（バイタル分は）', () => {
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: [mockBillingRecords[0]],
+      procedureBlocks: [{
+        service_type: '身体介護',
+        visit_label: '月〜金 10:00〜14:00',
+        steps: [
+          { item: 'バイタルチェック', content: '血圧・体温を測定', note: '' },
+        ],
+      }],
+      vitalsByDate: { '2025-11-05': { temperature: 36.5, systolic: 120, diastolic: 80 } },
+    };
+    const journals = generateJournals(ctx);
+    // バイタル方針ズレはない
+    expect(journals[0].manualReviewReasons.some(r => r.includes('手順書にバイタル測定あり'))).toBe(false);
+    expect(journals[0].structuredJournal.bodyChecks.vitalCheck).toBe(true);
+  });
+});
+
+describe('チェック項目の可変化: 全件同一パターン回避', () => {
+  it('身体介護10件でチェックパターンが全件同一にならない', () => {
+    const records = Array.from({ length: 10 }, (_, i) => ({
+      ...mockBillingRecords[0],
+      id: `body-var-${i}`,
+      serviceDate: `2025-11-${String(i + 1).padStart(2, '0')}`,
+      serviceCode: '1121',
+    }));
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: records,
+      procedureBlocks: [{
+        service_type: '身体介護',
+        visit_label: '月〜金 10:00〜14:00',
+        steps: [
+          { item: '服薬確認', content: '処方薬の服用確認', note: '' },
+          { item: '食事見守り', content: '食事の見守りを行う', note: '' },
+          { item: '移動介助', content: '外出時の歩行介助', note: '' },
+          { item: '更衣介助', content: '着替えの介助', note: '' },
+          { item: '整容介助', content: '洗面・歯磨きの介助', note: '' },
+          { item: '環境整備', content: '居室の安全確認', note: '' },
+          { item: '相談援助', content: '傾聴と助言', note: '' },
+          { item: '情報収集提供', content: '情報共有', note: '' },
+        ],
+      }],
+      // lineReports未指定 → 日付ベース可変化が適用される
+    };
+    const journals = generateJournals(ctx);
+    // チェックパターンをJSON文字列にして一意性を確認
+    const patterns = journals.map(j => JSON.stringify({
+      ...j.structuredJournal.bodyChecks,
+      ...j.structuredJournal.commonChecks,
+    }));
+    const uniquePatterns = new Set(patterns);
+    // ★10件中少なくとも3種類以上の異なるパターンがあること
+    expect(uniquePatterns.size).toBeGreaterThanOrEqual(3);
+  });
+
+  it('家事援助10件でチェックパターンが全件同一にならない', () => {
+    const records = Array.from({ length: 10 }, (_, i) => ({
+      ...mockBillingRecords[1],
+      id: `house-var-${i}`,
+      serviceDate: `2025-11-${String(i + 1).padStart(2, '0')}`,
+      serviceCode: '1221',
+    }));
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: records,
+      procedureBlocks: [{
+        service_type: '家事援助',
+        visit_label: '月〜金 18:30〜19:30',
+        steps: [
+          { item: '調理', content: '夕食の調理', note: '' },
+          { item: '清掃', content: '居室清掃', note: '' },
+          { item: '洗濯', content: '洗濯物の取り込み', note: '' },
+          { item: '食器洗い', content: '食器の片付け', note: '' },
+          { item: '整理整頓', content: '衣類の整理', note: '' },
+          { item: '環境整備', content: '安全確認', note: '' },
+          { item: '相談援助', content: '声かけ', note: '' },
+          { item: '情報収集提供', content: '情報共有', note: '' },
+        ],
+      }],
+    };
+    const journals = generateJournals(ctx);
+    const patterns = journals.map(j => JSON.stringify({
+      ...j.structuredJournal.houseChecks,
+      ...j.structuredJournal.commonChecks,
+    }));
+    const uniquePatterns = new Set(patterns);
+    // ★10件中少なくとも3種類以上の異なるパターンがあること
+    expect(uniquePatterns.size).toBeGreaterThanOrEqual(3);
+  });
+
+  it('身体介護: 服薬確認は常に維持される', () => {
+    const records = Array.from({ length: 10 }, (_, i) => ({
+      ...mockBillingRecords[0],
+      id: `body-med-${i}`,
+      serviceDate: `2025-11-${String(i + 1).padStart(2, '0')}`,
+      serviceCode: '1121',
+    }));
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: records,
+      procedureBlocks: [{
+        service_type: '身体介護',
+        visit_label: '月〜金 10:00〜14:00',
+        steps: [
+          { item: '服薬確認', content: '処方薬の服用確認', note: '' },
+          { item: '移動介助', content: '歩行介助', note: '' },
+        ],
+      }],
+    };
+    const journals = generateJournals(ctx);
+    // 服薬確認は全件ON
+    for (const j of journals) {
+      expect(j.structuredJournal.bodyChecks.medicationCheck).toBe(true);
+    }
+  });
+});
+
+describe('applyDateBasedVariation: 単体テスト', () => {
+  it('LINE報告ありの場合は変化を加えない', () => {
+    const steps: ProcedureStep[] = [
+      { item: '洗濯', content: '洗濯物の取り込み', note: '' },
+      { item: '整理整頓', content: '衣類の整理', note: '' },
+    ];
+    const original = resolveChecksFromProcedure(steps);
+    const varied = applyDateBasedVariation(
+      JSON.parse(JSON.stringify(original)),
+      '2025-11-01',
+      '家事援助',
+      true, // LINE報告あり
+    );
+    // LINE報告ありなので変化なし
+    expect(varied.houseChecks.laundry).toBe(original.houseChecks.laundry);
+    expect(varied.houseChecks.organizing).toBe(original.houseChecks.organizing);
+  });
+
+  it('LINE報告なしの場合は日付で変化する', () => {
+    const steps: ProcedureStep[] = [
+      { item: '洗濯', content: '洗濯物の取り込み', note: '' },
+      { item: '食器洗い', content: '食器片付け', note: '' },
+      { item: '整理整頓', content: '衣類の整理', note: '' },
+      { item: '環境整備', content: '安全確認', note: '' },
+      { item: '相談援助', content: '声かけ', note: '' },
+    ];
+    const results = [];
+    for (let day = 1; day <= 10; day++) {
+      const checks = resolveChecksFromProcedure(steps);
+      const varied = applyDateBasedVariation(
+        checks,
+        `2025-11-${String(day).padStart(2, '0')}`,
+        '家事援助',
+        false,
+      );
+      results.push(JSON.stringify({
+        laundry: varied.houseChecks.laundry,
+        dishwashing: varied.houseChecks.dishwashing,
+        organizing: varied.houseChecks.organizing,
+        env: varied.commonChecks.environmentSetup,
+        consult: varied.commonChecks.consultation,
+      }));
+    }
+    // 10日間で少なくとも3パターン
+    expect(new Set(results).size).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('実測値なし時の文言チェック', () => {
+  it('実測値なし → 「体温・血圧測定を実施」と書かない', () => {
+    const records = Array.from({ length: 5 }, (_, i) => ({
+      ...mockBillingRecords[0],
+      id: `no-vital-${i}`,
+      serviceDate: `2025-11-${String(i + 1).padStart(2, '0')}`,
+      serviceCode: '1121',
+    }));
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: records,
+      procedureBlocks: [{
+        service_type: '身体介護',
+        visit_label: '月〜金 10:00〜14:00',
+        steps: [
+          { item: 'バイタルチェック', content: '血圧・体温測定', note: '' },
+          { item: '服薬確認', content: '服薬の確認', note: '' },
+        ],
+      }],
+      // vitalsByDate未指定 → 全件実測値なし
+    };
+    const journals = generateJournals(ctx);
+    for (const j of journals) {
+      expect(j.diaryNarrative).not.toContain('バイタルチェック');
+      expect(j.diaryNarrative).not.toContain('体温・血圧測定を実施');
+      expect(j.diaryNarrative).not.toMatch(/体温\d/);
+      expect(j.diaryNarrative).not.toMatch(/血圧\d/);
+      expect(j.diaryNarrative).toContain('体調確認');
+    }
+  });
+});
+
+describe('特記欄の改善が維持されている', () => {
+  it('LINE報告なし + 手順書あり → 特記欄が空欄でない', () => {
+    const records = Array.from({ length: 5 }, (_, i) => ({
+      ...mockBillingRecords[0],
+      id: `note-${i}`,
+      serviceDate: `2025-11-${String(i + 1).padStart(2, '0')}`,
+      serviceCode: '1121',
+    }));
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: records,
+      procedureBlocks: mockProcedureBlocks,
+    };
+    const journals = generateJournals(ctx);
+    // 全件特記が入っている（空欄防止ロジック維持）
+    for (const j of journals) {
+      expect(j.specialNotes.length).toBeGreaterThan(0);
+    }
   });
 });
