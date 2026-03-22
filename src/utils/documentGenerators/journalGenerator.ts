@@ -162,6 +162,25 @@ export interface JournalGeneratorContext {
 
 // ==================== ユーティリティ ====================
 
+/**
+ * Asia/Tokyo タイムゾーンで今日の日付を YYYY-MM-DD で返す。
+ * ★ UTC で取ると日本時間 0:00〜8:59 で前日になるバグを防ぐ。
+ */
+export function getTodayJST(): string {
+  const now = new Date();
+  // Intl.DateTimeFormat で Asia/Tokyo のパーツを取得
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const y = parts.find(p => p.type === 'year')!.value;
+  const m = parts.find(p => p.type === 'month')!.value;
+  const d = parts.find(p => p.type === 'day')!.value;
+  return `${y}-${m}-${d}`;
+}
+
 export function serviceCodeToLabel(code: string): string {
   if (!code) return '';
   const c = code.replace(/\s+/g, '');
@@ -443,9 +462,11 @@ export function generateDiaryNarrative(
   const d = new Date(journal.serviceDate + 'T00:00:00');
   const dayName = WEEKDAYS[d.getDay()];
   const dayOfMonth = d.getDate();
-  // ★ハッシュ的にバリエーション分散（dayOfMonth + 月 + 時刻の組合せ）
+  // ★ハッシュ的にバリエーション分散（日付 + 月 + 時刻 + サービス種別 + ヘルパー名の組合せ）
   const timeHash = journal.serviceStartTime ? parseInt(journal.serviceStartTime.replace(':', ''), 10) : 0;
-  const variantSeed = dayOfMonth + (d.getMonth() * 7) + (timeHash % 13);
+  const helperHash = journal.helperName ? journal.helperName.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) : 0;
+  const codeHash = journal.serviceCode ? journal.serviceCode.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) : 0;
+  const variantSeed = dayOfMonth + (d.getMonth() * 7) + (timeHash % 13) + (helperHash % 11) + (codeHash % 5);
 
   // === 訪問・状態確認（LINE報告 → 手順書 → バリエーション） ===
   if (lineReport?.condition && lineReport.condition.length > 5) {
@@ -504,21 +525,28 @@ export function generateDiaryNarrative(
     }
     if (journal.houseChecks.cleaning) {
       const detail = stepContentMap.get('清掃') || stepContentMap.get('掃除');
+      // ★掃除箇所を日ごとに変えて固定化を避ける
       const cleanVariants = [
         detail || '居室の掃除機がけと拭き掃除を実施した',
         '居室・トイレ・洗面所の清掃を行った',
         '居室内の床清掃と水回りの拭き掃除を行った',
         '掃除機がけの後、テーブル・棚の拭き掃除を行った',
+        'キッチン周辺の清掃と居室の掃除機がけを行った',
+        'トイレ・浴室の清掃と居室の拭き掃除を行った',
+        '居室の掃除機がけ・窓拭き・ゴミ回収を行った',
       ];
       houseActions.push(cleanVariants[variantSeed % cleanVariants.length]);
     }
     if (journal.houseChecks.laundry) {
       const detail = stepContentMap.get('洗濯');
+      // ★洗濯工程を日ごとに変えて固定化を避ける
       const laundryVariants = [
         detail || '洗濯物を取り込みたたんで収納した',
         '洗濯機を回し、干す作業を行った',
         '洗濯物の取り込み・たたみ・収納を行った',
         '衣類の仕分けをし、洗濯・乾燥後にたたんで所定の場所へ収納した',
+        '洗濯物を干し、乾いたものを取り込んでたたんだ',
+        '洗濯物の取り込みと分類・収納を行った',
       ];
       houseActions.push(laundryVariants[variantSeed % laundryVariants.length]);
     }
@@ -569,11 +597,15 @@ export function generateDiaryNarrative(
     const bodyActions: string[] = [];
     if (journal.bodyChecks.medicationCheck) {
       const detail = stepContentMap.get('服薬確認') || stepContentMap.get('服薬');
+      // ★服薬確認の方法を日ごとに変えて固定化を避ける
       const medVariants = [
         detail || '処方薬の服薬状況を確認し、飲み忘れがないことを確認した',
         '服薬の声かけを行い、本人が服用したことを確認した',
         '薬の残量を確認し、本日分の服薬を確認した',
         '服薬カレンダーを確認し、処方薬を本人に手渡して服用を見届けた',
+        '処方薬を準備し、本人の服用を確認。残薬なし',
+        '服薬状況を確認し、次回分までの残量に問題がないことを確認した',
+        '処方薬の服用を声かけし、水と共に服用を確認した',
       ];
       bodyActions.push(medVariants[variantSeed % medVariants.length]);
     }
@@ -868,12 +900,14 @@ export function checkPlanJournalConsistency(
 export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
   const { client, billingRecords, procedureBlocks, carePlanServiceBlocks, lineReports, vitalsByDate, carePlanServiceSummary } = ctx;
 
-  // ★未来日付フィルタ: 今日以降の実績は日誌を作らない
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-  const pastRecords = billingRecords.filter(r => r.serviceDate <= today);
+  // ★未来日付フィルタ: 今日以降の実績は日誌を作らない（今日を含めない）
+  // Asia/Tokyo タイムゾーンで「今日」を算出する
+  const today = getTodayJST();
+  // ★ 「今日より前」= serviceDate < today （今日の実績は含めない）
+  const pastRecords = billingRecords.filter(r => r.serviceDate < today);
   const skippedFuture = billingRecords.length - pastRecords.length;
   if (skippedFuture > 0) {
-    console.log(`[Journal] ★未来日付${skippedFuture}件を除外（${today}以降）`);
+    console.log(`[Journal] ★今日以降${skippedFuture}件を除外（${today}以降は対象外）`);
   }
 
   // 実績1件ごとに日誌1件を生成
@@ -1043,7 +1077,7 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
   if (journals.length !== pastRecords.length) {
     console.error(`[Journal] ★件数不一致: 実績${pastRecords.length}件に対し日誌${journals.length}件`);
   }
-  console.log(`[Journal] 日誌生成完了: 実績${billingRecords.length}件(未来除外後${pastRecords.length}件) → 日誌${journals.length}件 [1:1=${journals.length === pastRecords.length ? 'OK' : 'NG'}]`);
+  console.log(`[Journal] 日誌生成完了: 実績${billingRecords.length}件(今日${today}以降${skippedFuture}件除外→${pastRecords.length}件) → 日誌${journals.length}件 [1:1=${journals.length === pastRecords.length ? 'OK' : 'NG'}]`);
 
   return journals;
 }
