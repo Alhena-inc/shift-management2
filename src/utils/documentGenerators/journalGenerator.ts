@@ -129,6 +129,18 @@ export interface JournalEntry {
   manualReviewRequired: boolean;
   /** 手動確認の理由 */
   manualReviewReasons: string[];
+  /** 計画書と日誌の継続的ズレにより計画書見直しが必要な場合true */
+  planReviewRequired: boolean;
+  /** 計画書見直しの理由 */
+  planReviewReasons: string[];
+}
+
+/** 計画書のサービス要約（K21等のセルから抽出） */
+export interface CarePlanServiceSummary {
+  /** K21等: サービス種別の概要（例: "家事援助（調理・清掃）"） */
+  serviceTypeSummaries: string[];
+  /** 計画書ファイル名 */
+  fileName?: string;
 }
 
 /** 日誌生成のコンテキスト */
@@ -143,6 +155,8 @@ export interface JournalGeneratorContext {
   }>;
   lineReports?: LineReport[];
   vitalsByDate?: Record<string, VitalSigns>;
+  /** 計画書のサービス要約（cross-document照合用） */
+  carePlanServiceSummary?: CarePlanServiceSummary;
 }
 
 // ==================== ユーティリティ ====================
@@ -171,11 +185,12 @@ export function resolveChecksFromProcedure(steps: ProcedureStep[]): {
   const bodyChecks = {
     medicationCheck: /服薬|薬.*確認|投薬/.test(allText),
     // ★「体調確認」はバイタル確認ではない。バイタル=体温・血圧・脈拍の測定を伴う場合のみ
-    vitalCheck: /バイタル|体温.*測定|血圧.*測定|脈拍.*測定/.test(allText),
+    // 手順書に「バイタルチェック（血圧・体温・脈拍測定）」等がある場合にマッチ
+    vitalCheck: /バイタル|体温.*測定|血圧.*測定|脈拍.*測定|血圧.*体温|体温.*血圧/.test(allText),
     toiletAssist: /排泄|トイレ|排尿|排便/.test(allText),
     bathAssist: /入浴|シャワー|清拭/.test(allText),
-    mealAssist: /食事介助|食事.*支援|配膳.*介助/.test(allText),
-    mobilityAssist: /移動|移乗|歩行/.test(allText),
+    mealAssist: /食事介助|食事.*支援|食事.*見守|配膳.*介助|配膳/.test(allText),
+    mobilityAssist: /移動|移乗|歩行|外出.*介助|外出.*支援/.test(allText),
     dressingAssist: /更衣|着替/.test(allText),
     groomingAssist: /整容|洗面|歯磨|口腔/.test(allText),
   };
@@ -190,8 +205,8 @@ export function resolveChecksFromProcedure(steps: ProcedureStep[]): {
   };
 
   const commonChecks = {
-    environmentSetup: /環境整備|安全確認|動線/.test(allText),
-    consultation: /相談|助言|声[かが]け/.test(allText),
+    environmentSetup: /環境整備|安全確認|動線|換気|室温|採光|居室.*確認/.test(allText),
+    consultation: /相談|助言|声[かが]け|傾聴/.test(allText),
     infoExchange: /情報|報告|連絡|共有/.test(allText),
     recording: /記録|報告書/.test(allText),
   };
@@ -253,6 +268,7 @@ export function resolveVitals(
   healthCheckRequired: boolean,
   vitalsByDate?: Record<string, VitalSigns>,
   serviceDate?: string,
+  procedureHasVital?: boolean,
 ): { vitals: VitalSigns; vitalNote: string; hasActualMeasurement: boolean } {
   const vitals: VitalSigns = {};
   let vitalNote = '';
@@ -271,9 +287,15 @@ export function resolveVitals(
     if (measured.pulse !== undefined) { vitals.pulse = measured.pulse; hasActualMeasurement = true; }
   }
 
-  // ★実測値がない場合: 「バイタル確認」ではなく「体調確認」に寄せる
+  // ★実測値がない場合の本文表現を手順書との整合で決定
   if (!hasActualMeasurement) {
-    vitalNote = '体調確認を実施。著変なし。';
+    if (procedureHasVital) {
+      // 手順書にバイタルチェックがある → 本文で「バイタルチェック実施」と記載（手順書との整合）
+      // ただし数値は空欄のまま（正常値自動生成禁止）
+      vitalNote = 'バイタルチェック（体温・血圧測定）を実施。著変なし。';
+    } else {
+      vitalNote = '体調確認を実施。著変なし。';
+    }
   }
 
   return { vitals, vitalNote, hasActualMeasurement };
@@ -584,6 +606,14 @@ export function generateDiaryNarrative(
     }
     if (journal.commonChecks.environmentSetup) bodyActions.push('室内の安全確認を行った');
     if (journal.commonChecks.consultation) bodyActions.push('利用者の話を傾聴し、不安の軽減に努めた');
+    // 手順書に体調の再確認がある場合
+    if (stepContentMap.has('体調の再確認') || stepContentMap.has('体調再確認')) {
+      const reCheckVariants = [
+        'サービス終了前に体調の再確認を行い、変化がないことを確認した',
+        '退室前に再度体調の確認を行った',
+      ];
+      bodyActions.push(reCheckVariants[variantSeed % reCheckVariants.length]);
+    }
 
     if (bodyActions.length > 0) {
       parts.push(bodyActions.join('。') + '。');
@@ -701,6 +731,67 @@ export function generateSpecialNotes(
   return unique.join(' ');
 }
 
+// ==================== cross-document consistency guard ====================
+
+/**
+ * 計画書のサービス要約と日誌のチェック項目を照合し、継続的ズレを検出する。
+ * 例: 計画書K21が「家事援助（調理・清掃）」なのに日誌で調理が毎回OFF → ズレ
+ */
+export function checkPlanJournalConsistency(
+  serviceTypeLabel: string,
+  checks: {
+    bodyChecks: StructuredJournal['bodyChecks'];
+    houseChecks: StructuredJournal['houseChecks'];
+    commonChecks: StructuredJournal['commonChecks'];
+  },
+  carePlanServiceSummary?: CarePlanServiceSummary,
+): { planReviewRequired: boolean; planReviewReasons: string[] } {
+  const reasons: string[] = [];
+
+  if (!carePlanServiceSummary || carePlanServiceSummary.serviceTypeSummaries.length === 0) {
+    return { planReviewRequired: false, planReviewReasons: [] };
+  }
+
+  const isHouse = serviceTypeLabel.includes('家事') || serviceTypeLabel.includes('生活');
+  const isBody = serviceTypeLabel.includes('身体') || serviceTypeLabel.includes('重度');
+
+  for (const summary of carePlanServiceSummary.serviceTypeSummaries) {
+    // 家事援助の計画書照合
+    if (isHouse && /家事|生活/.test(summary)) {
+      if (/調理/.test(summary) && !checks.houseChecks.cooking) {
+        reasons.push(`計画書に「調理」が含まれるが日誌で調理OFF (${summary})`);
+      }
+      if (/清掃|掃除/.test(summary) && !checks.houseChecks.cleaning) {
+        reasons.push(`計画書に「清掃」が含まれるが日誌で清掃OFF (${summary})`);
+      }
+      if (/洗濯/.test(summary) && !checks.houseChecks.laundry) {
+        reasons.push(`計画書に「洗濯」が含まれるが日誌で洗濯OFF (${summary})`);
+      }
+      if (/買い?物/.test(summary) && !checks.houseChecks.shopping) {
+        reasons.push(`計画書に「買物」が含まれるが日誌で買物OFF (${summary})`);
+      }
+    }
+
+    // 身体介護の計画書照合
+    if (isBody && /身体|重度/.test(summary)) {
+      if (/服薬/.test(summary) && !checks.bodyChecks.medicationCheck) {
+        reasons.push(`計画書に「服薬」が含まれるが日誌で服薬確認OFF (${summary})`);
+      }
+      if (/入浴/.test(summary) && !checks.bodyChecks.bathAssist) {
+        reasons.push(`計画書に「入浴」が含まれるが日誌で入浴介助OFF (${summary})`);
+      }
+      if (/食事/.test(summary) && !checks.bodyChecks.mealAssist) {
+        reasons.push(`計画書に「食事」が含まれるが日誌で食事介助OFF (${summary})`);
+      }
+    }
+  }
+
+  return {
+    planReviewRequired: reasons.length > 0,
+    planReviewReasons: reasons,
+  };
+}
+
 // ==================== メイン: 日誌一括生成 ====================
 
 /**
@@ -709,7 +800,7 @@ export function generateSpecialNotes(
  * ★1実績 = 1日誌を保証する
  */
 export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
-  const { client, billingRecords, procedureBlocks, carePlanServiceBlocks, lineReports, vitalsByDate } = ctx;
+  const { client, billingRecords, procedureBlocks, carePlanServiceBlocks, lineReports, vitalsByDate, carePlanServiceSummary } = ctx;
 
   // ★未来日付フィルタ: 今日以降の実績は日誌を作らない
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
@@ -755,8 +846,9 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
       checks = overrideChecksFromLineReport(checks, matchingLine);
     }
 
-    // バイタル解決
-    const { vitals, vitalNote, hasActualMeasurement } = resolveVitals(checks.healthCheckRequired, vitalsByDate, record.serviceDate);
+    // バイタル解決（手順書にバイタルチェックがあるかのフラグも渡す）
+    const procedureHasVital = checks.bodyChecks.vitalCheck || checks.healthCheckRequired;
+    const { vitals, vitalNote, hasActualMeasurement } = resolveVitals(checks.healthCheckRequired, vitalsByDate, record.serviceDate, procedureHasVital);
 
     // ★バイタル降格: 実測値がないならvitalCheckをfalseに
     if (!hasActualMeasurement && checks.bodyChecks.vitalCheck) {
@@ -843,6 +935,14 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
       }
     }
 
+    // ★cross-document consistency guard: 計画書と日誌のズレ検出
+    const { planReviewRequired, planReviewReasons } = checkPlanJournalConsistency(
+      serviceTypeLabel, checks, carePlanServiceSummary,
+    );
+    if (planReviewRequired) {
+      console.warn(`[Journal] ⚠ 計画書ズレ: ${record.serviceDate} - ${planReviewReasons.join(', ')}`);
+    }
+
     return {
       structuredJournal,
       lineStyleReport,
@@ -850,6 +950,8 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
       specialNotes,
       manualReviewRequired: manualReviewReasons.length > 0,
       manualReviewReasons,
+      planReviewRequired,
+      planReviewReasons,
     };
   });
 
@@ -1144,6 +1246,8 @@ export interface ApplicableDocuments {
     longTermGoal?: string;
     shortTermGoal?: string;
     fileName?: string;
+    /** 計画書のサービス種別要約（K21等から抽出） */
+    serviceSummary?: CarePlanServiceSummary;
   };
   procedureBlocks?: ProcedureBlock[];
   lineReports?: LineReport[];
@@ -1185,13 +1289,25 @@ export async function resolveApplicableDocuments(
             if (ws) {
               const e12 = ws.getCell('E12').value?.toString() || '';
               const e13 = ws.getCell('E13').value?.toString() || '';
+              // K列のサービス種別要約を読み取り（K19〜K25あたり）
+              const serviceTypeSummaries: string[] = [];
+              for (let kr = 17; kr <= 30; kr++) {
+                const kVal = ws.getCell(`K${kr}`).value?.toString()?.trim() || '';
+                if (kVal && /家事|身体|生活|重度|通院|同行|行動/.test(kVal)) {
+                  serviceTypeSummaries.push(kVal);
+                }
+              }
               result.carePlan = {
                 serviceBlocks: [], // 簡易版: サービスブロック詳細はexecutor側で設定
                 longTermGoal: e12.replace(/^長期[^:：]*[：:]?\s*/, ''),
                 shortTermGoal: e13.replace(/^短期[^:：]*[：:]?\s*/, ''),
                 fileName: applicable[0].fileName || '',
+                serviceSummary: serviceTypeSummaries.length > 0 ? {
+                  serviceTypeSummaries,
+                  fileName: applicable[0].fileName || '',
+                } : undefined,
               };
-              console.log(`[Journal] 計画書resolver: ${applicable[0].fileName || 'unknown'} (${applicable[0].createdAt})`);
+              console.log(`[Journal] 計画書resolver: ${applicable[0].fileName || 'unknown'} (${applicable[0].createdAt})${serviceTypeSummaries.length > 0 ? ` K列: [${serviceTypeSummaries.join(', ')}]` : ''}`);
             }
           }
         } catch (err) {
@@ -1421,6 +1537,7 @@ export async function createJournalsFromBillingRecords(
       carePlanServiceBlocks: docs.carePlan?.serviceBlocks,
       lineReports,
       vitalsByDate,
+      carePlanServiceSummary: docs.carePlan?.serviceSummary,
     };
     const journals = generateJournals(ctx);
 

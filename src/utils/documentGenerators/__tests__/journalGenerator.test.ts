@@ -19,6 +19,7 @@ import {
   overrideChecksFromLineReport,
   resolveVitals,
   resolveCondition,
+  checkPlanJournalConsistency,
   generateSpecialNotes,
   generateLineStyleReport,
   generateDiaryNarrative,
@@ -28,6 +29,7 @@ import {
   type LineReport,
   type StructuredJournal,
   type VitalSigns,
+  type CarePlanServiceSummary,
 } from '../journalGenerator';
 
 // ==================== テストデータ ====================
@@ -156,7 +158,7 @@ describe('日誌生成: バイタル処理', () => {
     expect(journals[0].structuredJournal.vitals.diastolic).toBe(80);
   });
 
-  it('手順書にバイタル確認あり + 実測値なし → 数値空欄 + 体調確認扱い', () => {
+  it('手順書にバイタル確認あり + 実測値なし → 数値空欄 + バイタルチェック本文（手順書整合）', () => {
     const ctx: JournalGeneratorContext = {
       client: mockClient as any,
       billingRecords: [mockBillingRecords[0]],
@@ -164,12 +166,12 @@ describe('日誌生成: バイタル処理', () => {
       // vitalsByDate未設定 → 実測値なし
     };
     const journals = generateJournals(ctx);
-    // ★バイタル降格: 実測値なし → healthCheckRequired=false（体調確認扱い）
+    // ★バイタル降格: 実測値なし → healthCheckRequired=false（チェックボックスはOFF）
     expect(journals[0].structuredJournal.healthCheckRequired).toBe(false);
     expect(journals[0].structuredJournal.vitals.temperature).toBeUndefined();
     expect(journals[0].structuredJournal.vitals.systolic).toBeUndefined();
-    // 日誌本文に「体調確認」が含まれること
-    expect(journals[0].diaryNarrative).toContain('体調確認');
+    // ★手順書にバイタルチェックがある → 本文は「バイタルチェック」表現（手順書との整合）
+    expect(journals[0].diaryNarrative).toContain('バイタルチェック');
   });
 
   it('手順書にバイタル確認なし → healthCheckRequired=false', () => {
@@ -200,10 +202,17 @@ describe('日誌生成: resolveVitals関数', () => {
     expect(vitalNote).toBe('');
   });
 
-  it('healthCheckRequired=true + 実測値なし → 体調確認文', () => {
-    const { vitals, vitalNote } = resolveVitals(true, {}, '2025-11-05');
+  it('healthCheckRequired=true + 実測値なし + 手順書バイタルなし → 体調確認文', () => {
+    const { vitals, vitalNote } = resolveVitals(true, {}, '2025-11-05', false);
     expect(vitals.temperature).toBeUndefined();
     expect(vitalNote).toContain('体調確認');
+  });
+
+  it('healthCheckRequired=true + 実測値なし + 手順書バイタルあり → バイタルチェック文', () => {
+    const { vitals, vitalNote } = resolveVitals(true, {}, '2025-11-05', true);
+    expect(vitals.temperature).toBeUndefined();
+    expect(vitalNote).toContain('バイタルチェック');
+    expect(vitalNote).not.toContain('36'); // 数値の自動生成なし
   });
 
   it('数値の自動推定が行われないこと', () => {
@@ -1037,5 +1046,179 @@ describe('既存ロジック非破壊', () => {
     const journals = generateJournals(ctx);
     expect(journals[0].structuredJournal.serviceTypeLabel).toBe('身体介護');
     expect(journals[1].structuredJournal.serviceTypeLabel).toBe('家事援助');
+  });
+});
+
+// ==================== cross-document consistency guard テスト ====================
+
+describe('cross-document consistency guard: checkPlanJournalConsistency', () => {
+  const makeChecks = (overrides: Partial<{
+    cooking: boolean; cleaning: boolean; laundry: boolean;
+    medicationCheck: boolean; mealAssist: boolean; bathAssist: boolean;
+  }> = {}) => ({
+    bodyChecks: {
+      medicationCheck: overrides.medicationCheck ?? false,
+      vitalCheck: false, toiletAssist: false,
+      bathAssist: overrides.bathAssist ?? false,
+      mealAssist: overrides.mealAssist ?? false,
+      mobilityAssist: false, dressingAssist: false, groomingAssist: false,
+    },
+    houseChecks: {
+      cooking: overrides.cooking ?? false,
+      cleaning: overrides.cleaning ?? false,
+      laundry: overrides.laundry ?? false,
+      shopping: false, dishwashing: false, organizing: false,
+    },
+    commonChecks: { environmentSetup: false, consultation: false, infoExchange: false, recording: false },
+  });
+
+  it('計画書に「調理・清掃」あり + 日誌で調理OFF → planReviewRequired=true', () => {
+    const summary: CarePlanServiceSummary = {
+      serviceTypeSummaries: ['家事援助（調理・清掃）'],
+    };
+    const { planReviewRequired, planReviewReasons } = checkPlanJournalConsistency(
+      '家事援助', makeChecks({ cleaning: true, cooking: false }), summary,
+    );
+    expect(planReviewRequired).toBe(true);
+    expect(planReviewReasons.some(r => r.includes('調理'))).toBe(true);
+  });
+
+  it('計画書に「調理・清掃」あり + 日誌で両方ON → planReviewRequired=false', () => {
+    const summary: CarePlanServiceSummary = {
+      serviceTypeSummaries: ['家事援助（調理・清掃）'],
+    };
+    const { planReviewRequired } = checkPlanJournalConsistency(
+      '家事援助', makeChecks({ cleaning: true, cooking: true }), summary,
+    );
+    expect(planReviewRequired).toBe(false);
+  });
+
+  it('計画書のサービス要約がない場合 → planReviewRequired=false', () => {
+    const { planReviewRequired } = checkPlanJournalConsistency(
+      '家事援助', makeChecks({ cleaning: true }), undefined,
+    );
+    expect(planReviewRequired).toBe(false);
+  });
+
+  it('身体介護の計画書照合: 服薬あり + 日誌で服薬OFF → planReviewRequired=true', () => {
+    const summary: CarePlanServiceSummary = {
+      serviceTypeSummaries: ['身体介護（服薬・食事見守り）'],
+    };
+    const { planReviewRequired, planReviewReasons } = checkPlanJournalConsistency(
+      '身体介護', makeChecks({ medicationCheck: false, mealAssist: true }), summary,
+    );
+    expect(planReviewRequired).toBe(true);
+    expect(planReviewReasons.some(r => r.includes('服薬'))).toBe(true);
+  });
+});
+
+describe('手順書の食事見守りが正しくmealAssistにマッチ', () => {
+  it('「食事の見守り」がmealAssist=trueになること', () => {
+    const steps: ProcedureStep[] = [
+      { item: '食事の見守り', content: '食事の見守りを行う', note: '' },
+    ];
+    const checks = resolveChecksFromProcedure(steps);
+    expect(checks.bodyChecks.mealAssist).toBe(true);
+  });
+
+  it('「配膳」がmealAssist=trueになること', () => {
+    const steps: ProcedureStep[] = [
+      { item: '配膳', content: '食事の配膳を行う', note: '' },
+    ];
+    const checks = resolveChecksFromProcedure(steps);
+    expect(checks.bodyChecks.mealAssist).toBe(true);
+  });
+
+  it('「外出介助」がmobilityAssist=trueになること', () => {
+    const steps: ProcedureStep[] = [
+      { item: '外出介助', content: '外出時の介助を行う', note: '' },
+    ];
+    const checks = resolveChecksFromProcedure(steps);
+    expect(checks.bodyChecks.mobilityAssist).toBe(true);
+  });
+});
+
+describe('バイタル: 手順書との整合（降格時も本文でバイタルチェック表現）', () => {
+  it('手順書にバイタルチェックあり + 実測値なし → 本文に「バイタルチェック」が出ること', () => {
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: [mockBillingRecords[0]],
+      procedureBlocks: [{
+        service_type: '身体介護',
+        visit_label: '月〜金 10:00〜14:00',
+        steps: [
+          { item: 'バイタルチェック', content: '血圧・体温・脈拍を測定', note: '' },
+          { item: '服薬確認', content: '服薬の確認', note: '' },
+        ],
+      }],
+      // vitalsByDate未設定 → 実測値なし
+    };
+    const journals = generateJournals(ctx);
+    // チェックボックスはOFF（数値がないため）
+    expect(journals[0].structuredJournal.bodyChecks.vitalCheck).toBe(false);
+    expect(journals[0].structuredJournal.healthCheckRequired).toBe(false);
+    // しかし本文には「バイタルチェック」が出る（手順書との整合）
+    expect(journals[0].diaryNarrative).toContain('バイタルチェック');
+    expect(journals[0].diaryNarrative).not.toMatch(/体温\d/); // 数値の自動生成なし
+  });
+
+  it('手順書にバイタルなし + 実測値なし → 本文に「体調確認」が出ること', () => {
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: [mockBillingRecords[1]], // 家事援助
+      procedureBlocks: [{
+        service_type: '家事援助',
+        visit_label: '月〜金 18:30〜19:30',
+        steps: [
+          { item: '調理', content: '夕食の調理', note: '' },
+        ],
+      }],
+    };
+    const journals = generateJournals(ctx);
+    expect(journals[0].structuredJournal.bodyChecks.vitalCheck).toBe(false);
+    // バイタルチェックは手順書にないのでバイタル関連の文言は出ない
+    expect(journals[0].diaryNarrative).not.toContain('バイタルチェック');
+  });
+});
+
+describe('planReviewRequired が日誌に含まれること', () => {
+  it('計画書K21「調理・清掃」で日誌の調理OFF → planReviewRequired=true', () => {
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: [mockBillingRecords[1]], // 家事援助
+      procedureBlocks: [{
+        service_type: '家事援助',
+        visit_label: '月〜金 18:30〜19:30',
+        steps: [
+          { item: '清掃', content: '居室清掃', note: '' },
+          // 調理ステップなし → cooking=false
+        ],
+      }],
+      carePlanServiceSummary: {
+        serviceTypeSummaries: ['家事援助（調理・清掃）'],
+      },
+    };
+    const journals = generateJournals(ctx);
+    expect(journals[0].planReviewRequired).toBe(true);
+    expect(journals[0].planReviewReasons.some(r => r.includes('調理'))).toBe(true);
+  });
+
+  it('計画書K21「清掃」で日誌の清掃ON → planReviewRequired=false', () => {
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: [mockBillingRecords[1]], // 家事援助
+      procedureBlocks: [{
+        service_type: '家事援助',
+        visit_label: '月〜金 18:30〜19:30',
+        steps: [
+          { item: '清掃', content: '居室清掃', note: '' },
+        ],
+      }],
+      carePlanServiceSummary: {
+        serviceTypeSummaries: ['家事援助（清掃）'],
+      },
+    };
+    const journals = generateJournals(ctx);
+    expect(journals[0].planReviewRequired).toBe(false);
   });
 });
