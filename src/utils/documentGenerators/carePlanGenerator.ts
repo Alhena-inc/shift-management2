@@ -1936,6 +1936,77 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
         remarks = remarks.replace(match[0], match[0].replace(match[1], actualType));
       }
     }
+
+    // === ★K21援助項目整合: schedule_remarksの援助項目サマリーを計画書本文(steps)と一致させる ===
+    // K21に「家事援助（調理・清掃）」と書かれていても、計画書本文のstepsに調理がなければ
+    // K21から「調理」を除去する。K21だけが強くて本文・日誌と追随しない状態を解消。
+    {
+      // 全サービスブロックのsteps本文テキストを結合
+      const planServices = [plan.service1, plan.service2, plan.service3, plan.service4];
+      const allStepText = planServices
+        .filter((s): s is ServiceBlock => s !== null)
+        .flatMap(s => s.steps.map(st => `${st.item} ${st.content}`))
+        .join(' ');
+      // 家事援助の援助項目キーワードと本文の存在チェック
+      const houseItemChecks: Array<{ keyword: string; pattern: RegExp; bodyPattern: RegExp }> = [
+        { keyword: '調理', pattern: /調理/, bodyPattern: /調理|料理|献立|食事.*準備/ },
+        { keyword: '清掃', pattern: /清掃|掃除/, bodyPattern: /清掃|掃除|掃き|拭き/ },
+        { keyword: '洗濯', pattern: /洗濯/, bodyPattern: /洗濯|干し|たたみ|取り込み/ },
+        { keyword: '買物', pattern: /買い?物/, bodyPattern: /買い?物|買い出し/ },
+      ];
+      // K21中の「家事援助（調理・清掃）」等のサマリーを修正
+      const houseSummaryMatch = remarks.match(/家事援助[（(]([^）)]+)[）)]/);
+      if (houseSummaryMatch) {
+        const originalItems = houseSummaryMatch[1];
+        const filteredItems = originalItems.split(/[・、,]/).filter(item => {
+          const check = houseItemChecks.find(c => c.pattern.test(item));
+          if (!check) return true; // 未知の項目はそのまま残す
+          const existsInBody = check.bodyPattern.test(allStepText);
+          if (!existsInBody) {
+            console.log(`[CarePlan] K21整合: 「${item}」は計画書本文に存在しないため除去`);
+          }
+          return existsInBody;
+        });
+        if (filteredItems.length > 0 && filteredItems.join('・') !== originalItems) {
+          const newSummary = `家事援助（${filteredItems.join('・')}）`;
+          remarks = remarks.replace(houseSummaryMatch[0], newSummary);
+          console.log(`[CarePlan] K21整合: 「${houseSummaryMatch[0]}」→「${newSummary}」（計画書本文と一致）`);
+        } else if (filteredItems.length === 0) {
+          // 全項目が本文にない → サマリー自体を「家事援助」に簡略化
+          remarks = remarks.replace(houseSummaryMatch[0], '家事援助');
+          console.log(`[CarePlan] K21整合: 「${houseSummaryMatch[0]}」→「家事援助」（詳細項目が本文に不在）`);
+        }
+      }
+      // 身体介護の同様チェック
+      const bodySummaryMatch = remarks.match(/身体介護[（(]([^）)]+)[）)]/);
+      if (bodySummaryMatch) {
+        const bodyItemChecks: Array<{ keyword: string; pattern: RegExp; bodyPattern: RegExp }> = [
+          { keyword: '服薬', pattern: /服薬/, bodyPattern: /服薬|薬.*確認|投薬/ },
+          { keyword: '入浴', pattern: /入浴/, bodyPattern: /入浴|シャワー|清拭/ },
+          { keyword: '排泄', pattern: /排泄/, bodyPattern: /排泄|トイレ|排尿|排便/ },
+          { keyword: '食事', pattern: /食事/, bodyPattern: /食事介助|食事.*支援|食事.*見守|配膳/ },
+          { keyword: '更衣', pattern: /更衣/, bodyPattern: /更衣|着替/ },
+          { keyword: '整容', pattern: /整容/, bodyPattern: /整容|洗面|歯磨|口腔/ },
+          { keyword: '移動', pattern: /移動/, bodyPattern: /移動|移乗|歩行/ },
+        ];
+        const originalBodyItems = bodySummaryMatch[1];
+        const filteredBodyItems = originalBodyItems.split(/[・、,]/).filter(item => {
+          const check = bodyItemChecks.find(c => c.pattern.test(item));
+          if (!check) return true;
+          const existsInBody = check.bodyPattern.test(allStepText);
+          if (!existsInBody) {
+            console.log(`[CarePlan] K21整合: 「${item}」は計画書本文に存在しないため除去`);
+          }
+          return existsInBody;
+        });
+        if (filteredBodyItems.length > 0 && filteredBodyItems.join('・') !== originalBodyItems) {
+          const newSummary = `身体介護（${filteredBodyItems.join('・')}）`;
+          remarks = remarks.replace(bodySummaryMatch[0], newSummary);
+          console.log(`[CarePlan] K21整合: 「${bodySummaryMatch[0]}」→「${newSummary}」（計画書本文と一致）`);
+        }
+      }
+    }
+
     // === 「契約支給量あり＋実績なし」のサービス種別に対する備考文自動追加 ===
     // 契約上の保有枠はあるが、当該計画期間の実績に提供記録がないサービスを検出し、
     // 備考欄に説明文を追加する。定例サービスではないため計画予定表やサービス内容には載せない。

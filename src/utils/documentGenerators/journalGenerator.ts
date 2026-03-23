@@ -935,6 +935,9 @@ export function generateSpecialNotes(
 /**
  * 計画書のサービス要約と日誌のチェック項目を照合し、継続的ズレを検出する。
  * 例: 計画書K21が「家事援助（調理・清掃）」なのに日誌で調理が毎回OFF → ズレ
+ *
+ * ★追加: K21と計画書本文(steps)の不一致も検出する。
+ *   K21だけに「調理」がある（本文にはない）→ planReviewRequired
  */
 export function checkPlanJournalConsistency(
   serviceTypeLabel: string,
@@ -944,6 +947,10 @@ export function checkPlanJournalConsistency(
     commonChecks: StructuredJournal['commonChecks'];
   },
   carePlanServiceSummary?: CarePlanServiceSummary,
+  carePlanServiceBlocks?: Array<{
+    service_type: string;
+    steps: Array<{ item: string; content: string; note: string; category?: string }>;
+  }>,
 ): { planReviewRequired: boolean; planReviewReasons: string[] } {
   const reasons: string[] = [];
 
@@ -954,11 +961,21 @@ export function checkPlanJournalConsistency(
   const isHouse = serviceTypeLabel.includes('家事') || serviceTypeLabel.includes('生活');
   const isBody = serviceTypeLabel.includes('身体') || serviceTypeLabel.includes('重度');
 
+  // 計画書本文(steps)から家事援助ブロックのテキストを結合
+  const houseStepText = carePlanServiceBlocks
+    ?.filter(b => /家事|生活/.test(b.service_type || ''))
+    .flatMap(b => b.steps.map(st => `${st.item} ${st.content}`))
+    .join(' ') || '';
+
   for (const summary of carePlanServiceSummary.serviceTypeSummaries) {
     // 家事援助の計画書照合
     if (isHouse && /家事|生活/.test(summary)) {
       if (/調理/.test(summary) && !checks.houseChecks.cooking) {
         reasons.push(`計画書に「調理」が含まれるが日誌で調理OFF (${summary})`);
+      }
+      // ★K21と本文の不一致検出: K21に調理があるが本文にない
+      if (/調理/.test(summary) && carePlanServiceBlocks && !/調理|料理|献立|食事.*準備/.test(houseStepText)) {
+        reasons.push(`K21に「調理」があるが計画書本文(steps)に調理ステップなし → K21と本文の不一致`);
       }
       if (/清掃|掃除/.test(summary) && !checks.houseChecks.cleaning) {
         reasons.push(`計画書に「清掃」が含まれるが日誌で清掃OFF (${summary})`);
@@ -1093,13 +1110,23 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
     }
 
     // ★K21調理整合: 計画書に「調理」がある家事援助の場合、cooking=ON にする
-    // 例外: LINE報告で調理を明示的に否定（「調理なし」「調理しなかった」等）している場合のみOFF
-    // ★改善: 単に「言及なし」だけでは降格しない。計画書のサービス内容を source of truth として尊重する。
+    // ただし K21(serviceTypeSummaries) だけでなく、計画書本文(carePlanServiceBlocks)の
+    // stepsにも調理が存在するか確認する。K21だけ強くて本文に調理がない場合は整合しない。
+    // 例外: LINE報告で調理を明示的に否定（「調理なし」「調理しなかった」等）している場合はOFF
     if (isHouseService && carePlanServiceSummary) {
-      const planHasCooking = carePlanServiceSummary.serviceTypeSummaries.some(s =>
+      const k21HasCooking = carePlanServiceSummary.serviceTypeSummaries.some(s =>
         /家事|生活/.test(s) && /調理/.test(s)
       );
-      if (planHasCooking) {
+      // ★計画書本文(steps)にも調理があるか確認（source of truth は本文）
+      const planBodyHasCooking = carePlanServiceBlocks?.some(b => {
+        const bType = b.service_type || '';
+        if (!/家事|生活/.test(bType)) return false;
+        return b.steps.some(st => /調理|料理|献立|食事.*準備/.test(`${st.item} ${st.content}`));
+      }) ?? false;
+
+      // K21と本文の両方に調理がある場合のみ整合をとる
+      // K21だけに調理がある場合はplanReviewRequired（後段のcross-document guardで検出）
+      if (k21HasCooking && planBodyHasCooking) {
         // LINE報告で調理を明示的に否定している場合のみOFF
         const lineText = matchingLine
           ? (matchingLine.diary || '') + ' ' + matchingLine.careContent.join(' ')
@@ -1110,10 +1137,13 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
           checks.houseChecks.cooking = false;
           console.log(`[Journal] K21整合: LINE報告で調理を明示否定 → cooking=OFF (${record.serviceDate})`);
         } else if (!checks.houseChecks.cooking) {
-          // 否定されていない + まだOFF → 計画書に合わせてON
+          // 否定されていない + まだOFF → 計画書本文に合わせてON
           checks.houseChecks.cooking = true;
-          console.log(`[Journal] K21整合: 計画書に「調理」あり → cooking=ON (${record.serviceDate})`);
+          console.log(`[Journal] K21整合: 計画書本文+K21に「調理」あり → cooking=ON (${record.serviceDate})`);
         }
+      } else if (k21HasCooking && !planBodyHasCooking) {
+        // ★K21だけに調理がある → 本文が source of truth → cooking はステップ由来のまま（OFF維持）
+        console.log(`[Journal] K21整合スキップ: K21に「調理」あるが計画書本文に調理ステップなし → cooking変更せず (${record.serviceDate})`);
       }
     }
 
@@ -1179,14 +1209,30 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
       return hasMeasurement && !isOptional;
     });
     if (procedureHasMandatoryVital && !hasActualMeasurement) {
+      // ★manualReviewFlag: 手順書D10/G10と日誌のバイタル方針がズレている
+      // 手順書を「必要時体調確認」に修正するか、実測値を入力するかの二択
       manualReviewReasons.push(
         `手順書に毎回バイタル測定あり(D10等)だが実測値なし → 手順書を「必要時体調確認」に修正するか、実測値を入力してください`
       );
     }
+    // ★手順書に「必要時」のバイタル測定があり、日誌が「体調確認」で整合している場合は
+    // planReviewRequired=false（正常な運用状態）。ログだけ残す。
+    const procedureHasOptionalVital = steps.some(s => {
+      const text = `${s.item} ${s.content}`;
+      return /必要時[はに]?.*(?:血圧|体温|脈拍|バイタル|測定)/.test(text);
+    });
+    if (procedureHasOptionalVital && !hasActualMeasurement) {
+      console.log(`[Journal] バイタル整合OK: 手順書「必要時測定」+ 実測値なし → 日誌は「体調確認」で整合 (${record.serviceDate})`);
+    }
 
     // ★cross-document consistency guard: 計画書と日誌のズレ検出
+    // carePlanServiceBlocksも渡してK21と本文の不一致も検出する
+    const planBlocksForCheck = carePlanServiceBlocks?.map(b => ({
+      service_type: b.service_type,
+      steps: b.steps,
+    }));
     const { planReviewRequired, planReviewReasons } = checkPlanJournalConsistency(
-      serviceTypeLabel, checks, carePlanServiceSummary,
+      serviceTypeLabel, checks, carePlanServiceSummary, planBlocksForCheck,
     );
     if (planReviewRequired) {
       console.warn(`[Journal] ⚠ 計画書ズレ: ${record.serviceDate} - ${planReviewReasons.join(', ')}`);
