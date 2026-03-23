@@ -211,13 +211,14 @@ export function resolveChecksFromProcedure(steps: ProcedureStep[]): {
 
   const bodyChecks = {
     medicationCheck: /服薬|薬.*確認|投薬/.test(allText),
-    // ★「体調確認」はバイタル確認ではない。バイタル=体温・血圧・脈拍の測定を毎回行う場合のみ
-    // 手順書に「バイタルチェック（血圧・体温・脈拍測定）」等がある場合にマッチ
+    // ★体温のみ方針: 「バイタル確認」チェックは基本使わない。
+    // 体温の毎回測定を明示している場合のみマッチ。血圧・脈拍はマッチ対象外。
     // ★「必要時」「必要に応じて」が前置された測定はバイタル確認に含めない
     vitalCheck: (() => {
       // 「必要時」を除外したテキストで判定
-      const textWithoutOptional = allText.replace(/必要時[はに]?[^\s。、]*測定/g, '');
-      return /バイタルチェック|バイタル測定|体温.*測定|血圧.*測定|脈拍.*測定|血圧.*体温|体温.*血圧/.test(textWithoutOptional);
+      const textWithoutOptional = allText.replace(/必要時[はに]?[^\s。、]*(?:測定|体温)/g, '');
+      // ★血圧・脈拍はマッチ対象外。体温の毎回測定のみ
+      return /バイタルチェック|バイタル測定|体温.*測定/.test(textWithoutOptional);
     })(),
     toiletAssist: /排泄|トイレ|排尿|排便/.test(allText),
     bathAssist: /入浴|シャワー|清拭/.test(allText),
@@ -244,9 +245,9 @@ export function resolveChecksFromProcedure(steps: ProcedureStep[]): {
     recording: /記録|報告書/.test(allText),
   };
 
-  // ★「必要時」のバイタル測定はhealthCheckRequired=falseにする
-  const textWithoutOptional = allText.replace(/必要時[はに]?[^\s。、]*(?:測定|バイタル)/g, '');
-  const healthCheckRequired = bodyChecks.vitalCheck || /バイタルチェック|バイタル測定|血圧.*測定|体温.*測定/.test(textWithoutOptional);
+  // ★「必要時」の体温測定はhealthCheckRequired=falseにする
+  const textWithoutOptional = allText.replace(/必要時[はに]?[^\s。、]*(?:測定|体温|バイタル)/g, '');
+  const healthCheckRequired = bodyChecks.vitalCheck || /バイタルチェック|バイタル測定|体温.*測定/.test(textWithoutOptional);
 
   return { bodyChecks, houseChecks, commonChecks, healthCheckRequired };
 }
@@ -399,7 +400,8 @@ export function applyDateBasedVariation(
 
 /**
  * バイタル値を解決する。
- * ★実測値がない場合はvitalCheck=falseに降格し「体調確認」に寄せる。
+ * ★体温のみ対応。血圧・脈拍は全書類から除外。
+ * ★実測体温がない場合はvitalCheck=falseに降格し「体調確認」に寄せる。
  * 数値の捏造は禁止。
  */
 export function resolveVitals(
@@ -411,26 +413,24 @@ export function resolveVitals(
   let vitalNote = '';
   let hasActualMeasurement = false;
 
-  // ★実測値がある場合は、healthCheckRequired に関係なく数値を記録する。
-  // 「必要時バイタル測定」の手順書で healthCheckRequired=false でも、
-  // 実測値が入力されていれば日誌に反映する。
-  // 実測値がある場合のみ数値を埋める（数値の自動推定は禁止）
+  // ★体温の実測値のみ記録する。血圧・脈拍は日誌に反映しない。
+  // 正常値の自動生成は禁止。
   if (vitalsByDate && serviceDate && vitalsByDate[serviceDate]) {
     const measured = vitalsByDate[serviceDate];
-    if (measured.temperature !== undefined) { vitals.temperature = measured.temperature; hasActualMeasurement = true; }
-    if (measured.systolic !== undefined) { vitals.systolic = measured.systolic; hasActualMeasurement = true; }
-    if (measured.diastolic !== undefined) { vitals.diastolic = measured.diastolic; hasActualMeasurement = true; }
-    if (measured.pulse !== undefined) { vitals.pulse = measured.pulse; hasActualMeasurement = true; }
+    if (measured.temperature !== undefined) {
+      vitals.temperature = measured.temperature;
+      hasActualMeasurement = true;
+    }
+    // ★血圧・脈拍は意図的に無視する（全書類から除外方針）
   }
 
-  // 手順書にバイタル項目がなく、実測値もない → 空で返す
+  // 手順書に体調確認項目がなく、体温実測もない → 空で返す
   if (!healthCheckRequired && !hasActualMeasurement) {
     return { vitals, vitalNote, hasActualMeasurement };
   }
 
-  // ★厳格ルール: 実測値がない場合は「体調確認」に留める
-  // 「バイタルチェック（体温・血圧測定）を実施」は実測値がある場合のみ
-  // 手順書にバイタルチェックがあっても、値が無いなら「測ったことにする」記載は禁止
+  // ★厳格ルール: 体温実測がない場合は「体調確認」に留める
+  // 体温を測定していないのに「測ったことにする」記載は禁止
   if (!hasActualMeasurement) {
     vitalNote = '体調確認を実施。著変なし。';
   }
@@ -503,7 +503,7 @@ export function generateLineStyleReport(
   // ケア内容: チェック項目からテキスト生成
   const careItems: string[] = [];
   if (journal.bodyChecks.medicationCheck) careItems.push('服薬確認');
-  if (journal.bodyChecks.vitalCheck) careItems.push('バイタル確認');
+  if (journal.bodyChecks.vitalCheck) careItems.push('体温測定');
   if (journal.bodyChecks.mealAssist) careItems.push('食事介助');
   if (journal.bodyChecks.mealWatch) careItems.push('食事見守り');
   if (journal.houseChecks.cooking) careItems.push('調理');
@@ -586,15 +586,9 @@ export function generateDiaryNarrative(
     parts.push(`${journal.serviceStartTime}に訪問。${conditionVariants[variantSeed % conditionVariants.length]}。`);
   }
 
-  // === バイタル（実測値ある場合のみ数値記載） ===
-  if (journal.vitals.temperature !== undefined || journal.vitals.systolic !== undefined || journal.vitals.pulse !== undefined) {
-    const vals: string[] = [];
-    if (journal.vitals.temperature !== undefined) vals.push(`体温${journal.vitals.temperature}℃`);
-    if (journal.vitals.systolic !== undefined && journal.vitals.diastolic !== undefined) {
-      vals.push(`血圧${journal.vitals.systolic}/${journal.vitals.diastolic}mmHg`);
-    }
-    if (journal.vitals.pulse !== undefined) vals.push(`脈拍${journal.vitals.pulse}回/分`);
-    parts.push(`バイタル測定: ${vals.join('、')}。`);
+  // === 体温（実測値ある場合のみ記載。血圧・脈拍は出さない） ===
+  if (journal.vitals.temperature !== undefined) {
+    parts.push(`体温${journal.vitals.temperature}℃。`);
   } else if (vitalNote) {
     parts.push(vitalNote);
   }
@@ -1200,29 +1194,28 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
       }
     }
 
-    // ★手順書バイタル方針ズレ: 手順書に「毎回」バイタル測定がある（「必要時」でない）のに実測値なし → 要確認
-    // 手順書が「体調確認（必要時バイタル測定）」の場合は、日誌の「体調確認」運用と整合済みなのでフラグ不要
+    // ★手順書バイタル方針ズレ: 手順書に「毎回」体温測定がある（「必要時」でない）のに実測値なし → 要確認
+    // 手順書が「体調確認（必要時に体温測定）」の場合は、日誌の「体調確認」運用と整合済みなのでフラグ不要
     const procedureHasMandatoryVital = steps.some(s => {
       const text = `${s.item} ${s.content}`;
-      const hasMeasurement = /バイタルチェック|バイタル測定|体温.*測定|血圧.*測定|脈拍.*測定/.test(text);
+      const hasMeasurement = /バイタルチェック|バイタル測定|体温.*測定/.test(text);
       const isOptional = /必要時|必要に応じ/.test(text);
       return hasMeasurement && !isOptional;
     });
     if (procedureHasMandatoryVital && !hasActualMeasurement) {
-      // ★manualReviewFlag: 手順書D10/G10と日誌のバイタル方針がズレている
-      // 手順書を「必要時体調確認」に修正するか、実測値を入力するかの二択
+      // ★manualReviewFlag: 手順書D10/G10と日誌の方針がズレている
       manualReviewReasons.push(
-        `手順書に毎回バイタル測定あり(D10等)だが実測値なし → 手順書を「必要時体調確認」に修正するか、実測値を入力してください`
+        `手順書に毎回体温測定あり(D10等)だが実測値なし → 手順書を「必要時体調確認」に修正するか、実測値を入力してください`
       );
     }
-    // ★手順書に「必要時」のバイタル測定があり、日誌が「体調確認」で整合している場合は
+    // ★手順書に「必要時」の体温測定があり、日誌が「体調確認」で整合している場合は
     // planReviewRequired=false（正常な運用状態）。ログだけ残す。
     const procedureHasOptionalVital = steps.some(s => {
       const text = `${s.item} ${s.content}`;
-      return /必要時[はに]?.*(?:血圧|体温|脈拍|バイタル|測定)/.test(text);
+      return /必要時[はに]?.*(?:体温|バイタル|測定)/.test(text);
     });
     if (procedureHasOptionalVital && !hasActualMeasurement) {
-      console.log(`[Journal] バイタル整合OK: 手順書「必要時測定」+ 実測値なし → 日誌は「体調確認」で整合 (${record.serviceDate})`);
+      console.log(`[Journal] 体温整合OK: 手順書「必要時測定」+ 実測値なし → 日誌は「体調確認」で整合 (${record.serviceDate})`);
     }
 
     // ★cross-document consistency guard: 計画書と日誌のズレ検出
@@ -1355,16 +1348,9 @@ export async function generateAndSaveJournalExcel(
     addLabelValue('発汗', j.perspiration, 4, 6);
     row++;
 
-    // バイタル
-    if (j.healthCheckRequired) {
-      const tempText = j.vitals.temperature !== undefined ? `${j.vitals.temperature}℃` : '';
-      const bpText = j.vitals.systolic !== undefined && j.vitals.diastolic !== undefined
-        ? `${j.vitals.systolic}/${j.vitals.diastolic} mmHg` : '';
-      const pulseText = j.vitals.pulse !== undefined ? `${j.vitals.pulse} 回/分` : '';
-      addLabelValue('体温', tempText, 1, 3);
-      addLabelValue('血圧', bpText, 4, 6);
-      row++;
-      addLabelValue('脈拍', pulseText, 1, 3);
+    // 体温（実測値がある場合のみ。血圧・脈拍は出さない）
+    if (j.vitals.temperature !== undefined) {
+      addLabelValue('体温', `${j.vitals.temperature}℃`, 1, 3);
       ws.getCell(row, 4).value = '';
       ws.getCell(row, 4).border = allBorders;
       ws.mergeCells(row, 4, row, 6);
@@ -1390,7 +1376,7 @@ export async function generateAndSaveJournalExcel(
         ? `${mark(j.bodyChecks.mealWatch)} 食事見守り`
         : `${mark(j.bodyChecks.mealAssist)} 食事介助`;
       const bodyItems = [
-        [`${mark(j.bodyChecks.vitalCheck)} バイタル確認`, `${mark(j.bodyChecks.medicationCheck)} 服薬確認`, mealLabel],
+        [`${mark(j.bodyChecks.vitalCheck)} 体温測定`, `${mark(j.bodyChecks.medicationCheck)} 服薬確認`, mealLabel],
         [`${mark(j.bodyChecks.toiletAssist)} 排泄介助`, `${mark(j.bodyChecks.bathAssist)} 入浴介助`, `${mark(j.bodyChecks.mobilityAssist)} 移動介助`],
         [`${mark(j.bodyChecks.dressingAssist)} 更衣介助`, `${mark(j.bodyChecks.groomingAssist)} 整容介助`, ''],
       ];

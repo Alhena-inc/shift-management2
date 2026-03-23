@@ -1349,7 +1349,7 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
   // service_typeが誤っていると正しいステップが除外されてしまう。
   // 例：家事援助内容（調理・掃除等）のブロックでservice_type="身体介護"の場合、
   // 先に混在除去すると全ての家事ステップが削除され、service_type修正が発火しなくなる。
-  const BODY_KEYWORDS = /服薬|排泄|入浴|更衣|整容|移乗|移動介助|バイタル|体調確認|体調|食事介助|口腔ケア|清拭|体位|見守り|安全確認|血圧|体温|脈拍|SpO2/;
+  const BODY_KEYWORDS = /服薬|排泄|入浴|更衣|整容|移乗|移動介助|体調確認|体調|食事介助|口腔ケア|清拭|体位|見守り|安全確認|体温/;
   const HOUSE_KEYWORDS = /調理|配膳|盛り付|片付|掃除|洗濯|買い物|環境整備|ゴミ|献立|食材|台所|食器|キッチン|居室整理|シンク|コンロ/;
 
   for (let i = 1; i <= 4; i++) {
