@@ -25,3 +25,5 @@ _backup_*
 *.tmp
 *.log
 *.swp
+.vercel
+.env*.local
