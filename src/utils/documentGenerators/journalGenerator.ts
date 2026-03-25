@@ -1171,6 +1171,19 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
     const diaryNarrative = generateDiaryNarrative(structuredJournal, matchingLine, vitalNote, steps);
     structuredJournal.diaryNarrative = diaryNarrative;
 
+    // ★環境整備チェック自動整合: 日誌本文・特記に環境整備関連の記載がある場合、
+    // commonChecks.environmentSetup を自動で ON にする。
+    // 「動線を確保した」「生活環境を整えた」等の表現があるのにチェックが入っていない矛盾を防ぐ。
+    if (!structuredJournal.commonChecks.environmentSetup) {
+      const allNarrativeText = `${diaryNarrative} ${specialNotes}`;
+      const ENV_SETUP_KEYWORDS = /動線を?確保|動線確認|居室内の動線|生活環境を整え|生活環境の整備|整理整頓を行い.*環境|環境を整え|居室環境を整え|環境整備を行|安全確認と環境|危険物の除去/;
+      if (ENV_SETUP_KEYWORDS.test(allNarrativeText)) {
+        structuredJournal.commonChecks.environmentSetup = true;
+        checks.commonChecks.environmentSetup = true;
+        console.log(`[Journal] 環境整備自動ON: 本文/特記に環境整備記載あり (${record.serviceDate})`);
+      }
+    }
+
     // LINE報告形式
     const lineStyleReport = generateLineStyleReport(structuredJournal, matchingLine);
 
