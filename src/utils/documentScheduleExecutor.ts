@@ -1751,6 +1751,8 @@ export async function executeJournalGeneration(
   options?: {
     lineReports?: import('./documentGenerators/journalGenerator').LineReport[];
     vitalsByDate?: Record<string, import('./documentGenerators/journalGenerator').VitalSigns>;
+    /** 日誌生成のカットオフ日（YYYY-MM-DD）。この日付より前のサービスのみ対象。 */
+    cutoffDate?: string;
   },
 ): Promise<{ success: boolean; totalEntries: number; months: string[]; manualReviewCount: number }> {
   console.log(`[Journal] === 日誌独立生成開始: ${client.name} ===`);
@@ -1775,6 +1777,7 @@ export async function executeJournalGeneration(
       onProgress,
       lineReports: options?.lineReports,
       vitalsByDate: options?.vitalsByDate,
+      cutoffDate: options?.cutoffDate,
     });
 
     const months = result.monthResults.map(m => `${m.year}年${m.month}月`);

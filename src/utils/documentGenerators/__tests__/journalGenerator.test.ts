@@ -1548,21 +1548,20 @@ describe('getTodayJST: Asia/Tokyo の日付を返す', () => {
 
 // ==================== 件数ロジック: 24件→18件シナリオ ====================
 
-describe('件数ロジック: 今日以降を除外して正確な件数', () => {
-  it('24件の実績のうち今日以降6件を除外 → 18件の日誌が生成される', () => {
-    // 今日をJSTで取得
-    const today = getTodayJST();
-    const [ty, tm, td] = today.split('-').map(Number);
+describe('件数ロジック: カットオフ以降を除外して正確な件数', () => {
+  it('cutoffDate指定時: 24件の実績のうちカットオフ以降6件を除外 → 18件の日誌が生成される', () => {
+    // 固定カットオフ日を設定（todayに依存しない）
+    const cutoffDate = '2026-03-23'; // 03-23以降を除外
 
-    // 18件 = 過去の実績（today未満）
+    // 18件 = カットオフ前の実績
     const pastDates = Array.from({ length: 18 }, (_, i) => {
-      const date = new Date(ty, tm - 1, td - 18 + i);
+      const date = new Date(2026, 2, 5 + i); // 03-05 ~ 03-22
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     });
 
-    // 6件 = 今日以降の実績（today以降）
+    // 6件 = カットオフ以降の実績
     const futureDates = Array.from({ length: 6 }, (_, i) => {
-      const date = new Date(ty, tm - 1, td + i); // today, today+1, ...
+      const date = new Date(2026, 2, 23 + i); // 03-23 ~ 03-28
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     });
 
@@ -1579,13 +1578,14 @@ describe('件数ロジック: 今日以降を除外して正確な件数', () =>
       client: mockClient as any,
       billingRecords: records,
       procedureBlocks: mockProcedureBlocks,
+      cutoffDate,
     };
     const journals = generateJournals(ctx);
-    // ★今日以降6件が除外され、18件の日誌が生成される
+    // ★カットオフ以降6件が除外され、18件の日誌が生成される
     expect(journals.length).toBe(18);
-    // 全てのserviceDateがtoday未満であること
+    // 全てのserviceDateがcutoffDate未満であること
     for (const j of journals) {
-      expect(j.structuredJournal.serviceDate < today).toBe(true);
+      expect(j.structuredJournal.serviceDate < cutoffDate).toBe(true);
     }
   });
 

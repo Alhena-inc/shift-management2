@@ -158,6 +158,16 @@ export interface JournalGeneratorContext {
   vitalsByDate?: Record<string, VitalSigns>;
   /** 計画書のサービス要約（cross-document照合用） */
   carePlanServiceSummary?: CarePlanServiceSummary;
+  /**
+   * 日誌生成のカットオフ日（YYYY-MM-DD）。
+   * この日付より前（この日を含まない）のサービス日のみ日誌を生成する。
+   * 未指定の場合は getTodayJST() を使用する。
+   *
+   * ★ 運営指導用途では、生成日時点の `today` に依存すると
+   * 再生成するたびにシート数が変動するため、確定済みの最終サービス日の
+   * 翌日を cutoffDate として明示的に渡すことを推奨する。
+   */
+  cutoffDate?: string;
 }
 
 // ==================== ユーティリティ ====================
@@ -179,6 +189,31 @@ export function getTodayJST(): string {
   const m = parts.find(p => p.type === 'month')!.value;
   const d = parts.find(p => p.type === 'day')!.value;
   return `${y}-${m}-${d}`;
+}
+
+/**
+ * Asia/Tokyo タイムゾーンで「今週の月曜日」の日付を YYYY-MM-DD で返す。
+ * ★ 日誌生成のデフォルトカットオフとして使用する。
+ * 今週（月曜〜日曜）の実績はまだ確定していない可能性があるため、
+ * 先週日曜日（= 今週月曜 - 1日）までの実績を対象にする。
+ * serviceDate < getStartOfCurrentWeekJST() で、先週日曜日以前が対象となる。
+ *
+ * 例: 今日が 2026-03-26（木）→ 今週月曜は 2026-03-23 → 03-22（日）まで対象
+ * 例: 今日が 2026-03-23（月）→ 今週月曜は 2026-03-23 → 03-22（日）まで対象
+ * 例: 今日が 2026-03-22（日）→ 今週月曜は 2026-03-16 → 03-15（日）まで対象
+ */
+export function getStartOfCurrentWeekJST(): string {
+  const todayStr = getTodayJST();
+  const [y, m, d] = todayStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const dayOfWeek = date.getDay(); // 0=Sun, 1=Mon, ...
+  // 月曜日までの日数（日曜日の場合は6日前、月曜日の場合は0日前）
+  const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  date.setDate(date.getDate() - daysToMonday);
+  const yy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
 }
 
 export function serviceCodeToLabel(code: string): string {
@@ -1010,16 +1045,19 @@ export function checkPlanJournalConsistency(
  * ★1実績 = 1日誌を保証する
  */
 export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
-  const { client, billingRecords, procedureBlocks, carePlanServiceBlocks, lineReports, vitalsByDate, carePlanServiceSummary } = ctx;
+  const { client, billingRecords, procedureBlocks, carePlanServiceBlocks, lineReports, vitalsByDate, carePlanServiceSummary, cutoffDate } = ctx;
 
-  // ★未来日付フィルタ: 今日以降の実績は日誌を作らない（今日を含めない）
-  // Asia/Tokyo タイムゾーンで「今日」を算出する
-  const today = getTodayJST();
-  // ★ 「今日より前」= serviceDate < today （今日の実績は含めない）
-  const pastRecords = billingRecords.filter(r => r.serviceDate < today);
+  // ★未来日付フィルタ: カットオフ日以降の実績は日誌を作らない
+  // 1. cutoffDate が明示的に渡されている場合はそれを使用（再生成時のシート数固定に必須）
+  // 2. 未指定の場合は「今週月曜日」をカットオフに使用
+  //    → 今週の実績はまだ確定していない可能性があるため、先週日曜日までを対象にする
+  //    → 生成タイミング（曜日）によるシート数変動を防止する
+  const effectiveCutoff = cutoffDate || getStartOfCurrentWeekJST();
+  // ★ serviceDate < effectiveCutoff （カットオフ日自体の実績は含めない）
+  const pastRecords = billingRecords.filter(r => r.serviceDate < effectiveCutoff);
   const skippedFuture = billingRecords.length - pastRecords.length;
   if (skippedFuture > 0) {
-    console.log(`[Journal] ★今日以降${skippedFuture}件を除外（${today}以降は対象外）`);
+    console.log(`[Journal] ★カットオフ${effectiveCutoff}以降${skippedFuture}件を除外（cutoffDate=${cutoffDate || '未指定→今週月曜'}）`);
   }
 
   // 実績1件ごとに日誌1件を生成
@@ -1260,7 +1298,7 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
   if (journals.length !== pastRecords.length) {
     console.error(`[Journal] ★件数不一致: 実績${pastRecords.length}件に対し日誌${journals.length}件`);
   }
-  console.log(`[Journal] 日誌生成完了: 実績${billingRecords.length}件(今日${today}以降${skippedFuture}件除外→${pastRecords.length}件) → 日誌${journals.length}件 [1:1=${journals.length === pastRecords.length ? 'OK' : 'NG'}]`);
+  console.log(`[Journal] 日誌生成完了: 実績${billingRecords.length}件(cutoff=${effectiveCutoff}以降${skippedFuture}件除外→${pastRecords.length}件) → 日誌${journals.length}件 [1:1=${journals.length === pastRecords.length ? 'OK' : 'NG'}]`);
 
   return journals;
 }
@@ -1793,6 +1831,13 @@ export async function createJournalsFromBillingRecords(
     lineReports?: LineReport[];
     vitalsByDate?: Record<string, VitalSigns>;
     onProgress?: (msg: string) => void;
+    /**
+     * 日誌生成のカットオフ日（YYYY-MM-DD）。
+     * この日付より前（この日を含まない）のサービス日のみ日誌を生成する。
+     * 未指定の場合は getTodayJST() にフォールバックする。
+     * 例: '2026-03-23' → 03-22 までのサービスが対象、03-23以降は除外。
+     */
+    cutoffDate?: string;
   },
 ): Promise<{
   totalCreated: number;
@@ -1800,7 +1845,7 @@ export async function createJournalsFromBillingRecords(
   manualReviewCount: number;
   monthResults: Array<{ year: number; month: number; count: number; fileName: string }>;
 }> {
-  const { onProgress, lineReports, vitalsByDate } = options || {};
+  const { onProgress, lineReports, vitalsByDate, cutoffDate } = options || {};
 
   // 利用者の実績だけに絞る
   const clientRecords = allBillingRecords.filter(r => r.clientName === client.name);
@@ -1840,6 +1885,7 @@ export async function createJournalsFromBillingRecords(
       lineReports,
       vitalsByDate,
       carePlanServiceSummary: docs.carePlan?.serviceSummary,
+      cutoffDate,
     };
     const journals = generateJournals(ctx);
 
