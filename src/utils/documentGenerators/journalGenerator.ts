@@ -1037,6 +1037,84 @@ export function checkPlanJournalConsistency(
   };
 }
 
+// ==================== ブロックマッチング・フォールバック ====================
+
+/**
+ * サービス種別ラベルの正規化比較でブロックを検索する。
+ * 1. serviceCodeToLabel による正規化ラベル完全一致
+ * 2. 部分一致（ブロックの service_type がラベルを含む or 逆）
+ * 3. 短縮名フォールバック（「身体」→「身体介護」、「家事」→「家事援助」）
+ */
+export function findMatchingBlock<T extends { service_type: string; steps: any[] }>(
+  blocks: T[] | undefined,
+  serviceTypeLabel: string,
+): T | undefined {
+  if (!blocks || blocks.length === 0 || !serviceTypeLabel) return undefined;
+
+  // 正規化ラベルのマップ（短縮名→正式名の解決用）
+  const LABEL_ALIASES: Record<string, string[]> = {
+    '身体介護': ['身体介護', '身体', 'bodyCare', '身体介助'],
+    '家事援助': ['家事援助', '家事', '生活援助', '生活', 'housework', '家事支援'],
+    '重度訪問': ['重度訪問', '重度訪問介護', '重度'],
+    '通院': ['通院', '通院等介助', '通院介助'],
+    '同行援護': ['同行援護', '同行'],
+    '行動援護': ['行動援護', '行動'],
+  };
+
+  // Step 1: 正規化ラベル完全一致
+  const exact = blocks.find(b => {
+    const bLabel = serviceCodeToLabel(b.service_type) || b.service_type.replace(/\s+/g, '');
+    return bLabel === serviceTypeLabel;
+  });
+  if (exact) return exact;
+
+  // Step 2: 部分一致（双方向）
+  const partial = blocks.find(b => {
+    const bNorm = b.service_type.replace(/\s+/g, '');
+    return bNorm.includes(serviceTypeLabel) || serviceTypeLabel.includes(bNorm);
+  });
+  if (partial) return partial;
+
+  // Step 3: エイリアステーブルで検索
+  const aliases = LABEL_ALIASES[serviceTypeLabel] || [];
+  if (aliases.length > 0) {
+    const aliasMatch = blocks.find(b => {
+      const bNorm = b.service_type.replace(/\s+/g, '');
+      return aliases.some(alias => bNorm === alias || bNorm.includes(alias));
+    });
+    if (aliasMatch) return aliasMatch;
+  }
+
+  return undefined;
+}
+
+/**
+ * ブロック不在時にサービス種別からデフォルトステップを再構築する。
+ * 日誌生成を止めず、最低限のチェック項目を確保するためのフォールバック。
+ */
+export function buildFallbackSteps(serviceTypeLabel: string): ProcedureStep[] {
+  if (serviceTypeLabel.includes('身体') || serviceTypeLabel.includes('重度')) {
+    return [
+      { item: '体調確認', content: '利用者の体調・顔色を確認する', note: '' },
+      { item: '服薬確認', content: '処方薬の服用を確認する', note: '' },
+      { item: '環境整備', content: '居室の安全確認と環境整備', note: '' },
+      { item: '相談援助', content: '利用者の要望を確認する', note: '' },
+    ];
+  }
+  if (serviceTypeLabel.includes('家事') || serviceTypeLabel.includes('生活')) {
+    return [
+      { item: '清掃', content: '居室の清掃を行う', note: '' },
+      { item: '環境整備', content: '居室の安全確認と環境整備', note: '' },
+      { item: '相談援助', content: '利用者の要望を確認する', note: '' },
+    ];
+  }
+  // 通院・同行・行動援護等
+  return [
+    { item: '体調確認', content: '利用者の体調を確認する', note: '' },
+    { item: '環境整備', content: '安全確認と環境整備', note: '' },
+  ];
+}
+
 // ==================== メイン: 日誌一括生成 ====================
 
 /**
@@ -1064,20 +1142,29 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
   const journals: JournalEntry[] = pastRecords.map((record) => {
     const serviceTypeLabel = serviceCodeToLabel(record.serviceCode);
 
-    // 手順書のステップを取得（service_typeに一致するブロック）
-    const matchingProcedure = procedureBlocks?.find(b => {
-      const bType = serviceCodeToLabel(b.service_type) || b.service_type;
-      return bType === serviceTypeLabel || b.service_type.includes(serviceTypeLabel);
-    });
-    const matchingPlan = carePlanServiceBlocks?.find(b => {
-      const bType = serviceCodeToLabel(b.service_type) || b.service_type;
-      return bType === serviceTypeLabel || b.service_type.includes(serviceTypeLabel);
-    });
+    // ★改善: ブロックマッチング — 正規化済みラベルで比較し、部分一致フォールバックも行う
+    const matchingProcedure = findMatchingBlock(procedureBlocks, serviceTypeLabel);
+    const matchingPlan = findMatchingBlock(carePlanServiceBlocks, serviceTypeLabel);
 
     // source優先順位に基づくステップ解決
-    const steps: ProcedureStep[] = matchingProcedure?.steps || matchingPlan?.steps?.map(s => ({
+    let steps: ProcedureStep[] = matchingProcedure?.steps || matchingPlan?.steps?.map(s => ({
       item: s.item, content: s.content, note: s.note, category: s.category,
     })) || [];
+
+    // ★フォールバック: ブロック不在時はサービス種別からデフォルトステップを再構築
+    let blockFallbackUsed = false;
+    if (steps.length === 0) {
+      steps = buildFallbackSteps(serviceTypeLabel);
+      blockFallbackUsed = true;
+      console.warn(
+        `[Journal] ⚠ ブロック不在フォールバック: ` +
+        `dateKey=${record.serviceDate}, slotKey=${record.startTime}-${record.endTime}, ` +
+        `serviceKey=${record.serviceCode}→${serviceTypeLabel}, ` +
+        `procedureBlocks=${procedureBlocks?.length ?? 0}件[${procedureBlocks?.map(b => b.service_type).join(',') || 'なし'}], ` +
+        `carePlanBlocks=${carePlanServiceBlocks?.length ?? 0}件[${carePlanServiceBlocks?.map(b => b.service_type).join(',') || 'なし'}] → ` +
+        `デフォルトステップ${steps.length}件で再構築`
+      );
+    }
 
     // チェック項目を手順書から解決
     let checks = resolveChecksFromProcedure(steps);

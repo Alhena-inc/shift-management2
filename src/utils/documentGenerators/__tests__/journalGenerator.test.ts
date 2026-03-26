@@ -26,8 +26,12 @@ import {
   generateDiaryNarrative,
   serviceCodeToLabel,
   getTodayJST,
+  getStartOfCurrentWeekJST,
+  findMatchingBlock,
+  buildFallbackSteps,
   type JournalGeneratorContext,
   type ProcedureStep,
+  type ProcedureBlock,
   type LineReport,
   type StructuredJournal,
   type VitalSigns,
@@ -2391,5 +2395,315 @@ describe('★既存ロジック破壊なし確認', () => {
     const journals = generateJournals(ctx);
     expect(journals[0].specialNotes).toBeTruthy();
     expect(journals[0].specialNotes.length).toBeGreaterThan(0);
+  });
+});
+
+// ==================== ブロック不在フォールバックテスト ====================
+
+describe('ブロック不在フォールバック', () => {
+  it('テスト1: records存在 / prebuilt block欠落 → fallbackで再構築、throwしない', () => {
+    const records = [
+      {
+        id: 'br-fb-1',
+        serviceDate: '2025-11-05',
+        startTime: '10:00',
+        endTime: '12:00',
+        helperName: '田中一郎',
+        clientName: '上村太郎',
+        serviceCode: '1121',
+        isLocked: false,
+        source: 'csv',
+        importBatchId: 'batch-1',
+        importedAt: '2025-11-05',
+        updatedAt: '2025-11-05',
+      },
+    ];
+    // procedureBlocks/carePlanServiceBlocks を渡さない（ブロック不在）
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: records,
+      // procedureBlocks: undefined,
+      // carePlanServiceBlocks: undefined,
+    };
+    // throwしないこと
+    expect(() => generateJournals(ctx)).not.toThrow();
+    const journals = generateJournals(ctx);
+    // 1件生成されること
+    expect(journals).toHaveLength(1);
+    // 身体介護のフォールバック: 服薬確認がONになること
+    expect(journals[0].structuredJournal.bodyChecks.medicationCheck).toBe(true);
+    // 日誌本文が空でないこと
+    expect(journals[0].diaryNarrative.length).toBeGreaterThan(10);
+  });
+
+  it('テスト1b: 家事援助のブロック不在でもfallbackで生成', () => {
+    const records = [
+      {
+        id: 'br-fb-2',
+        serviceDate: '2025-11-07',
+        startTime: '18:30',
+        endTime: '19:30',
+        helperName: '田中一郎',
+        clientName: '上村太郎',
+        serviceCode: '1221',
+        isLocked: false,
+        source: 'csv',
+        importBatchId: 'batch-1',
+        importedAt: '2025-11-07',
+        updatedAt: '2025-11-07',
+      },
+    ];
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: records,
+      // ブロック不在
+    };
+    expect(() => generateJournals(ctx)).not.toThrow();
+    const journals = generateJournals(ctx);
+    expect(journals).toHaveLength(1);
+    // 家事援助のフォールバック: 清掃がONになること
+    expect(journals[0].structuredJournal.houseChecks.cleaning).toBe(true);
+  });
+
+  it('テスト1c: service_typeが短縮名「身体」でもマッチする', () => {
+    const records = [mockBillingRecords[0]]; // serviceCode: '1121' → 身体介護
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: records,
+      procedureBlocks: [{
+        service_type: '身体', // 短縮名
+        visit_label: '月〜金',
+        steps: [
+          { item: '服薬確認', content: '処方薬の確認', note: '' },
+          { item: '入浴介助', content: 'シャワー浴の介助', note: '' },
+        ],
+      }],
+    };
+    const journals = generateJournals(ctx);
+    expect(journals).toHaveLength(1);
+    // 手順書のステップからマッチすること（入浴介助がON）
+    expect(journals[0].structuredJournal.bodyChecks.bathAssist).toBe(true);
+  });
+});
+
+describe('同日複数サービスのブロック化', () => {
+  it('テスト2: 同日1830と1930のrecordsが両方block化される', () => {
+    const records = [
+      {
+        id: 'br-multi-1',
+        serviceDate: '2025-11-05',
+        startTime: '18:30',
+        endTime: '19:30',
+        helperName: '田中一郎',
+        clientName: '上村太郎',
+        serviceCode: '1121', // 身体介護
+        isLocked: false,
+        source: 'csv',
+        importBatchId: 'batch-1',
+        importedAt: '2025-11-05',
+        updatedAt: '2025-11-05',
+      },
+      {
+        id: 'br-multi-2',
+        serviceDate: '2025-11-05',
+        startTime: '19:30',
+        endTime: '20:30',
+        helperName: '田中一郎',
+        clientName: '上村太郎',
+        serviceCode: '1221', // 家事援助
+        isLocked: false,
+        source: 'csv',
+        importBatchId: 'batch-1',
+        importedAt: '2025-11-05',
+        updatedAt: '2025-11-05',
+      },
+    ];
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: records,
+      procedureBlocks: mockProcedureBlocks,
+    };
+    const journals = generateJournals(ctx);
+    // 両方生成されること（片方だけ消えない）
+    expect(journals).toHaveLength(2);
+    // 1件目は身体介護
+    expect(journals[0].structuredJournal.serviceTypeLabel).toBe('身体介護');
+    expect(journals[0].structuredJournal.serviceStartTime).toBe('18:30');
+    // 2件目は家事援助
+    expect(journals[1].structuredJournal.serviceTypeLabel).toBe('家事援助');
+    expect(journals[1].structuredJournal.serviceStartTime).toBe('19:30');
+  });
+});
+
+describe('Asia/Tokyo基準のtoday除外', () => {
+  it('テスト3: serviceDate == today は生成しない', () => {
+    const today = getTodayJST();
+    const yesterday = (() => {
+      const [y, m, d] = today.split('-').map(Number);
+      const dt = new Date(y, m - 1, d);
+      dt.setDate(dt.getDate() - 1);
+      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    })();
+
+    const records = [
+      {
+        id: 'br-today',
+        serviceDate: today,
+        startTime: '10:00',
+        endTime: '12:00',
+        helperName: '田中一郎',
+        clientName: '上村太郎',
+        serviceCode: '1121',
+        isLocked: false,
+        source: 'csv',
+        importBatchId: 'batch-1',
+        importedAt: today,
+        updatedAt: today,
+      },
+      {
+        id: 'br-yesterday',
+        serviceDate: yesterday,
+        startTime: '10:00',
+        endTime: '12:00',
+        helperName: '田中一郎',
+        clientName: '上村太郎',
+        serviceCode: '1121',
+        isLocked: false,
+        source: 'csv',
+        importBatchId: 'batch-1',
+        importedAt: yesterday,
+        updatedAt: yesterday,
+      },
+    ];
+
+    // cutoffDate = today → today自体は除外、yesterdayは含む
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: records,
+      cutoffDate: today,
+    };
+    const journals = generateJournals(ctx);
+    // todayの実績は除外される（serviceDate < cutoffDate）
+    expect(journals.every(j => j.structuredJournal.serviceDate !== today)).toBe(true);
+    // yesterdayは含まれる
+    expect(journals.some(j => j.structuredJournal.serviceDate === yesterday)).toBe(true);
+  });
+
+  it('テスト3b: cutoff未指定時はgetStartOfCurrentWeekJST()が使われる', () => {
+    const cutoff = getStartOfCurrentWeekJST();
+    // cutoffより前の日付は生成される
+    const pastDate = '2025-10-01';
+    const records = [
+      {
+        id: 'br-past',
+        serviceDate: pastDate,
+        startTime: '10:00',
+        endTime: '12:00',
+        helperName: '田中一郎',
+        clientName: '上村太郎',
+        serviceCode: '1121',
+        isLocked: false,
+        source: 'csv',
+        importBatchId: 'batch-1',
+        importedAt: pastDate,
+        updatedAt: pastDate,
+      },
+    ];
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: records,
+      // cutoffDate未指定
+    };
+    const journals = generateJournals(ctx);
+    expect(journals).toHaveLength(1);
+    expect(journals[0].structuredJournal.serviceDate).toBe(pastDate);
+  });
+});
+
+describe('環境整備チェックの自動整合（A14）', () => {
+  it('テスト4: 環境整備を示す本文でenvironmentSetupがONになる', () => {
+    // 家事援助の手順書に「環境整備」を含むステップを設定
+    const records = [
+      {
+        id: 'br-env-1',
+        serviceDate: '2025-11-05',
+        startTime: '18:30',
+        endTime: '19:30',
+        helperName: '田中一郎',
+        clientName: '上村太郎',
+        serviceCode: '1221', // 家事援助
+        isLocked: false,
+        source: 'csv',
+        importBatchId: 'batch-1',
+        importedAt: '2025-11-05',
+        updatedAt: '2025-11-05',
+      },
+    ];
+    const ctx: JournalGeneratorContext = {
+      client: mockClient as any,
+      billingRecords: records,
+      procedureBlocks: [{
+        service_type: '家事援助',
+        visit_label: '月〜金',
+        steps: [
+          { item: '環境整備', content: '居室の安全確認と環境整備を行う', note: '' },
+          { item: '清掃', content: '居室の清掃', note: '' },
+        ],
+      }],
+    };
+    const journals = generateJournals(ctx);
+    expect(journals).toHaveLength(1);
+    // 手順書に環境整備があるのでcommonChecks.environmentSetupがON
+    expect(journals[0].structuredJournal.commonChecks.environmentSetup).toBe(true);
+  });
+});
+
+describe('findMatchingBlock', () => {
+  const blocks: ProcedureBlock[] = [
+    { service_type: '身体介護', visit_label: '月〜金 10:00', steps: [{ item: 'a', content: 'b', note: '' }] },
+    { service_type: '家事援助', visit_label: '月〜金 18:30', steps: [{ item: 'c', content: 'd', note: '' }] },
+  ];
+
+  it('正規化ラベル完全一致', () => {
+    expect(findMatchingBlock(blocks, '身体介護')).toBe(blocks[0]);
+    expect(findMatchingBlock(blocks, '家事援助')).toBe(blocks[1]);
+  });
+
+  it('短縮名「身体」→「身体介護」にマッチ', () => {
+    const shortBlocks = [{ service_type: '身体', visit_label: '', steps: [{ item: 'x', content: 'y', note: '' }] }];
+    expect(findMatchingBlock(shortBlocks, '身体介護')).toBe(shortBlocks[0]);
+  });
+
+  it('短縮名「家事」→「家事援助」にマッチ', () => {
+    const shortBlocks = [{ service_type: '家事', visit_label: '', steps: [{ item: 'x', content: 'y', note: '' }] }];
+    expect(findMatchingBlock(shortBlocks, '家事援助')).toBe(shortBlocks[0]);
+  });
+
+  it('空配列 → undefined', () => {
+    expect(findMatchingBlock([], '身体介護')).toBeUndefined();
+  });
+
+  it('undefined → undefined', () => {
+    expect(findMatchingBlock(undefined, '身体介護')).toBeUndefined();
+  });
+});
+
+describe('buildFallbackSteps', () => {
+  it('身体介護のフォールバックに体調確認・服薬確認が含まれる', () => {
+    const steps = buildFallbackSteps('身体介護');
+    expect(steps.length).toBeGreaterThanOrEqual(2);
+    expect(steps.some(s => s.item.includes('体調確認'))).toBe(true);
+    expect(steps.some(s => s.item.includes('服薬確認'))).toBe(true);
+  });
+
+  it('家事援助のフォールバックに清掃が含まれる', () => {
+    const steps = buildFallbackSteps('家事援助');
+    expect(steps.length).toBeGreaterThanOrEqual(2);
+    expect(steps.some(s => s.item.includes('清掃'))).toBe(true);
+  });
+
+  it('未知のサービスでも空にならない', () => {
+    const steps = buildFallbackSteps('通院');
+    expect(steps.length).toBeGreaterThanOrEqual(1);
   });
 });
