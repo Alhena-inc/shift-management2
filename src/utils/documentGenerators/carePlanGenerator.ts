@@ -558,8 +558,10 @@ function getRepresentativeItems(serviceBlocks: Array<{ service_type: string; ste
   );
   const items = meaningful.length > 0 ? meaningful : block.steps;
   const picked = items.slice(0, 3).map(s => {
-    // 「バイタルチェック」「バイタル確認」→「体調確認」に正規化
-    if (/バイタル/.test(s.item)) return '体調確認';
+    // 「バイタルチェック」「バイタル確認」「健康チェック」→「体調確認」に正規化
+    if (/バイタル|健康チェック/.test(s.item)) return '体調確認';
+    // 「入浴準備」→「入浴支援」に正規化（入浴準備・入浴見守り・更衣介助を包括する表現）
+    if (/^入浴準備$/.test(s.item.trim())) return '入浴支援';
     return s.item;
   });
   // 重複除去
@@ -1997,11 +1999,16 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
         ];
         const originalBodyItems = bodySummaryMatch[1];
         const filteredBodyItems = originalBodyItems.split(/[・、,]/).map(item => {
-          // ★「体温測定」「バイタルチェック」→「体調確認」に置換
+          // ★「体温測定」「バイタルチェック」「健康チェック」→「体調確認」に置換
           // 手順書・日誌と整合させるため、毎回体温測定の前提を外す
-          if (/体温測定|体温確認|バイタルチェック|バイタル測定|バイタル確認/.test(item)) {
+          if (/体温測定|体温確認|バイタルチェック|バイタル測定|バイタル確認|健康チェック/.test(item)) {
             console.log(`[CarePlan] K21整合: 「${item}」→「体調確認」に正規化`);
             return '体調確認';
+          }
+          // ★「入浴準備」→「入浴支援」に正規化（入浴準備・入浴見守り・更衣介助を包括する表現）
+          if (/^入浴準備$/.test(item.trim())) {
+            console.log(`[CarePlan] K21整合: 「${item}」→「入浴支援」に正規化`);
+            return '入浴支援';
           }
           return item;
         }).filter(item => {
