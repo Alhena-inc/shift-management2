@@ -841,7 +841,10 @@ export function generateDiaryNarrative(
   ];
   parts.push(exitVariants[variantSeed % exitVariants.length]);
 
-  // ★ 最終クリーンアップ: 「食事介助」「食事の介助」「配膳・介助」が残っていたら食事見守りに置換
+  // ★ 最終クリーンアップ:
+  // 1. 「食事介助」「食事の介助」「配膳・介助」→ 食事見守りに置換
+  // 2. 「排泄」「トイレ誘導」「排泄後の清拭」→ 除去（current journals では A11=☐排泄介助）
+  // 3. 「入浴」「更衣介助」→ 除去（current journals では使わない）
   let result = parts.join('');
   result = result
     .replace(/食事の介助を行い/g, '食事の見守りを行い')
@@ -850,6 +853,14 @@ export function generateDiaryNarrative(
     .replace(/食事介助/g, '食事の見守り')
     .replace(/食事の介助/g, '食事の見守り')
     .replace(/配膳・介助/g, '配膳・見守り');
+  // 排泄関連の文を除去（句点区切りで該当文を丸ごと除去）
+  result = result
+    .replace(/排泄介助を行い[^。]*。/g, '')
+    .replace(/トイレ誘導を行い[^。]*。/g, '')
+    .replace(/トイレへの移動を見守り[^。]*。/g, '')
+    .replace(/排泄後の清拭[^。]*。/g, '');
+  // 連続スペース・改行の正規化
+  result = result.replace(/\s{2,}/g, ' ').replace(/。{2,}/g, '。').trim();
   return result;
 }
 

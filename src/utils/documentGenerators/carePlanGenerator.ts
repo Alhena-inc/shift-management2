@@ -560,7 +560,7 @@ function getRepresentativeItems(serviceBlocks: Array<{ service_type: string; ste
   //   「体調確認・服薬確認・排泄介助・食事見守り」
   const st = serviceType.replace(/\s+/g, '');
   if (st.includes('身体') || st.includes('重度')) {
-    return '体調確認・服薬確認・排泄介助・食事見守り';
+    return '体調確認・服薬確認・食事見守り';
   }
   // 家事援助等はステップから代表項目を抽出
   const items = meaningful.length > 0 ? meaningful : block.steps;
@@ -1987,7 +1987,7 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
       }
       // ★ K21身体介護サマリーを「体調確認・服薬確認・排泄介助・食事見守り」に固定
       // AI出力の内容に関わらず、current journals の実態に合わせた固定サマリーに置換する。
-      const BODY_SUMMARY = '体調確認・服薬確認・排泄介助・食事見守り';
+      const BODY_SUMMARY = '体調確認・服薬確認・食事見守り';
       const bodySummaryMatch = remarks.match(/身体介護[（(]([^）)]+)[）)]/);
       if (bodySummaryMatch) {
         const newSummary = `身体介護（${BODY_SUMMARY}）`;
@@ -2169,9 +2169,9 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
       const normalizedBodySteps: ServiceStep[] = [
         { item: '訪問時確認', content: '表情・体調・食欲の確認', note: '著変や食欲低下の有無を確認する', category: '身体介護' },
         { item: '服薬確認', content: '本日分の服薬確認と声かけ', note: '漢方薬への抵抗感に配慮し確実な服薬を確認する', category: '身体介護' },
-        { item: '排泄介助', content: 'トイレ誘導・排泄後の清拭等を行う', note: '清潔保持と転倒予防に配慮する', category: '身体介護' },
-        { item: '食事見守り', content: '食事量・水分摂取量の確認と見守り', note: 'むせ込みや摂取状況に注意する', category: '身体介護' },
-        { item: '終了確認', content: '退室前の体調確認と安全確認', note: '不安や訴えを傾聴する', category: '身体介護' },
+        { item: '食事見守り', content: '食事の配膳と摂取状況の見守りを行う', note: 'むせ込みや摂取状況に注意する', category: '身体介護' },
+        { item: '必要時移動見守り', content: '移動時の転倒防止のため必要時付き添いを行う', note: '足の震えやふらつきに注意する', category: '身体介護' },
+        { item: '必要時整容支援・終了確認', content: '洗面・歯磨き等の整容支援と退室前の安全確認を行う', note: '本人の状態に応じて声かけし不安や訴えを傾聴する', category: '身体介護' },
       ];
       bodySteps = normalizedBodySteps;
       console.log(`[CarePlan] 身体介護ステップを current journals 実態に正規化（${normalizedBodySteps.length}件）`);
