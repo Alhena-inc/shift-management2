@@ -2707,3 +2707,125 @@ describe('buildFallbackSteps', () => {
     expect(steps.length).toBeGreaterThanOrEqual(1);
   });
 });
+
+// ==================== 排泄介助チェック→本文整合テスト ====================
+
+describe('排泄介助チェック→本文整合', () => {
+  it('手順書に排泄あり＋本文に排泄なし → A11=☐排泄介助', () => {
+    // 手順書に排泄ステップがある場合のテスト
+    const records = [
+      {
+        id: 'br-toilet-1',
+        serviceDate: '2025-11-05',
+        startTime: '19:30',
+        endTime: '20:30',
+        helperName: '田中一郎',
+        clientName: '上村太郎',
+        serviceCode: '1121', // 身体介護
+        isLocked: false,
+        source: 'csv',
+        importBatchId: 'batch-1',
+        importedAt: '2025-11-05',
+        updatedAt: '2025-11-05',
+      },
+    ];
+    // 手順書に「排泄介助」が含まれているが、本文には排泄文言が出ない
+    const ctx: JournalGeneratorContext = {
+      client: { id: 'client-001', name: '上村太郎' } as any,
+      billingRecords: records,
+      procedureBlocks: [{
+        service_type: '身体介護',
+        visit_label: '月〜金 19:30',
+        steps: [
+          { item: '服薬確認', content: '処方薬の確認', note: '' },
+          { item: '排泄介助', content: 'トイレ誘導と清拭', note: '' },
+          { item: '食事見守り', content: '食事の見守り', note: '' },
+        ],
+      }],
+    };
+    const journals = generateJournals(ctx);
+    expect(journals).toHaveLength(1);
+    // 手順書に排泄があるのでresolveChecksではONになるが、
+    // 本文に排泄が出ないため（クリーンアップで除去される）、
+    // 最終的にtargetAssist=falseに自動整合される
+    expect(journals[0].structuredJournal.bodyChecks.toiletAssist).toBe(false);
+  });
+
+  it('手順書に排泄なし → A11=☐排泄介助', () => {
+    const records = [
+      {
+        id: 'br-notoilet-1',
+        serviceDate: '2025-11-05',
+        startTime: '19:30',
+        endTime: '20:30',
+        helperName: '田中一郎',
+        clientName: '上村太郎',
+        serviceCode: '1121',
+        isLocked: false,
+        source: 'csv',
+        importBatchId: 'batch-1',
+        importedAt: '2025-11-05',
+        updatedAt: '2025-11-05',
+      },
+    ];
+    const ctx: JournalGeneratorContext = {
+      client: { id: 'client-001', name: '上村太郎' } as any,
+      billingRecords: records,
+      procedureBlocks: [{
+        service_type: '身体介護',
+        visit_label: '月〜金 19:30',
+        steps: [
+          { item: '服薬確認', content: '処方薬の確認', note: '' },
+          { item: '食事見守り', content: '食事の見守り', note: '' },
+        ],
+      }],
+    };
+    const journals = generateJournals(ctx);
+    expect(journals).toHaveLength(1);
+    expect(journals[0].structuredJournal.bodyChecks.toiletAssist).toBe(false);
+  });
+
+  it('C10=☑服薬確認, E10=☑食事見守り は維持されること', () => {
+    const records = [
+      {
+        id: 'br-check-1',
+        serviceDate: '2025-11-05',
+        startTime: '19:30',
+        endTime: '20:30',
+        helperName: '田中一郎',
+        clientName: '上村太郎',
+        serviceCode: '1121',
+        isLocked: false,
+        source: 'csv',
+        importBatchId: 'batch-1',
+        importedAt: '2025-11-05',
+        updatedAt: '2025-11-05',
+      },
+    ];
+    const ctx: JournalGeneratorContext = {
+      client: { id: 'client-001', name: '上村太郎' } as any,
+      billingRecords: records,
+      procedureBlocks: [{
+        service_type: '身体介護',
+        visit_label: '月〜金 19:30',
+        steps: [
+          { item: '服薬確認', content: '処方薬の確認', note: '' },
+          { item: '食事見守り', content: '食事の見守りを行う', note: '' },
+        ],
+      }],
+    };
+    const journals = generateJournals(ctx);
+    expect(journals).toHaveLength(1);
+    // 服薬確認ON
+    expect(journals[0].structuredJournal.bodyChecks.medicationCheck).toBe(true);
+    // 食事見守りON（mealWatch or mealAssist）
+    const meal = journals[0].structuredJournal.bodyChecks.mealWatch || journals[0].structuredJournal.bodyChecks.mealAssist;
+    expect(meal).toBe(true);
+    // 体温測定OFF
+    expect(journals[0].structuredJournal.bodyChecks.vitalCheck).toBe(false);
+    // 排泄介助OFF
+    expect(journals[0].structuredJournal.bodyChecks.toiletAssist).toBe(false);
+    // 入浴介助OFF
+    expect(journals[0].structuredJournal.bodyChecks.bathAssist).toBe(false);
+  });
+});

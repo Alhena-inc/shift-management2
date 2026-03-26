@@ -1310,6 +1310,18 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
     const diaryNarrative = generateDiaryNarrative(structuredJournal, matchingLine, vitalNote, steps);
     structuredJournal.diaryNarrative = diaryNarrative;
 
+    // ★排泄介助チェック→本文整合: 本文・特記・LINE報告に排泄関連記載がない場合は OFF にする
+    // 手順書に排泄ステップがあっても、実際の日誌本文に排泄文言がなければチェックは外す
+    if (structuredJournal.bodyChecks.toiletAssist) {
+      const allNarrativeForToilet = `${diaryNarrative} ${specialNotes} ${matchingLine?.diary || ''} ${matchingLine?.careContent?.join(' ') || ''}`;
+      const TOILET_KEYWORDS = /排泄|トイレ|排尿|排便|失禁|ポータブルトイレ|下衣の上げ下ろし/;
+      if (!TOILET_KEYWORDS.test(allNarrativeForToilet)) {
+        structuredJournal.bodyChecks.toiletAssist = false;
+        checks.bodyChecks.toiletAssist = false;
+        console.log(`[Journal] 排泄介助チェック自動OFF: 本文/特記/LINE報告に排泄記載なし (${record.serviceDate})`);
+      }
+    }
+
     // ★環境整備チェック自動整合: 日誌本文・特記に環境整備関連の記載がある場合、
     // commonChecks.environmentSetup を自動で ON にする。
     // 「動線を確保した」「生活環境を整えた」等の表現があるのにチェックが入っていない矛盾を防ぐ。
