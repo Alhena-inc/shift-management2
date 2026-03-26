@@ -1523,10 +1523,10 @@ export async function generateAndSaveJournalExcel(
       ws.getCell(`A${row}`).alignment = { horizontal: 'center' };
       row++;
 
-      // ★食事介助と食事見守りを区別して表示
-      const mealLabel = j.bodyChecks.mealWatch
-        ? `${mark(j.bodyChecks.mealWatch)} 食事見守り`
-        : `${mark(j.bodyChecks.mealAssist)} 食事介助`;
+      // ★ E10 ラベルは常に「食事見守り」に統一（計画書 K21/F60/B91 と整合）
+      // mealAssist/mealWatch いずれがONでも「食事見守り」表記にする
+      const mealChecked = j.bodyChecks.mealWatch || j.bodyChecks.mealAssist;
+      const mealLabel = `${mark(mealChecked)} 食事見守り`;
       const bodyItems = [
         [`${mark(j.bodyChecks.vitalCheck)} 体温測定`, `${mark(j.bodyChecks.medicationCheck)} 服薬確認`, mealLabel],
         [`${mark(j.bodyChecks.toiletAssist)} 排泄介助`, `${mark(j.bodyChecks.bathAssist)} 入浴介助`, `${mark(j.bodyChecks.mobilityAssist)} 移動介助`],

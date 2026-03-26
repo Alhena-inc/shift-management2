@@ -867,9 +867,13 @@ ${planServiceText}`;
           for (let i = 0; i < planBlock.steps.length; i++) {
             const ps = planBlock.steps[i];
             const stepTime = toTimeStr(startMin + interval * (i + 1));
+            // ★ ステップ項目名を current journals に合わせて正規化
+            let itemName = ps.item.substring(0, 15);
+            if (/声かけ見守り|声かけ・見守り/.test(itemName)) itemName = '食事見守り';
+            if (/食事介助/.test(itemName)) itemName = '食事見守り';
             newSteps.push({
               time: stepTime,
-              item: ps.item.substring(0, 15),
+              item: itemName,
               detail: ps.content.replace(/^\d{1,2}:\d{2}\s*/, '').substring(0, 100) || `${ps.item}を実施し、利用者の状態を確認する。必要に応じて声かけ・見守りを行う`,
               note: ps.note.substring(0, 60) || '利用者の反応や表情を注意深く観察し、異変があれば速やかに報告する',
             });

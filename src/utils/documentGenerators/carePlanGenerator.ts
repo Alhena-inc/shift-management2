@@ -1945,6 +1945,26 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
       }
     }
 
+    // === ★K21時刻範囲修正: 「18:30～」のように終時刻が欠落している場合、実績から補完する ===
+    {
+      // 実績の時間パターンから開始→終了のマップを構築
+      const timeRangeMap = new Map<string, string>();
+      for (const r of clientRecords) {
+        if (r.startTime && r.endTime) {
+          timeRangeMap.set(r.startTime, r.endTime);
+        }
+      }
+      // 「HH:MM～」で終時刻がない場合を検出して補完
+      remarks = remarks.replace(/(\d{1,2}:\d{2})[～~](?!\d)/g, (match, startTime) => {
+        const endTime = timeRangeMap.get(startTime);
+        if (endTime) {
+          console.log(`[CarePlan] K21時刻補完: 「${match}」→「${startTime}～${endTime}」`);
+          return `${startTime}～${endTime}`;
+        }
+        return match;
+      });
+    }
+
     // === ★K21援助項目整合: schedule_remarksの援助項目サマリーを計画書本文(steps)と一致させる ===
     // K21に「家事援助（調理・清掃）」と書かれていても、計画書本文のstepsに調理がなければ
     // K21から「調理」を除去する。K21だけが強くて本文・日誌と追随しない状態を解消。

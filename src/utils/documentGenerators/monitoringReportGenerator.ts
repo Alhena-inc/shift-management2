@@ -1767,7 +1767,9 @@ export async function generate(ctx: GeneratorContext): Promise<{
     if (!result.procedure_check.trimEnd().endsWith('。')) {
       const body = result.procedure_check.trimEnd();
       // 末尾が助詞・助動詞・接続詞で終わっている（未完文）
-      const INCOMPLETE_END = /[はがをにでもへとのやかし、,]$/;
+      // 末尾が助詞・助動詞・接続詞・動詞中途形で終わっている（未完文）
+      // 「服薬している」「対応する」等の動詞で文が終わっているケースも検出
+      const INCOMPLETE_END = /[はがをにでもへとのやかし、,]$|している$|いる$|する$|ある$|おり$/;
       if (INCOMPLETE_END.test(body) || body.length < 30) {
         console.warn(`[Monitoring] ⚠ C21(procedure_check)が未完文。フォールバックに差し替え: "${body.substring(body.length - 20)}"`);
         result.procedure_check = '手順書の内容を確認した結果、現行の手順書で適切に対応できており変更は不要と判断した。手の震えに配慮した調理支援の方法、掃除箇所をその日の状況に応じて臨機応変に対応する運用、服薬状況の毎回確認、食事見守り、水分補給の促し、必要時の整容支援および移動見守りの手順について、現在の手順で支援が適切に実施されている。';
