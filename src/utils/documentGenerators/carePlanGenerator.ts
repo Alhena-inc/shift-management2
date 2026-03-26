@@ -557,15 +557,19 @@ function getRepresentativeItems(serviceBlocks: Array<{ service_type: string; ste
     !/到着|挨拶|退室|訪問開始|バイタル|体温測定/.test(s.item)
   );
   const items = meaningful.length > 0 ? meaningful : block.steps;
-  const picked = items.slice(0, 3).map(s => {
-    // 「バイタルチェック」「バイタル確認」「健康チェック」→「体調確認」に正規化
-    if (/バイタル|健康チェック/.test(s.item)) return '体調確認';
-    // 「入浴準備」→「入浴支援」に正規化（入浴準備・入浴見守り・更衣介助を包括する表現）
-    if (/^入浴準備$/.test(s.item.trim())) return '入浴支援';
+  const picked = items.slice(0, 5).map(s => {
+    // 「バイタルチェック」「バイタル確認」「健康チェック」→ 除去（サマリーには不要）
+    if (/バイタル|健康チェック|体調確認|体温/.test(s.item)) return null;
+    // 「入浴準備」「入浴介助」「入浴見守り」→「入浴支援」に正規化
+    if (/入浴/.test(s.item)) return '入浴支援';
+    // 「更衣介助」「整容介助」→「身辺介助」に集約（日誌実態: 入浴に付随する更衣・整容）
+    if (/更衣|整容/.test(s.item)) return '身辺介助';
+    // 「就寝準備」「就寝前安全確認」→ サマリーには含めない（付随項目）
+    if (/就寝/.test(s.item)) return null;
     return s.item;
-  });
+  }).filter((s): s is string => s !== null);
   // 重複除去
-  return [...new Set(picked)].join('・');
+  return [...new Set(picked)].slice(0, 3).join('・');
 }
 
 /**
@@ -1987,6 +1991,13 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
       }
       // 身体介護の同様チェック
       const bodySummaryMatch = remarks.match(/身体介護[（(]([^）)]+)[）)]/);
+
+      // ★計画書本文(steps)から身体介護の代表項目を抽出（K21サマリー強化用）
+      const bodyPlanBlock = planServices.find(s => s !== null && (s.service_type || '').replace(/\s+/g, '').includes('身体'));
+      const bodyStepItems = bodyPlanBlock ? bodyPlanBlock.steps.map(st => `${st.item} ${st.content}`).join(' ') : '';
+      const bodyHasBath = /入浴|シャワー|清拭|洗体|洗髪/.test(bodyStepItems) || /入浴|シャワー|清拭/.test(allStepText);
+      const bodyHasMed = /服薬|薬.*確認|投薬/.test(bodyStepItems) || /服薬|薬.*確認|投薬/.test(allStepText);
+
       if (bodySummaryMatch) {
         const bodyItemChecks: Array<{ keyword: string; pattern: RegExp; bodyPattern: RegExp }> = [
           { keyword: '服薬', pattern: /服薬/, bodyPattern: /服薬|薬.*確認|投薬/ },
@@ -1998,20 +2009,29 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
           { keyword: '移動', pattern: /移動/, bodyPattern: /移動|移乗|歩行/ },
         ];
         const originalBodyItems = bodySummaryMatch[1];
-        const filteredBodyItems = originalBodyItems.split(/[・、,]/).map(item => {
-          // ★「体温測定」「バイタルチェック」「健康チェック」→「体調確認」に置換
-          // 手順書・日誌と整合させるため、毎回体温測定の前提を外す
+        let filteredBodyItems = originalBodyItems.split(/[・、,]/).map(item => {
+          // ★「体温測定」「バイタルチェック」「健康チェック」→ 除去（体調確認不要、服薬確認で代替）
           if (/体温測定|体温確認|バイタルチェック|バイタル測定|バイタル確認|健康チェック/.test(item)) {
-            console.log(`[CarePlan] K21整合: 「${item}」→「体調確認」に正規化`);
-            return '体調確認';
+            console.log(`[CarePlan] K21整合: 「${item}」を除去（体調確認は服薬確認に含む）`);
+            return null;
           }
-          // ★「入浴準備」→「入浴支援」に正規化（入浴準備・入浴見守り・更衣介助を包括する表現）
+          // ★「入浴準備」→「入浴支援」に正規化
           if (/^入浴準備$/.test(item.trim())) {
             console.log(`[CarePlan] K21整合: 「${item}」→「入浴支援」に正規化`);
             return '入浴支援';
           }
+          // ★ 単独「見守り」→「必要時見守り」に正規化（主軸は入浴支援）
+          if (/^見守り$/.test(item.trim())) {
+            console.log(`[CarePlan] K21整合: 「${item}」→「必要時見守り」に正規化`);
+            return '必要時見守り';
+          }
+          // ★「食事見守り」は current journals に存在しないため除去
+          if (/食事見守/.test(item)) {
+            console.log(`[CarePlan] K21整合: 「${item}」を除去（current journals に不在）`);
+            return null;
+          }
           return item;
-        }).filter(item => {
+        }).filter((item): item is string => item !== null).filter(item => {
           const check = bodyItemChecks.find(c => c.pattern.test(item));
           if (!check) return true;
           const existsInBody = check.bodyPattern.test(allStepText);
@@ -2020,12 +2040,59 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
           }
           return existsInBody;
         });
-        // ★重複除去（体温測定→体調確認への変換で元の体調確認と重複する場合）
+
+        // ★ 入浴支援が計画書本文にあるのにK21サマリーから漏れている場合は補充
+        if (bodyHasBath && !filteredBodyItems.some(i => /入浴/.test(i))) {
+          filteredBodyItems.push('入浴支援');
+          console.log(`[CarePlan] K21整合: 入浴支援を補充（計画書本文に入浴あり）`);
+        }
+        // ★ 服薬確認が計画書本文にあるのにK21サマリーから漏れている場合は補充
+        if (bodyHasMed && !filteredBodyItems.some(i => /服薬/.test(i))) {
+          filteredBodyItems = ['服薬確認', ...filteredBodyItems];
+          console.log(`[CarePlan] K21整合: 服薬確認を補充（計画書本文に服薬あり）`);
+        }
+        // ★ 「必要時見守り」がまだなく、更衣・整容・移動等の付随項目がある場合は追加
+        if (!filteredBodyItems.some(i => /見守/.test(i)) && /更衣|整容|移動|移乗/.test(allStepText)) {
+          filteredBodyItems.push('必要時見守り');
+          console.log(`[CarePlan] K21整合: 必要時見守りを補充`);
+        }
+
+        // ★重複除去
         const uniqueBodyItems = [...new Set(filteredBodyItems)];
         if (uniqueBodyItems.length > 0 && uniqueBodyItems.join('・') !== originalBodyItems) {
           const newSummary = `身体介護（${uniqueBodyItems.join('・')}）`;
           remarks = remarks.replace(bodySummaryMatch[0], newSummary);
           console.log(`[CarePlan] K21整合: 「${bodySummaryMatch[0]}」→「${newSummary}」（計画書本文と一致）`);
+        }
+      } else {
+        // ★ K21に身体介護のサマリーが括弧付きで存在しない場合（「身体介護。」等の抽象形）
+        // → 計画書本文(steps)から代表項目を抽出してサマリーを生成・挿入する
+        if (/身体介護/.test(remarks) && (bodyHasBath || bodyHasMed)) {
+          const summaryParts: string[] = [];
+          if (bodyHasMed) summaryParts.push('服薬確認');
+          if (bodyHasBath) summaryParts.push('入浴支援');
+          if (/更衣|整容|移動|移乗/.test(allStepText)) summaryParts.push('必要時見守り');
+          if (summaryParts.length > 0) {
+            const newBodySummary = `身体介護（${summaryParts.join('・')}）`;
+            // 「身体介護」の後に括弧なし・句読点/改行が来る場合を置換
+            remarks = remarks.replace(/身体介護(?![（(])/, newBodySummary);
+            console.log(`[CarePlan] K21整合: 裸の「身体介護」→「${newBodySummary}」に具体化（計画書本文から抽出）`);
+          }
+        }
+        // ★ 家事援助も同様に括弧なしの場合の具体化
+        if (/家事援助/.test(remarks) && !/家事援助[（(]/.test(remarks)) {
+          const houseHasCooking = /調理|料理|献立|食事.*準備/.test(allStepText);
+          const houseHasCleaning = /清掃|掃除|掃き|拭き/.test(allStepText);
+          if (houseHasCooking || houseHasCleaning) {
+            const houseParts: string[] = [];
+            if (houseHasCooking) houseParts.push('調理');
+            if (houseHasCleaning) houseParts.push('掃除');
+            if (houseParts.length > 0) {
+              const newHouseSummary = `家事援助（${houseParts.join('・')}）`;
+              remarks = remarks.replace(/家事援助(?![（(])/, newHouseSummary);
+              console.log(`[CarePlan] K21整合: 裸の「家事援助」→「${newHouseSummary}」に具体化`);
+            }
+          }
         }
       }
     }
