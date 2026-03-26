@@ -539,8 +539,8 @@ export function generateLineStyleReport(
   const careItems: string[] = [];
   if (journal.bodyChecks.medicationCheck) careItems.push('服薬確認');
   if (journal.bodyChecks.vitalCheck) careItems.push('体温測定');
-  if (journal.bodyChecks.mealAssist) careItems.push('食事介助');
-  if (journal.bodyChecks.mealWatch) careItems.push('食事見守り');
+  // ★ mealAssist/mealWatch いずれも「食事見守り」に統一（E10 checkbox と整合）
+  if (journal.bodyChecks.mealAssist || journal.bodyChecks.mealWatch) careItems.push('食事見守り');
   if (journal.houseChecks.cooking) careItems.push('調理');
   if (journal.houseChecks.cleaning) careItems.push('清掃');
   if (journal.houseChecks.laundry) careItems.push('洗濯');
@@ -755,21 +755,15 @@ export function generateDiaryNarrative(
       ];
       bodyActions.push(bathVariants[variantSeed % bathVariants.length]);
     }
-    if (journal.bodyChecks.mealAssist) {
-      const mealAssistVariants = [
-        '食事の介助を行い、摂取状況を確認した',
-        '食事の配膳・介助を行い、声かけを行った',
-        '食事量と水分摂取量を確認し、食事介助を行った',
+    if (journal.bodyChecks.mealAssist || journal.bodyChecks.mealWatch) {
+      // ★ mealAssist/mealWatch いずれの場合も「食事見守り」ベースの文言に統一
+      // 「食事介助」「食事の介助」「配膳・介助」は使わない（checkbox E10=食事見守り と整合）
+      const mealVariants = [
+        '食事量と水分摂取量を確認し、食事の見守りと声かけを行った',
+        '食事の配膳を行い、摂取状況を確認しながら見守りと声かけを行った',
+        '食事量と水分摂取量を確認し、摂取状況の見守りと声かけを行った',
       ];
-      bodyActions.push(mealAssistVariants[variantSeed % mealAssistVariants.length]);
-    }
-    if (journal.bodyChecks.mealWatch) {
-      const mealWatchVariants = [
-        '食事の見守り・声かけを行い、摂取状況を確認した',
-        '食事の配膳を行い、摂取の見守りと声かけを行った',
-        '食事量と水分摂取量を確認し、見守りを行った',
-      ];
-      bodyActions.push(mealWatchVariants[variantSeed % mealWatchVariants.length]);
+      bodyActions.push(mealVariants[variantSeed % mealVariants.length]);
     }
     if (journal.bodyChecks.mobilityAssist) {
       const mobilityVariants = [
@@ -847,7 +841,16 @@ export function generateDiaryNarrative(
   ];
   parts.push(exitVariants[variantSeed % exitVariants.length]);
 
-  return parts.join('');
+  // ★ 最終クリーンアップ: 「食事介助」「食事の介助」「配膳・介助」が残っていたら食事見守りに置換
+  let result = parts.join('');
+  result = result
+    .replace(/食事の介助を行い/g, '食事の見守りを行い')
+    .replace(/食事の配膳・介助を行い/g, '食事の配膳を行い')
+    .replace(/食事介助を行った/g, '食事の見守りを行った')
+    .replace(/食事介助/g, '食事の見守り')
+    .replace(/食事の介助/g, '食事の見守り')
+    .replace(/配膳・介助/g, '配膳・見守り');
+  return result;
 }
 
 // ==================== 特記・連絡事項 ====================
