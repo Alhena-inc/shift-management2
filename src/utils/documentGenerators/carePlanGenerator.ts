@@ -557,10 +557,10 @@ function getRepresentativeItems(serviceBlocks: Array<{ service_type: string; ste
     !/到着|挨拶|退室|訪問開始|バイタル|体温測定/.test(s.item)
   );
   // ★ 身体介護セルサマリーは current journals 実態に固定:
-  //   「体調確認・服薬確認・排泄介助・食事見守り」
+  //   服薬確認68件・更衣51件・整容46件・安全確認42件・傾聴33件
   const st = serviceType.replace(/\s+/g, '');
   if (st.includes('身体') || st.includes('重度')) {
-    return '体調確認・服薬確認・整容支援・安全確認・相談援助';
+    return '体調確認・服薬確認・更衣介助・整容支援・安全確認・相談援助';
   }
   // 家事援助等はステップから代表項目を抽出
   const items = meaningful.length > 0 ? meaningful : block.steps;
@@ -2006,8 +2006,8 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
         }
       }
       // ★ K21身体介護サマリーを current journals 実態に固定
-      // 服薬確認68件・整容46件・安全確認42件・傾聴33件、食事0件・排泄0件・入浴0件・更衣0件
-      const BODY_SUMMARY = '体調確認・服薬確認・整容支援・安全確認・相談援助';
+      // 服薬確認68件・更衣51件・整容46件・安全確認42件・傾聴33件、食事0件・排泄0件・入浴0件
+      const BODY_SUMMARY = '体調確認・服薬確認・更衣介助・整容支援・安全確認・相談援助';
       const bodySummaryMatch = remarks.match(/身体介護[（(]([^）)]+)[）)]/);
       if (bodySummaryMatch) {
         const newSummary = `身体介護（${BODY_SUMMARY}）`;
@@ -2189,6 +2189,7 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
       const normalizedBodySteps: ServiceStep[] = [
         { item: '訪問時確認', content: '表情・体調の確認', note: '著変の有無を確認する', category: '身体介護' },
         { item: '服薬確認', content: '抗酒剤の服薬状況確認と声かけ', note: '抗酒剤への抵抗感に配慮し確実な服薬を確認する', category: '身体介護' },
+        { item: '更衣介助', content: '就寝に向けた更衣の介助を行い、皮膚の状態を確認する', note: '本人動作を活かしつつ必要時に介助する', category: '身体介護' },
         { item: '整容介助', content: '洗面・歯磨き等の整容の声かけと見守りを行う', note: '本人動作を活かしつつ清潔保持を支援する', category: '身体介護' },
         { item: '安全確認・相談援助', content: '室内の安全確認と利用者の不安や訴えの傾聴を行う', note: '転倒防止の動線確認と表情の変化に注意する', category: '身体介護' },
         { item: '就寝準備・終了確認', content: '就寝準備を行い、退室前に安全を確認する', note: '不安や訴えを傾聴し、退室前に安全を確認する', category: '身体介護' },

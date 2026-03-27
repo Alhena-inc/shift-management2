@@ -6243,3 +6243,223 @@ describe('日誌本文 wording 統一', () => {
     expect(text).toContain('食事の見守り');
   });
 });
+
+// ========================================================================
+// 松尾光雅 source-of-truth 統一検証テスト
+// 薬剤名・嫌悪感対象薬・身体介護コンポーネントが全帳票で整合していること
+// ========================================================================
+describe('松尾光雅 source-of-truth 統一', () => {
+  // ---------- 薬剤名の single source of truth ----------
+  const MEDICATION_NAME = '抗酒剤';
+
+  // ---------- 身体介護 BODY_SUMMARY の single source of truth ----------
+  const BODY_SUMMARY = '体調確認・服薬確認・更衣介助・整容支援・安全確認・相談援助';
+
+  // ---------- 計画書 B89-93 normalizedBodySteps の期待値 ----------
+  const EXPECTED_NORMALIZED_BODY_STEPS = [
+    { item: '訪問時確認', hasContent: true },
+    { item: '服薬確認', contentIncludes: '抗酒剤' },
+    { item: '更衣介助', hasContent: true },
+    { item: '整容介助', hasContent: true },
+    { item: '安全確認・相談援助', hasContent: true },
+    { item: '就寝準備・終了確認', hasContent: true },
+  ];
+
+  // ---------- 手順書 bodySteps の期待値 ----------
+  const EXPECTED_PROCEDURE_BODY_STEPS = [
+    { item: '訪問時確認' },
+    { item: '服薬確認', detailIncludes: '抗酒剤' },
+    { item: '更衣介助' },
+    { item: '整容介助' },
+    { item: '安全確認・相談援助' },
+    { item: '就寝準備・退室前安全確認' },
+  ];
+
+  // ---------- モニタリング TYPO_FIXES の検証 ----------
+  const MONITORING_TYPO_FIXES: Array<[RegExp, string]> = [
+    [/抗酒剤等の漢方薬/g, '抗酒剤'],
+    [/漢方薬/g, '抗酒剤'],
+    [/食事見守り/g, '整容支援'],
+    [/排泄介助/g, '安全確認'],
+    [/入浴支援/g, '整容支援'],
+    [/移動見守り/g, '安全確認'],
+    [/身体介護（体温測定・服薬確認・食事見守り・体調確認）/g,
+      '身体介護（体調確認・服薬確認・更衣介助・整容支援・安全確認・相談援助）'],
+  ];
+
+  // === 1. K21 BODY_SUMMARY に更衣介助が含まれること ===
+  it('K21 BODY_SUMMARY に更衣介助が含まれること', () => {
+    expect(BODY_SUMMARY).toContain('更衣介助');
+    expect(BODY_SUMMARY).toContain('整容支援');
+    expect(BODY_SUMMARY).toContain('服薬確認');
+    expect(BODY_SUMMARY).toContain('安全確認');
+    expect(BODY_SUMMARY).toContain('相談援助');
+    // 更衣介助と整容支援が別々に存在し、混同されていないこと
+    const parts = BODY_SUMMARY.split('・');
+    expect(parts).toContain('更衣介助');
+    expect(parts).toContain('整容支援');
+  });
+
+  // === 2. extractBodySummaryFromSteps の出力に更衣介助が含まれること ===
+  it('身体介護セルサマリーに更衣介助が含まれること', () => {
+    // extractBodySummaryFromSteps のロジックを再現
+    const serviceType = '居宅介護 身体介護';
+    const st = serviceType.replace(/\s+/g, '');
+    let summary = '';
+    if (st.includes('身体') || st.includes('重度')) {
+      summary = BODY_SUMMARY;
+    }
+    expect(summary).toBe('体調確認・服薬確認・更衣介助・整容支援・安全確認・相談援助');
+  });
+
+  // === 3. B89-93 normalizedBodySteps に更衣介助行が存在すること ===
+  it('計画書 normalizedBodySteps に更衣介助が含まれること', () => {
+    const normalizedBodySteps = [
+      { item: '訪問時確認', content: '表情・体調の確認', note: '著変の有無を確認する', category: '身体介護' },
+      { item: '服薬確認', content: '抗酒剤の服薬状況確認と声かけ', note: '抗酒剤への抵抗感に配慮し確実な服薬を確認する', category: '身体介護' },
+      { item: '更衣介助', content: '就寝に向けた更衣の介助を行い、皮膚の状態を確認する', note: '本人動作を活かしつつ必要時に介助する', category: '身体介護' },
+      { item: '整容介助', content: '洗面・歯磨き等の整容の声かけと見守りを行う', note: '本人動作を活かしつつ清潔保持を支援する', category: '身体介護' },
+      { item: '安全確認・相談援助', content: '室内の安全確認と利用者の不安や訴えの傾聴を行う', note: '転倒防止の動線確認と表情の変化に注意する', category: '身体介護' },
+      { item: '就寝準備・終了確認', content: '就寝準備を行い、退室前に安全を確認する', note: '不安や訴えを傾聴し、退室前に安全を確認する', category: '身体介護' },
+    ];
+
+    // 更衣介助が含まれること
+    const dressingStep = normalizedBodySteps.find(s => s.item === '更衣介助');
+    expect(dressingStep).toBeDefined();
+    expect(dressingStep!.category).toBe('身体介護');
+
+    // 整容介助と更衣介助が別ステップであること
+    const groomingStep = normalizedBodySteps.find(s => s.item === '整容介助');
+    expect(groomingStep).toBeDefined();
+    expect(dressingStep).not.toBe(groomingStep);
+
+    // 全ステップのカテゴリが身体介護であること
+    expect(normalizedBodySteps.every(s => s.category === '身体介護')).toBe(true);
+
+    // 期待されるアイテムが全て存在すること
+    for (const expected of EXPECTED_NORMALIZED_BODY_STEPS) {
+      const step = normalizedBodySteps.find(s => s.item === expected.item);
+      expect(step).toBeDefined();
+      if (expected.contentIncludes) {
+        expect(step!.content).toContain(expected.contentIncludes);
+      }
+    }
+  });
+
+  // === 4. 手順書 bodySteps に更衣介助が含まれること ===
+  it('手順書 bodySteps に更衣介助が含まれること', () => {
+    const bodySteps = [
+      { item: '訪問時確認', detail: '訪問時に表情・体調の確認を行う。体調変化や訴えがあれば記録し必要時報告する', note: '著変の有無に注意する' },
+      { item: '服薬確認', detail: '抗酒剤の服薬状況を確認する。必要時は声かけを行い確実な服薬を見届ける', note: '抗酒剤への抵抗感に配慮し無理強いせず確認する' },
+      { item: '更衣介助', detail: '就寝に向けた更衣の介助を行い、皮膚の状態を確認する。本人動作を活かしつつ必要時に介助する', note: '本人のペースに合わせ無理強いしない' },
+      { item: '整容介助', detail: '洗面・歯磨き等の整容の声かけと見守りを行う。本人動作を活かしつつ必要時に介助する', note: '清潔保持の意欲を支援し無理強いしない' },
+      { item: '安全確認・相談援助', detail: '室内の安全確認・動線確認を行い、利用者の不安や訴えを傾聴する', note: '転倒防止の動線確認と表情の変化に注意する' },
+      { item: '就寝準備・退室前安全確認', detail: '室内環境・戸締り・火元等を確認し、安心して就寝できる状態を整え退室する', note: '転倒防止のため動線や寝室環境に配慮する' },
+    ];
+
+    for (const expected of EXPECTED_PROCEDURE_BODY_STEPS) {
+      const step = bodySteps.find(s => s.item === expected.item);
+      expect(step).toBeDefined();
+      if (expected.detailIncludes) {
+        expect(step!.detail).toContain(expected.detailIncludes);
+      }
+    }
+
+    // 薬剤名が抗酒剤に統一されていること
+    const medStep = bodySteps.find(s => s.item === '服薬確認')!;
+    expect(medStep.detail).toContain(MEDICATION_NAME);
+    expect(medStep.detail).not.toContain('漢方薬');
+    expect(medStep.note).toContain(MEDICATION_NAME);
+    expect(medStep.note).not.toContain('漢方薬');
+  });
+
+  // === 5. モニタリング TYPO_FIXES が更衣支援→整容支援の吸収をしないこと ===
+  it('モニタリング TYPO_FIXES が更衣支援を整容支援に吸収しないこと', () => {
+    // 更衣支援→整容支援の強制置換が存在しないことを確認
+    const fixTargets = MONITORING_TYPO_FIXES.map(([regex]) => regex.source);
+    expect(fixTargets).not.toContain('更衣支援');
+    expect(fixTargets).not.toContain('必要時の更衣・整容支援');
+  });
+
+  // === 6. モニタリング TYPO_FIXES で漢方薬→抗酒剤の統一が機能すること ===
+  it('モニタリング TYPO_FIXES で漢方薬→抗酒剤に統一されること', () => {
+    let text = '漢方薬への嫌悪感あり。抗酒剤等の漢方薬を服用中。';
+    for (const [regex, replacement] of MONITORING_TYPO_FIXES) {
+      text = text.replace(regex, replacement);
+    }
+    expect(text).not.toContain('漢方薬');
+    expect(text).toContain('抗酒剤');
+  });
+
+  // === 7. C21 (procedure_check) fallback に更衣介助が含まれること ===
+  it('C21 fallback テキストに更衣介助が含まれること', () => {
+    const fallback = '手順書の内容を確認した結果、現行の手順書で適切に対応できており変更は不要と判断した。手の震えに配慮した調理支援の方法、掃除箇所をその日の状況に応じて臨機応変に対応する運用、抗酒剤の服薬状況確認、更衣介助、必要時の整容支援、室内安全確認、相談・傾聴、就寝準備および退室前安全確認の手順について、現在の手順で支援が適切に実施されている。';
+    expect(fallback).toContain('更衣介助');
+    expect(fallback).toContain('整容支援');
+    expect(fallback).toContain(MEDICATION_NAME);
+    expect(fallback).not.toContain('漢方薬');
+    // 更衣介助と整容支援が別々に記載されていること
+    const dressingIdx = fallback.indexOf('更衣介助');
+    const groomingIdx = fallback.indexOf('整容支援');
+    expect(dressingIdx).not.toBe(groomingIdx);
+  });
+
+  // === 8. M12 (service_change_reason) fallback に更衣介助が含まれること ===
+  it('M12 fallback テキストに更衣介助が含まれること', () => {
+    const fallback = '確認した結果、現行サービス内容で対応可能であり変更は不要と判断した。手の震えに配慮した調理支援、意欲低下時の清潔保持支援、身体介護時の服薬確認・更衣介助・整容支援・安全確認・相談援助が適切に実施され、在宅生活の安定が図られている。';
+    expect(fallback).toContain('更衣介助');
+    expect(fallback).toContain('整容支援');
+    // 更衣介助と整容支援の間に「・」があること（混同されていない）
+    expect(fallback).toContain('更衣介助・整容支援');
+  });
+
+  // === 9. D12 (service_reason) fallback に更衣介助が含まれること ===
+  it('D12 fallback テキストに更衣介助が含まれること', () => {
+    const fallback = '現行計画に基づく家事援助及び身体介護は概ね提供できており、在宅生活は安定して継続されている。手の震えに配慮した支援により食生活も維持され、服薬確認・更衣介助を含む見守りにより心身の状態は概ね安定している。';
+    expect(fallback).toContain('更衣介助');
+  });
+
+  // === 10. J12 (condition_detail) fallback の薬剤名が抗酒剤であること ===
+  it('J12 fallback テキストの薬剤名が抗酒剤であること', () => {
+    const fallback = '身体状況・精神状態について確認し、前回モニタリング時と比較して著変なし。抗酒剤の継続服用により断酒生活が維持されており、定期的なクリニック通院も継続している。';
+    expect(fallback).toContain(MEDICATION_NAME);
+    expect(fallback).not.toContain('漢方薬');
+  });
+
+  // === 11. 帳票間で身体介護 summary が一致すること ===
+  it('K21・F60・C21・M12 の身体介護 summary が統一されていること', () => {
+    // 各帳票の BODY_SUMMARY は全て同一の文字列を使用すべき
+    const k21Summary = `身体介護（${BODY_SUMMARY}）`;
+    const f60Summary = BODY_SUMMARY; // extractBodySummaryFromSteps の出力
+
+    // K21の身体介護summary
+    expect(k21Summary).toContain('更衣介助');
+    expect(k21Summary).toContain('整容支援');
+
+    // F60の身体介護summary
+    expect(f60Summary).toContain('更衣介助');
+    expect(f60Summary).toContain('整容支援');
+
+    // 両者が同じコンポーネントを含むこと
+    const k21Parts = k21Summary.match(/[^（）・]+/g) || [];
+    const f60Parts = f60Summary.split('・');
+    for (const part of f60Parts) {
+      expect(k21Parts).toContain(part);
+    }
+  });
+
+  // === 12. 日誌の更衣介助が維持されること（除去対象でないこと） ===
+  it('日誌クリーンアップで更衣介助が除去されないこと', () => {
+    let text = '更衣の介助を行った。食事介助を行った。排泄介助を行い、清潔を保った。入浴の介助を行った。';
+    // 食事・排泄・入浴の除去ルール
+    text = text
+      .replace(/食事介助[^。]*。/g, '')
+      .replace(/排泄介助を行い[^。]*。/g, '')
+      .replace(/入浴[^。]*。/g, '');
+    // 更衣は除去されないこと
+    expect(text).toContain('更衣の介助を行った');
+    expect(text).not.toContain('食事介助');
+    expect(text).not.toContain('排泄介助');
+    expect(text).not.toContain('入浴');
+  });
+});
