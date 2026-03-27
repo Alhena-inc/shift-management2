@@ -1955,7 +1955,8 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
         }
       }
       // 「HH:MM～」で終時刻がない場合を検出して補完
-      remarks = remarks.replace(/(\d{1,2}:\d{2})[～~](?!\d)/g, (match, startTime) => {
+      // ★ 〜(U+301C wave dash)・～(U+FF5E fullwidth tilde)・~(U+007E tilde) 全てに対応
+      remarks = remarks.replace(/(\d{1,2}:\d{2})[〜～~](?!\d)/g, (match, startTime) => {
         const endTime = timeRangeMap.get(startTime);
         if (endTime) {
           console.log(`[CarePlan] K21時刻補完: 「${match}」→「${startTime}～${endTime}」`);
