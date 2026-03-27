@@ -842,23 +842,28 @@ export function generateDiaryNarrative(
   parts.push(exitVariants[variantSeed % exitVariants.length]);
 
   // ★ 最終クリーンアップ:
-  // 1. 「食事介助」「食事の介助」「配膳・介助」→ 食事見守りに置換
-  // 2. 「排泄」「トイレ誘導」「排泄後の清拭」→ 除去（current journals では A11=☐排泄介助）
-  // 3. 「入浴」「更衣介助」→ 除去（current journals では使わない）
+  // current journals source-of-truth: 更衣51件・整容46件・安全確認42件・傾聴33件
+  // 食事0件・排泄0件・入浴0件 → これらの文は除去
   let result = parts.join('');
+  // 食事関連の文を除去（current journals では食事=0件）
   result = result
-    .replace(/食事の介助を行い/g, '食事の見守りを行い')
-    .replace(/食事の配膳・介助を行い/g, '食事の配膳を行い')
-    .replace(/食事介助を行った/g, '食事の見守りを行った')
-    .replace(/食事介助/g, '食事の見守り')
-    .replace(/食事の介助/g, '食事の見守り')
-    .replace(/配膳・介助/g, '配膳・見守り');
-  // 排泄関連の文を除去（句点区切りで該当文を丸ごと除去）
+    .replace(/食事[のを量][^。]*。/g, '')
+    .replace(/食事介助[^。]*。/g, '')
+    .replace(/食事の見守り[^。]*。/g, '')
+    .replace(/食事の配膳[^。]*。/g, '')
+    .replace(/配膳[^。]*声かけ[^。]*。/g, '')
+    .replace(/摂取状況[^。]*見守り[^。]*。/g, '');
+  // 排泄関連の文を除去（current journals では排泄=0件）
   result = result
     .replace(/排泄介助を行い[^。]*。/g, '')
     .replace(/トイレ誘導を行い[^。]*。/g, '')
     .replace(/トイレへの移動を見守り[^。]*。/g, '')
     .replace(/排泄後の清拭[^。]*。/g, '');
+  // 入浴関連の文を除去（current journals では入浴=0件）
+  result = result
+    .replace(/入浴[^。]*。/g, '')
+    .replace(/シャワー浴[^。]*。/g, '')
+    .replace(/浴室内[^。]*。/g, '');
   // 連続スペース・改行の正規化
   result = result.replace(/\s{2,}/g, ' ').replace(/。{2,}/g, '。').trim();
   return result;
@@ -1319,6 +1324,30 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
         structuredJournal.bodyChecks.toiletAssist = false;
         checks.bodyChecks.toiletAssist = false;
         console.log(`[Journal] 排泄介助チェック自動OFF: 本文/特記/LINE報告に排泄記載なし (${record.serviceDate})`);
+      }
+    }
+
+    // ★食事見守りチェック→本文整合: 本文に食事関連記載がない場合は OFF にする
+    if (structuredJournal.bodyChecks.mealWatch || structuredJournal.bodyChecks.mealAssist) {
+      const allNarrativeForMeal = `${diaryNarrative} ${specialNotes} ${matchingLine?.diary || ''} ${matchingLine?.careContent?.join(' ') || ''}`;
+      const MEAL_KEYWORDS = /食事|食事見守|食事介助|配膳|摂取|水分/;
+      if (!MEAL_KEYWORDS.test(allNarrativeForMeal)) {
+        structuredJournal.bodyChecks.mealWatch = false;
+        structuredJournal.bodyChecks.mealAssist = false;
+        checks.bodyChecks.mealWatch = false;
+        checks.bodyChecks.mealAssist = false;
+        console.log(`[Journal] 食事見守りチェック自動OFF: 本文/特記/LINE報告に食事記載なし (${record.serviceDate})`);
+      }
+    }
+
+    // ★入浴介助チェック→本文整合: 本文に入浴関連記載がない場合は OFF にする
+    if (structuredJournal.bodyChecks.bathAssist) {
+      const allNarrativeForBath = `${diaryNarrative} ${specialNotes} ${matchingLine?.diary || ''} ${matchingLine?.careContent?.join(' ') || ''}`;
+      const BATH_KEYWORDS = /入浴|シャワー|清拭|浴室|洗体|洗髪/;
+      if (!BATH_KEYWORDS.test(allNarrativeForBath)) {
+        structuredJournal.bodyChecks.bathAssist = false;
+        checks.bodyChecks.bathAssist = false;
+        console.log(`[Journal] 入浴介助チェック自動OFF: 本文/特記/LINE報告に入浴記載なし (${record.serviceDate})`);
       }
     }
 

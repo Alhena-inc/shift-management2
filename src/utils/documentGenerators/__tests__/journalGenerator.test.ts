@@ -2475,14 +2475,16 @@ describe('ブロック不在フォールバック', () => {
         visit_label: '月〜金',
         steps: [
           { item: '服薬確認', content: '処方薬の確認', note: '' },
-          { item: '入浴介助', content: 'シャワー浴の介助', note: '' },
+          { item: '更衣介助', content: '就寝前の更衣介助', note: '' },
         ],
       }],
     };
     const journals = generateJournals(ctx);
     expect(journals).toHaveLength(1);
-    // 手順書のステップからマッチすること（入浴介助がON）
-    expect(journals[0].structuredJournal.bodyChecks.bathAssist).toBe(true);
+    // 手順書のステップからマッチすること（服薬確認がON）
+    expect(journals[0].structuredJournal.bodyChecks.medicationCheck).toBe(true);
+    // 更衣介助がON（本文にも更衣が出る）
+    expect(journals[0].structuredJournal.bodyChecks.dressingAssist).toBe(true);
   });
 });
 
@@ -2818,9 +2820,10 @@ describe('排泄介助チェック→本文整合', () => {
     expect(journals).toHaveLength(1);
     // 服薬確認ON
     expect(journals[0].structuredJournal.bodyChecks.medicationCheck).toBe(true);
-    // 食事見守りON（mealWatch or mealAssist）
+    // 食事見守り: 手順書にはあるが本文の食事文がクリーンアップで除去されるため
+    // チェック→本文整合でOFFになる（food=0件のcurrent operationに整合）
     const meal = journals[0].structuredJournal.bodyChecks.mealWatch || journals[0].structuredJournal.bodyChecks.mealAssist;
-    expect(meal).toBe(true);
+    expect(meal).toBe(false);
     // 体温測定OFF
     expect(journals[0].structuredJournal.bodyChecks.vitalCheck).toBe(false);
     // 排泄介助OFF
