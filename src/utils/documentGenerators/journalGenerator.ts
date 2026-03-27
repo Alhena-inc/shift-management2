@@ -842,8 +842,8 @@ export function generateDiaryNarrative(
   parts.push(exitVariants[variantSeed % exitVariants.length]);
 
   // ★ 最終クリーンアップ:
-  // current journals source-of-truth: 更衣51件・整容46件・安全確認42件・傾聴33件
-  // 食事0件・排泄0件・入浴0件 → これらの文は除去
+  // current journals source-of-truth: 服薬確認68件・安全確認42件・傾聴33件
+  // 更衣0件・整容0件・食事0件・排泄0件・入浴0件 → これらの文は除去
   let result = parts.join('');
   // 食事関連の文を除去（current journals では食事=0件）
   result = result
