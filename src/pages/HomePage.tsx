@@ -1,11 +1,38 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { RoleBadge } from '../components/PermissionGate';
 import { PermissionManager } from '../components/PermissionManager';
+import { loadTodayCareReportSummary } from '../services/careReportService';
+import { loadShiftsForMonth } from '../services/dataService';
+import type { CareReport, Shift } from '../types';
 
 const HomePage: React.FC = () => {
   const { role, helperName } = useAuth();
   const [showPermissionManager, setShowPermissionManager] = useState(false);
+
+  // ケア日誌ダッシュボードデータ
+  const [todayReports, setTodayReports] = useState<CareReport[]>([]);
+  const [todayShifts, setTodayShifts] = useState<Shift[]>([]);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
+
+  useEffect(() => {
+    if (role !== 'admin') {
+      setDashboardLoading(false);
+      return;
+    }
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    Promise.all([
+      loadTodayCareReportSummary(todayStr).catch(() => ({ reports: [] as CareReport[], statuses: [] })),
+      loadShiftsForMonth(now.getFullYear(), now.getMonth() + 1).catch(() => [] as Shift[]),
+    ]).then(([summary, shifts]) => {
+      setTodayReports(summary.reports);
+      const todayOnly = shifts.filter(s => s.date === todayStr && !s.deleted && s.clientName);
+      setTodayShifts(todayOnly);
+      setDashboardLoading(false);
+    });
+  }, [role]);
 
   // メニュー項目を権限に基づいてフィルタリング
   const allMenuItems: Array<{
@@ -62,6 +89,15 @@ const HomePage: React.FC = () => {
       description: '複数のシフトをパターンから迅速に追加',
       path: '/shift-bulk-input',
       requiredRole: null
+    },
+    {
+      icon: 'clinical_notes',
+      iconBgColor: '#E0F2F1',
+      hoverColor: '#009688',
+      title: 'ケア日誌',
+      description: 'ヘルパーから送信されたケア日誌の確認',
+      path: '/care-reports',
+      requiredRole: 'admin' as const
     },
     {
       icon: 'description',
@@ -245,6 +281,126 @@ const HomePage: React.FC = () => {
             </div>
           ))}
         </div>
+
+        {/* ケア日誌ダッシュボード（管理者のみ） */}
+        {role === 'admin' && (
+          <div className="mt-6 sm:mt-8">
+            <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <span className="material-symbols-outlined text-teal-600">clinical_notes</span>
+              今日のケア日誌状況
+            </h2>
+            {dashboardLoading ? (
+              <div className="bg-white rounded-xl p-6 border border-gray-100 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-teal-600" />
+                <span className="ml-2 text-gray-500 text-sm">読み込み中...</span>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* 送信状況 */}
+                <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 bg-teal-100 rounded-lg flex items-center justify-center">
+                      <span className="material-symbols-outlined text-teal-600 text-lg">task_alt</span>
+                    </div>
+                    <h3 className="text-sm font-semibold text-gray-700">送信状況</h3>
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <span className="text-3xl font-bold text-teal-700">{todayReports.length}</span>
+                    <span className="text-gray-500 text-sm mb-1">/ {todayShifts.length} シフト</span>
+                  </div>
+                  {todayShifts.length > 0 && (
+                    <div className="mt-2">
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className="bg-teal-500 h-2 rounded-full transition-all"
+                          style={{ width: `${Math.min(100, (todayReports.length / todayShifts.length) * 100)}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {todayShifts.length - todayReports.length > 0
+                          ? `未送信: ${todayShifts.length - todayReports.length}件`
+                          : '全件送信済み'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* 特記事項アラート */}
+                <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+                      <span className="material-symbols-outlined text-orange-600 text-lg">warning</span>
+                    </div>
+                    <h3 className="text-sm font-semibold text-gray-700">特記事項</h3>
+                  </div>
+                  {(() => {
+                    const withNotes = todayReports.filter(r => r.special_notes);
+                    if (withNotes.length === 0) {
+                      return <p className="text-sm text-gray-400">特記事項なし</p>;
+                    }
+                    return (
+                      <div className="space-y-2">
+                        {withNotes.slice(0, 3).map(r => (
+                          <div key={r.id} className="bg-orange-50 rounded-lg px-3 py-2">
+                            <p className="text-xs font-medium text-orange-800">
+                              {r.helpers?.name} → {r.client_name}
+                            </p>
+                            <p className="text-xs text-orange-700 truncate">{r.special_notes}</p>
+                          </div>
+                        ))}
+                        {withNotes.length > 3 && (
+                          <p className="text-xs text-orange-500">他 {withNotes.length - 3}件</p>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* 体調不良アラート */}
+                <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
+                      <span className="material-symbols-outlined text-red-600 text-lg">error</span>
+                    </div>
+                    <h3 className="text-sm font-semibold text-gray-700">体調不良</h3>
+                  </div>
+                  {(() => {
+                    const poorCondition = todayReports.filter(r => r.physical_condition === '不良');
+                    if (poorCondition.length === 0) {
+                      return <p className="text-sm text-gray-400">体調不良の報告なし</p>;
+                    }
+                    return (
+                      <div className="space-y-2">
+                        {poorCondition.map(r => (
+                          <div key={r.id} className="bg-red-50 rounded-lg px-3 py-2">
+                            <p className="text-xs font-medium text-red-800">
+                              {r.helpers?.name} → {r.client_name}
+                            </p>
+                            <span className="inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium bg-red-200 text-red-800">
+                              不良
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
+            {/* 詳細へのリンク */}
+            {!dashboardLoading && (
+              <div className="mt-3 text-right">
+                <a
+                  href="/care-reports"
+                  className="text-sm text-teal-600 hover:text-teal-800 font-medium inline-flex items-center gap-1"
+                >
+                  日誌一覧を見る
+                  <span className="material-symbols-outlined text-base">arrow_forward</span>
+                </a>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* システム情報セクション */}
         <div className="mt-6 sm:mt-12 bg-white rounded-xl p-4 sm:p-6 border border-gray-100">

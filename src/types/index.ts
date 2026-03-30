@@ -465,3 +465,37 @@ export interface DayData {
   weekNumber: number;     // 1週目,2週目...
   shifts: Shift[];
 }
+
+// ケア日誌（モバイルアプリから送信）
+export interface CareReport {
+  id: string;
+  shift_id: string;           // shiftsテーブルのIDに対応
+  helper_id: string;          // helpersテーブルのIDに対応
+  client_name: string;        // 利用者名
+  service_date: string;       // ケア日（YYYY-MM-DD）
+  start_time: string;         // 予定開始時間
+  end_time: string;           // 予定終了時間
+  service_type?: string;      // サービス種別（kaji/judo/shintai等）
+  arrival_time?: string;      // 実績到着時刻
+  departure_time?: string;    // 実績退出時刻
+  body_temperature?: string;  // 体温
+  blood_pressure?: string;    // 血圧
+  pulse?: string;             // 脈拍
+  physical_condition?: string; // 体調（良好/やや不良/不良）
+  care_content: string;       // ケア内容
+  special_notes?: string;     // 特記事項（ヒヤリハット等）
+  next_visit_notes?: string;  // 次回への申し送り
+  created_at?: string;        // 送信日時
+  updated_at?: string;
+  // JOINで取得されるヘルパー名
+  helpers?: { name: string };
+}
+
+// 出発/到着報告
+export interface CareStatus {
+  id: string;
+  shift_id: string;           // shiftsテーブルのIDに対応
+  helper_id: string;          // helpersテーブルのIDに対応
+  status: 'departed' | 'arrived'; // 出発 or 到着
+  reported_at: string;        // 報告時刻
+}
