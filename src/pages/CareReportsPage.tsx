@@ -425,7 +425,7 @@ const CareReportsPage: React.FC = () => {
                                 await deleteCareReport(report.id, report.shift_id);
                                 loadData();
                               } catch {
-                                alert('削除に失敗しました');
+                                window.alert('削除に失敗しました');
                               }
                             }}
                             className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50"
