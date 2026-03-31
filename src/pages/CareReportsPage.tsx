@@ -466,10 +466,6 @@ function ReportDetailModal({
   statusInfo?: { departed?: CareStatus; arrived?: CareStatus };
   onClose: () => void;
 }) {
-  const conditionConfig = report.physical_condition
-    ? CONDITION_CONFIG[report.physical_condition]
-    : null;
-
   const getServiceLabel = (type?: string) => {
     if (!type) return '-';
     const config = SERVICE_CONFIG[type as ServiceType];
@@ -514,11 +510,11 @@ function ReportDetailModal({
             </div>
           </section>
 
-          {/* 時間情報 */}
+          {/* ケア時間 + 出発/到着 */}
           <section>
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">時間</h3>
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">ケア時間</h3>
             <div className="bg-gray-50 rounded-lg p-4">
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-xs text-gray-500 mb-1">予定</p>
                   <p className="font-medium">{formatTime(report.start_time)} - {formatTime(report.end_time)}</p>
@@ -529,117 +525,96 @@ function ReportDetailModal({
                     {formatTime(report.arrival_time)} - {formatTime(report.departure_time)}
                   </p>
                 </div>
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">差分</p>
-                  <div className="flex gap-2">
-                    <span className="text-xs text-gray-400">開始:</span>
-                    <TimeDiffBadge scheduled={report.start_time} actual={report.arrival_time} />
-                    <span className="text-xs text-gray-400 ml-2">終了:</span>
-                    <TimeDiffBadge scheduled={report.end_time} actual={report.departure_time} />
-                  </div>
-                </div>
               </div>
 
-              {/* 出発/到着報告 */}
-              {statusInfo && (
-                <div className="mt-3 pt-3 border-t border-gray-200 flex gap-6">
-                  <div className="flex items-center gap-2">
-                    <span className={`material-symbols-outlined text-base ${statusInfo.departed ? 'text-blue-600' : 'text-gray-300'}`}>
-                      directions_run
+              {statusInfo && (statusInfo.departed || statusInfo.arrived) && (
+                <div className="mt-3 pt-3 border-t border-gray-200 flex gap-4">
+                  {statusInfo.departed && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700 border border-blue-300">
+                      <span className="material-symbols-outlined text-sm">directions_car</span>
+                      出発 {new Date(statusInfo.departed.reported_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
                     </span>
-                    <span className="text-xs text-gray-500">出発:</span>
-                    <span className="text-sm font-medium">
-                      {statusInfo.departed
-                        ? new Date(statusInfo.departed.reported_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
-                        : '未報告'}
+                  )}
+                  {statusInfo.arrived && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-300">
+                      <span className="material-symbols-outlined text-sm">location_on</span>
+                      到着 {new Date(statusInfo.arrived.reported_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
                     </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`material-symbols-outlined text-base ${statusInfo.arrived ? 'text-green-600' : 'text-gray-300'}`}>
-                      location_on
-                    </span>
-                    <span className="text-xs text-gray-500">到着:</span>
-                    <span className="text-sm font-medium">
-                      {statusInfo.arrived
-                        ? new Date(statusInfo.arrived.reported_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
-                        : '未報告'}
-                    </span>
-                  </div>
+                  )}
                 </div>
               )}
             </div>
           </section>
 
-          {/* バイタル */}
-          <section>
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">バイタル</h3>
-            <div className="grid grid-cols-4 gap-3">
-              <VitalCard
-                icon="thermostat"
-                label="体温"
-                value={report.body_temperature ? `${report.body_temperature}℃` : '-'}
-              />
-              <VitalCard
-                icon="bloodtype"
-                label="血圧"
-                value={report.blood_pressure || '-'}
-              />
-              <VitalCard
-                icon="heart_check"
-                label="脈拍"
-                value={report.pulse ? `${report.pulse}bpm` : '-'}
-              />
-              <div className="bg-gray-50 rounded-lg p-3 text-center">
-                <span className="material-symbols-outlined text-gray-400 text-xl">sentiment_satisfied</span>
-                <p className="text-xs text-gray-500 mt-1">体調</p>
-                {conditionConfig ? (
-                  <span
-                    className="inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium"
-                    style={{ color: conditionConfig.color, backgroundColor: conditionConfig.bgColor }}
-                  >
-                    {conditionConfig.label}
-                  </span>
-                ) : (
-                  <p className="text-sm font-medium mt-1">-</p>
-                )}
+          {/* 様子や体調 */}
+          {report.physical_condition && (
+            <section>
+              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1">
+                <span className="material-symbols-outlined text-base text-orange-400">sentiment_satisfied</span>
+                様子や体調
+              </h3>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                  {report.physical_condition}
+                </p>
               </div>
-            </div>
-          </section>
+            </section>
+          )}
 
           {/* ケア内容 */}
-          <section>
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">ケア内容</h3>
-            <div className="bg-gray-50 rounded-lg p-4">
-              <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-                {report.care_content || '-'}
-              </p>
-            </div>
-          </section>
+          {report.care_content && (
+            <section>
+              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1">
+                <span className="material-symbols-outlined text-base text-teal-500">checklist</span>
+                ケア内容
+              </h3>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                  {report.care_content}
+                </p>
+              </div>
+            </section>
+          )}
 
-          {/* 特記事項 */}
+          {/* 要望の有無 */}
           {report.special_notes && (
             <section>
-              <h3 className="text-sm font-semibold text-orange-600 uppercase tracking-wider mb-3 flex items-center gap-1">
-                <span className="material-symbols-outlined text-base">warning</span>
-                特記事項
+              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1">
+                <span className="material-symbols-outlined text-base text-purple-500">record_voice_over</span>
+                要望の有無
               </h3>
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                <p className="text-sm text-orange-900 whitespace-pre-wrap leading-relaxed">
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <p className="text-sm text-purple-900 whitespace-pre-wrap leading-relaxed">
                   {report.special_notes}
                 </p>
               </div>
             </section>
           )}
 
-          {/* 次回への申し送り */}
-          {report.next_visit_notes && (
+          {/* 日誌 */}
+          {report.body_temperature && (
             <section>
-              <h3 className="text-sm font-semibold text-blue-600 uppercase tracking-wider mb-3 flex items-center gap-1">
-                <span className="material-symbols-outlined text-base">forward_to_inbox</span>
-                次回への申し送り
+              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1">
+                <span className="material-symbols-outlined text-base text-blue-500">edit_note</span>
+                日誌
               </h3>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <p className="text-sm text-blue-900 whitespace-pre-wrap leading-relaxed">
+                  {report.body_temperature}
+                </p>
+              </div>
+            </section>
+          )}
+
+          {/* 今後の動き・予定 */}
+          {report.next_visit_notes && (
+            <section>
+              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1">
+                <span className="material-symbols-outlined text-base text-green-500">event_upcoming</span>
+                今後の動き・予定
+              </h3>
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <p className="text-sm text-green-900 whitespace-pre-wrap leading-relaxed">
                   {report.next_visit_notes}
                 </p>
               </div>
