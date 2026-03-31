@@ -27,7 +27,13 @@ const HelperManagementPage: React.FC = () => {
       const query = searchQuery.toLowerCase();
       return helper.name.toLowerCase().includes(query);
     })
-    .sort((a, b) => (a.order || 0) - (b.order || 0)); // order順にソート
+    .sort((a, b) => {
+      // シフト表に入れないヘルパーは最後に表示
+      const aExcluded = a.excludeFromShift ? 1 : 0;
+      const bExcluded = b.excludeFromShift ? 1 : 0;
+      if (aExcluded !== bExcluded) return aExcluded - bExcluded;
+      return (a.order || 0) - (b.order || 0);
+    });
 
   // ステータスバッジの色（ヘルパーはデフォルトで稼働中扱い）
   const getEmploymentTypeBadge = (helper: Helper) => {
