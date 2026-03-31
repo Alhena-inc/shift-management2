@@ -73,9 +73,24 @@ const HelperDetailPage: React.FC = () => {
 
       const helpers = await loadHelpers();
       if (isNewMode) {
-        // 新規作成: orderを設定して追加
-        helperToSave.order = helpers.filter(h => !h.deleted).length + 1;
-        const updatedHelpers = [...helpers, helperToSave];
+        // 新規作成: 同じ性別の最後の人の左隣に挿入
+        const activeHelpers = helpers.filter(h => !h.deleted);
+        const sameGenderHelpers = activeHelpers.filter(h => h.gender === helperToSave.gender);
+        const lastSameGenderOrder = sameGenderHelpers.length > 0
+          ? Math.max(...sameGenderHelpers.map(h => h.order || 0))
+          : 1;
+        const insertOrder = lastSameGenderOrder;
+
+        // 挿入位置以降のヘルパーのorderを+1ずらす
+        const updatedHelpers = helpers.map(h => {
+          if (!h.deleted && (h.order || 0) >= insertOrder) {
+            return { ...h, order: (h.order || 0) + 1 };
+          }
+          return h;
+        });
+
+        helperToSave.order = insertOrder;
+        updatedHelpers.push(helperToSave);
         await saveHelpers(updatedHelpers);
         alert('保存しました');
         // 新規モードのURLパラメータを除去
