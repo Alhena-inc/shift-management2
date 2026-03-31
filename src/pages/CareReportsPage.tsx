@@ -374,24 +374,28 @@ const CareReportsPage: React.FC = () => {
                             <span className="text-gray-400 text-xs">-</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-center">
-                          <div className="flex items-center justify-center gap-1">
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col gap-1">
                             {status?.departed ? (
-                              <span className="text-blue-600" title={`出発: ${new Date(status.departed.reported_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`}>
-                                <span className="material-symbols-outlined text-base">directions_run</span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                <span className="material-symbols-outlined text-sm">directions_car</span>
+                                出発 {new Date(status.departed.reported_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
                               </span>
                             ) : (
-                              <span className="text-gray-300">
-                                <span className="material-symbols-outlined text-base">directions_run</span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs text-gray-400 bg-gray-50">
+                                <span className="material-symbols-outlined text-sm">directions_car</span>
+                                未出発
                               </span>
                             )}
                             {status?.arrived ? (
-                              <span className="text-green-600" title={`到着: ${new Date(status.arrived.reported_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`}>
-                                <span className="material-symbols-outlined text-base">location_on</span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+                                <span className="material-symbols-outlined text-sm">location_on</span>
+                                到着 {new Date(status.arrived.reported_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
                               </span>
                             ) : (
-                              <span className="text-gray-300">
-                                <span className="material-symbols-outlined text-base">location_on</span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs text-gray-400 bg-gray-50">
+                                <span className="material-symbols-outlined text-sm">location_on</span>
+                                未到着
                               </span>
                             )}
                           </div>
