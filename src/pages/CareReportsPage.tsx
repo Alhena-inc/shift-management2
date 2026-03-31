@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { loadCareReports, loadCareStatuses } from '../services/careReportService';
+import { loadCareReports, loadCareStatuses, deleteCareReport } from '../services/careReportService';
 import { loadHelpers } from '../services/dataService';
 import type { CareReport, CareStatus, Helper } from '../types';
 import { SERVICE_CONFIG } from '../types';
@@ -316,6 +316,7 @@ const CareReportsPage: React.FC = () => {
                     <th className="text-center px-4 py-3 font-medium text-gray-600">体調</th>
                     <th className="text-center px-4 py-3 font-medium text-gray-600">出発/到着</th>
                     <th className="text-center px-4 py-3 font-medium text-gray-600">アラート</th>
+                    <th className="text-center px-4 py-3 font-medium text-gray-600">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -414,6 +415,24 @@ const CareReportsPage: React.FC = () => {
                           {!report.special_notes && report.physical_condition !== '不良' && (
                             <span className="text-gray-300 text-xs">-</span>
                           )}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (!confirm(`${report.client_name}（${formatDate(report.service_date)}）の日誌を削除しますか？`)) return;
+                              try {
+                                await deleteCareReport(report.id, report.shift_id);
+                                loadData();
+                              } catch {
+                                alert('削除に失敗しました');
+                              }
+                            }}
+                            className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50"
+                            title="削除"
+                          >
+                            <span className="material-symbols-outlined text-base">delete</span>
+                          </button>
                         </td>
                       </tr>
                     );

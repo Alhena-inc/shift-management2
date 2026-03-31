@@ -54,6 +54,31 @@ export const loadCareStatuses = async (
   return (data ?? []) as CareStatus[];
 };
 
+// 日誌削除（関連するcare_statusも削除）
+export const deleteCareReport = async (
+  reportId: string,
+  shiftId: string
+): Promise<void> => {
+  const { error: statusError } = await supabase
+    .from('care_status')
+    .delete()
+    .eq('shift_id', shiftId);
+
+  if (statusError) {
+    console.error('ステータス削除エラー:', statusError);
+  }
+
+  const { error } = await supabase
+    .from('care_reports')
+    .delete()
+    .eq('id', reportId);
+
+  if (error) {
+    console.error('日誌削除エラー:', error);
+    throw error;
+  }
+};
+
 // 今日の日誌送信状況を取得（ダッシュボード用）
 export const loadTodayCareReportSummary = async (
   today: string
