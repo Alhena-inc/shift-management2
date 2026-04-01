@@ -156,9 +156,17 @@ const CareReportsPage: React.FC = () => {
     return config?.label || type;
   };
 
-  // 特記事項がある / 体調不良をハイライト
+  // 日誌が実際に記入済みかどうか（出発/到着の自動テキストだけではなく本文が書かれているか）
+  const isReportFilled = (report: CareReport) => {
+    const autoTexts = /^\d{2}:\d{2}\s*(出発|到着)$/;
+    const hasRealContent = report.care_content && !autoTexts.test(report.care_content.trim()) && report.care_content.trim() !== '報告済み';
+    const hasDiary = !!report.body_temperature && report.body_temperature.trim() !== '';
+    return hasRealContent || hasDiary;
+  };
+
+  // 日誌未記入の場合にアラート表示
   const hasAlert = (report: CareReport) => {
-    return !!report.special_notes || report.physical_condition === '不良';
+    return !isReportFilled(report);
   };
 
   return (
@@ -315,7 +323,7 @@ const CareReportsPage: React.FC = () => {
                     <th className="text-left px-4 py-3 font-medium text-gray-600">実績時間</th>
                     <th className="text-center px-4 py-3 font-medium text-gray-600">体調</th>
                     <th className="text-center px-4 py-3 font-medium text-gray-600">出発/到着</th>
-                    <th className="text-center px-4 py-3 font-medium text-gray-600">アラート</th>
+                    <th className="text-center px-4 py-3 font-medium text-gray-600">状態</th>
                     <th className="text-center px-4 py-3 font-medium text-gray-600">操作</th>
                   </tr>
                 </thead>
@@ -327,12 +335,14 @@ const CareReportsPage: React.FC = () => {
                       ? CONDITION_CONFIG[report.physical_condition]
                       : null;
 
+                    const filled = isReportFilled(report);
+
                     return (
                       <tr
                         key={report.id}
                         onClick={() => setSelectedReport(report)}
                         className={`border-b border-gray-100 cursor-pointer transition-colors hover:bg-blue-50 ${
-                          alert ? 'bg-red-50/50' : ''
+                          filled ? 'bg-green-50/40' : 'bg-orange-50/40'
                         }`}
                       >
                         <td className="px-4 py-3 whitespace-nowrap font-medium">
@@ -402,18 +412,16 @@ const CareReportsPage: React.FC = () => {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-center">
-                          {report.special_notes && (
-                            <span className="text-orange-500" title="特記事項あり">
-                              <span className="material-symbols-outlined text-base">warning</span>
+                          {filled ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                              <span className="material-symbols-outlined text-sm">check_circle</span>
+                              記入済
                             </span>
-                          )}
-                          {report.physical_condition === '不良' && (
-                            <span className="text-red-500 ml-1" title="体調不良">
-                              <span className="material-symbols-outlined text-base">error</span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
+                              <span className="material-symbols-outlined text-sm">edit_note</span>
+                              未記入
                             </span>
-                          )}
-                          {!report.special_notes && report.physical_condition !== '不良' && (
-                            <span className="text-gray-300 text-xs">-</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-center">
