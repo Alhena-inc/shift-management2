@@ -97,6 +97,7 @@ export interface Database {
           end_time: string
           helper_id: string | null
           client_name: string
+          users_care_id: string | null
           service_type: string | null
           hours: number | null
           hourly_wage: number | null
@@ -116,6 +117,7 @@ export interface Database {
           end_time: string
           helper_id?: string | null
           client_name: string
+          users_care_id?: string | null
           service_type?: string | null
           hours?: number | null
           hourly_wage?: number | null
@@ -135,6 +137,7 @@ export interface Database {
           end_time?: string
           helper_id?: string | null
           client_name?: string
+          users_care_id?: string | null
           service_type?: string | null
           hours?: number | null
           hourly_wage?: number | null

@@ -1114,6 +1114,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       date,
       helperId,
       clientName: (lineIndex === 1) ? clientName : (existingShift?.clientName || clientName),
+      usersCareId: (lineIndex === 1 && matchedClient) ? matchedClient.id : (matchedClient?.id || existingShift?.usersCareId),
       serviceType,
       startTime: startTimeResult,
       endTime: endTimeResult,
@@ -3329,11 +3330,23 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           ? { regularHours: 0, nightHours: 0, regularPay: 0, nightPay: 0, totalPay: 0 }
           : calculateShiftPay(serviceType, timeRange, date);
 
+        // ★ 利用者マスタとのマッチング（コピーペースト時）
+        const pasteClientName = clientName || copyBufferRef.sourceShift?.clientName || '';
+        let pasteMatchedClient: CareClient | undefined;
+        if (pasteClientName) {
+          const activeClients = careClientsRef.current.filter(c => !c.deleted);
+          pasteMatchedClient = activeClients.find(c => c.abbreviation && c.abbreviation === pasteClientName);
+          if (!pasteMatchedClient) {
+            pasteMatchedClient = activeClients.find(c => c.name === pasteClientName);
+          }
+        }
+
         const newShift: Shift = {
           id: `shift-${helperId}-${date}-${rowIndex}`,
           date,
           helperId: String(helperId),
-          clientName: clientName || copyBufferRef.sourceShift?.clientName || '',
+          clientName: pasteClientName,
+          usersCareId: pasteMatchedClient?.id || copyBufferRef.sourceShift?.usersCareId,
           serviceType,
           startTime: startTime || copyBufferRef.sourceShift?.startTime || '',
           endTime: endTime || copyBufferRef.sourceShift?.endTime || '',

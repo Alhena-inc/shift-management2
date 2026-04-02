@@ -521,6 +521,7 @@ export const saveShiftsForMonth = async (year: number, month: number, shifts: Sh
         end_time: formattedEndTime || formattedStartTime || '00:00:00', // nullの場合は開始時間を使用、それもなければデフォルト値
         helper_id: shift.helperId,
         client_name: shift.clientName || '',
+        users_care_id: shift.usersCareId || null,
         service_type: isYotei ? 'yotei' : (shift.serviceType || 'shintai'),
         hours: isYotei ? 0 : (shift.duration || 0), // 予定の場合は時間数0
         hourly_wage: null, // 時給は別途ヘルパー情報から取得
@@ -662,6 +663,7 @@ export const loadShiftsForMonth = async (year: number, month: number, retryCount
         endTime: formatTimeToHHMM(row.end_time),
         helperId: row.helper_id || '',
         clientName: row.client_name,
+        usersCareId: row.users_care_id || undefined,
         serviceType: row.service_type || undefined,
         duration: row.hours || 0,
         area: row.location || '',
@@ -1583,6 +1585,25 @@ export const saveCareClient = async (client: CareClient): Promise<void> => {
 
     if (error) throw error;
     console.log('✅ 利用者を保存しました:', client.name);
+
+    // シフト反映名(abbreviation)または氏名(name)が一致する既存シフトにusers_care_idを一括セット
+    const matchNames: string[] = [];
+    if (client.abbreviation) matchNames.push(client.abbreviation);
+    if (client.name) matchNames.push(client.name);
+
+    if (matchNames.length > 0) {
+      const { error: linkError } = await supabase
+        .from('shifts')
+        .update({ users_care_id: client.id })
+        .in('client_name', matchNames)
+        .is('users_care_id', null);
+
+      if (linkError) {
+        console.error('シフト紐付けエラー:', linkError);
+      } else {
+        console.log('✅ 既存シフトに利用者IDを紐付けました:', matchNames);
+      }
+    }
   } catch (error) {
     console.error('利用者保存エラー:', error);
     throw error;

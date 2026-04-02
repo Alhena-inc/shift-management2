@@ -421,6 +421,7 @@ export interface Shift {
   date: string;           // YYYY-MM-DD
   helperId: string;
   clientName: string;     // 利用者名
+  usersCareId?: string;   // 利用者マスタID（users_care.id）
   serviceType: ServiceType;
   startTime: string;      // HH:mm
   endTime: string;        // HH:mm
