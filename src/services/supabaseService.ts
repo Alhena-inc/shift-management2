@@ -3332,3 +3332,66 @@ export const loadPlanRevisionCheckHistory = async (careClientId: string): Promis
     return [];
   }
 };
+
+// ========== 利用者名マッピング (client_name_mappings) ==========
+
+import type { ClientNameMapping } from '../types';
+
+// マッピング一覧を読み込み
+export const loadClientNameMappings = async (): Promise<ClientNameMapping[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('client_name_mappings')
+      .select('*')
+      .order('shift_client_name', { ascending: true });
+
+    if (error) throw error;
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      shiftClientName: row.shift_client_name,
+      usersCareId: row.users_care_id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  } catch (error) {
+    console.error('利用者名マッピング読み込みエラー:', error);
+    throw error;
+  }
+};
+
+// マッピングを保存（新規 & 更新）
+export const saveClientNameMapping = async (mapping: ClientNameMapping): Promise<void> => {
+  try {
+    const saveData = {
+      id: mapping.id,
+      shift_client_name: mapping.shiftClientName,
+      users_care_id: mapping.usersCareId,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+      .from('client_name_mappings')
+      .upsert(saveData, { onConflict: 'id' });
+
+    if (error) throw error;
+  } catch (error) {
+    console.error('利用者名マッピング保存エラー:', error);
+    throw error;
+  }
+};
+
+// マッピングを削除
+export const deleteClientNameMapping = async (mappingId: string): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('client_name_mappings')
+      .delete()
+      .eq('id', mappingId);
+
+    if (error) throw error;
+  } catch (error) {
+    console.error('利用者名マッピング削除エラー:', error);
+    throw error;
+  }
+};

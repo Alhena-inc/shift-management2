@@ -186,6 +186,11 @@ export const {
   loadPlanRevisionCheck,
   savePlanRevisionCheck,
   loadPlanRevisionCheckHistory,
+
+  // 利用者名マッピング
+  loadClientNameMappings,
+  saveClientNameMapping,
+  deleteClientNameMapping,
 } = dataService;
 
 // AIプロンプト関連（Supabase専用）

@@ -1447,3 +1447,17 @@ export const loadPlanRevisionCheckHistory = async (_careClientId: string) => {
   console.warn('計画書再作成判定はSupabaseモードでのみ利用可能です');
   return [];
 };
+
+// 利用者名マッピング（Supabase専用）
+export const loadClientNameMappings = async () => {
+  console.warn('利用者名マッピングはSupabaseモードでのみ利用可能です');
+  return [];
+};
+
+export const saveClientNameMapping = async (_mapping: any) => {
+  console.warn('利用者名マッピングはSupabaseモードでのみ利用可能です');
+};
+
+export const deleteClientNameMapping = async (_mappingId: string) => {
+  console.warn('利用者名マッピングはSupabaseモードでのみ利用可能です');
+};

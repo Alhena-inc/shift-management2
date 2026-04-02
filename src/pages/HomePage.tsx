@@ -73,6 +73,15 @@ const HomePage: React.FC = () => {
       requiredRole: 'admin' as const
     },
     {
+      icon: 'link',
+      iconBgColor: '#E1F5FE',
+      hoverColor: '#0288D1',
+      title: '利用者名 紐付け',
+      description: 'シフト表の利用者名と利用者マスタの紐付け設定',
+      path: '/client-mappings',
+      requiredRole: 'admin' as const
+    },
+    {
       icon: 'receipt_long',
       iconBgColor: '#F3E5F5',
       hoverColor: '#9C27B0',

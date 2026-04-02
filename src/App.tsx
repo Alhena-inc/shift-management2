@@ -29,6 +29,7 @@ import BillingRecordsPage from './pages/BillingRecordsPage';
 import CareReportsPage from './pages/CareReportsPage';
 import DocumentsPage from './pages/DocumentsPage';
 import NyushoTejunshoPage from './pages/NyushoTejunshoPage';
+import ClientNameMappingPage from './pages/ClientNameMappingPage';
 import TestSupabase from './pages/TestSupabase';
 
 import { helpers as initialHelpers } from './data/mockData';
@@ -458,6 +459,33 @@ function App() {
     return (
       <Layout user={user}>
         <CareClientDetailPage />
+      </Layout>
+    );
+  }
+
+  // /client-mappings の形式の場合（利用者名紐付け設定）- 管理者のみ
+  if (path === '/client-mappings' || path === '/client-mappings/') {
+    if (userRole !== 'admin') {
+      return (
+        <Layout user={user}>
+          <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-md p-8 max-w-md w-full">
+              <div className="text-center">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
+                  <span className="text-2xl">&#x1F6AB;</span>
+                </div>
+                <h2 className="text-xl font-bold text-gray-800 mb-2">アクセス権限がありません</h2>
+                <p className="text-gray-600 mb-6">このページは管理者のみアクセスできます。</p>
+                <button onClick={() => window.location.href = '/'} className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">ホームに戻る</button>
+              </div>
+            </div>
+          </div>
+        </Layout>
+      );
+    }
+    return (
+      <Layout user={user}>
+        <ClientNameMappingPage />
       </Layout>
     );
   }

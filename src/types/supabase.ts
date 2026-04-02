@@ -273,6 +273,29 @@ export interface Database {
           updated_at?: string
         }
       }
+      client_name_mappings: {
+        Row: {
+          id: string
+          shift_client_name: string
+          users_care_id: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          shift_client_name: string
+          users_care_id: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          shift_client_name?: string
+          users_care_id?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
       backups: {
         Row: {
           id: string

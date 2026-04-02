@@ -458,6 +458,15 @@ export interface BillingRecord {
   updatedAt: string;
 }
 
+// 利用者名マッピング（シフト表client_name → users_care紐付け）
+export interface ClientNameMapping {
+  id: string;
+  shiftClientName: string;   // シフト表上の利用者名
+  usersCareId: string;        // users_careテーブルのID
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 // 日付ごとのデータ構造
 export interface DayData {
   date: string;
