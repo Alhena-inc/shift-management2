@@ -449,13 +449,6 @@ const CareClientDetailPage: React.FC = () => {
                 </FormRow>
               </div>
 
-              {/* 略称 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormRow label="略称">
-                  <input type="text" value={client.abbreviation || ''} onChange={(e) => updateField('abbreviation', e.target.value)} className={`${inputClass} w-full`} placeholder="" />
-                </FormRow>
-              </div>
-
               {/* 郵便番号 / 住所 */}
               <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr] gap-4">
                 <FormRow label="郵便番号">
@@ -508,6 +501,16 @@ const CareClientDetailPage: React.FC = () => {
               <FormRow label="備考">
                 <textarea value={client.notes || ''} onChange={(e) => updateField('notes', e.target.value)} rows={3} className={`${inputClass} w-full resize-y`} placeholder="備考を入力..." />
               </FormRow>
+
+              {/* シフト反映名 */}
+              <div className="mt-6 pt-4 border-t border-gray-200">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormRow label="シフト反映名">
+                    <input type="text" value={client.abbreviation || ''} onChange={(e) => updateField('abbreviation', e.target.value)} className={`${inputClass} w-full`} placeholder="シフト表で使用する名前を入力" />
+                  </FormRow>
+                </div>
+                <p className="text-xs text-gray-500 mt-1 ml-1">シフト表に入力された利用者名がこの名前と一致すると、この利用者に自動で紐付けられます。未入力の場合は氏名で照合します。</p>
+              </div>
 
               {/* システム情報 */}
               {!isNewMode && (
