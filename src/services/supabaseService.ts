@@ -1587,15 +1587,22 @@ export const saveCareClient = async (client: CareClient): Promise<void> => {
     console.log('✅ 利用者を保存しました:', client.name);
 
     // シフト反映名(abbreviation)または氏名(name)が一致する既存シフトにusers_care_idを一括セット
+    // client_nameが「佐々木」だけでなく「佐々木/1」「佐々木/2」等のサフィックス付きもマッチさせる
     const matchNames: string[] = [];
     if (client.abbreviation) matchNames.push(client.abbreviation);
     if (client.name) matchNames.push(client.name);
 
     if (matchNames.length > 0) {
+      // 完全一致 + /数字サフィックス付きの両方にマッチするOR条件を構築
+      const orConditions = matchNames.flatMap(name => [
+        `client_name.eq.${name}`,
+        `client_name.like.${name}/%`,
+      ]).join(',');
+
       const { error: linkError } = await supabase
         .from('shifts')
         .update({ users_care_id: client.id })
-        .in('client_name', matchNames)
+        .or(orConditions)
         .is('users_care_id', null);
 
       if (linkError) {

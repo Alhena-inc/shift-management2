@@ -1059,14 +1059,16 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     const clientName = clientInfo.replace(/[(\uFF08].+?[)\uFF09]/g, '').trim();
 
     // ★ 利用者マスタとのマッチング（abbreviation → area自動セット）
+    // 利用者名から /1, /2, /3 等のサフィックスを除去して照合
+    const clientNameForMatch = clientName.replace(/\/\d+$/, '').trim();
     let matchedClient: CareClient | undefined;
-    if (clientName) {
+    if (clientNameForMatch) {
       const activeClients = careClientsRef.current.filter(c => !c.deleted);
       // abbreviation（シフト照合名）で完全一致を優先
-      matchedClient = activeClients.find(c => c.abbreviation && c.abbreviation === clientName);
+      matchedClient = activeClients.find(c => c.abbreviation && c.abbreviation === clientNameForMatch);
       // abbreviationが未設定の場合はname（正式名）で一致
       if (!matchedClient) {
-        matchedClient = activeClients.find(c => c.name === clientName);
+        matchedClient = activeClients.find(c => c.name === clientNameForMatch);
       }
     }
     // マッチした利用者のareaを4行目に自動反映（4行目が未入力の場合のみ）
@@ -3332,12 +3334,14 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
         // ★ 利用者マスタとのマッチング（コピーペースト時）
         const pasteClientName = clientName || copyBufferRef.sourceShift?.clientName || '';
+        // 利用者名から /1, /2, /3 等のサフィックスを除去して照合
+        const pasteClientNameForMatch = pasteClientName.replace(/\/\d+$/, '').trim();
         let pasteMatchedClient: CareClient | undefined;
-        if (pasteClientName) {
+        if (pasteClientNameForMatch) {
           const activeClients = careClientsRef.current.filter(c => !c.deleted);
-          pasteMatchedClient = activeClients.find(c => c.abbreviation && c.abbreviation === pasteClientName);
+          pasteMatchedClient = activeClients.find(c => c.abbreviation && c.abbreviation === pasteClientNameForMatch);
           if (!pasteMatchedClient) {
-            pasteMatchedClient = activeClients.find(c => c.name === pasteClientName);
+            pasteMatchedClient = activeClients.find(c => c.name === pasteClientNameForMatch);
           }
         }
 
