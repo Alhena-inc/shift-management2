@@ -1059,16 +1059,35 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     const clientName = clientInfo.replace(/[(\uFF08].+?[)\uFF09]/g, '').trim();
 
     // ★ 利用者マスタとのマッチング（abbreviation → area自動セット）
-    // 利用者名から /1, /2, /3 等のサフィックスを除去して照合
-    const clientNameForMatch = clientName.replace(/\/\d+$/, '').trim();
+    // 同名利用者の区別: 池浦/1 → abbreviation「池浦」の1番目, 池浦/2 → 2番目
     let matchedClient: CareClient | undefined;
-    if (clientNameForMatch) {
+    if (clientName) {
       const activeClients = careClientsRef.current.filter(c => !c.deleted);
-      // abbreviation（シフト照合名）で完全一致を優先
-      matchedClient = activeClients.find(c => c.abbreviation && c.abbreviation === clientNameForMatch);
-      // abbreviationが未設定の場合はname（正式名）で一致
+      const suffixMatch = clientName.match(/\/(\d+)$/);
+      const clientNameBase = clientName.replace(/\/\d+$/, '').trim();
+      const suffixIndex = suffixMatch ? parseInt(suffixMatch[1], 10) : 0; // /1→1, /2→2, なし→0
+
+      // abbreviationが一致する利用者を全て取得（名前順）
+      const abbrMatches = activeClients.filter(c => c.abbreviation && c.abbreviation === clientNameBase);
+      if (abbrMatches.length > 0) {
+        if (suffixIndex > 0 && abbrMatches.length >= suffixIndex) {
+          // /数字がある場合: N番目の利用者を選択
+          matchedClient = abbrMatches[suffixIndex - 1];
+        } else {
+          // /数字がない or 範囲外の場合: 最初の利用者
+          matchedClient = abbrMatches[0];
+        }
+      }
+      // abbreviationで見つからない場合はnameで照合
       if (!matchedClient) {
-        matchedClient = activeClients.find(c => c.name === clientNameForMatch);
+        const nameMatches = activeClients.filter(c => c.name === clientNameBase);
+        if (nameMatches.length > 0) {
+          if (suffixIndex > 0 && nameMatches.length >= suffixIndex) {
+            matchedClient = nameMatches[suffixIndex - 1];
+          } else {
+            matchedClient = nameMatches[0];
+          }
+        }
       }
     }
     // マッチした利用者のareaを4行目に自動反映（4行目が未入力の場合のみ）
@@ -3333,15 +3352,32 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           : calculateShiftPay(serviceType, timeRange, date);
 
         // ★ 利用者マスタとのマッチング（コピーペースト時）
+        // 同名利用者の区別: 池浦/1 → abbreviation「池浦」の1番目, 池浦/2 → 2番目
         const pasteClientName = clientName || copyBufferRef.sourceShift?.clientName || '';
-        // 利用者名から /1, /2, /3 等のサフィックスを除去して照合
-        const pasteClientNameForMatch = pasteClientName.replace(/\/\d+$/, '').trim();
         let pasteMatchedClient: CareClient | undefined;
-        if (pasteClientNameForMatch) {
+        if (pasteClientName) {
           const activeClients = careClientsRef.current.filter(c => !c.deleted);
-          pasteMatchedClient = activeClients.find(c => c.abbreviation && c.abbreviation === pasteClientNameForMatch);
+          const pasteSuffixMatch = pasteClientName.match(/\/(\d+)$/);
+          const pasteClientNameBase = pasteClientName.replace(/\/\d+$/, '').trim();
+          const pasteSuffixIndex = pasteSuffixMatch ? parseInt(pasteSuffixMatch[1], 10) : 0;
+
+          const pasteAbbrMatches = activeClients.filter(c => c.abbreviation && c.abbreviation === pasteClientNameBase);
+          if (pasteAbbrMatches.length > 0) {
+            if (pasteSuffixIndex > 0 && pasteAbbrMatches.length >= pasteSuffixIndex) {
+              pasteMatchedClient = pasteAbbrMatches[pasteSuffixIndex - 1];
+            } else {
+              pasteMatchedClient = pasteAbbrMatches[0];
+            }
+          }
           if (!pasteMatchedClient) {
-            pasteMatchedClient = activeClients.find(c => c.name === pasteClientNameForMatch);
+            const pasteNameMatches = activeClients.filter(c => c.name === pasteClientNameBase);
+            if (pasteNameMatches.length > 0) {
+              if (pasteSuffixIndex > 0 && pasteNameMatches.length >= pasteSuffixIndex) {
+                pasteMatchedClient = pasteNameMatches[pasteSuffixIndex - 1];
+              } else {
+                pasteMatchedClient = pasteNameMatches[0];
+              }
+            }
           }
         }
 

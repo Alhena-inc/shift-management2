@@ -1587,28 +1587,52 @@ export const saveCareClient = async (client: CareClient): Promise<void> => {
     console.log('✅ 利用者を保存しました:', client.name);
 
     // シフト反映名(abbreviation)または氏名(name)が一致する既存シフトにusers_care_idを一括セット
-    // client_nameが「佐々木」だけでなく「佐々木/1」「佐々木/2」等のサフィックス付きもマッチさせる
-    const matchNames: string[] = [];
-    if (client.abbreviation) matchNames.push(client.abbreviation);
-    if (client.name) matchNames.push(client.name);
+    // 同名利用者の区別: abbreviationが同じ利用者が複数いる場合、名前順でN番目 → /N のシフトに紐付け
+    const abbr = client.abbreviation || '';
+    if (abbr || client.name) {
+      // 同じabbreviationを持つ利用者を名前順で取得し、この利用者が何番目かを特定
+      let suffixIndex = 0; // 0=同名なし（サフィックスなしでマッチ）
+      if (abbr) {
+        const { data: sameAbbrClients } = await supabase
+          .from('users_care')
+          .select('id, name')
+          .eq('abbreviation', abbr)
+          .eq('deleted', false)
+          .order('name', { ascending: true });
 
-    if (matchNames.length > 0) {
-      // 完全一致 + /数字サフィックス付きの両方にマッチするOR条件を構築
-      const orConditions = matchNames.flatMap(name => [
-        `client_name.eq.${name}`,
-        `client_name.like.${name}/%`,
-      ]).join(',');
+        if (sameAbbrClients && sameAbbrClients.length > 1) {
+          // 同名が複数いる場合: この利用者が何番目か（1始まり）
+          suffixIndex = sameAbbrClients.findIndex(c => c.id === client.id) + 1;
+        }
+      }
 
-      const { error: linkError } = await supabase
-        .from('shifts')
-        .update({ users_care_id: client.id })
-        .or(orConditions)
-        .is('users_care_id', null);
+      const orConditions: string[] = [];
+      if (abbr) {
+        if (suffixIndex > 0) {
+          // 同名複数: 「池浦/2」のようにサフィックス付きだけマッチ
+          orConditions.push(`client_name.eq.${abbr}/${suffixIndex}`);
+        } else {
+          // 同名なし: 「佐々木」完全一致 + 「佐々木/数字」パターンもマッチ
+          orConditions.push(`client_name.eq.${abbr}`);
+          orConditions.push(`client_name.like.${abbr}/%`);
+        }
+      }
+      if (client.name && client.name !== abbr) {
+        orConditions.push(`client_name.eq.${client.name}`);
+      }
 
-      if (linkError) {
-        console.error('シフト紐付けエラー:', linkError);
-      } else {
-        console.log('✅ 既存シフトに利用者IDを紐付けました:', matchNames);
+      if (orConditions.length > 0) {
+        const { error: linkError } = await supabase
+          .from('shifts')
+          .update({ users_care_id: client.id })
+          .or(orConditions.join(','))
+          .is('users_care_id', null);
+
+        if (linkError) {
+          console.error('シフト紐付けエラー:', linkError);
+        } else {
+          console.log('✅ 既存シフトに利用者IDを紐付けました:', abbr || client.name, suffixIndex > 0 ? `(/${suffixIndex})` : '');
+        }
       }
     }
   } catch (error) {
