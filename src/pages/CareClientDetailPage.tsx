@@ -198,6 +198,7 @@ const WarekiDatePicker: React.FC<{ value: string; onChange: (v: string) => void 
 
 const CareClientDetailPage: React.FC = () => {
   const [client, setClient] = useState<CareClient | null>(null);
+  const [allClients, setAllClients] = useState<CareClient[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -213,6 +214,7 @@ const CareClientDetailPage: React.FC = () => {
       const init = async () => {
         try {
           const clients = await loadCareClients();
+          setAllClients(clients);
           let maxNum = 0;
           clients.forEach((c: CareClient) => {
             const num = parseInt(c.customerNumber || '0', 10);
@@ -233,6 +235,7 @@ const CareClientDetailPage: React.FC = () => {
     const load = async () => {
       try {
         const clients = await loadCareClients();
+        setAllClients(clients);
         const found = clients.find((c: CareClient) => c.id === clientId);
         if (found) {
           if (!found.shift1Name && found.name) {
@@ -509,6 +512,26 @@ const CareClientDetailPage: React.FC = () => {
                     <input type="text" value={client.abbreviation || ''} onChange={(e) => updateField('abbreviation', e.target.value)} className={`${inputClass} w-full`} placeholder="シフト表で使用する名前を入力" />
                   </FormRow>
                 </div>
+                {(() => {
+                  const abbr = client.abbreviation?.trim();
+                  if (!abbr) return null;
+                  const duplicates = allClients.filter(c => !c.deleted && c.id !== client.id && c.abbreviation === abbr);
+                  if (duplicates.length === 0) return null;
+                  const sorted = [...duplicates, { ...client }].sort((a, b) => a.name.localeCompare(b.name));
+                  const myIndex = sorted.findIndex(c => c.id === client.id) + 1;
+                  return (
+                    <div className="mt-1 ml-1 p-2 bg-amber-50 border border-amber-200 rounded text-xs">
+                      <p className="text-amber-700 font-medium">同じシフト反映名の利用者がいます:</p>
+                      <ul className="mt-1 space-y-0.5">
+                        {sorted.map((c, i) => (
+                          <li key={c.id} className={`text-amber-600 ${c.id === client.id ? 'font-bold' : ''}`}>
+                            {c.name} → シフト表では「{abbr}/{i + 1}」と入力
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })()}
                 <p className="text-xs text-gray-500 mt-1 ml-1">シフト表に入力された利用者名がこの名前と一致すると、この利用者に自動で紐付けられます。未入力の場合は氏名で照合します。</p>
               </div>
 

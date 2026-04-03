@@ -1608,12 +1608,11 @@ export const saveCareClient = async (client: CareClient): Promise<void> => {
 
       const orConditions: string[] = [];
       if (abbr) {
+        // サフィックス付き（池浦/1, 池浦/2）もサフィックスなし（池浦）もマッチ
+        orConditions.push(`client_name.eq.${abbr}`);
         if (suffixIndex > 0) {
-          // 同名複数: 「池浦/2」のようにサフィックス付きだけマッチ
           orConditions.push(`client_name.eq.${abbr}/${suffixIndex}`);
         } else {
-          // 同名なし: 「佐々木」完全一致 + 「佐々木/数字」パターンもマッチ
-          orConditions.push(`client_name.eq.${abbr}`);
           orConditions.push(`client_name.like.${abbr}/%`);
         }
       }

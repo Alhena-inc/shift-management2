@@ -1067,8 +1067,9 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       const clientNameBase = clientName.replace(/\/\d+$/, '').trim();
       const suffixIndex = suffixMatch ? parseInt(suffixMatch[1], 10) : 0; // /1→1, /2→2, なし→0
 
-      // abbreviationが一致する利用者を全て取得（名前順）
-      const abbrMatches = activeClients.filter(c => c.abbreviation && c.abbreviation === clientNameBase);
+      // abbreviationが一致する利用者を全て取得（名前順でソート）
+      const abbrMatches = activeClients.filter(c => c.abbreviation && c.abbreviation === clientNameBase)
+        .sort((a, b) => a.name.localeCompare(b.name));
       if (abbrMatches.length > 0) {
         if (suffixIndex > 0 && abbrMatches.length >= suffixIndex) {
           // /数字がある場合: N番目の利用者を選択
@@ -1080,7 +1081,8 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       }
       // abbreviationで見つからない場合はnameで照合
       if (!matchedClient) {
-        const nameMatches = activeClients.filter(c => c.name === clientNameBase);
+        const nameMatches = activeClients.filter(c => c.name === clientNameBase)
+          .sort((a, b) => a.name.localeCompare(b.name));
         if (nameMatches.length > 0) {
           if (suffixIndex > 0 && nameMatches.length >= suffixIndex) {
             matchedClient = nameMatches[suffixIndex - 1];
@@ -3361,7 +3363,8 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           const pasteClientNameBase = pasteClientName.replace(/\/\d+$/, '').trim();
           const pasteSuffixIndex = pasteSuffixMatch ? parseInt(pasteSuffixMatch[1], 10) : 0;
 
-          const pasteAbbrMatches = activeClients.filter(c => c.abbreviation && c.abbreviation === pasteClientNameBase);
+          const pasteAbbrMatches = activeClients.filter(c => c.abbreviation && c.abbreviation === pasteClientNameBase)
+            .sort((a, b) => a.name.localeCompare(b.name));
           if (pasteAbbrMatches.length > 0) {
             if (pasteSuffixIndex > 0 && pasteAbbrMatches.length >= pasteSuffixIndex) {
               pasteMatchedClient = pasteAbbrMatches[pasteSuffixIndex - 1];
@@ -3370,7 +3373,8 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
             }
           }
           if (!pasteMatchedClient) {
-            const pasteNameMatches = activeClients.filter(c => c.name === pasteClientNameBase);
+            const pasteNameMatches = activeClients.filter(c => c.name === pasteClientNameBase)
+              .sort((a, b) => a.name.localeCompare(b.name));
             if (pasteNameMatches.length > 0) {
               if (pasteSuffixIndex > 0 && pasteNameMatches.length >= pasteSuffixIndex) {
                 pasteMatchedClient = pasteNameMatches[pasteSuffixIndex - 1];
