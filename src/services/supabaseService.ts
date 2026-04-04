@@ -353,7 +353,17 @@ export const softDeleteHelper = async (helperId: string, deletedBy?: string): Pr
       throw insertError;
     }
 
-    // 3. 元のhelpersテーブルから削除
+    // 3. 関連するcare_reportsを先に削除（外部キー制約がNO ACTIONのため）
+    const { error: careReportsDeleteError } = await supabase
+      .from('care_reports')
+      .delete()
+      .eq('helper_id', helperId);
+
+    if (careReportsDeleteError) {
+      console.warn('ケアレポート削除エラー（続行します）:', careReportsDeleteError);
+    }
+
+    // 4. 元のhelpersテーブルから削除（shiftsはON DELETE CASCADEで自動削除）
     const { error: deleteError } = await supabase
       .from('helpers')
       .delete()
