@@ -1067,19 +1067,19 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       const clientNameBase = clientName.replace(/\/\d+$/, '').trim();
       const suffixIndex = suffixMatch ? parseInt(suffixMatch[1], 10) : 0; // /1→1, /2→2, なし→0
 
-      // abbreviationが一致する利用者を全て取得（名前順でソート）
-      const abbrMatches = activeClients.filter(c => c.abbreviation && c.abbreviation === clientNameBase)
-        .sort((a, b) => a.name.localeCompare(b.name));
+      // abbreviation または abbreviation2 が一致する利用者を全て取得（名前順でソート）
+      const abbrMatches = activeClients.filter(c =>
+        (c.abbreviation && c.abbreviation === clientNameBase) ||
+        (c.abbreviation2 && c.abbreviation2 === clientNameBase)
+      ).sort((a, b) => a.name.localeCompare(b.name));
       if (abbrMatches.length > 0) {
         if (suffixIndex > 0 && abbrMatches.length >= suffixIndex) {
-          // /数字がある場合: N番目の利用者を選択
           matchedClient = abbrMatches[suffixIndex - 1];
         } else {
-          // /数字がない or 範囲外の場合: 最初の利用者
           matchedClient = abbrMatches[0];
         }
       }
-      // abbreviationで見つからない場合はnameで照合
+      // abbreviation/abbreviation2で見つからない場合はnameで照合
       if (!matchedClient) {
         const nameMatches = activeClients.filter(c => c.name === clientNameBase)
           .sort((a, b) => a.name.localeCompare(b.name));
@@ -3363,8 +3363,10 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           const pasteClientNameBase = pasteClientName.replace(/\/\d+$/, '').trim();
           const pasteSuffixIndex = pasteSuffixMatch ? parseInt(pasteSuffixMatch[1], 10) : 0;
 
-          const pasteAbbrMatches = activeClients.filter(c => c.abbreviation && c.abbreviation === pasteClientNameBase)
-            .sort((a, b) => a.name.localeCompare(b.name));
+          const pasteAbbrMatches = activeClients.filter(c =>
+            (c.abbreviation && c.abbreviation === pasteClientNameBase) ||
+            (c.abbreviation2 && c.abbreviation2 === pasteClientNameBase)
+          ).sort((a, b) => a.name.localeCompare(b.name));
           if (pasteAbbrMatches.length > 0) {
             if (pasteSuffixIndex > 0 && pasteAbbrMatches.length >= pasteSuffixIndex) {
               pasteMatchedClient = pasteAbbrMatches[pasteSuffixIndex - 1];

@@ -381,6 +381,7 @@ export interface CareClient {
   birthDate?: string;
   customerNumber?: string;
   abbreviation?: string;
+  abbreviation2?: string;
   postalCode?: string;
   address?: string;
   phone?: string;

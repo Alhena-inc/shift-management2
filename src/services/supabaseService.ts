@@ -1507,6 +1507,7 @@ export const loadCareClients = async (): Promise<CareClient[]> => {
       birthDate: row.birth_date || '',
       customerNumber: row.customer_number || '',
       abbreviation: row.abbreviation || '',
+      abbreviation2: row.abbreviation2 || '',
       postalCode: row.postal_code || '',
       address: row.address || '',
       phone: row.phone || '',
@@ -1557,6 +1558,7 @@ export const saveCareClient = async (client: CareClient): Promise<void> => {
       birth_date: client.birthDate || null,
       customer_number: client.customerNumber || null,
       abbreviation: client.abbreviation || null,
+      abbreviation2: client.abbreviation2 || null,
       postal_code: client.postalCode || null,
       address: client.address || null,
       phone: client.phone || null,
@@ -1596,10 +1598,11 @@ export const saveCareClient = async (client: CareClient): Promise<void> => {
     if (error) throw error;
     console.log('✅ 利用者を保存しました:', client.name);
 
-    // シフト反映名(abbreviation)または氏名(name)が一致する既存シフトにusers_care_idを一括セット
+    // シフト反映名(abbreviation/abbreviation2)または氏名(name)が一致する既存シフトにusers_care_idを一括セット
     // 同名利用者の区別: abbreviationが同じ利用者が複数いる場合、名前順でN番目 → /N のシフトに紐付け
     const abbr = client.abbreviation || '';
-    if (abbr || client.name) {
+    const abbr2 = client.abbreviation2 || '';
+    if (abbr || abbr2 || client.name) {
       // 同じabbreviationを持つ利用者を名前順で取得し、この利用者が何番目かを特定
       let suffixIndex = 0; // 0=同名なし（サフィックスなしでマッチ）
       if (abbr) {
@@ -1618,7 +1621,6 @@ export const saveCareClient = async (client: CareClient): Promise<void> => {
 
       const orConditions: string[] = [];
       if (abbr) {
-        // サフィックス付き（池浦/1, 池浦/2）もサフィックスなし（池浦）もマッチ
         orConditions.push(`client_name.eq.${abbr}`);
         if (suffixIndex > 0) {
           orConditions.push(`client_name.eq.${abbr}/${suffixIndex}`);
@@ -1626,7 +1628,12 @@ export const saveCareClient = async (client: CareClient): Promise<void> => {
           orConditions.push(`client_name.like.${abbr}/%`);
         }
       }
-      if (client.name && client.name !== abbr) {
+      // abbreviation2でも照合
+      if (abbr2) {
+        orConditions.push(`client_name.eq.${abbr2}`);
+        orConditions.push(`client_name.like.${abbr2}/%`);
+      }
+      if (client.name && client.name !== abbr && client.name !== abbr2) {
         orConditions.push(`client_name.eq.${client.name}`);
       }
 

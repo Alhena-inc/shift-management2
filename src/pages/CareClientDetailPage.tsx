@@ -508,8 +508,11 @@ const CareClientDetailPage: React.FC = () => {
               {/* シフト反映名 */}
               <div className="mt-6 pt-4 border-t border-gray-200">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormRow label="シフト反映名">
+                  <FormRow label="シフト反映名1">
                     <input type="text" value={client.abbreviation || ''} onChange={(e) => updateField('abbreviation', e.target.value)} className={`${inputClass} w-full`} placeholder="シフト表で使用する名前を入力" />
+                  </FormRow>
+                  <FormRow label="シフト反映名2">
+                    <input type="text" value={client.abbreviation2 || ''} onChange={(e) => updateField('abbreviation2', e.target.value)} className={`${inputClass} w-full`} placeholder="別のシフト表示名（任意）" />
                   </FormRow>
                 </div>
                 {(() => {
@@ -532,7 +535,7 @@ const CareClientDetailPage: React.FC = () => {
                     </div>
                   );
                 })()}
-                <p className="text-xs text-gray-500 mt-1 ml-1">シフト表に入力された利用者名がこの名前と一致すると、この利用者に自動で紐付けられます。未入力の場合は氏名で照合します。</p>
+                <p className="text-xs text-gray-500 mt-1 ml-1">シフト表に入力された利用者名がシフト反映名1または2と一致すると、この利用者に自動で紐付けられます。未入力の場合は氏名で照合します。</p>
               </div>
 
               {/* システム情報 */}
