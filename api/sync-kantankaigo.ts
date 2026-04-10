@@ -42,11 +42,31 @@ class CookieJar {
   private cookies: Map<string, string> = new Map();
 
   addFromHeaders(headers: Headers): void {
-    const setCookies = headers.getSetCookie?.() || [];
+    // getSetCookie() が使える場合はそれを使用、なければ raw ヘッダーから取得
+    let setCookies: string[] = [];
+    if (typeof headers.getSetCookie === 'function') {
+      setCookies = headers.getSetCookie();
+    } else {
+      // フォールバック: 'set-cookie' ヘッダーを取得
+      const raw = headers.get('set-cookie');
+      if (raw) {
+        // 複数のset-cookieが結合されている場合を分割
+        // CakePHPのcookieパターンで分割
+        setCookies = raw.split(/,(?=\s*[A-Za-z_]+=)/);
+      }
+    }
+
     for (const sc of setCookies) {
       const parts = sc.split(';')[0].split('=');
       if (parts.length >= 2) {
-        this.cookies.set(parts[0].trim(), parts.slice(1).join('=').trim());
+        const name = parts[0].trim();
+        const value = parts.slice(1).join('=').trim();
+        // 'deleted' マーカーのcookieは削除
+        if (value === 'deleted') {
+          this.cookies.delete(name);
+        } else {
+          this.cookies.set(name, value);
+        }
       }
     }
   }
@@ -60,31 +80,20 @@ class CookieJar {
 
 // かんたん介護にログイン
 async function login(credentials: KantankaigoCredentials, jar: CookieJar): Promise<boolean> {
-  // まずログインページにアクセスしてCSRFトークンなどを取得
+  const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+  // まずログインページにGETアクセスしてセッションCookieを取得
   const loginPageRes = await fetch('https://www.kantankaigo.jp/home/users/login', {
     method: 'GET',
     redirect: 'follow',
-    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+    headers: { 'User-Agent': UA },
   });
   jar.addFromHeaders(loginPageRes.headers);
+  await loginPageRes.text(); // bodyを消費
 
-  // ログインページのHTMLからhiddenフィールドを取得
-  const loginHtml = await loginPageRes.text();
-  const hiddenFields = extractHiddenFields(loginHtml);
-
-  // ログインPOST
-  // フォーム構造:
-  //   data[UserGroup][groupname] (hidden, id=UserGroupGroupname3) → 空のまま
-  //   UserGroupGroupname2 (text) → 事業所名（例: ibuki）
-  //   data[User][username] (text) → ユーザーID
-  //   data[User][password] (text/password) → パスワード
+  // ログインPOST（実際のブラウザと同じ4フィールドのみ送信）
   const formData = new URLSearchParams();
-  // hidden fields (CSRFトークン等)
-  for (const [key, value] of Object.entries(hiddenFields)) {
-    formData.append(key, value);
-  }
-  // 事業所名をgroupnameのhiddenフィールドにセット
-  formData.set('data[UserGroup][groupname]', credentials.groupName);
+  formData.append('data[UserGroup][groupname]', credentials.groupName);
   formData.append('data[User][username]', credentials.username);
   formData.append('data[User][password]', credentials.password);
   formData.append('login', '利用を開始する');
@@ -93,7 +102,7 @@ async function login(credentials: KantankaigoCredentials, jar: CookieJar): Promi
     method: 'POST',
     redirect: 'manual',
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'User-Agent': UA,
       'Content-Type': 'application/x-www-form-urlencoded',
       'Cookie': jar.toString(),
       'Referer': 'https://www.kantankaigo.jp/home/users/login',
@@ -103,30 +112,24 @@ async function login(credentials: KantankaigoCredentials, jar: CookieJar): Promi
   });
   jar.addFromHeaders(loginRes.headers);
 
-  // ログイン成功: 302リダイレクト（/home へ）
+  // ログイン成功: 302リダイレクト → /home/
   const status = loginRes.status;
   if (status === 302 || status === 301) {
-    // リダイレクト先のcookieも取得
+    // リダイレクト先にアクセスしてセッションCookieを確定
     const location = loginRes.headers.get('location');
     if (location) {
       const redirectUrl = location.startsWith('http') ? location : `https://www.kantankaigo.jp${location}`;
       const redirectRes = await fetch(redirectUrl, {
-        redirect: 'manual',
+        redirect: 'follow',
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'User-Agent': UA,
           'Cookie': jar.toString(),
         },
       });
       jar.addFromHeaders(redirectRes.headers);
+      await redirectRes.text(); // bodyを消費
     }
     return true;
-  }
-
-  // 200でもログインページに戻された場合は失敗
-  if (status === 200) {
-    const body = await loginRes.text();
-    // ログインフォームが含まれていなければ成功
-    return !body.includes('利用を開始する');
   }
 
   return false;
@@ -300,12 +303,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(401).json({ success: false, error: 'ログインに失敗しました。認証情報を確認してください。' });
     }
 
-    // 利用者一覧を取得
+    // 利用者一覧を取得（ログイン確認も兼ねる）
     let targetClients: Array<{ id: string; name: string }>;
     if (clientIds && clientIds.length > 0) {
       targetClients = clientIds.map(id => ({ id, name: '' }));
     } else {
       targetClients = await fetchClientList(jar);
+      // 一覧が空 = セッションが無効な可能性
+      if (targetClients.length === 0) {
+        return res.status(401).json({
+          success: false,
+          error: 'ログインには成功しましたが、利用者一覧を取得できませんでした。セッションが無効です。',
+        });
+      }
     }
 
     if (targetClients.length === 0) {
