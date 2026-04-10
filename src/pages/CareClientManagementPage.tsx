@@ -325,14 +325,14 @@ const CareClientManagementPage: React.FC = () => {
             <div className="px-6 py-4 space-y-4">
               {/* 認証情報入力 */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">事業所コード</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">事業所名</label>
                 <input
                   type="text"
                   value={syncGroupName}
                   onChange={(e) => setSyncGroupName(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                   disabled={isSyncing}
-                  placeholder="事業所コードを入力"
+                  placeholder="例: ibuki"
                 />
               </div>
               <div>

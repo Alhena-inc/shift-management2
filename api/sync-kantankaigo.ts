@@ -61,10 +61,10 @@ class CookieJar {
 // かんたん介護にログイン
 async function login(credentials: KantankaigoCredentials, jar: CookieJar): Promise<boolean> {
   // まずログインページにアクセスしてCSRFトークンなどを取得
-  const loginPageRes = await fetch('https://www.kantankaigo.jp/login', {
+  const loginPageRes = await fetch('https://www.kantankaigo.jp/home/users/login', {
     method: 'GET',
-    redirect: 'manual',
-    headers: { 'User-Agent': 'Mozilla/5.0' },
+    redirect: 'follow',
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
   });
   jar.addFromHeaders(loginPageRes.headers);
 
@@ -73,32 +73,63 @@ async function login(credentials: KantankaigoCredentials, jar: CookieJar): Promi
   const hiddenFields = extractHiddenFields(loginHtml);
 
   // ログインPOST
+  // フォーム構造:
+  //   data[UserGroup][groupname] (hidden, id=UserGroupGroupname3) → 空のまま
+  //   UserGroupGroupname2 (text) → 事業所名（例: ibuki）
+  //   data[User][username] (text) → ユーザーID
+  //   data[User][password] (text/password) → パスワード
   const formData = new URLSearchParams();
-  // hidden fields
+  // hidden fields (CSRFトークン等)
   for (const [key, value] of Object.entries(hiddenFields)) {
     formData.append(key, value);
   }
-  formData.append('data[UserGroup][groupname]', credentials.groupName);
+  // 事業所名をgroupnameのhiddenフィールドにセット
+  formData.set('data[UserGroup][groupname]', credentials.groupName);
   formData.append('data[User][username]', credentials.username);
   formData.append('data[User][password]', credentials.password);
   formData.append('login', '利用を開始する');
 
-  const loginRes = await fetch('https://www.kantankaigo.jp/login', {
+  const loginRes = await fetch('https://www.kantankaigo.jp/home/users/login', {
     method: 'POST',
     redirect: 'manual',
     headers: {
-      'User-Agent': 'Mozilla/5.0',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'Content-Type': 'application/x-www-form-urlencoded',
       'Cookie': jar.toString(),
-      'Referer': 'https://www.kantankaigo.jp/login',
+      'Referer': 'https://www.kantankaigo.jp/home/users/login',
+      'Origin': 'https://www.kantankaigo.jp',
     },
     body: formData.toString(),
   });
   jar.addFromHeaders(loginRes.headers);
 
-  // ログイン成功: 302リダイレクト
+  // ログイン成功: 302リダイレクト（/home へ）
   const status = loginRes.status;
-  return status === 302 || status === 301 || status === 200;
+  if (status === 302 || status === 301) {
+    // リダイレクト先のcookieも取得
+    const location = loginRes.headers.get('location');
+    if (location) {
+      const redirectUrl = location.startsWith('http') ? location : `https://www.kantankaigo.jp${location}`;
+      const redirectRes = await fetch(redirectUrl, {
+        redirect: 'manual',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Cookie': jar.toString(),
+        },
+      });
+      jar.addFromHeaders(redirectRes.headers);
+    }
+    return true;
+  }
+
+  // 200でもログインページに戻された場合は失敗
+  if (status === 200) {
+    const body = await loginRes.text();
+    // ログインフォームが含まれていなければ成功
+    return !body.includes('利用を開始する');
+  }
+
+  return false;
 }
 
 // HTMLからhidden inputフィールドを取得
