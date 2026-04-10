@@ -61,6 +61,10 @@ async function fetchFromKantankaigo(credentials: KantankaigoCredentials): Promis
 
   const json = await res.json();
   if (!json.success) {
+    // デバッグ情報があればコンソールに出力
+    if (json.debug) {
+      console.log('🔍 かんたん介護ログインデバッグ:', JSON.stringify(json.debug, null, 2));
+    }
     throw new Error(json.error || '取得に失敗しました');
   }
 

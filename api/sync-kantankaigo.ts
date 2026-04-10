@@ -135,6 +135,91 @@ async function login(credentials: KantankaigoCredentials, jar: CookieJar): Promi
   return false;
 }
 
+// デバッグ情報付きログイン
+async function loginWithDebug(credentials: KantankaigoCredentials, jar: CookieJar): Promise<{ success: boolean; debug: Record<string, unknown> }> {
+  const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+  const debug: Record<string, unknown> = {};
+
+  try {
+    // GET ログインページ
+    const loginPageRes = await fetch('https://www.kantankaigo.jp/home/users/login', {
+      method: 'GET',
+      redirect: 'follow',
+      headers: { 'User-Agent': UA },
+    });
+    jar.addFromHeaders(loginPageRes.headers);
+    const pageHtml = await loginPageRes.text();
+    debug.getStatus = loginPageRes.status;
+    debug.getCookies = jar.toString();
+    debug.pageHasForm = pageHtml.includes('login');
+
+    // POST ログイン
+    const formData = new URLSearchParams();
+    formData.append('data[UserGroup][groupname]', credentials.groupName);
+    formData.append('data[User][username]', credentials.username);
+    formData.append('data[User][password]', credentials.password);
+    formData.append('login', '利用を開始する');
+
+    debug.postBody = formData.toString();
+
+    const loginRes = await fetch('https://www.kantankaigo.jp/home/users/login', {
+      method: 'POST',
+      redirect: 'manual',
+      headers: {
+        'User-Agent': UA,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Cookie': jar.toString(),
+        'Referer': 'https://www.kantankaigo.jp/home/users/login',
+        'Origin': 'https://www.kantankaigo.jp',
+      },
+      body: formData.toString(),
+    });
+
+    debug.postStatus = loginRes.status;
+    debug.postLocation = loginRes.headers.get('location');
+
+    // set-cookieヘッダーを確認
+    const rawSetCookie = loginRes.headers.get('set-cookie');
+    debug.postSetCookie = rawSetCookie;
+
+    jar.addFromHeaders(loginRes.headers);
+    debug.postCookiesAfter = jar.toString();
+
+    if (loginRes.status === 302 || loginRes.status === 301) {
+      const location = loginRes.headers.get('location');
+      if (location) {
+        const redirectUrl = location.startsWith('http') ? location : `https://www.kantankaigo.jp${location}`;
+        debug.redirectUrl = redirectUrl;
+        const redirectRes = await fetch(redirectUrl, {
+          redirect: 'follow',
+          headers: {
+            'User-Agent': UA,
+            'Cookie': jar.toString(),
+          },
+        });
+        jar.addFromHeaders(redirectRes.headers);
+        debug.redirectStatus = redirectRes.status;
+        debug.finalCookies = jar.toString();
+        const redirectBody = await redirectRes.text();
+        debug.redirectIsLoginPage = redirectBody.includes('利用を開始する');
+        // リダイレクト先がログインページなら失敗
+        if (redirectBody.includes('利用を開始する')) {
+          return { success: false, debug };
+        }
+      }
+      return { success: true, debug };
+    }
+
+    // 302以外は失敗
+    const body = await loginRes.text();
+    debug.postBodySnippet = body.substring(0, 500);
+    return { success: false, debug };
+  } catch (err) {
+    debug.error = err instanceof Error ? err.message : String(err);
+    return { success: false, debug };
+  }
+}
+
 // HTMLからhidden inputフィールドを取得
 function extractHiddenFields(html: string): Record<string, string> {
   const fields: Record<string, string> = {};
@@ -298,9 +383,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const jar = new CookieJar();
 
     // ログイン
-    const loginSuccess = await login(credentials, jar);
-    if (!loginSuccess) {
-      return res.status(401).json({ success: false, error: 'ログインに失敗しました。認証情報を確認してください。' });
+    const loginResult = await loginWithDebug(credentials, jar);
+    if (!loginResult.success) {
+      return res.status(401).json({ success: false, error: 'ログインに失敗しました。認証情報を確認してください。', debug: loginResult.debug });
     }
 
     // 利用者一覧を取得（ログイン確認も兼ねる）
