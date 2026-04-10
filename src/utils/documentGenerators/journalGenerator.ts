@@ -588,6 +588,8 @@ export function generateDiaryNarrative(
   lineReport?: LineReport,
   vitalNote?: string,
   procedureSteps?: ProcedureStep[],
+  /** 連続ケアブロックの最後のサービスかどうか（falseの場合、退室文を出さない） */
+  isLastInContinuousBlock: boolean = true,
 ): string {
   // LINE報告がある場合はそれを最優先
   if (lineReport?.diary && lineReport.diary.length > 20) {
@@ -831,15 +833,21 @@ export function generateDiaryNarrative(
     if (obs) parts.push(obs);
   }
 
-  // === 退室 ===
-  const exitVariants = [
-    `${journal.serviceEndTime}にサービス終了。退室時、利用者に声かけを行い退室した。`,
-    `${journal.serviceEndTime}にサービス終了。次回訪問日を伝え退室した。`,
-    `${journal.serviceEndTime}にサービス終了。戸締り確認後に退室した。`,
-    `${journal.serviceEndTime}にサービス終了。利用者の了承を得て退室した。`,
-    `${journal.serviceEndTime}にサービス終了。次回の予定を確認し退室した。`,
-  ];
-  parts.push(exitVariants[variantSeed % exitVariants.length]);
+  // === 退室 / 連続ケア移行 ===
+  if (isLastInContinuousBlock) {
+    // 連続ケアの最後（または単独サービス）→ 退室文を出す
+    const exitVariants = [
+      `${journal.serviceEndTime}にサービス終了。退室時、利用者に声かけを行い退室した。`,
+      `${journal.serviceEndTime}にサービス終了。次回訪問日を伝え退室した。`,
+      `${journal.serviceEndTime}にサービス終了。戸締り確認後に退室した。`,
+      `${journal.serviceEndTime}にサービス終了。利用者の了承を得て退室した。`,
+      `${journal.serviceEndTime}にサービス終了。次回の予定を確認し退室した。`,
+    ];
+    parts.push(exitVariants[variantSeed % exitVariants.length]);
+  } else {
+    // 連続ケアの途中 → 退室せず次のサービスに移行
+    parts.push(`${journal.serviceEndTime}にサービス終了。引き続き次のサービスに移行した。`);
+  }
 
   // ★ 最終クリーンアップ:
   // current journals source-of-truth: 服薬確認68件・更衣51件・整容46件・安全確認42件・傾聴33件
@@ -1157,8 +1165,23 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
     console.log(`[Journal] ★カットオフ${effectiveCutoff}以降${skippedFuture}件を除外（cutoffDate=${cutoffDate || '未指定→今週月曜'}）`);
   }
 
+  // ★連続ケア判定: 同日・同利用者・同ヘルパーで前のendTime = 次のstartTimeなら連続ケア
+  // 連続ケアの途中では退室文を出さない（最後のサービスでのみ退室文を出す）
+  const isLastInContinuousBlockMap = new Map<number, boolean>();
+  for (let i = 0; i < pastRecords.length; i++) {
+    const current = pastRecords[i];
+    // 次の実績が連続しているか確認
+    const hasNext = pastRecords.some((other, j) =>
+      j !== i &&
+      other.serviceDate === current.serviceDate &&
+      other.helperName === current.helperName &&
+      other.startTime === current.endTime
+    );
+    isLastInContinuousBlockMap.set(i, !hasNext);
+  }
+
   // 実績1件ごとに日誌1件を生成
-  const journals: JournalEntry[] = pastRecords.map((record) => {
+  const journals: JournalEntry[] = pastRecords.map((record, recordIndex) => {
     const serviceTypeLabel = serviceCodeToLabel(record.serviceCode);
 
     // ★改善: ブロックマッチング — 正規化済みラベルで比較し、部分一致フォールバックも行う
@@ -1311,8 +1334,9 @@ export function generateJournals(ctx: JournalGeneratorContext): JournalEntry[] {
       diaryNarrative: '', // 後で埋める
     };
 
-    // 日誌本文生成
-    const diaryNarrative = generateDiaryNarrative(structuredJournal, matchingLine, vitalNote, steps);
+    // 日誌本文生成（連続ケアの途中では退室文を出さない）
+    const isLast = isLastInContinuousBlockMap.get(recordIndex) ?? true;
+    const diaryNarrative = generateDiaryNarrative(structuredJournal, matchingLine, vitalNote, steps, isLast);
     structuredJournal.diaryNarrative = diaryNarrative;
 
     // ★排泄介助チェック→本文整合: 本文・特記・LINE報告に排泄関連記載がない場合は OFF にする

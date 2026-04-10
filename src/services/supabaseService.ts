@@ -1501,6 +1501,7 @@ export const loadCareClients = async (): Promise<CareClient[]> => {
 
     return (data || []).map((row: any) => ({
       id: row.id,
+      kantankaigoId: row.kantankaigo_id || '',
       name: row.name,
       nameKana: row.name_kana || '',
       gender: row.gender || 'male',
@@ -1552,6 +1553,7 @@ export const saveCareClient = async (client: CareClient): Promise<void> => {
   try {
     const saveData = {
       id: client.id,
+      kantankaigo_id: client.kantankaigoId || null,
       name: client.name || '名前未設定',
       name_kana: client.nameKana || null,
       gender: client.gender || 'male',
