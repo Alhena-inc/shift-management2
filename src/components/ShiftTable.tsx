@@ -1739,7 +1739,17 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       }
     }
 
-    const shiftId = `shift-${helperId}-${date}-${rowIndex}`;
+    // helperId + date + rowIndex に一致する実シフトを検索（IDは一括入力などでランダム生成される場合があるため決め打ちしない）
+    const matchingShifts = shiftsRef.current.filter(
+      s => s.helperId === helperId && s.date === date && s.rowIndex === rowIndex
+    );
+    // 互換性のため、固定フォーマットIDもフォールバックとして含める
+    const fallbackShiftId = `shift-${helperId}-${date}-${rowIndex}`;
+    const shiftIdsToDelete = Array.from(
+      new Set<string>([...matchingShifts.map(s => s.id), fallbackShiftId])
+    );
+    // 戻り値として代表となる shiftId（存在すれば実ID、なければフォールバック）を返す
+    const shiftId = matchingShifts[0]?.id || fallbackShiftId;
 
     const undoData: UndoActionData = {
       helperId,
@@ -1862,8 +1872,12 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     }
 
     // React stateの更新（Firestoreの完了を待たずに即座に行う）
+    const deleteIdSet = new Set(shiftIdsToDelete);
     if (!skipStateUpdate) {
-      const updatedShifts = shiftsRef.current.filter(s => s.id !== shiftId);
+      const updatedShifts = shiftsRef.current.filter(
+        s => !deleteIdSet.has(s.id) &&
+             !(s.helperId === helperId && s.date === date && s.rowIndex === rowIndex)
+      );
       handleShiftsUpdate(updatedShifts);
 
       // Reactの再レンダリングにより画面上の文字も自動的にクリアされます
@@ -1871,8 +1885,11 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     }
 
     // Firestoreから完全削除を実行 (バックグラウンドで処理)
-    deleteShift(shiftId).catch(error => {
-      console.error('❌ 削除に失敗しました:', error);
+    // 複数マッチした場合は全てのIDを削除
+    shiftIdsToDelete.forEach(idToDelete => {
+      deleteShift(idToDelete).catch(error => {
+        console.error(`❌ 削除に失敗しました (id=${idToDelete}):`, error);
+      });
     });
 
     // コンテキストメニューを閉じる（スキップされない場合のみ）
@@ -4628,9 +4645,21 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         console.log(`📦 Undoグループ保存: ${undoGroup.length}件の削除を保存`);
       }
 
-      // React state一括更新
+      // React state一括更新（IDが一致しないシフトも helperId/date/rowIndex で除外）
       const deletedIdSet = new Set(deletedShiftIds);
-      const updatedShifts = shiftsRef.current.filter(s => !deletedIdSet.has(s.id));
+      const deletedCellKeys = new Set(
+        targetRows.map((key) => {
+          const parts = key.split('-');
+          const rowIdx = parseInt(parts[parts.length - 1]);
+          const dt = parts.slice(-4, -1).join('-');
+          const hId = parts.slice(0, -4).join('-');
+          return `${hId}|${dt}|${rowIdx}`;
+        })
+      );
+      const updatedShifts = shiftsRef.current.filter(s =>
+        !deletedIdSet.has(s.id) &&
+        !deletedCellKeys.has(`${s.helperId}|${s.date}|${s.rowIndex}`)
+      );
       handleShiftsUpdate(updatedShifts);
 
       // UIクリーンアップ
