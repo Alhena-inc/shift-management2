@@ -12,8 +12,17 @@
   "functions": {
     "api/sync-kantankaigo.ts": {
       "maxDuration": 60
+    },
+    "api/cron-sync-kantankaigo.ts": {
+      "maxDuration": 60
     }
   },
+  "crons": [
+    {
+      "path": "/api/cron-sync-kantankaigo",
+      "schedule": "0 17 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

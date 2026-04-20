@@ -1,12 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-interface KantankaigoCredentials {
+export interface KantankaigoCredentials {
   groupName: string;    // 事業所コード
   username: string;     // ユーザーID
   password: string;     // パスワード
 }
 
-interface KantankaigoClient {
+export interface KantankaigoClient {
   kantankaigoId: string;
   name: string;
   nameKana: string;
@@ -38,21 +38,35 @@ interface KantankaigoClient {
 }
 
 // CookieJar - ログインセッション管理用
-class CookieJar {
+export class CookieJar {
   private cookies: Map<string, string> = new Map();
 
   addFromHeaders(headers: Headers): void {
-    // getSetCookie() が使える場合はそれを使用、なければ raw ヘッダーから取得
+    // 複数の方法でset-cookieヘッダーを取得
     let setCookies: string[] = [];
+
+    // 方法1: getSetCookie() (Node 20+)
     if (typeof headers.getSetCookie === 'function') {
-      setCookies = headers.getSetCookie();
-    } else {
-      // フォールバック: 'set-cookie' ヘッダーを取得
+      try {
+        setCookies = headers.getSetCookie();
+      } catch { /* ignore */ }
+    }
+
+    // 方法2: headers.raw() (node-fetch互換)
+    if (setCookies.length === 0 && typeof (headers as any).raw === 'function') {
+      try {
+        const raw = (headers as any).raw();
+        if (raw['set-cookie']) {
+          setCookies = raw['set-cookie'];
+        }
+      } catch { /* ignore */ }
+    }
+
+    // 方法3: get('set-cookie') + 分割
+    if (setCookies.length === 0) {
       const raw = headers.get('set-cookie');
       if (raw) {
-        // 複数のset-cookieが結合されている場合を分割
-        // CakePHPのcookieパターンで分割
-        setCookies = raw.split(/,(?=\s*[A-Za-z_]+=)/);
+        setCookies = raw.split(/,(?=\s*[A-Za-z_][\w]*=)/);
       }
     }
 
@@ -61,7 +75,6 @@ class CookieJar {
       if (parts.length >= 2) {
         const name = parts[0].trim();
         const value = parts.slice(1).join('=').trim();
-        // 'deleted' マーカーのcookieは削除
         if (value === 'deleted') {
           this.cookies.delete(name);
         } else {
@@ -136,7 +149,7 @@ async function login(credentials: KantankaigoCredentials, jar: CookieJar): Promi
 }
 
 // デバッグ情報付きログイン
-async function loginWithDebug(credentials: KantankaigoCredentials, jar: CookieJar): Promise<{ success: boolean; debug: Record<string, unknown> }> {
+export async function loginWithDebug(credentials: KantankaigoCredentials, jar: CookieJar): Promise<{ success: boolean; debug: Record<string, unknown> }> {
   const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
   const debug: Record<string, unknown> = {};
 
@@ -237,7 +250,7 @@ function extractHiddenFields(html: string): Record<string, string> {
 }
 
 // 利用者一覧ページから全利用者IDを取得
-async function fetchClientList(jar: CookieJar): Promise<Array<{ id: string; name: string }>> {
+export async function fetchClientList(jar: CookieJar): Promise<Array<{ id: string; name: string }>> {
   // d=1で全件表示（契約終了含む）
   const res = await fetch('https://www.kantankaigo.jp/home/customers/?d=1&c=&t=&k=&r=', {
     headers: {
@@ -265,7 +278,7 @@ async function fetchClientList(jar: CookieJar): Promise<Array<{ id: string; name
 }
 
 // 利用者詳細ページからデータを取得
-async function fetchClientDetail(clientId: string, jar: CookieJar): Promise<KantankaigoClient> {
+export async function fetchClientDetail(clientId: string, jar: CookieJar): Promise<KantankaigoClient> {
   const res = await fetch(`https://www.kantankaigo.jp/home/customers/edit/${clientId}`, {
     headers: {
       'User-Agent': 'Mozilla/5.0',
