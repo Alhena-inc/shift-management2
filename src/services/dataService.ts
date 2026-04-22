@@ -19,14 +19,22 @@ import * as firestoreService from './firestoreService';
 
 // Supabaseサービス
 import * as supabaseService from './supabaseService';
+import { supabase } from '../lib/supabase';
 
-// RealtimeChannelをunsubscribe関数に変換するラッパー
+// RealtimeChannelをunsubscribe関数に変換するラッパー。
+// removeChannel を使うことで「購読停止」と「クライアント内channelsリストからの削除」の両方を行う。
+// unsubscribe() だけでは前者しか走らず、古いチャンネルが残って後続の.on()で衝突する恐れがある。
 const wrapSubscription = (fn: any) => {
   return (...args: any[]) => {
     const result = fn(...args);
-    // RealtimeChannelの場合、unsubscribe関数でラップ
     if (result && typeof result === 'object' && 'unsubscribe' in result) {
-      return () => result.unsubscribe();
+      return () => {
+        try {
+          supabase.removeChannel(result);
+        } catch (e) {
+          console.warn('removeChannel failed:', e);
+        }
+      };
     }
     return result;
   };

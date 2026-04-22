@@ -982,7 +982,7 @@ export const subscribeToHelpers = (onUpdate: (helpers: Helper[] | null) => void)
   loadWithRetry();
 
   const channel = supabase
-    .channel('helpers-changes')
+    .channel(`helpers-changes-${crypto.randomUUID()}`)
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'helpers' },
@@ -1026,7 +1026,7 @@ export const subscribeToShiftsForMonth = (
   });
 
   const channel = supabase
-    .channel(`shifts-${year}-${month}`)
+    .channel(`shifts-${year}-${month}-${crypto.randomUUID()}`)
     .on(
       'postgres_changes',
       {
@@ -1057,7 +1057,7 @@ export const subscribeToDayOffRequestsMap = (
   const docId = `${year}-${String(month).padStart(2, '0')}`;
 
   const channel = supabase
-    .channel(`dayoff-${docId}`)
+    .channel(`dayoff-${docId}-${crypto.randomUUID()}`)
     .on(
       'postgres_changes',
       {
@@ -1085,7 +1085,7 @@ export const subscribeToScheduledDayOffs = (
   const docId = `${year}-${String(month).padStart(2, '0')}`;
 
   const channel = supabase
-    .channel(`scheduled-${docId}`)
+    .channel(`scheduled-${docId}-${crypto.randomUUID()}`)
     .on(
       'postgres_changes',
       {
@@ -1113,7 +1113,7 @@ export const subscribeToDisplayTextsMap = (
   const docId = `${year}-${String(month).padStart(2, '0')}`;
 
   const channel = supabase
-    .channel(`display-${docId}`)
+    .channel(`display-${docId}-${crypto.randomUUID()}`)
     .on(
       'postgres_changes',
       {
@@ -1709,7 +1709,7 @@ export const subscribeToCareClients = (callback: (clients: CareClient[] | null) 
 
   // リアルタイム購読
   const channel = supabase
-    .channel('users_care_changes')
+    .channel(`users_care_changes-${crypto.randomUUID()}`)
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'users_care' },
