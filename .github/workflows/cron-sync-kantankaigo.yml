@@ -1,0 +1,59 @@
+name: Cron - Sync Kantankaigo
+
+on:
+  schedule:
+    # 毎日 17:00 UTC = 日本時間 02:00
+    - cron: '0 17 * * *'
+  # 手動実行も可能（GitHub UI から Run workflow）
+  workflow_dispatch:
+
+concurrency:
+  group: cron-sync-kantankaigo
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Call Netlify Function
+        env:
+          CRON_URL: ${{ vars.CRON_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_URL" ]; then
+            echo "::error::CRON_URL が未設定です (Settings → Secrets and variables → Actions → Variables に追加してください)"
+            exit 1
+          fi
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET が未設定です (Settings → Secrets and variables → Actions → Secrets に追加してください)"
+            exit 1
+          fi
+
+          echo "Calling $CRON_URL"
+          # 5分タイムアウト・失敗時はHTTPステータスで検出
+          HTTP_CODE=$(curl -sS -o response.json -w "%{http_code}" \
+            --max-time 300 \
+            -X POST "$CRON_URL" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json")
+
+          echo "HTTP Status: $HTTP_CODE"
+          echo "--- Response ---"
+          cat response.json
+          echo ""
+          echo "--- End Response ---"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Cron function returned HTTP $HTTP_CODE"
+            exit 1
+          fi
+
+          # Response の success フラグもチェック
+          if ! grep -q '"success":true' response.json; then
+            echo "::error::Response success flag is not true"
+            exit 1
+          fi
+
+          echo "::notice::Cron sync completed successfully"

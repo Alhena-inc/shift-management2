@@ -8,7 +8,13 @@
 # Environment variables
 .env
 .env.local
+.env.local.bak
 .env.*.local
+.env.netlify
+.env.vercel
+.env.*.bak
+*.pem
+*.key
 
 # OS files
 **/.DS_Store
@@ -27,3 +33,6 @@ _backup_*
 *.swp
 .vercel
 .env*.local
+
+# Local Netlify folder
+.netlify
