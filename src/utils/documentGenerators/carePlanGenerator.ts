@@ -1714,8 +1714,8 @@ export async function generate(ctx: GeneratorContext): Promise<CarePlanGeneratio
   ws0.getCell('H3').alignment = { vertical: 'middle' };
   ws0.getCell('K3').value = officeInfo.serviceManager || '未設定';
   ws0.getCell('K3').alignment = { vertical: 'middle' };
-  // 児童名が設定されている場合は「利用者名（児童名）様」形式
-  const displayName = client.childName ? `${client.name}（${client.childName}）` : client.name;
+  // 児童名が設定されている場合は児童名を主表示にする
+  const displayName = client.childName || client.name;
   ws0.getCell('A5').value = `${displayName}　様`;
   ws0.getCell('A5').alignment = { vertical: 'middle' };
   ws0.getCell('E5').value = client.birthDate || '';

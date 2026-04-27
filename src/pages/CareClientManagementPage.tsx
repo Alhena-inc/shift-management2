@@ -221,10 +221,10 @@ const CareClientManagementPage: React.FC = () => {
                     <div className="flex items-start justify-between">
                       <div>
                         <h3 className="text-lg font-bold text-gray-800">
-                          {client.name}
+                          {client.childName || client.name}
                         </h3>
                         {client.childName && (
-                          <p className="text-sm text-gray-500 mt-0.5">児童：{client.childName}</p>
+                          <p className="text-sm text-gray-500 mt-0.5">保護者：{client.name}</p>
                         )}
                       </div>
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${careLevelBadge.color}`}>

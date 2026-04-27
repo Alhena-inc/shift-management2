@@ -693,9 +693,9 @@ const BillingImportPage: React.FC = () => {
                           </td>
                           <td className="px-3 py-2 text-sm text-gray-900">{r.helperName}</td>
                           <td className="px-3 py-2 text-sm text-gray-900">
-                            {r.clientName}
+                            {childNameMap.get(r.clientName) || r.clientName}
                             {childNameMap.get(r.clientName) && (
-                              <span className="ml-1 text-xs text-gray-500">({childNameMap.get(r.clientName)})</span>
+                              <span className="ml-1 text-xs text-gray-500">({r.clientName})</span>
                             )}
                           </td>
                           <td className="px-3 py-2">

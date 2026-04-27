@@ -904,7 +904,7 @@ async function saveGenerationLog(
     ws.mergeCells('A2:E2');
     const reiwaYear = new Date().getFullYear() - 2018;
     const today = new Date();
-    const displayName = client.childName ? `${client.name}（${client.childName}）` : client.name;
+    const displayName = client.childName || client.name;
     ws.getCell('A2').value = `利用者: ${displayName}　　契約開始日: ${contractStart}　　作成日: 令和${reiwaYear}年${today.getMonth() + 1}月${today.getDate()}日`;
     ws.getCell('A2').font = dataFont;
     ws.getCell('A2').alignment = { vertical: 'middle' };

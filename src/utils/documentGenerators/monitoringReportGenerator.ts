@@ -485,7 +485,7 @@ async function fillTemplateWorkbook(
     ws.getRow(r).height = reasonRowHeight;
   }
 
-  const displayName = client.childName ? `${client.name}（${client.childName}）` : client.name;
+  const displayName = client.childName || client.name;
   const reiwaYear = toReiwa(year);
   const lastDay = new Date(year, month, 0).getDate();
   const periodText = `令和${reiwaYear}年${month}月1日〜令和${reiwaYear}年${month}月${lastDay}日`;
