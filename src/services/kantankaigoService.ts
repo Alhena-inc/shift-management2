@@ -71,11 +71,26 @@ async function fetchFromKantankaigo(credentials: KantankaigoCredentials): Promis
   return json.data;
 }
 
+// かんたん介護では契約終了利用者の名前末尾に「❌」等のマーカーが付くことがある。
+// 同期時はこれを除去して比較・保存し、別利用者として扱われないようにする。
+// 対応マーク: ❌ ❎ ✖ ✕ × ✗ ✘ 🅇 (および前後の空白)
+const END_MARKER_REGEX = /[❌❎✖✕×✗✘🆇\s]+$/u;
+
+function stripEndMarker(name: string): string {
+  if (!name) return name;
+  return name.replace(END_MARKER_REGEX, '').trim();
+}
+
+function hasEndMarker(name: string): boolean {
+  if (!name) return false;
+  return /[❌❎✖✕×✗✘🆇]/u.test(name);
+}
+
 // かんたん介護のデータをシフトソフトのCareClientにマッピング
 function mapToUpdateFields(kantanClient: KantankaigoClient): Partial<CareClient> {
   const updates: Partial<CareClient> = {
     kantankaigoId: kantanClient.kantankaigoId,
-    name: kantanClient.name,
+    name: stripEndMarker(kantanClient.name),
     nameKana: kantanClient.nameKana,
     gender: kantanClient.gender,
     birthDate: kantanClient.birthDate,
@@ -90,9 +105,15 @@ function mapToUpdateFields(kantanClient: KantankaigoClient): Partial<CareClient>
     notes: kantanClient.notes,
   };
 
+  // 名前末尾に❌等のマーカーが付いていて、かんたん介護側に明示的な終了理由が
+  // 入っていない場合は、契約終了の事実が失われないように補完する。
+  if (hasEndMarker(kantanClient.name) && !kantanClient.endReason) {
+    updates.endReason = '契約終了';
+  }
+
   // 児童情報（値がある場合のみ）
   if (kantanClient.childName) {
-    updates.childName = kantanClient.childName;
+    updates.childName = stripEndMarker(kantanClient.childName);
     updates.childNameKana = kantanClient.childNameKana;
     updates.childGender = kantanClient.childGender || undefined;
     updates.childBirthDate = kantanClient.childBirthDate;
@@ -124,14 +145,24 @@ function findMatchingClient(
   kantanClient: KantankaigoClient,
   existingClients: CareClient[]
 ): CareClient | undefined {
-  // 1. kantankaigo_idで完全一致
+  // 1. kantankaigo_idで完全一致（最優先）
   const byId = existingClients.find(c => c.kantankaigoId === kantanClient.kantankaigoId);
   if (byId) return byId;
 
-  // 2. 氏名で完全一致（スペース除去して比較）
-  const normalize = (s: string) => s.replace(/\s+/g, '');
+  // スペース・契約終了マーカー❌等を除去して比較するための正規化
+  const normalize = (s: string) => stripEndMarker(s || '').replace(/\s+/g, '');
   const kantanName = normalize(kantanClient.name);
-  return existingClients.find(c => normalize(c.name) === kantanName);
+  const kantanChildName = normalize(kantanClient.childName);
+
+  if (!kantanName) return undefined;
+
+  // 2. 同姓同名で「親のみ利用者」と「親+児童利用者」が別人で存在しうるため、
+  //    保護者名 + 児童名の組み合わせで一意に判定する
+  //    (例: 山口貴子(児童なし) と 山口貴子(児童:山口純一) は別利用者)
+  return existingClients.find(c => {
+    if (normalize(c.name) !== kantanName) return false;
+    return normalize(c.childName) === kantanChildName;
+  });
 }
 
 // メイン同期処理
