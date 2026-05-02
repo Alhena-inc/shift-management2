@@ -3521,6 +3521,46 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           const targetRowIndex = selectedCellRef.current.rowIndex;
           const shiftsToSave: Shift[] = [];
 
+          // ★ ペースト前の状態をUndoグループに保存
+          const undoGroup: UndoActionData[] = [];
+          copiedCaresRef.current.forEach((_copiedCare, index) => {
+            const newRowIndex = targetRowIndex + index;
+            const existingShift = shiftsRef.current.find(
+              s => s.id === `shift-${targetHelperId}-${targetDate}-${newRowIndex}` && !s.deleted
+            );
+            const beforeData: string[] = existingShift
+              ? [
+                  existingShift.startTime && existingShift.endTime
+                    ? `${existingShift.startTime.substring(0, 5).replace(/^0/, '')}-${existingShift.endTime.substring(0, 5).replace(/^0/, '')}`
+                    : '',
+                  existingShift.clientName
+                    ? `${existingShift.clientName}(${SERVICE_CONFIG[existingShift.serviceType]?.label || ''})`
+                    : `(${SERVICE_CONFIG[existingShift.serviceType]?.label || ''})`,
+                  existingShift.duration ? existingShift.duration.toString() : '',
+                  existingShift.area || ''
+                ]
+              : ['', '', '', ''];
+            const beforeBackgroundColor = existingShift
+              ? (SERVICE_CONFIG[existingShift.serviceType]?.bgColor || '#ffffff')
+              : '#ffffff';
+
+            undoGroup.push({
+              helperId: targetHelperId,
+              date: targetDate,
+              rowIndex: newRowIndex,
+              data: beforeData,
+              backgroundColor: beforeBackgroundColor
+            });
+          });
+
+          if (undoGroup.length === 1) {
+            undoStackRef.push(undoGroup[0]);
+          } else if (undoGroup.length > 1) {
+            undoStackRef.push(undoGroup);
+          }
+          // 新しい操作のためRedoスタックをクリア
+          redoStackRef.length = 0;
+
           copiedCaresRef.current.forEach((copiedCare, index) => {
             const { cancelStatus, canceledAt, ...restData } = copiedCare.data;
             const newRowIndex = targetRowIndex + index;
