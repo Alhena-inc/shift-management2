@@ -46,7 +46,16 @@ const CareClientManagementPage: React.FC = () => {
         (client.careLevel || '').toLowerCase().includes(query)
       );
     })
-    .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+    .sort((a, b) => {
+      // かんたん介護の取得順を優先。未同期(undefined)の利用者は末尾に。
+      const ao = a.kantankaigoOrder;
+      const bo = b.kantankaigoOrder;
+      if (ao !== undefined && bo !== undefined) return ao - bo;
+      if (ao !== undefined) return -1;
+      if (bo !== undefined) return 1;
+      // 双方未同期の場合は作成日時順
+      return (a.createdAt || '').localeCompare(b.createdAt || '');
+    });
 
   // 介護度バッジの色
   const getCareLevelBadge = (careLevel?: string) => {

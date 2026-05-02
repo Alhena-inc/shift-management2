@@ -193,6 +193,7 @@ export async function syncFromKantankaigo(
   const existingClients: CareClient[] = (existingRows || []).map((row: Record<string, unknown>) => ({
     id: row.id as string,
     kantankaigoId: (row.kantankaigo_id as string) || '',
+    kantankaigoOrder: (row.kantankaigo_order as number | null) ?? undefined,
     name: (row.name as string) || '',
     nameKana: (row.name_kana as string) || '',
     gender: (row.gender as 'male' | 'female') || 'male',
@@ -252,6 +253,7 @@ export async function syncFromKantankaigo(
           .from('users_care')
           .update({
             kantankaigo_id: updates.kantankaigoId,
+            kantankaigo_order: i,
             name: updates.name,
             name_kana: updates.nameKana,
             gender: updates.gender,
@@ -293,6 +295,7 @@ export async function syncFromKantankaigo(
           .insert({
             id: newId,
             kantankaigo_id: updates.kantankaigoId,
+            kantankaigo_order: i,
             name: updates.name || '名前未設定',
             name_kana: updates.nameKana || null,
             gender: updates.gender || 'male',

@@ -376,6 +376,7 @@ export interface CareClientServices {
 export interface CareClient {
   id: string;
   kantankaigoId?: string;  // かんたん介護の利用者ID（紐付け用）
+  kantankaigoOrder?: number;  // かんたん介護のリスト並び順（同期時に取得順を保存）
   name: string;
   nameKana?: string;
   gender?: 'male' | 'female';
