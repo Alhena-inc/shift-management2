@@ -90,7 +90,7 @@ function hasEndMarker(name: string): boolean {
 function mapToUpdateFields(kantanClient: KantankaigoClient): Partial<CareClient> {
   const updates: Partial<CareClient> = {
     kantankaigoId: kantanClient.kantankaigoId,
-    name: stripEndMarker(kantanClient.name),
+    name: kantanClient.name,
     nameKana: kantanClient.nameKana,
     gender: kantanClient.gender,
     birthDate: kantanClient.birthDate,
@@ -113,7 +113,7 @@ function mapToUpdateFields(kantanClient: KantankaigoClient): Partial<CareClient>
 
   // 児童情報（値がある場合のみ）
   if (kantanClient.childName) {
-    updates.childName = stripEndMarker(kantanClient.childName);
+    updates.childName = kantanClient.childName;
     updates.childNameKana = kantanClient.childNameKana;
     updates.childGender = kantanClient.childGender || undefined;
     updates.childBirthDate = kantanClient.childBirthDate;
