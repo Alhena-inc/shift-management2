@@ -1714,30 +1714,32 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
   // skipStateUpdate: 複数削除時に一括でstate更新するため、個別のstate更新をスキップ
   // skipUndoPush: 複数削除時に一括でUndoスタックに保存するため、個別のpushをスキップ
   const deleteCare = useCallback(async (helperId: string, date: string, rowIndex: number, skipMenuClose: boolean = false, skipStateUpdate: boolean = false, skipUndoPush: boolean = false): Promise<{ shiftId: string; undoData: UndoActionData }> => {
-    // 削除前のデータを保存（Undo用）
-    const data: string[] = [];
-    let backgroundColor = '#ffffff';
+    // 削除前のデータを保存（Undo用）— DOMではなくshiftsRefを信頼することで
+    // 並列削除時のDOM更新タイミングずれによるデータ欠落を防ぐ
+    const existingShiftForUndo = shiftsRef.current.find(
+      s => s.helperId === helperId && s.date === date && s.rowIndex === rowIndex && !s.deleted
+    );
+    const formatTimeForUndo = (t: string | null | undefined) =>
+      t ? t.substring(0, 5).replace(/^0/, '') : '';
+    const data: string[] = existingShiftForUndo
+      ? [
+          existingShiftForUndo.startTime && existingShiftForUndo.endTime
+            ? `${formatTimeForUndo(existingShiftForUndo.startTime)}-${formatTimeForUndo(existingShiftForUndo.endTime)}`
+            : '',
+          existingShiftForUndo.clientName
+            ? `${existingShiftForUndo.clientName}(${SERVICE_CONFIG[existingShiftForUndo.serviceType]?.label || ''})`
+            : `(${SERVICE_CONFIG[existingShiftForUndo.serviceType]?.label || ''})`,
+          existingShiftForUndo.duration ? existingShiftForUndo.duration.toString() : '',
+          existingShiftForUndo.area || ''
+        ]
+      : ['', '', '', ''];
+    const backgroundColor: string = existingShiftForUndo
+      ? (SERVICE_CONFIG[existingShiftForUndo.serviceType]?.bgColor || '#ffffff')
+      : '#ffffff';
 
-    // 4つのラインのデータを保存
-    for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
-      const cellSelector = `.editable-cell-wrapper[data-row="${rowIndex}"][data-line="${lineIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
-      const cell = safeQuerySelector<HTMLElement>(cellSelector);
-      if (cell) {
-        data.push(cell.textContent || '');
-      } else {
-        data.push('');
-      }
-    }
-
-    // 背景色を保存
+    // bgCellsはDOMリセット用に取得（背景色の値はshiftオブジェクトから取得済み）
     const bgCellSelector = `.editable-cell-wrapper[data-row="${rowIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
     const bgCells = safeQuerySelectorAll<HTMLElement>(bgCellSelector);
-    if (bgCells.length > 0) {
-      const parentTd = bgCells[0].closest('td') as HTMLElement;
-      if (parentTd) {
-        backgroundColor = parentTd.style.backgroundColor || '#ffffff';
-      }
-    }
 
     // helperId + date + rowIndex に一致する実シフトを検索（IDは一括入力などでランダム生成される場合があるため決め打ちしない）
     const matchingShifts = shiftsRef.current.filter(
