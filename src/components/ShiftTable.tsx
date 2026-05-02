@@ -3265,24 +3265,25 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
     // ペースト処理開始
 
-    // ペースト前の状態をUndoスタックに保存
-    const beforeData: string[] = [];
-    let beforeBackgroundColor = '#ffffff';
-
-    for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
-      const cellSelector = `.editable-cell-wrapper[data-row="${rowIndex}"][data-line="${lineIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
-      const cell = document.querySelector(cellSelector) as HTMLElement;
-      beforeData.push(cell ? cell.textContent || '' : '');
-    }
-
-    const beforeBgCellSelector = `.editable-cell-wrapper[data-row="${rowIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
-    const beforeCells = document.querySelectorAll(beforeBgCellSelector);
-    if (beforeCells.length > 0) {
-      const parentTd = beforeCells[0].closest('td') as HTMLElement;
-      if (parentTd) {
-        beforeBackgroundColor = parentTd.style.backgroundColor || '#ffffff';
-      }
-    }
+    // ペースト前の状態をUndoスタックに保存（DOMではなくshifts配列を信頼）
+    const existingShift = shiftsRef.current.find(
+      s => s.id === `shift-${helperId}-${date}-${rowIndex}` && !s.deleted
+    );
+    const beforeData: string[] = existingShift
+      ? [
+          existingShift.startTime && existingShift.endTime
+            ? `${existingShift.startTime.substring(0, 5).replace(/^0/, '')}-${existingShift.endTime.substring(0, 5).replace(/^0/, '')}`
+            : '',
+          existingShift.clientName
+            ? `${existingShift.clientName}(${SERVICE_CONFIG[existingShift.serviceType]?.label || ''})`
+            : `(${SERVICE_CONFIG[existingShift.serviceType]?.label || ''})`,
+          existingShift.duration ? existingShift.duration.toString() : '',
+          existingShift.area || ''
+        ]
+      : ['', '', '', ''];
+    const beforeBackgroundColor = existingShift
+      ? (SERVICE_CONFIG[existingShift.serviceType]?.bgColor || '#ffffff')
+      : '#ffffff';
 
     undoStackRef.push({
       helperId,
@@ -3444,7 +3445,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       }
     };
 
-    saveData();
+    await saveData();
 
     // ★ 選択状態を更新（ペースト先を選択状態に）
     if (selectedCellRef.current) {
