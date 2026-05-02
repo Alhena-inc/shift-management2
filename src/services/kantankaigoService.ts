@@ -333,7 +333,14 @@ export async function syncFromKantankaigo(
         result.details.push({ name: kantanClient.name, action: 'created', kantankaigoId: kantanClient.kantankaigoId });
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      // SupabaseのPostgrestErrorはErrorインスタンスではないので、messageプロパティを直接取り出す
+      const msg = err instanceof Error
+        ? err.message
+        : (err && typeof err === 'object' && 'message' in err)
+          ? String((err as { message: unknown }).message)
+          : (() => {
+              try { return JSON.stringify(err); } catch { return String(err); }
+            })();
       result.errors.push(`${kantanClient.name}: ${msg}`);
       result.skipped++;
       result.details.push({ name: kantanClient.name, action: 'skipped', kantankaigoId: kantanClient.kantankaigoId });
