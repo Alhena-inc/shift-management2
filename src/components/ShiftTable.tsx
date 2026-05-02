@@ -3581,19 +3581,28 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           });
 
           try {
-            const updatedShifts = [...shiftsRef.current.filter(s => !shiftsToSave.some(newS => newS.id === s.id)), ...shiftsToSave];
+            // ★ 既存のdeleted=falseの同じid shift を除外し、新規shift追加。
+            //   さらに同じセル位置(helperId-date-rowIndex)で deleted=true のshiftが
+            //   残っていると shiftMap で衝突する可能性があるため、それも除外する
+            const targetCellKeys = new Set(
+              shiftsToSave.map(s => `${s.helperId}-${s.date}-${s.rowIndex}`)
+            );
+            const updatedShifts = [
+              ...shiftsRef.current.filter(s => {
+                if (shiftsToSave.some(newS => newS.id === s.id)) return false;
+                const cellKey = `${s.helperId}-${s.date}-${s.rowIndex}`;
+                if (targetCellKeys.has(cellKey)) return false;
+                return true;
+              }),
+              ...shiftsToSave
+            ];
             shiftsRef.current = updatedShifts;
             handleShiftsUpdate(updatedShifts);
-            await saveShiftsByYearMonth(shiftsToSave);
-            // 各セルの背景色を即座にDOM更新
+            // ★ 集計のみ更新（背景色はReactのレンダリングに任せる）
             shiftsToSave.forEach(s => {
-              const config = SERVICE_CONFIG[s.serviceType];
-              if (config) {
-                const td = document.querySelector(`td[data-cell-key="${s.helperId}-${s.date}-${s.rowIndex}"]`) as HTMLElement;
-                if (td) td.style.backgroundColor = config.bgColor;
-              }
               updateTotalsForHelperAndDate(s.helperId, s.date);
             });
+            await saveShiftsByYearMonth(shiftsToSave);
             console.log(`📋 ${shiftsToSave.length}件のケアをペーストしました`);
           } catch (error: unknown) {
             console.error('ペーストエラー:', error);
