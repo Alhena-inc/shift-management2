@@ -11,7 +11,7 @@ import { calculateShiftPay } from '../utils/salaryCalculations';
 import { getRowIndicesFromDayOffValue } from '../utils/timeSlots';
 import { devLog } from '../utils/logger';
 import { updateCancelStatus, removeCancelFields } from '../utils/cancelUtils';
-import { safeRemoveElement, safeQuerySelector, safeSetTextContent, safeSetStyle, safeQuerySelectorAll } from '../utils/safeDOM';
+import { safeRemoveElement, safeQuerySelector, safeSetStyle, safeQuerySelectorAll } from '../utils/safeDOM';
 import { DayData, WeekData, groupByWeek } from '../utils/dateUtils';
 
 // 最適化された入力セルコンポーネント（週払い管理表用）
@@ -1764,12 +1764,13 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       undoStackRef.push(undoData);
     }
 
-    // 4つのラインすべてをクリア（安全版）
+    // 4つのラインすべてのスタイルとクラスをクリア（テキストはReact再レンダーに任せる）
+    // Why: wrapper要素のtextContentを直接書き換えるとReactが管理する.cell-display子ノードが
+    //      失われ、次回のReact再レンダー時に NotFoundError: removeChild が発生するため。
     for (let lineIndex = 0; lineIndex < 4; lineIndex++) {
       const cellSelector = `.editable-cell-wrapper[data-row="${rowIndex}"][data-line="${lineIndex}"][data-helper="${helperId}"][data-date="${date}"]`;
       const cell = safeQuerySelector<HTMLElement>(cellSelector);
       if (cell) {
-        safeSetTextContent(cell, '');
         // 選択状態のクラスを削除
         if (cell.classList) {
           cell.classList.remove('cell-selected');
@@ -4807,12 +4808,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
             }
           }
 
-          // 3行目（index=2）の稼働時間を即座に更新
-          const durationCellSelector = `.editable-cell-wrapper[data-row="${rowIdx}"][data-line="2"][data-helper="${hId}"][data-date="${dt}"] .cell-display`;
-          const durationCell = document.querySelector(durationCellSelector);
-          if (durationCell) {
-            durationCell.textContent = restoredShift.duration ? restoredShift.duration.toString() : '';
-          }
+          // 稼働時間はReactの再レンダーに任せる（直接DOM書き換えはNotFoundErrorの原因になる）
         });
 
         if (restoredShifts.length === 0) return;
