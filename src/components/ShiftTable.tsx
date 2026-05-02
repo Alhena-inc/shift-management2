@@ -636,7 +636,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
     const map = new Map<string, Shift>();
     let canceledCount = 0;
     shifts.forEach(s => {
-      if (s.rowIndex !== undefined) {
+      if (s.rowIndex !== undefined && !s.deleted) {
         const key = `${s.helperId}-${s.date}-${s.rowIndex}`;
         map.set(key, s);
         if (s.cancelStatus) {
