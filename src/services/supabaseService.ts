@@ -1056,6 +1056,13 @@ export const subscribeToDayOffRequestsMap = (
 ): RealtimeChannel => {
   const docId = `${year}-${String(month).padStart(2, '0')}`;
 
+  // 初回データを即座に読み込む
+  loadDayOffRequests(year, month).then(requests => {
+    onUpdate(requests);
+  }).catch(error => {
+    console.error('休み希望の初回読み込みエラー:', error);
+  });
+
   const channel = supabase
     .channel(`dayoff-${docId}-${crypto.randomUUID()}`)
     .on(
@@ -1084,6 +1091,13 @@ export const subscribeToScheduledDayOffs = (
 ): RealtimeChannel => {
   const docId = `${year}-${String(month).padStart(2, '0')}`;
 
+  // 初回データを即座に読み込む
+  loadScheduledDayOffs(year, month).then(scheduledDayOffs => {
+    onUpdate(scheduledDayOffs);
+  }).catch(error => {
+    console.error('指定休の初回読み込みエラー:', error);
+  });
+
   const channel = supabase
     .channel(`scheduled-${docId}-${crypto.randomUUID()}`)
     .on(
@@ -1111,6 +1125,13 @@ export const subscribeToDisplayTextsMap = (
   onUpdate: (texts: Map<string, string>) => void
 ): RealtimeChannel => {
   const docId = `${year}-${String(month).padStart(2, '0')}`;
+
+  // 初回データを即座に読み込む
+  loadDisplayTexts(year, month).then(texts => {
+    onUpdate(texts);
+  }).catch(error => {
+    console.error('表示テキストの初回読み込みエラー:', error);
+  });
 
   const channel = supabase
     .channel(`display-${docId}-${crypto.randomUUID()}`)
