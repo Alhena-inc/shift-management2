@@ -16,8 +16,8 @@ export function calculateNightHours(timeRange: string, crossesDay: boolean = fal
   let start = parseInt(startHour) * 60 + parseInt(startMin);
   let end = parseInt(endHour) * 60 + parseInt(endMin);
 
-  // 日跨ぎは明示フラグ ON のときだけ翌日扱いにする
-  if (crossesDay && end <= start) {
+  // 日跨ぎは明示フラグ ON のときだけ翌日扱いにする（end が start 以下でも以上でも +24h）
+  if (crossesDay) {
     end += 24 * 60;
   }
   if (end <= start) return 0;
@@ -45,8 +45,8 @@ export function calculateRegularHours(timeRange: string, crossesDay: boolean = f
   let start = parseInt(startHour) * 60 + parseInt(startMin);
   let end = parseInt(endHour) * 60 + parseInt(endMin);
 
-  // 日跨ぎは明示フラグ ON のときだけ翌日扱いにする
-  if (crossesDay && end <= start) {
+  // 日跨ぎは明示フラグ ON のときだけ翌日扱いにする（end が start 以下でも以上でも +24h）
+  if (crossesDay) {
     end += 24 * 60;
   }
   if (end <= start) return 0;
@@ -78,10 +78,12 @@ export function calculateTimeDuration(timeRange: string, crossesDay: boolean = f
   const start = parseInt(startHour) * 60 + parseInt(startMin);
   let end = parseInt(endHour) * 60 + parseInt(endMin);
 
-  // 日跨ぎは明示フラグ ON のときだけ翌日扱いにする
-  // （以前は end<=start で自動翌日扱いしていたが、入力ミス時に
-  // 「8:30-8:30」が 24h として保存されるバグの原因になっていた）
-  if (crossesDay && end <= start) {
+  // 日跨ぎは明示フラグ ON のときだけ翌日扱いにする（end が start 以下でも以上でも +24h）
+  // 例: 8:00-8:30 + crossesDay=true → 24.5h（翌日の 8:30 まで）
+  // 例: 22:00-6:00 + crossesDay=true → 8h（翌朝の 6:00 まで）
+  // 以前は end<=start で自動翌日扱いしていたが、入力ミス時に
+  // 「8:30-8:30」が 24h として保存されるバグの原因になっていた
+  if (crossesDay) {
     end += 24 * 60; // 24時間（1440分）を加算
   }
 
