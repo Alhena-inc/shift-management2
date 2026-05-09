@@ -11,15 +11,21 @@ function roundHours(hours: number): number {
  * end と start から、自動的に日跨ぎ扱いするか判定して、
  * end の最終値（必要なら +24h）を返す。
  *
- * 運用ルール: 24時間や23時間のような長時間ケアは存在しないので、
- * end <= start ならすべて日跨ぎとして翌日扱いにする。
+ * 運用ルール: シフトは「朝〜朝」または「夕方〜朝」。
+ * 朝/夕方の境界は 12:00（正午）。
  *
- * 仕様:
- *   end <= start → +24h（夜勤として翌日まで）
- *   end >  start → そのまま
+ *   朝(0-11) → 朝(0-11)   : 同日内（差が負なら 0h）
+ *   朝(0-11) → 夕方(12-23): 同日内
+ *   夕方     → 朝         : 日跨ぎ（+24h）
+ *   夕方     → 夕方        : 同日内（差が負なら 0h）
  */
+const NOON_MINUTES = 12 * 60; // 12:00
+
 function adjustEndForCrossDay(start: number, end: number): number {
-  if (end <= start) {
+  const startIsAfternoon = start >= NOON_MINUTES;
+  const endIsMorning = end < NOON_MINUTES;
+  // 夕方開始 → 朝終了 のときだけ翌日扱い
+  if (startIsAfternoon && endIsMorning) {
     return end + 24 * 60;
   }
   return end;
