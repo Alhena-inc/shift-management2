@@ -12,6 +12,42 @@ interface ExpensePeriodModalProps {
   month: number;
 }
 
+// 直前に使った期間を localStorage に保存して、次回モーダルを開いた時に再現する
+const STORAGE_KEY = 'expensePeriodModal:lastRange';
+
+interface SavedRange {
+  yearMonth: string;       // "2026-04" など、どの月で使った値か
+  kotsuhi: { start: string; end: string };
+  keihi:   { start: string; end: string };
+}
+
+function loadSavedRange(): SavedRange | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed.yearMonth === 'string' &&
+      parsed.kotsuhi?.start && parsed.kotsuhi?.end &&
+      parsed.keihi?.start   && parsed.keihi?.end
+    ) {
+      return parsed as SavedRange;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function saveRange(range: SavedRange): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(range));
+  } catch {
+    // localStorage 利用不可の環境は無視
+  }
+}
+
 /**
  * datetime-local input 用に "YYYY-MM-DDTHH:mm" 形式の文字列を作る
  */
@@ -55,21 +91,33 @@ function calculateDefaultRange(year: number, month: number) {
 
 export function ExpensePeriodModal({ isOpen, onClose, onSubmit, year, month }: ExpensePeriodModalProps) {
   const defaults = useMemo(() => calculateDefaultRange(year, month), [year, month]);
+  const yearMonthKey = `${year}-${String(month).padStart(2, '0')}`;
 
-  const [kotsuhiStart, setKotsuhiStart] = useState(defaults.kotsuhi.start);
-  const [kotsuhiEnd,   setKotsuhiEnd]   = useState(defaults.kotsuhi.end);
-  const [keihiStart,   setKeihiStart]   = useState(defaults.keihi.start);
-  const [keihiEnd,     setKeihiEnd]     = useState(defaults.keihi.end);
+  // モーダルを開いたときの初期値:
+  //   1) 前回保存した値（同じ月で取得した履歴）があればそれを使う
+  //   2) なければデフォルト計算値
+  const initialRange = useMemo(() => {
+    const saved = loadSavedRange();
+    if (saved && saved.yearMonth === yearMonthKey) {
+      return saved;
+    }
+    return { yearMonth: yearMonthKey, ...defaults };
+  }, [yearMonthKey, defaults]);
 
-  // 月切替時にデフォルト値を再適用
+  const [kotsuhiStart, setKotsuhiStart] = useState(initialRange.kotsuhi.start);
+  const [kotsuhiEnd,   setKotsuhiEnd]   = useState(initialRange.kotsuhi.end);
+  const [keihiStart,   setKeihiStart]   = useState(initialRange.keihi.start);
+  const [keihiEnd,     setKeihiEnd]     = useState(initialRange.keihi.end);
+
+  // モーダル開いたとき / 月切替時に初期値を再適用
   useEffect(() => {
     if (isOpen) {
-      setKotsuhiStart(defaults.kotsuhi.start);
-      setKotsuhiEnd(defaults.kotsuhi.end);
-      setKeihiStart(defaults.keihi.start);
-      setKeihiEnd(defaults.keihi.end);
+      setKotsuhiStart(initialRange.kotsuhi.start);
+      setKotsuhiEnd(initialRange.kotsuhi.end);
+      setKeihiStart(initialRange.keihi.start);
+      setKeihiEnd(initialRange.keihi.end);
     }
-  }, [isOpen, defaults]);
+  }, [isOpen, initialRange]);
 
   if (!isOpen) return null;
 
@@ -86,6 +134,12 @@ export function ExpensePeriodModal({ isOpen, onClose, onSubmit, year, month }: E
       alert('経費の終了日時は開始日時より後にしてください');
       return;
     }
+    // 取得時の期間を保存（次回モーダルを開いたときの初期値になる）
+    saveRange({
+      yearMonth: yearMonthKey,
+      kotsuhi: { start: kotsuhiStart, end: kotsuhiEnd },
+      keihi:   { start: keihiStart,   end: keihiEnd   },
+    });
     onSubmit({
       kotsuhi: { start: kotsuhiStart, end: kotsuhiEnd },
       keihi:   { start: keihiStart,   end: keihiEnd   },
@@ -116,8 +170,19 @@ export function ExpensePeriodModal({ isOpen, onClose, onSubmit, year, month }: E
         </div>
 
         <div className="p-6 space-y-6">
-          <div className="text-sm text-gray-600">
-            対象月：<span className="font-semibold">{year}年{month}月</span>
+          <div className="text-sm text-gray-600 flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span>対象月：<span className="font-semibold">{year}年{month}月</span></span>
+            {initialRange.yearMonth === yearMonthKey && (() => {
+              const saved = loadSavedRange();
+              if (saved && saved.yearMonth === yearMonthKey) {
+                return (
+                  <span className="text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+                    前回取得した期間を表示中
+                  </span>
+                );
+              }
+              return null;
+            })()}
           </div>
 
           {/* 交通費期間 */}
