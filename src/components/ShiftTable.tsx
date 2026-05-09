@@ -5194,6 +5194,52 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
     menu.appendChild(yoteiBtn);
 
+    // 「日を跨ぐ」トグルボタン
+    // 対象シフトの crossesDay 状態を見て、すべて ON なら「OFF にする」、それ以外は「ON にする」
+    const targetShiftsForCross = targetRows
+      .map(key => {
+        const parts = key.split('-');
+        const ri = parseInt(parts[parts.length - 1]);
+        const d = parts.slice(parts.length - 4, parts.length - 1).join('-');
+        const hid = parts.slice(0, parts.length - 4).join('-');
+        const ck = `${hid}-${d}-${ri}`;
+        return shiftsRef.current.find(s => `${s.helperId}-${s.date}-${s.rowIndex}` === ck);
+      })
+      .filter((s): s is Shift => Boolean(s));
+
+    if (targetShiftsForCross.length > 0) {
+      const allCrossing = targetShiftsForCross.every(s => s.crossesDay === true);
+      const nextCrossing = !allCrossing; // トグル後の値
+
+      const crossDayBtn = document.createElement('div');
+      crossDayBtn.textContent = nextCrossing ? '🌙 日を跨ぐ ON' : '🌙 日を跨ぐ OFF';
+      crossDayBtn.style.padding = '8px 16px';
+      crossDayBtn.style.cursor = 'pointer';
+      crossDayBtn.style.color = '#1e3a8a';
+      crossDayBtn.style.borderTop = '1px solid #e5e7eb';
+      crossDayBtn.onmouseover = () => crossDayBtn.style.backgroundColor = '#dbeafe';
+      crossDayBtn.onmouseout = () => crossDayBtn.style.backgroundColor = 'transparent';
+      crossDayBtn.onclick = () => {
+        safelyRemoveMenu();
+        let nextShifts = shiftsRef.current;
+        targetShiftsForCross.forEach(existing => {
+          // crossesDay フラグを切り替え、duration を再計算
+          const timeRange = `${existing.startTime} - ${existing.endTime}`;
+          const newDurationStr = calculateTimeDuration(timeRange, nextCrossing);
+          const newDuration = parseFloat(newDurationStr || '0') || 0;
+          const updated: Shift = {
+            ...existing,
+            crossesDay: nextCrossing,
+            duration: newDuration,
+          };
+          nextShifts = nextShifts.map(s => s.id === existing.id ? updated : s);
+          saveShiftWithCorrectYearMonth(updated);
+        });
+        handleShiftsUpdate(nextShifts, true);
+      };
+      menu.appendChild(crossDayBtn);
+    }
+
     document.body.appendChild(menu);
 
     // 外部クリックでメニューを閉じる

@@ -529,6 +529,7 @@ export const saveShiftsForMonth = async (year: number, month: number, shifts: Sh
         date: shift.date,
         start_time: formattedStartTime || '00:00:00', // nullの場合はデフォルト値
         end_time: formattedEndTime || formattedStartTime || '00:00:00', // nullの場合は開始時間を使用、それもなければデフォルト値
+        crosses_day: shift.crossesDay || false, // 日跨ぎフラグ
         helper_id: shift.helperId,
         client_name: shift.clientName || '',
         users_care_id: shift.usersCareId || null,
@@ -671,6 +672,7 @@ export const loadShiftsForMonth = async (year: number, month: number, retryCount
         date: row.date,
         startTime: formatTimeToHHMM(row.start_time),
         endTime: formatTimeToHHMM(row.end_time),
+        crossesDay: row.crosses_day === true, // 日跨ぎフラグ（カラムなしのときは false）
         helperId: row.helper_id || '',
         clientName: row.client_name,
         usersCareId: row.users_care_id || undefined,
@@ -1231,6 +1233,7 @@ export const saveShift = async (shift: Shift): Promise<void> => {
         date: shift.date,
         start_time: shift.startTime,
         end_time: shift.endTime,
+        crosses_day: shift.crossesDay || false,
         helper_id: shift.helperId,
         client_name: shift.clientName,
         service_type: shift.serviceType,
