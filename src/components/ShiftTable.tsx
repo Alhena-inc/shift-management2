@@ -13,6 +13,7 @@ import { devLog } from '../utils/logger';
 import { updateCancelStatus, removeCancelFields } from '../utils/cancelUtils';
 import { safeRemoveElement, safeQuerySelector, safeSetStyle, safeQuerySelectorAll } from '../utils/safeDOM';
 import { DayData, WeekData, groupByWeek } from '../utils/dateUtils';
+import { ExpensePeriodModal } from './ExpensePeriodModal';
 
 // 最適化された入力セルコンポーネント（週払い管理表用）
 interface OptimizedInputCellProps {
@@ -2505,12 +2506,31 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
   }, [helpers, year, month]);
 
   // 交通費・経費APIからデータを取得して反映
-  const fetchAndUpdateExpenseData = useCallback(async (skipConfirmation = false) => {
+  // customRange を渡すと、Apps Script 側に期間パラメータを渡してその期間で集計させる
+  const fetchAndUpdateExpenseData = useCallback(async (
+    skipConfirmation = false,
+    customRange?: {
+      kotsuhi?: { start: string; end: string }; // YYYY-MM-DDTHH:mm
+      keihi?:   { start: string; end: string };
+    }
+  ) => {
     const EXPENSE_API_URL = 'https://script.google.com/macros/s/AKfycbxpVQQVwhdYDPNwZ0kCOUVNyWUKDo6lNirKQVPDKubYfQYIP2nyHqSAWJBnIsHazqVavg/exec';
 
     try {
       const monthStr = `${year}/${String(month).padStart(2, '0')}`;
-      const url = `${EXPENSE_API_URL}?action=aggregate&month=${encodeURIComponent(monthStr)}&type=both`;
+      const params = new URLSearchParams();
+      params.set('action', 'aggregate');
+      params.set('month', monthStr);
+      params.set('type', 'both');
+      if (customRange?.kotsuhi) {
+        params.set('kotsuhiStart', customRange.kotsuhi.start);
+        params.set('kotsuhiEnd', customRange.kotsuhi.end);
+      }
+      if (customRange?.keihi) {
+        params.set('keihiStart', customRange.keihi.start);
+        params.set('keihiEnd', customRange.keihi.end);
+      }
+      const url = `${EXPENSE_API_URL}?${params.toString()}`;
 
 
       const response = await fetch(url);
@@ -2770,6 +2790,9 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       }
     }
   }, [helpers, year, month]);
+
+  // 「🔄 交通費・経費更新」モーダルの開閉
+  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
 
   // 交通費・経費データの取得済みフラグ（年月ごとの重複取得防止）
   const lastFetchedMonthRef = useRef<string | null>(null);
@@ -6058,9 +6081,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold bg-purple-100 p-3 rounded">💰 週払い管理表</h2>
           <button
-            onClick={() => {
-              fetchAndUpdateExpenseData(false); // 手動更新なので確認あり
-            }}
+            onClick={() => setIsExpenseModalOpen(true)}
             className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-semibold"
           >
             🔄 交通費・経費更新
@@ -6355,6 +6376,16 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         </div>
       </div>
 
+      <ExpensePeriodModal
+        isOpen={isExpenseModalOpen}
+        onClose={() => setIsExpenseModalOpen(false)}
+        onSubmit={(range) => {
+          setIsExpenseModalOpen(false);
+          fetchAndUpdateExpenseData(false, range); // 手動更新なので確認あり、カスタム期間で取得
+        }}
+        year={year}
+        month={month}
+      />
     </div>
   );
 };
