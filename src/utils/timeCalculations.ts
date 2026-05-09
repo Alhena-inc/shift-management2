@@ -7,23 +7,19 @@ function roundHours(hours: number): number {
   return Math.round(hours * 10) / 10;
 }
 
-// 「日を跨ぐ」と自動判定する開始時刻の境界（分）
-// 16:00 以降に開始したシフトで end < start なら夜勤として翌日扱い、
-// それより前（朝・昼）に開始したシフトは入力ミスとみなして 0h に丸める。
-const CROSS_DAY_START_THRESHOLD_MINUTES = 16 * 60; // 16:00
-
 /**
  * end と start から、自動的に日跨ぎ扱いするか判定して、
  * end の最終値（必要なら +24h）を返す。
  *
+ * 運用ルール: 24時間や23時間のような長時間ケアは存在しないので、
+ * end <= start ならすべて日跨ぎとして翌日扱いにする。
+ *
  * 仕様:
- *   end == start                     → 0h（誤入力ガード）扱いを呼び出し側で判定
- *   end <  start かつ start >= 16:00 → +24h（夜勤）
- *   end <  start かつ start <  16:00 → そのまま（朝始まりは日を跨がない運用）
- *   end >  start                     → そのまま
+ *   end <= start → +24h（夜勤として翌日まで）
+ *   end >  start → そのまま
  */
 function adjustEndForCrossDay(start: number, end: number): number {
-  if (end < start && start >= CROSS_DAY_START_THRESHOLD_MINUTES) {
+  if (end <= start) {
     return end + 24 * 60;
   }
   return end;
@@ -32,9 +28,8 @@ function adjustEndForCrossDay(start: number, end: number): number {
 // 深夜時間帯（22時～翌朝8時）の時間数を計算する関数
 // 第2引数 crossesDay は後方互換のため残しているが、計算には使わない
 // 仕様（adjustEndForCrossDay 参照）:
-//   end == start                     → 0h（誤入力ガード）
-//   end <  start かつ start >= 16:00 → +24h（夜勤）
-//   end <  start かつ start <  16:00 → 0h（朝始まりは日を跨がない運用）
+//   end <= start → +24h（夜勤として翌日まで自動扱い）
+//   end >  start → 通常通り
 export function calculateNightHours(timeRange: string, _crossesDay: boolean = false): number {
   const match = timeRange.match(/(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})/);
   if (!match) return 0;
@@ -43,11 +38,7 @@ export function calculateNightHours(timeRange: string, _crossesDay: boolean = fa
   const start = parseInt(startHour) * 60 + parseInt(startMin);
   const rawEnd = parseInt(endHour) * 60 + parseInt(endMin);
 
-  // 同時刻は 0h（誤入力ガード）
-  if (rawEnd === start) return 0;
-
   const end = adjustEndForCrossDay(start, rawEnd);
-  if (end <= start) return 0;
 
   const nightStart = 22 * 60; // 22:00 = 1320分
   const nightEnd = (24 + 8) * 60; // 翌朝8:00 = 1920分
@@ -73,11 +64,7 @@ export function calculateRegularHours(timeRange: string, _crossesDay: boolean = 
   const start = parseInt(startHour) * 60 + parseInt(startMin);
   const rawEnd = parseInt(endHour) * 60 + parseInt(endMin);
 
-  // 同時刻は 0h（誤入力ガード）
-  if (rawEnd === start) return 0;
-
   const end = adjustEndForCrossDay(start, rawEnd);
-  if (end <= start) return 0;
 
   const nightStart = 22 * 60; // 22:00
   const nightEnd = (24 + 8) * 60; // 翌朝8:00
@@ -100,10 +87,8 @@ export function calculateRegularHours(timeRange: string, _crossesDay: boolean = 
 // 時間差を計算する関数
 // 第2引数 crossesDay は後方互換のため残しているが、計算には使わない
 // 仕様（adjustEndForCrossDay 参照）:
-//   end == start                     → 0h（誤入力ガード）
-//   end <  start かつ start >= 16:00 → +24h（夜勤）
-//   end <  start かつ start <  16:00 → 0h（朝始まりは日を跨がない運用）
-//   end >  start                     → 通常通り
+//   end <= start → +24h（夜勤として翌日まで自動扱い）
+//   end >  start → 通常通り
 export function calculateTimeDuration(timeRange: string, _crossesDay: boolean = false): string {
   const match = timeRange.match(/(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})/);
   if (!match) return '';
@@ -111,9 +96,6 @@ export function calculateTimeDuration(timeRange: string, _crossesDay: boolean = 
   const [, startHour, startMin, endHour, endMin] = match;
   const start = parseInt(startHour) * 60 + parseInt(startMin);
   const rawEnd = parseInt(endHour) * 60 + parseInt(endMin);
-
-  // 同時刻は 0h（誤入力ガード）
-  if (rawEnd === start) return '0';
 
   const end = adjustEndForCrossDay(start, rawEnd);
 

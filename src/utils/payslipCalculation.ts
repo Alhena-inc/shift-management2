@@ -105,21 +105,12 @@ export function calculateNormalAndNightHours(
   let end = parseTime(endTime);
 
   // 仕様（crossesDay フラグは後方互換のため残しているが、計算には使わない）:
-  //   end == start                     → 0h（誤入力ガード。「8:30-8:30」を 24h と扱わない）
-  //   end <  start かつ start >= 16:00 → +24h（夜勤として翌日まで）
-  //   end <  start かつ start <  16:00 → 0h（朝始まりは日を跨がない運用）
-  //   end >  start                     → 通常通り
+  //   end <= start → +24h（夜勤として翌日まで自動扱い）
+  //   end >  start → 通常通り
+  // 24時間や23時間のような長時間ケアは存在しないので、シンプルに自動日跨ぎ。
   void crossesDay;
-  if (end === start) {
-    return { normalHours: 0, nightHours: 0 };
-  }
-  const CROSS_DAY_START_THRESHOLD_MINUTES = 16 * 60; // 16:00
-  if (end < start) {
-    if (start >= CROSS_DAY_START_THRESHOLD_MINUTES) {
-      end += 24 * 60;
-    } else {
-      return { normalHours: 0, nightHours: 0 };
-    }
+  if (end <= start) {
+    end += 24 * 60;
   }
 
   const totalMinutes = end - start;
