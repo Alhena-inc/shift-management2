@@ -59,7 +59,7 @@ function calculateSpecialAllowance(
     let totalHours = 0;
 
     matchingShifts.forEach(shift => {
-      const { normalHours, nightHours } = calculateNormalAndNightHours(shift.startTime, shift.endTime);
+      const { normalHours, nightHours } = calculateNormalAndNightHours(shift.startTime, shift.endTime, shift.crossesDay);
       // 通常時間と深夜時間の合計（深夜は25%割増だが、特別手当は時間に対してのみ計算）
       totalHours += normalHours + nightHours;
     });
@@ -93,16 +93,27 @@ function parseTime(timeStr: string): number {
  * @param endTime 終了時間（"HH:mm"）
  * @returns { normalHours, nightHours }
  */
-export function calculateNormalAndNightHours(startTime: string, endTime: string): {
+export function calculateNormalAndNightHours(
+  startTime: string,
+  endTime: string,
+  crossesDay: boolean = false
+): {
   normalHours: number;
   nightHours: number;
 } {
   let start = parseTime(startTime);
   let end = parseTime(endTime);
 
-  // 日跨ぎ対応
-  if (end <= start) {
+  // 日跨ぎ対応：明示フラグ ON のときだけ翌日扱いにする
+  // （以前は end <= start で自動翌日扱いしていたが、入力ミス時に
+  // 「8:30-8:30」が 24h として計上されるバグの原因になっていた）
+  if (crossesDay && end <= start) {
     end += 24 * 60;
+  }
+
+  // フラグ未指定で end <= start の場合は 0h 扱い（警告は呼び出し元で表示）
+  if (end <= start) {
+    return { normalHours: 0, nightHours: 0 };
   }
 
   const totalMinutes = end - start;
@@ -269,7 +280,7 @@ export function generateFixedPayslipFromShifts(
       let salesWork = 0;
 
       dayShifts.forEach(shift => {
-        const { normalHours, nightHours } = calculateNormalAndNightHours(shift.startTime, shift.endTime);
+        const { normalHours, nightHours } = calculateNormalAndNightHours(shift.startTime, shift.endTime, shift.crossesDay);
 
         // サービス種別ごとに分類
         if (['shintai', 'judo', 'kaji', 'tsuin', 'ido', 'kodo_engo', 'shinya'].includes(shift.serviceType)) {
@@ -663,7 +674,7 @@ export function generateHourlyPayslipFromShifts(
       // 時間の計算（start/endがない場合はdurationを通常時間として扱う）
       const { normalHours, nightHours } =
         shift.startTime && shift.endTime
-          ? calculateNormalAndNightHours(shift.startTime, shift.endTime)
+          ? calculateNormalAndNightHours(shift.startTime, shift.endTime, shift.crossesDay)
           : { normalHours: shift.duration || 0, nightHours: 0 };
 
       // サービス種別ごとに分類

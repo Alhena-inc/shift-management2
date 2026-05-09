@@ -428,6 +428,7 @@ export interface Shift {
   serviceType: ServiceType;
   startTime: string;      // HH:mm
   endTime: string;        // HH:mm
+  crossesDay?: boolean;   // true のとき endTime は翌日扱い（夜勤等）
   duration: number;       // 時間数
   area: string;           // 区域
   sequence?: number;      // 連番（/2 など）
