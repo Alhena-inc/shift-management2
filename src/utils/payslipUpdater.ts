@@ -192,7 +192,14 @@ export const recalculatePayslip = (updated: any, helper?: Helper) => {
         updated.standardRemuneration = hasSocialInsCalc ? stdRemuneration : '';
     }
 
-    const insurance = calculateInsurance(stdRemuneration, monthlySalaryTotal, updated.age || 0, calcTypes, nonTaxableOther);
+    const insurance = calculateInsurance(
+        stdRemuneration,
+        monthlySalaryTotal,
+        updated.age || 0,
+        calcTypes,
+        nonTaxableOther,
+        { year: updated.year, month: updated.month } // 適用料率を支給対象年月で判定
+    );
     if (updated.deductions.manualHealthInsurance === undefined) updated.deductions.healthInsurance = insurance.healthInsurance;
     if (updated.deductions.manualCareInsurance === undefined) updated.deductions.careInsurance = insurance.careInsurance;
     if (updated.deductions.manualPensionInsurance === undefined) updated.deductions.pensionInsurance = insurance.pensionInsurance;

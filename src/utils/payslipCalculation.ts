@@ -449,7 +449,8 @@ export function generateFixedPayslipFromShifts(
         insuranceBaseAmount, // 雇用保険用の課税支給額
         age,
         insuranceTypes,
-        nonTaxableTransportAllowance // 非課税その他手当（雇用保険料計算用、交通費立替・手当は除外）
+        nonTaxableTransportAllowance, // 非課税その他手当（雇用保険料計算用、交通費立替・手当は除外）
+        { year: payslip.year, month: payslip.month } // 適用料率を支給対象年月で判定
       )
       : { healthInsurance: 0, careInsurance: 0, pensionInsurance: 0, employmentInsurance: 0, total: 0 };
 
@@ -937,7 +938,8 @@ export function generateHourlyPayslipFromShifts(
         salaryCoreAmount, // 雇用保険用の課税支給額
         age,
         insuranceTypes,
-        nonTaxableTransportAllowance // 非課税その他手当（雇用保険料計算用、交通費立替・手当は除外）
+        nonTaxableTransportAllowance, // 非課税その他手当（雇用保険料計算用、交通費立替・手当は除外）
+        { year: payslip.year, month: payslip.month } // 適用料率を支給対象年月で判定
       )
       : { healthInsurance: 0, careInsurance: 0, pensionInsurance: 0, employmentInsurance: 0, total: 0 };
 

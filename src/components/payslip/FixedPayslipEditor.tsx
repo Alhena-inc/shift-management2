@@ -84,7 +84,8 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
         insuranceBaseAmount,
         newPayslip.age || 0,
         insuranceTypes,
-        nonTaxableOtherAllowances
+        nonTaxableOtherAllowances,
+        { year: newPayslip.year, month: newPayslip.month } // 適用料率を支給対象年月で判定
       );
 
       if (!newPayslip.deductions.manualHealthInsurance) newPayslip.deductions.healthInsurance = insurance.healthInsurance;

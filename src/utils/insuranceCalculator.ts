@@ -2,9 +2,16 @@
  * 社会保険料計算（大阪府協会けんぽ準拠）
  *
  * 保険料率（従業員負担分）:
+ * 〜2026年2月（令和8年2月）まで:
  * - 健康保険: 5.12%
  * - 介護保険: 0.80%（40歳以上のみ）
  * - 厚生年金: 9.15%
+ * - 雇用保険: 0.55%
+ *
+ * 2026年3月（令和8年3月）以降:
+ * - 健康保険: 5.065%（10.13% 折半）
+ * - 介護保険: 0.81%（1.62% 折半、40歳以上のみ）
+ * - 厚生年金: 9.15%（変更なし）
  * - 雇用保険: 0.55%
  */
 
@@ -107,12 +114,45 @@ const PENSION_STANDARD_REMUNERATION_TABLE: Array<[number, number, number]> = [
 /**
  * 保険料率（従業員負担分）
  */
-const INSURANCE_RATES = {
+type InsuranceRates = {
+  health: number;
+  care: number;
+  pension: number;
+  employment: number;
+};
+
+const INSURANCE_RATES_LEGACY: InsuranceRates = {
   health: 0.0512,       // 健康保険 5.12%
   care: 0.008,          // 介護保険 0.80%（40歳以上）
   pension: 0.0915,      // 厚生年金 9.15%
   employment: 0.0055,   // 雇用保険 0.55%
 };
+
+// 2026年3月（令和8年3月）以降の改定料率
+const INSURANCE_RATES_2026_03: InsuranceRates = {
+  health: 0.05065,      // 健康保険 5.065%（10.13% 折半）
+  care: 0.0081,         // 介護保険 0.81%（1.62% 折半）
+  pension: 0.0915,      // 厚生年金 9.15%（変更なし）
+  employment: 0.0055,   // 雇用保険 0.55%
+};
+
+/**
+ * 給与支給対象年月から適用する料率を選択
+ *
+ * - 2026年3月（令和8年3月）以降: 改定料率
+ * - それ以前 / 未指定: 旧料率（過去明細の再計算で料率が改ざんされないよう、
+ *   未指定時は旧料率をデフォルトとする）
+ */
+export function getInsuranceRates(yearMonth?: { year?: number; month?: number }): InsuranceRates {
+  const year = yearMonth?.year;
+  const month = yearMonth?.month;
+  if (typeof year === 'number' && typeof month === 'number') {
+    if (year > 2026 || (year === 2026 && month >= 3)) {
+      return INSURANCE_RATES_2026_03;
+    }
+  }
+  return INSURANCE_RATES_LEGACY;
+}
 
 /**
  * 健康保険の標準報酬月額を取得
@@ -161,7 +201,8 @@ export function calculateInsurance(
   monthlySalaryTotal: number,
   age: number = 0,
   insuranceTypes: string[] = [],
-  nonTaxableTransportAllowance: number = 0
+  nonTaxableTransportAllowance: number = 0,
+  yearMonth?: { year?: number; month?: number }
 ): {
   healthInsurance: number;
   careInsurance: number;
@@ -169,6 +210,8 @@ export function calculateInsurance(
   employmentInsurance: number;
   total: number;
 } {
+  const rates = getInsuranceRates(yearMonth);
+
   let healthInsurance = 0;
   let careInsurance = 0;
   let pensionInsurance = 0;
@@ -177,25 +220,25 @@ export function calculateInsurance(
   // 健康保険（社会保険に加入している場合）
   // 標準報酬月額で計算（テーブル参照しない）
   if (insuranceTypes.includes('health')) {
-    healthInsurance = Math.round(standardRemuneration * INSURANCE_RATES.health);
+    healthInsurance = Math.round(standardRemuneration * rates.health);
 
     // 介護保険（40歳以上かつ健康保険加入者のみ）
     if (age >= 40 && insuranceTypes.includes('care')) {
-      careInsurance = Math.round(standardRemuneration * INSURANCE_RATES.care);
+      careInsurance = Math.round(standardRemuneration * rates.care);
     }
   }
 
   // 厚生年金（社会保険に加入している場合）
   // 標準報酬月額で計算（テーブル参照しない）
   if (insuranceTypes.includes('pension')) {
-    pensionInsurance = Math.round(standardRemuneration * INSURANCE_RATES.pension);
+    pensionInsurance = Math.round(standardRemuneration * rates.pension);
   }
 
   // 雇用保険（課税支給額 + 非課税通勤手当で計算）
   // 端数処理：50銭以下切り捨て、51銭以上切り上げ
   if (insuranceTypes.includes('employment')) {
     const employmentInsuranceBase = monthlySalaryTotal + nonTaxableTransportAllowance;
-    const rawValue = employmentInsuranceBase * INSURANCE_RATES.employment;
+    const rawValue = employmentInsuranceBase * rates.employment;
     const decimal = rawValue - Math.floor(rawValue);
 
     if (decimal <= 0.5) {
@@ -224,9 +267,10 @@ export function formatInsuranceBreakdown(
   monthlySalaryTotal: number,
   age: number,
   insuranceTypes: string[],
-  nonTaxableTransportAllowance: number = 0
+  nonTaxableTransportAllowance: number = 0,
+  yearMonth?: { year?: number; month?: number }
 ): string {
-  const insurance = calculateInsurance(standardRemuneration, monthlySalaryTotal, age, insuranceTypes, nonTaxableTransportAllowance);
+  const insurance = calculateInsurance(standardRemuneration, monthlySalaryTotal, age, insuranceTypes, nonTaxableTransportAllowance, yearMonth);
 
   const lines: string[] = [
     `標準報酬月額: ${standardRemuneration.toLocaleString()}円`,
