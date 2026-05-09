@@ -2794,29 +2794,48 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
   // 「🔄 交通費・経費更新」モーダルの開閉
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
 
-  // 交通費・経費データの取得済みフラグ（年月ごとの重複取得防止）
-  const lastFetchedMonthRef = useRef<string | null>(null);
+  // 自動取得は廃止。「🔄 交通費・経費更新」ボタンを押した時のみ取得する。
 
-  // ページ読み込み時・月が変わったときに自動的に交通費・経費データを取得
-  useEffect(() => {
-    // 初回読み込み時とヘルパーデータがある場合に実行
-    if (helpers.length > 0) {
-      const currentMonthKey = `${year}-${month}`;
+  // 当月の交通費・経費データを全削除
+  const clearMonthlyExpenseData = useCallback(async () => {
+    const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+    const targetHelpers = helpers.filter(h => {
+      const m = h.monthlyPayments?.[monthKey];
+      return m && ((m.transportationAllowance || 0) > 0 || (m.advanceExpense || 0) > 0);
+    });
 
-      // すでに同じ月のデータを取得済みの場合はスキップ
-      if (lastFetchedMonthRef.current === currentMonthKey) {
-        return;
-      }
-
-      // 少し遅延させてから実行（ヘルパーデータの読み込み完了を待つ）
-      const timer = setTimeout(() => {
-        fetchAndUpdateExpenseData(true); // 自動取得なので確認なし
-        lastFetchedMonthRef.current = currentMonthKey;
-      }, 1000);
-
-      return () => clearTimeout(timer);
+    if (targetHelpers.length === 0) {
+      alert(`${year}年${month}月の交通費・経費データはありません`);
+      return;
     }
-  }, [year, month, helpers.length, fetchAndUpdateExpenseData]);
+
+    const confirmMessage = `${year}年${month}月の交通費・経費データを全削除します。\n\n対象: ${targetHelpers.length}名のヘルパー\n\nよろしいですか？`;
+    if (!confirm(confirmMessage)) return;
+
+    const updatedHelpers = helpers.map(h => {
+      const m = h.monthlyPayments?.[monthKey];
+      if (!m) return h;
+      return {
+        ...h,
+        monthlyPayments: {
+          ...h.monthlyPayments,
+          [monthKey]: {
+            ...m,
+            transportationAllowance: 0,
+            advanceExpense: 0,
+          },
+        },
+      };
+    });
+
+    try {
+      await saveHelpers(updatedHelpers);
+      alert(`✅ ${year}年${month}月の交通費・経費を削除しました（${targetHelpers.length}名）`);
+    } catch (error) {
+      console.error('交通費・経費削除エラー:', error);
+      alert('❌ 削除に失敗しました');
+    }
+  }, [helpers, year, month]);
 
 
   // 給与データを更新・保存する関数（デバウンス付き）
@@ -6080,12 +6099,20 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       <div className="mt-12 mb-8">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold bg-purple-100 p-3 rounded">💰 週払い管理表</h2>
-          <button
-            onClick={() => setIsExpenseModalOpen(true)}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-semibold"
-          >
-            🔄 交通費・経費更新
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setIsExpenseModalOpen(true)}
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-semibold"
+            >
+              🔄 交通費・経費更新
+            </button>
+            <button
+              onClick={clearMonthlyExpenseData}
+              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-semibold"
+            >
+              🗑 当月の交通費・経費を削除
+            </button>
+          </div>
         </div>
         <div className="pb-4">
           <table
