@@ -738,9 +738,10 @@ function App() {
     return (
       <HelperManager
         helpers={helpers}
-        onUpdate={(updatedHelpers) => {
-          handleUpdateHelpers(updatedHelpers);
+        onUpdate={async (updatedHelpers) => {
+          // 保存失敗時にエラーが HelperManager 側へ伝わるよう await する
           // 順番変更やヘルパー削除時に自動で戻らないように、setCurrentViewを削除
+          await handleUpdateHelpers(updatedHelpers);
         }}
         onClose={async () => {
           // Firestoreから最新データを再読み込み

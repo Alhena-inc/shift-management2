@@ -297,7 +297,7 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
     }
   }, [localHelpers, onUpdate]);
 
-  const handleAddHelper = useCallback(async () => {
+  const handleAddHelper = useCallback(() => {
     if (!newHelperName.trim()) {
       alert('ヘルパー名（シフト表表示名）を入力してください');
       return;
@@ -310,8 +310,14 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
     // デフォルト値の設定
     const isFixed = newHelperSalaryType === 'fixed';
 
+    // Supabase の helpers.id は uuid 型のため、必ず uuid を生成する
+    const newId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+
     const newHelper: Helper = {
-      id: `helper-${Date.now()}`,
+      id: newId,
       name: displayName,
       lastName: lastName,
       firstName: firstName,
@@ -334,31 +340,15 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
       hasWithholdingTax: true,
     };
 
-    const updatedHelpers = [...localHelpers, newHelper];
-
-    // UIを即座に更新
-    setLocalHelpers(updatedHelpers);
+    // ローカル state にだけ追加（DB 反映はヘッダーの「💾 保存する」で確定）
+    setLocalHelpers([...localHelpers, newHelper]);
     setNewHelperName('');
     setNewHelperLastName('');
     setNewHelperFirstName('');
     setNewHelperExcludeFromShift(false);
     setShowAddForm(false);
-    setHasChanges(false); // 追加時は即座に保存するため変更フラグは折る
-
-    setIsSaving(true);
-    try {
-      // 親コンポーネント（App.tsx）を通じてFirestoreへ保存
-      await onUpdate(updatedHelpers);
-      console.log('✅ 新規ヘルパーを保存しました:', displayName);
-    } catch (error) {
-      console.error('Add helper error:', error);
-      alert(`追加に失敗しました: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      // 失敗した場合はローカル状態を戻す
-      setLocalHelpers(localHelpers);
-    } finally {
-      setIsSaving(false);
-    }
-  }, [localHelpers, newHelperLastName, newHelperFirstName, newHelperName, newHelperGender, newHelperSalaryType, newHelperEmploymentType, newHelperExcludeFromShift, onUpdate]);
+    setHasChanges(true); // 未保存の追加があることを示し、ヘッダー「💾 保存する」を有効化
+  }, [localHelpers, newHelperLastName, newHelperFirstName, newHelperName, newHelperGender, newHelperSalaryType, newHelperEmploymentType, newHelperExcludeFromShift]);
 
   const handleStartEdit = useCallback((helper: Helper) => {
     setEditingHelperId(helper.id);
@@ -736,7 +726,7 @@ export const HelperManager = memo(function HelperManager({ helpers, onUpdate, on
                 onClick={handleAddHelper}
                 className="flex-1 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-lg font-medium"
               >
-                ➕ 追加する
+                ➕ 一覧に追加（保存は「💾 保存する」で確定）
               </button>
             </div>
           </div>
