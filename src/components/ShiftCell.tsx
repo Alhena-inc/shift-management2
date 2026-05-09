@@ -62,11 +62,10 @@ export const ShiftCell = memo(({
       return ['', '', '', ''];
     }
 
-    const { startTime, endTime, clientName, serviceType, duration, area, crossesDay } = shift;
+    const { startTime, endTime, clientName, serviceType, duration, area } = shift;
 
-    // 1行目: 時間範囲（日跨ぎは月マークで識別）
-    const baseRange = startTime && endTime ? `${startTime} - ${endTime}` : '';
-    const timeRange = baseRange && crossesDay ? `🌙${baseRange}` : baseRange;
+    // 1行目: 時間範囲
+    const timeRange = startTime && endTime ? `${startTime} - ${endTime}` : '';
 
     // 2行目: 利用者名(サービスタイプ)
     const serviceLabel = SERVICE_CONFIG[serviceType]?.label || '';

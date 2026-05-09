@@ -104,16 +104,16 @@ export function calculateNormalAndNightHours(
   let start = parseTime(startTime);
   let end = parseTime(endTime);
 
-  // 日跨ぎ対応：明示フラグ ON のときは end が start 以下でも以上でも +24h
-  // （以前は end <= start で自動翌日扱いしていたが、入力ミス時に
-  // 「8:30-8:30」が 24h として計上されるバグの原因になっていた）
-  if (crossesDay) {
-    end += 24 * 60;
-  }
-
-  // フラグ未指定で end <= start の場合は 0h 扱い（警告は呼び出し元で表示）
-  if (end <= start) {
+  // 仕様（crossesDay フラグは後方互換のため残しているが、計算には使わない）:
+  //   end == start → 0h（誤入力ガード。「8:30-8:30」を 24h と扱わない）
+  //   end <  start → 自動で日跨ぎ扱い（翌日として +24h）
+  //   end >  start → 通常通り
+  void crossesDay;
+  if (end === start) {
     return { normalHours: 0, nightHours: 0 };
+  }
+  if (end < start) {
+    end += 24 * 60;
   }
 
   const totalMinutes = end - start;
