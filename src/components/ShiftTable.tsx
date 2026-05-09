@@ -2553,10 +2553,18 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
       // 名前の正規化関数（空白を除去）
       const normalizeName = (name: string) => name.replace(/[\s　]/g, '');
 
+      // 空文字キーで Map に登録すると get('') で誤マッチするため、
+      // 空文字は登録しないヘルパー
+      const setIfNotEmpty = (key: string | undefined | null, value: string) => {
+        const k = (key || '').trim();
+        if (!k) return;
+        helperNameToId.set(k, value);
+      };
+
       helpers.forEach(helper => {
         // シフト表表示名（苗字）
-        helperNameToId.set(helper.name, helper.id);
-        helperNameToId.set(normalizeName(helper.name), helper.id);
+        setIfNotEmpty(helper.name, helper.id);
+        setIfNotEmpty(normalizeName(helper.name || ''), helper.id);
 
         // フルネーム（苗字+名前）- 空白なし
         if (helper.lastName && helper.firstName) {
@@ -2580,8 +2588,8 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
 
         // シフト表表示名がフルネームの場合（例："田中 航揮"）
         // 空白を除去したバージョンも登録
-        if (helper.name.includes(' ') || helper.name.includes('　')) {
-          helperNameToId.set(normalizeName(helper.name), helper.id);
+        if (helper.name && (helper.name.includes(' ') || helper.name.includes('　'))) {
+          setIfNotEmpty(normalizeName(helper.name), helper.id);
         }
       });
 
@@ -2597,18 +2605,38 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         if (helperId) return helperId;
 
         // 部分一致で検索（苗字のみでマッチ）
+        // 重要: 空文字での前方一致（startsWith('')）は常に true になり
+        // 全ヘルパーに誤マッチするため、空文字は必ず除外する。
+        // また、複数候補にマッチしたら誤反映を避けるため、
+        // 「最長一致」のヘルパーを採用する（短い苗字より具体性の高い名前を優先）。
+        let bestMatch: { helper: typeof helpers[number]; matchLength: number } | null = null;
         for (const helper of helpers) {
-          // 入力名が苗字で始まる場合（例："田中" → "田中航揮"）
-          if (normalized.startsWith(helper.name) || normalized.startsWith(helper.lastName || '')) {
-            return helper.id;
+          const helperFullName = helper.name?.trim() || '';
+          const helperLastName = helper.lastName?.trim() || '';
+
+          // 入力名がヘルパーのフルネームまたは苗字で始まる
+          if (helperFullName && normalized.startsWith(helperFullName)) {
+            if (!bestMatch || helperFullName.length > bestMatch.matchLength) {
+              bestMatch = { helper, matchLength: helperFullName.length };
+            }
+            continue;
           }
-          // ヘルパー名が入力名で始まる場合
-          if (helper.name.startsWith(name) || helper.name.startsWith(normalized)) {
-            return helper.id;
+          if (helperLastName && normalized.startsWith(helperLastName)) {
+            if (!bestMatch || helperLastName.length > bestMatch.matchLength) {
+              bestMatch = { helper, matchLength: helperLastName.length };
+            }
+            continue;
+          }
+          // ヘルパー名が入力名で始まる（API側で苗字だけ届いたケース）
+          if (helperFullName && (helperFullName.startsWith(name) || helperFullName.startsWith(normalized))) {
+            const matchLen = Math.min(helperFullName.length, normalized.length);
+            if (!bestMatch || matchLen > bestMatch.matchLength) {
+              bestMatch = { helper, matchLength: matchLen };
+            }
           }
         }
 
-        return undefined;
+        return bestMatch?.helper.id;
       };
 
 
