@@ -185,7 +185,7 @@ export function calculatePayrollData(
       if (shift.startTime && shift.endTime && shift.duration && shift.duration > 0) {
         const timeRange = `${shift.startTime}-${shift.endTime}`;
         // calculateShiftPayを使用して年末年始の特別料金を適用
-        payCalculation = calculateShiftPay(shift.serviceType, timeRange, shift.date);
+        payCalculation = calculateShiftPay(shift.serviceType, timeRange, shift.date, shift.crossesDay);
         nightHours = payCalculation.nightHours;
         regularHours = payCalculation.regularHours;
       }

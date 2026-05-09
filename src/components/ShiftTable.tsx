@@ -4843,7 +4843,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
           }
 
           const timeRange = `${restoredShift.startTime}-${restoredShift.endTime}`;
-          const payCalculation = calculateShiftPay(restoredShift.serviceType, timeRange, restoredShift.date);
+          const payCalculation = calculateShiftPay(restoredShift.serviceType, timeRange, restoredShift.date, restoredShift.crossesDay);
           Object.assign(restoredShift, payCalculation);
 
           restoredShifts.push(restoredShift);
@@ -4969,7 +4969,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         // 給与計算を反映（時間を残す場合は給与に加算）
         if (shiftWithCancel.cancelStatus === 'keep_time') {
           const timeRange = `${shiftWithCancel.startTime}-${shiftWithCancel.endTime}`;
-          const payResult = calculateShiftPay(shiftWithCancel.serviceType, timeRange, shiftWithCancel.date);
+          const payResult = calculateShiftPay(shiftWithCancel.serviceType, timeRange, shiftWithCancel.date, shiftWithCancel.crossesDay);
           Object.assign(shiftWithCancel, payResult);
         } else {
           // 時間なしの場合は0にする
@@ -5223,14 +5223,20 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
         safelyRemoveMenu();
         let nextShifts = shiftsRef.current;
         targetShiftsForCross.forEach(existing => {
-          // crossesDay フラグを切り替え、duration を再計算
+          // crossesDay フラグを切り替え、duration / 給与関連を再計算
           const timeRange = `${existing.startTime} - ${existing.endTime}`;
           const newDurationStr = calculateTimeDuration(timeRange, nextCrossing);
           const newDuration = parseFloat(newDurationStr || '0') || 0;
+          const pay = calculateShiftPay(existing.serviceType, timeRange, existing.date, nextCrossing);
           const updated: Shift = {
             ...existing,
             crossesDay: nextCrossing,
             duration: newDuration,
+            regularHours: pay.regularHours,
+            nightHours: pay.nightHours,
+            regularPay: pay.regularPay,
+            nightPay: pay.nightPay,
+            totalPay: pay.totalPay,
           };
           nextShifts = nextShifts.map(s => s.id === existing.id ? updated : s);
           saveShiftWithCorrectYearMonth(updated);
@@ -5661,7 +5667,7 @@ const ShiftTableComponent = ({ helpers, shifts: shiftsProp, year, month, onUpdat
             if (shift.startTime && shift.endTime) {
               const timeRange = `${shift.startTime}-${shift.endTime}`;
               // calculateShiftPayを使用して正確な給与（年末年始料金含む）を計算
-              const pay = calculateShiftPay(shift.serviceType, timeRange, shift.date);
+              const pay = calculateShiftPay(shift.serviceType, timeRange, shift.date, shift.crossesDay);
 
               // 時間数の集計
               regularHours += pay.regularHours;

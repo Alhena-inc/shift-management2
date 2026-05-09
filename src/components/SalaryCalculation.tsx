@@ -150,7 +150,7 @@ export function SalaryCalculation({ helpers, shifts, year, month, onClose }: Pro
           // 時間数（duration）が0超かつ時間範囲がある場合のみ計算
           if (shift.duration && shift.duration > 0 && shift.startTime && shift.endTime) {
             const timeRange = `${shift.startTime}-${shift.endTime}`;
-            const payCalculation = calculateShiftPay(shift.serviceType, timeRange, shift.date);
+            const payCalculation = calculateShiftPay(shift.serviceType, timeRange, shift.date, shift.crossesDay);
             const nightHours = payCalculation.nightHours;
             const regularHours = payCalculation.regularHours;
 

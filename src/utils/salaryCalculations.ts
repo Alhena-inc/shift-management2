@@ -24,12 +24,18 @@ function isSpecialRateDate(date: string): boolean {
  * @param serviceType サービスタイプ
  * @param timeRange 時間範囲（例: "09:00-12:00"）
  * @param date 日付（YYYY-MM-DD形式）- オプション、年末年始判定用
+ * @param crossesDay 日跨ぎフラグ（true のとき end は翌日扱い）
  * @returns { regularHours, nightHours, regularPay, nightPay, totalPay }
  */
-export function calculateShiftPay(serviceType: ServiceType, timeRange: string, date?: string) {
+export function calculateShiftPay(
+  serviceType: ServiceType,
+  timeRange: string,
+  date?: string,
+  crossesDay: boolean = false
+) {
   // 時間を計算
-  const nightHours = calculateNightHours(timeRange);
-  const regularHours = calculateRegularHours(timeRange);
+  const nightHours = calculateNightHours(timeRange, crossesDay);
+  const regularHours = calculateRegularHours(timeRange, crossesDay);
 
   // 基本時給を取得
   let baseHourlyRate = SERVICE_CONFIG[serviceType]?.hourlyRate || 0;

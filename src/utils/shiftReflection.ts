@@ -81,7 +81,7 @@ export const reflectShiftsToNextMonth = async (
                 // 給与・時間計算を再適用（ここでキャンセルにより失われた時間も復元される）
                 if (nextShift.startTime && nextShift.endTime) {
                     const timeRange = `${nextShift.startTime}-${nextShift.endTime}`;
-                    const payCalculation = calculateShiftPay(nextShift.serviceType, timeRange, nextShift.date);
+                    const payCalculation = calculateShiftPay(nextShift.serviceType, timeRange, nextShift.date, nextShift.crossesDay);
 
                     // 給与計算結果をマージ
                     Object.assign(nextShift, payCalculation);
