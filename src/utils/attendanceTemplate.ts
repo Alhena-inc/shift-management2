@@ -1,5 +1,5 @@
 import type { FixedDailyAttendance } from '../types/payslip';
-import type { AttendanceTemplate } from '../types';
+import type { AttendanceDaySchedule, AttendanceTemplate, WeekdayKey } from '../types';
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'] as const;
 
@@ -67,6 +67,48 @@ function isInRange(dateStr: string, start: string, end: string): boolean {
   return dateStr >= start && dateStr <= end;
 }
 
+/** スケジュールから実働時間（時間）を計算 */
+function calcWorkHours(schedule: { startTime: string; endTime: string; breakMinutes: number }): number {
+  const startMin = parseTimeToMinutes(schedule.startTime);
+  const endMin = parseTimeToMinutes(schedule.endTime);
+  const breakMin = Math.max(0, Number(schedule.breakMinutes || 0));
+  const rawMinutes = Math.max(0, endMin - startMin);
+  const workMinutes = Math.max(0, rawMinutes - breakMin);
+  return workMinutes / 60;
+}
+
+/**
+ * 指定曜日のスケジュールを返す
+ * - `days` に設定があればそれを優先
+ * - なければ後方互換として `weekday`（月〜金に適用）と `excludeWeekends` を使用
+ */
+export function getDaySchedule(template: AttendanceTemplate, dow: number): AttendanceDaySchedule {
+  const key = dow as WeekdayKey;
+  const fromDays = template.days?.[key];
+  if (fromDays) return fromDays;
+
+  const isWeekend = dow === 0 || dow === 6;
+  const excludeWeekends = template.excludeWeekends !== false;
+  const enabled = !(excludeWeekends && isWeekend);
+  return {
+    enabled,
+    startTime: template.weekday?.startTime || '10:00',
+    endTime: template.weekday?.endTime || '19:00',
+    breakMinutes: Number(template.weekday?.breakMinutes ?? 60),
+  };
+}
+
+/** 週合計時間（曜日ごとの実働の和） */
+export function calcWeeklyTotalHours(template: AttendanceTemplate): number {
+  let sum = 0;
+  for (let dow = 0; dow < 7; dow++) {
+    const s = getDaySchedule(template, dow);
+    if (!s.enabled) continue;
+    sum += calcWorkHours(s);
+  }
+  return sum;
+}
+
 export function generateFixedDailyAttendanceFromTemplate(
   year: number,
   month: number,
@@ -82,40 +124,31 @@ export function generateFixedDailyAttendanceFromTemplate(
 } {
   const daysInMonth = new Date(year, month, 0).getDate();
 
-  const excludeWeekends = template.excludeWeekends !== false; // default true
   const excludeHolidays = template.excludeHolidays !== false; // default true
   const excludedRanges = template.excludedDateRanges || [];
-
-  const startMin = parseTimeToMinutes(template.weekday.startTime);
-  const endMin = parseTimeToMinutes(template.weekday.endTime);
-  const breakMin = Math.max(0, Number(template.weekday.breakMinutes || 0));
-
-  // 実働（時間）
-  const rawMinutes = Math.max(0, endMin - startMin);
-  const workMinutes = Math.max(0, rawMinutes - breakMin);
-  const workHours = workMinutes / 60;
 
   const dailyAttendance: FixedDailyAttendance[] = Array.from({ length: daysInMonth }, (_, i) => {
     const day = i + 1;
     const date = new Date(year, month - 1, day);
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const dow = date.getDay();
 
-    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+    const schedule = getDaySchedule(template, dow);
     const isHoliday = excludeHolidays ? isJapaneseHoliday(dateStr) : false;
     const isExcludedByRange = excludedRanges.some((r) => r?.start && r?.end && isInRange(dateStr, r.start, r.end));
 
     const shouldWork =
       template.enabled &&
-      !(excludeWeekends && isWeekend) &&
+      schedule.enabled &&
       !(excludeHolidays && isHoliday) &&
       !isExcludedByRange;
 
-    const hours = shouldWork ? workHours : 0;
+    const hours = shouldWork ? calcWorkHours(schedule) : 0;
 
     return {
       day,
       month,
-      weekday: WEEKDAYS[date.getDay()],
+      weekday: WEEKDAYS[dow],
       normalWork: hours,
       normalNight: 0,
       accompanyWork: 0,

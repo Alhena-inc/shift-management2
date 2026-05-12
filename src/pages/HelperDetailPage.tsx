@@ -149,31 +149,48 @@ const HelperDetailPage: React.FC = () => {
   };
 
   // 勤怠表テンプレの更新
+  const DEFAULT_ATTENDANCE_TEMPLATE = {
+    enabled: false,
+    weekday: { startTime: '10:00', endTime: '19:00', breakMinutes: 60 },
+    excludeWeekends: true,
+    excludeHolidays: true,
+    excludedDateRanges: [],
+  };
+
+  // 既存テンプレ（weekday のみ）から days を初期化
+  const ensureDays = (
+    template: typeof DEFAULT_ATTENDANCE_TEMPLATE & { days?: any }
+  ) => {
+    if (template.days) return template.days;
+    const excludeWeekends = template.excludeWeekends !== false;
+    const days: Record<number, { enabled: boolean; startTime: string; endTime: string; breakMinutes: number }> = {};
+    for (let dow = 0; dow < 7; dow++) {
+      const isWeekend = dow === 0 || dow === 6;
+      days[dow] = {
+        enabled: !(excludeWeekends && isWeekend),
+        startTime: template.weekday?.startTime || '10:00',
+        endTime: template.weekday?.endTime || '19:00',
+        breakMinutes: Number(template.weekday?.breakMinutes ?? 60),
+      };
+    }
+    return days;
+  };
+
   const updateAttendanceTemplate = (patch: any) => {
     if (!helper) return;
-    const current = helper.attendanceTemplate || {
-      enabled: false,
-      weekday: { startTime: '10:00', endTime: '19:00', breakMinutes: 60 },
-      excludeWeekends: true,
-      excludeHolidays: true,
-      excludedDateRanges: [],
-    };
+    const current = (helper.attendanceTemplate as any) || DEFAULT_ATTENDANCE_TEMPLATE;
     setHelper({ ...helper, attendanceTemplate: { ...current, ...patch } });
   };
 
-  const updateAttendanceTemplateWeekday = (patch: any) => {
+  const updateAttendanceTemplateDay = (
+    dow: number,
+    patch: Partial<{ enabled: boolean; startTime: string; endTime: string; breakMinutes: number }>
+  ) => {
     if (!helper) return;
-    const current = helper.attendanceTemplate || {
-      enabled: false,
-      weekday: { startTime: '10:00', endTime: '19:00', breakMinutes: 60 },
-      excludeWeekends: true,
-      excludeHolidays: true,
-      excludedDateRanges: [],
-    };
-    setHelper({
-      ...helper,
-      attendanceTemplate: { ...current, weekday: { ...current.weekday, ...patch } },
-    });
+    const current = (helper.attendanceTemplate as any) || DEFAULT_ATTENDANCE_TEMPLATE;
+    const days = { ...ensureDays(current) };
+    days[dow] = { ...days[dow], ...patch };
+    setHelper({ ...helper, attendanceTemplate: { ...current, days } });
   };
 
   const addExcludedRange = () => {
@@ -204,19 +221,6 @@ const HelperDetailPage: React.FC = () => {
     if (!current) return;
     const ranges = (current.excludedDateRanges || []).filter((_, i) => i !== index);
     setHelper({ ...helper, attendanceTemplate: { ...current, excludedDateRanges: ranges } });
-  };
-
-  const calculateTemplateWorkHours = (): { workHours: number; breakHours: number } => {
-    const t = helper?.attendanceTemplate;
-    if (!t?.weekday) return { workHours: 0, breakHours: 0 };
-    const [sh, sm] = (t.weekday.startTime || '0:0').split(':').map((v) => parseInt(v, 10));
-    const [eh, em] = (t.weekday.endTime || '0:0').split(':').map((v) => parseInt(v, 10));
-    const start = (Number.isNaN(sh) ? 0 : sh) * 60 + (Number.isNaN(sm) ? 0 : sm);
-    const end = (Number.isNaN(eh) ? 0 : eh) * 60 + (Number.isNaN(em) ? 0 : em);
-    const raw = Math.max(0, end - start);
-    const br = Math.max(0, Number(t.weekday.breakMinutes || 0));
-    const work = Math.max(0, raw - br);
-    return { workHours: work / 60, breakHours: br / 60 };
   };
 
   const removeOtherAllowance = (index: number) => {
@@ -1092,60 +1096,109 @@ const HelperDetailPage: React.FC = () => {
                         </div>
                       </label>
 
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">平日 開始</label>
-                          <input
-                            type="time"
-                            value={helper.attendanceTemplate?.weekday?.startTime || '10:00'}
-                            onChange={(e) => updateAttendanceTemplateWeekday({ startTime: e.target.value })}
-                            disabled={!helper.attendanceTemplate?.enabled}
-                            className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">平日 終了</label>
-                          <input
-                            type="time"
-                            value={helper.attendanceTemplate?.weekday?.endTime || '19:00'}
-                            onChange={(e) => updateAttendanceTemplateWeekday({ endTime: e.target.value })}
-                            disabled={!helper.attendanceTemplate?.enabled}
-                            className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">休憩（分）</label>
-                          <input
-                            type="number"
-                            value={helper.attendanceTemplate?.weekday?.breakMinutes ?? 60}
-                            onChange={(e) => updateAttendanceTemplateWeekday({ breakMinutes: parseInt(e.target.value) || 0 })}
-                            disabled={!helper.attendanceTemplate?.enabled}
-                            className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
-                          />
-                        </div>
-                        <div className="flex items-end">
-                          <div className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
-                            {(() => {
-                              const { workHours, breakHours } = calculateTemplateWorkHours();
-                              const wh = Number(workHours || 0).toFixed(1).replace(/\.0$/, '');
-                              const bh = Number(breakHours || 0).toFixed(1).replace(/\.0$/, '');
-                              return `実働 ${wh}時間 / 休憩 ${bh}時間`;
-                            })()}
-                          </div>
-                        </div>
+                      {/* 曜日ごとの勤務設定 */}
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-gray-600">
+                              <th className="py-2 pr-3">曜日</th>
+                              <th className="py-2 pr-3">勤務</th>
+                              <th className="py-2 pr-3">開始</th>
+                              <th className="py-2 pr-3">終了</th>
+                              <th className="py-2 pr-3">休憩(分)</th>
+                              <th className="py-2 pr-3">実働</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {([1, 2, 3, 4, 5, 6, 0] as const).map((dow) => {
+                              const label = ['日', '月', '火', '水', '木', '金', '土'][dow];
+                              const tpl = (helper.attendanceTemplate as any) || DEFAULT_ATTENDANCE_TEMPLATE;
+                              const days = ensureDays(tpl);
+                              const s = days[dow];
+                              const enabledDay = !!s.enabled;
+                              const parseTime = (t: string) => {
+                                const [h, m] = (t || '0:0').split(':').map((v) => parseInt(v, 10));
+                                return (Number.isNaN(h) ? 0 : h) * 60 + (Number.isNaN(m) ? 0 : m);
+                              };
+                              const raw = Math.max(0, parseTime(s.endTime) - parseTime(s.startTime));
+                              const work = enabledDay ? Math.max(0, raw - Math.max(0, Number(s.breakMinutes || 0))) / 60 : 0;
+                              const isWeekend = dow === 0 || dow === 6;
+                              return (
+                                <tr key={dow} className="border-t border-gray-100">
+                                  <td className={`py-2 pr-3 font-medium ${isWeekend ? (dow === 0 ? 'text-red-600' : 'text-blue-600') : 'text-gray-700'}`}>
+                                    {label}
+                                  </td>
+                                  <td className="py-2 pr-3">
+                                    <input
+                                      type="checkbox"
+                                      checked={enabledDay}
+                                      onChange={(e) => updateAttendanceTemplateDay(dow, { enabled: e.target.checked })}
+                                      disabled={!helper.attendanceTemplate?.enabled}
+                                      className="w-4 h-4 text-blue-600 rounded"
+                                    />
+                                  </td>
+                                  <td className="py-2 pr-3">
+                                    <input
+                                      type="time"
+                                      value={s.startTime || '10:00'}
+                                      onChange={(e) => updateAttendanceTemplateDay(dow, { startTime: e.target.value })}
+                                      disabled={!helper.attendanceTemplate?.enabled || !enabledDay}
+                                      className="px-2 py-1 bg-white border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
+                                    />
+                                  </td>
+                                  <td className="py-2 pr-3">
+                                    <input
+                                      type="time"
+                                      value={s.endTime || '19:00'}
+                                      onChange={(e) => updateAttendanceTemplateDay(dow, { endTime: e.target.value })}
+                                      disabled={!helper.attendanceTemplate?.enabled || !enabledDay}
+                                      className="px-2 py-1 bg-white border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
+                                    />
+                                  </td>
+                                  <td className="py-2 pr-3">
+                                    <input
+                                      type="number"
+                                      value={s.breakMinutes ?? 60}
+                                      onChange={(e) => updateAttendanceTemplateDay(dow, { breakMinutes: parseInt(e.target.value) || 0 })}
+                                      disabled={!helper.attendanceTemplate?.enabled || !enabledDay}
+                                      className="w-20 px-2 py-1 bg-white border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
+                                    />
+                                  </td>
+                                  <td className="py-2 pr-3 text-gray-700">
+                                    {work.toFixed(1).replace(/\.0$/, '')}時間
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot>
+                            <tr className="border-t border-gray-200">
+                              <td className="py-2 pr-3 font-bold text-gray-700" colSpan={5}>週合計</td>
+                              <td className="py-2 pr-3 font-bold text-gray-800">
+                                {(() => {
+                                  const tpl = (helper.attendanceTemplate as any) || DEFAULT_ATTENDANCE_TEMPLATE;
+                                  const days = ensureDays(tpl);
+                                  let sum = 0;
+                                  for (let d = 0; d < 7; d++) {
+                                    const s = days[d];
+                                    if (!s?.enabled) continue;
+                                    const parseTime = (t: string) => {
+                                      const [h, m] = (t || '0:0').split(':').map((v) => parseInt(v, 10));
+                                      return (Number.isNaN(h) ? 0 : h) * 60 + (Number.isNaN(m) ? 0 : m);
+                                    };
+                                    const raw = Math.max(0, parseTime(s.endTime) - parseTime(s.startTime));
+                                    const work = Math.max(0, raw - Math.max(0, Number(s.breakMinutes || 0))) / 60;
+                                    sum += work;
+                                  }
+                                  return `${sum.toFixed(1).replace(/\.0$/, '')}時間`;
+                                })()}
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </table>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={helper.attendanceTemplate?.excludeWeekends !== false}
-                            onChange={(e) => updateAttendanceTemplate({ excludeWeekends: e.target.checked })}
-                            disabled={!helper.attendanceTemplate?.enabled}
-                            className="w-4 h-4 text-blue-600 rounded"
-                          />
-                          <span className="text-sm text-gray-700">土日を休みにする</span>
-                        </label>
                         <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer">
                           <input
                             type="checkbox"

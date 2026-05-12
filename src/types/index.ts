@@ -61,6 +61,17 @@ export interface AttendanceTemplateDateRange {
   end: string;   // YYYY-MM-DD
 }
 
+/** 1 日（1 曜日）の勤務設定 */
+export interface AttendanceDaySchedule {
+  enabled: boolean;       // この曜日に勤務する
+  startTime: string;      // HH:mm
+  endTime: string;        // HH:mm
+  breakMinutes: number;   // 休憩（分）
+}
+
+/** 曜日キー（0=日, 1=月, ..., 6=土） */
+export type WeekdayKey = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
 /**
  * 勤怠表テンプレ（ヘルパーごと）
  * デフォルトは無効（= 従来どおりシフト表から勤怠を作成）
@@ -68,15 +79,20 @@ export interface AttendanceTemplateDateRange {
 export interface AttendanceTemplate {
   enabled: boolean;
   /**
-   * 平日（月〜金）の勤務設定
-   * 例: 10:00-19:00 (休憩60分) => 実働8時間
+   * 平日（月〜金）の勤務設定（後方互換のため残置）
+   * `days` が未設定の場合はこの値を月〜金に適用する
    */
   weekday: {
     startTime: string;     // HH:mm
     endTime: string;       // HH:mm
     breakMinutes: number;  // 休憩（分）
   };
-  /** 土日を休みにする */
+  /**
+   * 曜日ごとの勤務設定（0=日, 1=月, ..., 6=土）
+   * 設定があればこちらが優先される
+   */
+  days?: Partial<Record<WeekdayKey, AttendanceDaySchedule>>;
+  /** 土日を休みにする（`days` 未設定時の互換動作用） */
   excludeWeekends?: boolean;
   /** 日本の祝日を休みにする */
   excludeHolidays?: boolean;
