@@ -134,8 +134,9 @@ export interface Helper {
   commuteMethods?: string[];   // 通勤方法
 
   // 雇用形態
-  employmentType?: 'fulltime' | 'parttime' | 'contract' | 'temporary' | 'outsourced';
-  // fulltime=正社員, parttime=パート, contract=契約社員, temporary=派遣, outsourced=業務委託
+  employmentType?: 'fulltime' | 'parttime' | 'contract' | 'temporary' | 'outsourced' | 'executive';
+  // fulltime=正社員, parttime=パート, contract=契約社員, temporary=派遣, outsourced=業務委託, executive=役員
+  isExecutive?: boolean; // 役員フラグ（子育て支援金の徴収開始タイミング判定用）
 
   // 勤怠表テンプレ（固定給で「シフト表ではなく、勤怠表設定に基づいて出力したい」場合に使用）
   attendanceTemplate?: AttendanceTemplate;

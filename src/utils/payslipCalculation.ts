@@ -5,7 +5,7 @@ import type { FixedPayslip, HourlyPayslip, Payslip } from '../types/payslip';
 import { createEmptyFixedPayslip, createEmptyHourlyPayslip } from '../services/payslipService';
 import { NIGHT_START, NIGHT_END } from '../types/payslip';
 import { calculateWithholdingTaxByYear } from './taxCalculator';
-import { calculateInsurance, getHealthStandardRemuneration } from './insuranceCalculator';
+import { calculateInsurance, calculateKosodateShienkin, getHealthStandardRemuneration } from './insuranceCalculator';
 import { generateFixedDailyAttendanceFromTemplate } from './attendanceTemplate';
 
 /**
@@ -473,17 +473,29 @@ export function generateFixedPayslipFromShifts(
   payslip.deductions.pensionInsurance = insuranceResult.pensionInsurance || 0;
   payslip.deductions.employmentInsurance = insuranceResult.employmentInsurance || 0;
 
-  // 社会保険計
-  payslip.deductions.socialInsuranceTotal = insuranceResult.total || 0;
+  // 子ども・子育て支援金（本人負担額）
+  const empTypeForShienkin = (helper as any)?.employmentType === 'executive' || (helper as any)?.isExecutive
+    ? '役員'
+    : payslip.employmentType;
+  const childcareSupport = calculateKosodateShienkin(
+    standardRemuneration,
+    { year: payslip.year, month: payslip.month },
+    empTypeForShienkin,
+    { isInsured: insuranceTypes.includes('health') }
+  );
+  payslip.childcareSupport = childcareSupport;
 
-  // 課税対象額を計算（課税月給 - 社会保険料）
+  // 社会保険計（子育て支援金を含む）
+  payslip.deductions.socialInsuranceTotal = (insuranceResult.total || 0) + childcareSupport;
+
+  // 課税対象額を計算（課税月給 - 社会保険料計）
   // basePay = totalSalary = baseSalary + treatmentAllowance + otherAllowancesTotal
   // ※basePay には既に全ての手当が含まれているため、非課税分のみ除外する
   const taxableBaseSalary =
     (payslip.payments.basePay || 0) -
     nonTaxableOtherAllowances;
-  // 参照用金額 = 課税支給額 - 社会保険料計
-  const taxableAmount = taxableBaseSalary - (insuranceResult.total || 0);
+  // 参照用金額 = 課税支給額 - 社会保険料計（子育て支援金含む）
+  const taxableAmount = taxableBaseSalary - payslip.deductions.socialInsuranceTotal;
   payslip.deductions.taxableAmount = taxableAmount;
 
   // 源泉徴収税（ヘルパー設定がOFFの場合は0円）
@@ -962,13 +974,25 @@ export function generateHourlyPayslipFromShifts(
   payslip.deductions.pensionInsurance = insuranceResult.pensionInsurance || 0;
   payslip.deductions.employmentInsurance = insuranceResult.employmentInsurance || 0;
 
-  // 社会保険計
-  payslip.deductions.socialInsuranceTotal = insuranceResult.total || 0;
+  // 子ども・子育て支援金（本人負担額）
+  const empTypeForShienkinH = (helper as any)?.employmentType === 'executive' || (helper as any)?.isExecutive
+    ? '役員'
+    : payslip.employmentType;
+  const childcareSupportH = calculateKosodateShienkin(
+    standardRemuneration,
+    { year: payslip.year, month: payslip.month },
+    empTypeForShienkinH,
+    { isInsured: insuranceTypes.includes('health') }
+  );
+  payslip.childcareSupport = childcareSupportH;
 
-  // 源泉所得税の課税対象額（給与部分のみ - 社会保険料）
+  // 社会保険計（子育て支援金を含む）
+  payslip.deductions.socialInsuranceTotal = (insuranceResult.total || 0) + childcareSupportH;
+
+  // 源泉所得税の課税対象額（給与部分のみ - 社会保険料計）
   // ★ 通勤手当（非課税）は除外されている（salaryCoreAmountに含まれていない）
-  // 参照用金額 = 課税支給額 - 社会保険料計
-  const taxableAmount = salaryCoreAmount - (insuranceResult.total || 0);
+  // 参照用金額 = 課税支給額 - 社会保険料計（子育て支援金含む）
+  const taxableAmount = salaryCoreAmount - payslip.deductions.socialInsuranceTotal;
   payslip.deductions.taxableAmount = taxableAmount;
 
   // 源泉徴収税（ヘルパー設定がOFFの場合は0円）

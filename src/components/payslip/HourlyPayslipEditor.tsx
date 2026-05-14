@@ -115,13 +115,14 @@ export const HourlyPayslipEditor: React.FC<HourlyPayslipEditorProps> = ({
         (newPayslip.payments.otherAllowances || []).reduce((sum, item) => sum + (item.amount || 0), 0);
     }
 
-    // 社会保険料の合計
+    // 社会保険料の合計（子ども・子育て支援金を含む）
     if (!newPayslip.deductions.manualSocialInsuranceTotal) {
       newPayslip.deductions.socialInsuranceTotal =
         (newPayslip.deductions.healthInsurance || 0) +
         (newPayslip.deductions.careInsurance || 0) +
         (newPayslip.deductions.pensionInsurance || 0) +
-        (newPayslip.deductions.employmentInsurance || 0);
+        (newPayslip.deductions.employmentInsurance || 0) +
+        (newPayslip.childcareSupport || 0);
     }
 
     // 課税対象額の計算

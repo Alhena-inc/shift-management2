@@ -39,7 +39,7 @@ export const NIGHT_START = 22 * 60; // 22:00
 export const NIGHT_END = 8 * 60;    // 8:00
 
 // 給与タイプ
-export type EmploymentType = '契約社員' | 'アルバイト';
+export type EmploymentType = '契約社員' | 'アルバイト' | '役員';
 
 // 共通項目
 interface BasePayslip {
@@ -55,7 +55,8 @@ interface BasePayslip {
   age?: number;                 // 年齢（介護保険判定用）
   insuranceTypes?: string[];    // 加入保険種類 ['health', 'care', 'pension', 'employment']
   standardRemuneration?: number; // 標準報酬月額（社会保険料計算用・内部利用のみ、明細非表示）
-  childcareSupport?: number; // 子育て支援金（明細表示用）
+  childcareSupport?: number; // 子育て支援金（本人負担額、控除の一部として表示）
+  manualChildcareSupport?: boolean; // 子育て支援金を手動入力したか
 
   createdAt?: any; // Firestore Timestamp
   updatedAt?: any; // Firestore Timestamp

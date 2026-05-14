@@ -4,7 +4,7 @@ import type { Helper } from '../../types';
 import { COMPANY_INFO } from '../../types/payslip';
 import { savePayslip } from '../../services/payslipService';
 import { calculateWithholdingTaxByYear } from '../../utils/taxCalculator';
-import { calculateInsurance } from '../../utils/insuranceCalculator';
+import { calculateInsurance, calculateKosodateShienkin } from '../../utils/insuranceCalculator';
 
 interface FixedPayslipEditorProps {
   payslip: FixedPayslip;
@@ -92,16 +92,30 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
       if (!newPayslip.deductions.manualCareInsurance) newPayslip.deductions.careInsurance = insurance.careInsurance;
       if (!newPayslip.deductions.manualPensionInsurance) newPayslip.deductions.pensionInsurance = insurance.pensionInsurance;
       if (!newPayslip.deductions.manualEmploymentInsurance) newPayslip.deductions.employmentInsurance = insurance.employmentInsurance;
+
+      // 子ども・子育て支援金（本人負担額）
+      if (!newPayslip.manualChildcareSupport) {
+        const empTypeForShienkin = (helper as any)?.employmentType === 'executive' || (helper as any)?.isExecutive
+          ? '役員'
+          : newPayslip.employmentType;
+        newPayslip.childcareSupport = calculateKosodateShienkin(
+          standardRemuneration,
+          { year: newPayslip.year, month: newPayslip.month },
+          empTypeForShienkin,
+          { isInsured: insuranceTypes.includes('health') }
+        );
+      }
     }
 
-    // 社会保険計
+    // 社会保険計（子育て支援金を含む）
     if (!newPayslip.deductions.manualSocialInsuranceTotal) {
       newPayslip.deductions.socialInsuranceTotal =
         (newPayslip.deductions.healthInsurance || 0) +
         (newPayslip.deductions.careInsurance || 0) +
         (newPayslip.deductions.pensionInsurance || 0) +
         (newPayslip.deductions.pensionFund || 0) +
-        (newPayslip.deductions.employmentInsurance || 0);
+        (newPayslip.deductions.employmentInsurance || 0) +
+        (newPayslip.childcareSupport || 0);
     }
 
     // 課税対象額の計算

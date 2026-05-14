@@ -1,5 +1,5 @@
 import type { Helper } from '../types';
-import { calculateInsurance, getHealthStandardRemuneration } from './insuranceCalculator';
+import { calculateInsurance, calculateKosodateShienkin, getHealthStandardRemuneration } from './insuranceCalculator';
 import { calculateWithholdingTaxByYear } from './taxCalculator';
 
 export const deriveInsuranceTypesFromHelper = (h?: Helper, currentTypes: string[] = []): string[] => {
@@ -204,8 +204,26 @@ export const recalculatePayslip = (updated: any, helper?: Helper) => {
     if (updated.deductions.manualCareInsurance === undefined) updated.deductions.careInsurance = insurance.careInsurance;
     if (updated.deductions.manualPensionInsurance === undefined) updated.deductions.pensionInsurance = insurance.pensionInsurance;
     if (updated.deductions.manualEmploymentInsurance === undefined) updated.deductions.employmentInsurance = insurance.employmentInsurance;
+
+    // 子ども・子育て支援金（本人負担額）の自動計算
+    // - 役員：2026年5月支給分から徴収、従業員：2026年6月支給分から徴収
+    // - 健康保険に加入していない場合は0
+    // - 標準報酬月額に料率を乗じて算出（料率は insuranceCalculator.ts の定数）
+    if (!updated.manualChildcareSupport) {
+        const isHealthInsured = calcTypes.includes('health');
+        const empTypeForShienkin = (helper as any)?.employmentType === 'executive' || (helper as any)?.isExecutive
+            ? '役員'
+            : updated.employmentType;
+        updated.childcareSupport = calculateKosodateShienkin(
+            stdRemuneration,
+            { year: updated.year, month: updated.month },
+            empTypeForShienkin,
+            { isInsured: isHealthInsured }
+        );
+    }
+
     if (updated.deductions.manualSocialInsuranceTotal === undefined) {
-        updated.deductions.socialInsuranceTotal = (updated.deductions.healthInsurance || 0) + (updated.deductions.careInsurance || 0) + (updated.deductions.pensionInsurance || 0) + (updated.deductions.employmentInsurance || 0);
+        updated.deductions.socialInsuranceTotal = (updated.deductions.healthInsurance || 0) + (updated.deductions.careInsurance || 0) + (updated.deductions.pensionInsurance || 0) + (updated.deductions.employmentInsurance || 0) + (updated.childcareSupport || 0);
     }
     if (!updated.totals) updated.totals = {};
     updated.totals.nonTaxableTotal = nonTaxableOther;

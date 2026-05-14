@@ -16,6 +16,69 @@
  */
 
 /**
+ * 子ども・子育て支援金率（2026年度）
+ * 健康保険料に上乗せして徴収される新しい社会保険料（2026年4月〜）。
+ * 全体料率0.23%を労使折半 → 本人負担0.115%。
+ * 2027年度以降は段階的に引き上げ予定（〜0.4%程度）のため、定数として外出ししている。
+ *
+ * 注意：「子ども・子育て拠出金」（事業主負担のみの既存制度）とは別物。
+ */
+export const KOSODATE_SHIENKIN_RATE = 0.0023;            // 全体率（労使折半前）
+export const KOSODATE_SHIENKIN_EMPLOYEE_RATE = KOSODATE_SHIENKIN_RATE / 2; // 本人負担率（0.115%）
+
+/**
+ * 徴収開始タイミング（支給年月ベース）
+ *  - 役員：2026年5月支給分から
+ *  - 従業員：2026年6月支給分から
+ *
+ * 社会保険料は翌月控除が原則。役員報酬と従業員給与で支給日が異なるため分岐。
+ */
+export const KOSODATE_SHIENKIN_START_EXECUTIVE = { year: 2026, month: 5 };
+export const KOSODATE_SHIENKIN_START_EMPLOYEE  = { year: 2026, month: 6 };
+
+/**
+ * 子育て支援金（本人負担額）を計算する。
+ *
+ * 計算式：
+ *   本人負担額 = 標準報酬月額 × KOSODATE_SHIENKIN_EMPLOYEE_RATE
+ * 端数処理：50銭以下切り捨て、50銭超切り上げ（健康保険料と同じ）
+ *
+ * @param standardRemuneration - 標準報酬月額（円）
+ * @param yearMonth            - 支給対象年月（徴収開始判定用）
+ * @param employmentType       - 雇用形態（'役員' or その他）
+ * @param options.isInsured    - 健康保険に加入しているか（未加入なら0）
+ * @returns 本人負担額（円）
+ */
+export function calculateKosodateShienkin(
+  standardRemuneration: number,
+  yearMonth?: { year?: number; month?: number },
+  employmentType?: string,
+  options?: { isInsured?: boolean }
+): number {
+  // 健康保険に加入していない場合は0（社会保険料に上乗せされる性質のため）
+  if (options && options.isInsured === false) return 0;
+
+  if (!standardRemuneration || standardRemuneration <= 0) return 0;
+
+  // 徴収開始判定
+  const year = yearMonth?.year;
+  const month = yearMonth?.month;
+  if (year !== undefined && month !== undefined) {
+    const start = employmentType === '役員'
+      ? KOSODATE_SHIENKIN_START_EXECUTIVE
+      : KOSODATE_SHIENKIN_START_EMPLOYEE;
+    const ym = year * 100 + month;
+    const startYm = start.year * 100 + start.month;
+    if (ym < startYm) return 0;
+  }
+
+  // 端数処理：健康保険料と同じく50銭以下切り捨て・50銭超切り上げ
+  const raw = standardRemuneration * KOSODATE_SHIENKIN_EMPLOYEE_RATE;
+  const decimal = raw - Math.floor(raw);
+  return decimal <= 0.5 ? Math.floor(raw) : Math.ceil(raw);
+}
+
+/**
  * 健康保険の標準報酬月額テーブル（上限139万円）
  * [下限, 上限, 標準報酬月額]
  */

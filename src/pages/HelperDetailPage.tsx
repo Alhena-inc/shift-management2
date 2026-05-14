@@ -815,6 +815,7 @@ const HelperDetailPage: React.FC = () => {
                     onChange={(e) => handleChange('employmentType', e.target.value)}
                     className="w-full md:w-1/2 px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
+                    <option value="executive">役員（役員報酬）</option>
                     <option value="fulltime">正社員</option>
                     <option value="contract">契約社員</option>
                     <option value="parttime">パート・アルバイト</option>
