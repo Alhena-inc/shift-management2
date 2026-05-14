@@ -54,7 +54,8 @@ interface BasePayslip {
   dependents?: number;          // 扶養人数
   age?: number;                 // 年齢（介護保険判定用）
   insuranceTypes?: string[];    // 加入保険種類 ['health', 'care', 'pension', 'employment']
-  standardRemuneration?: number; // 標準報酬月額（社会保険料計算用）
+  standardRemuneration?: number; // 標準報酬月額（社会保険料計算用・内部利用のみ、明細非表示）
+  childcareSupport?: number; // 子育て支援金（明細表示用）
 
   createdAt?: any; // Firestore Timestamp
   updatedAt?: any; // Firestore Timestamp

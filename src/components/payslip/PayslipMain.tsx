@@ -534,12 +534,12 @@ const PayslipMain: React.FC<PayslipMainProps> = ({ payslip, helper, onChange, is
           </tr>
           {/* Row 2 Prepaid Header/Value */}
           <tr>
-            <LabelCell>標準報酬月額</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell>
+            <LabelCell>子育て支援金</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell>
             <LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell><LabelCell>　</LabelCell>
             <LabelCell style={{ backgroundColor: '#d0fdd0', padding: '0 !important' }}>前払給与</LabelCell>
           </tr>
           <tr>
-            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['standardRemuneration']} value={payslip.standardRemuneration} />
+            <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['childcareSupport']} value={payslip.childcareSupport} />
             <EmptyCell /><EmptyCell /><EmptyCell />
             <EmptyCell /><EmptyCell /><EmptyCell /><EmptyCell />
             <InputCell onUpdate={updateField} isPrintMode={isPrintMode} path={['deductions', 'advancePayment']} value={payslip.deductions.advancePayment} displayAsNegative={true} />
