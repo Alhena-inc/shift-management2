@@ -5,7 +5,7 @@ import type { FixedPayslip, HourlyPayslip, Payslip } from '../types/payslip';
 import { createEmptyFixedPayslip, createEmptyHourlyPayslip } from '../services/payslipService';
 import { NIGHT_START, NIGHT_END } from '../types/payslip';
 import { calculateWithholdingTaxByYear } from './taxCalculator';
-import { calculateInsurance, calculateKosodateShienkin, getHealthStandardRemuneration } from './insuranceCalculator';
+import { calculateInsurance, calculateKosodateShienkin, getHealthStandardRemuneration, resolveKosodateCollectionTiming } from './insuranceCalculator';
 import { generateFixedDailyAttendanceFromTemplate } from './attendanceTemplate';
 
 /**
@@ -474,13 +474,11 @@ export function generateFixedPayslipFromShifts(
   payslip.deductions.employmentInsurance = insuranceResult.employmentInsurance || 0;
 
   // 子ども・子育て支援金（本人負担額）
-  const empTypeForShienkin = (helper as any)?.employmentType === 'executive' || (helper as any)?.isExecutive
-    ? '役員'
-    : payslip.employmentType;
+  const collectionTiming = resolveKosodateCollectionTiming(helper);
   const childcareSupport = calculateKosodateShienkin(
     standardRemuneration,
     { year: payslip.year, month: payslip.month },
-    empTypeForShienkin,
+    collectionTiming,
     { isInsured: insuranceTypes.includes('health') }
   );
   payslip.childcareSupport = childcareSupport;
@@ -975,13 +973,11 @@ export function generateHourlyPayslipFromShifts(
   payslip.deductions.employmentInsurance = insuranceResult.employmentInsurance || 0;
 
   // 子ども・子育て支援金（本人負担額）
-  const empTypeForShienkinH = (helper as any)?.employmentType === 'executive' || (helper as any)?.isExecutive
-    ? '役員'
-    : payslip.employmentType;
+  const collectionTimingH = resolveKosodateCollectionTiming(helper);
   const childcareSupportH = calculateKosodateShienkin(
     standardRemuneration,
     { year: payslip.year, month: payslip.month },
-    empTypeForShienkinH,
+    collectionTimingH,
     { isInsured: insuranceTypes.includes('health') }
   );
   payslip.childcareSupport = childcareSupportH;

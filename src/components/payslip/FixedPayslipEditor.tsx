@@ -4,7 +4,7 @@ import type { Helper } from '../../types';
 import { COMPANY_INFO } from '../../types/payslip';
 import { savePayslip } from '../../services/payslipService';
 import { calculateWithholdingTaxByYear } from '../../utils/taxCalculator';
-import { calculateInsurance, calculateKosodateShienkin } from '../../utils/insuranceCalculator';
+import { calculateInsurance, calculateKosodateShienkin, resolveKosodateCollectionTiming } from '../../utils/insuranceCalculator';
 
 interface FixedPayslipEditorProps {
   payslip: FixedPayslip;
@@ -95,13 +95,11 @@ export const FixedPayslipEditor: React.FC<FixedPayslipEditorProps> = ({
 
       // 子ども・子育て支援金（本人負担額）
       if (!newPayslip.manualChildcareSupport) {
-        const empTypeForShienkin = (helper as any)?.employmentType === 'executive' || (helper as any)?.isExecutive
-          ? '役員'
-          : newPayslip.employmentType;
+        const collectionTiming = resolveKosodateCollectionTiming(helper);
         newPayslip.childcareSupport = calculateKosodateShienkin(
           standardRemuneration,
           { year: newPayslip.year, month: newPayslip.month },
-          empTypeForShienkin,
+          collectionTiming,
           { isInsured: insuranceTypes.includes('health') }
         );
       }

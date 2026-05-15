@@ -136,7 +136,13 @@ export interface Helper {
   // 雇用形態
   employmentType?: 'fulltime' | 'parttime' | 'contract' | 'temporary' | 'outsourced' | 'executive';
   // fulltime=正社員, parttime=パート, contract=契約社員, temporary=派遣, outsourced=業務委託, executive=役員
-  isExecutive?: boolean; // 役員フラグ（子育て支援金の徴収開始タイミング判定用）
+  isExecutive?: boolean; // 役員フラグ（互換用）
+
+  // 子ども・子育て支援金の徴収タイミング
+  //  - 'current_month' : 当月徴収（例：4月分を4月支給から控除、役員報酬の支給形態）
+  //  - 'next_month'    : 翌月徴収（例：4月分を5月支給から控除、社会保険料の原則）
+  // 未設定の場合は employmentType==='executive' なら 'current_month'、それ以外は 'next_month'
+  kosodateShienkinCollectionTiming?: 'current_month' | 'next_month';
 
   // 勤怠表テンプレ（固定給で「シフト表ではなく、勤怠表設定に基づいて出力したい」場合に使用）
   attendanceTemplate?: AttendanceTemplate;
