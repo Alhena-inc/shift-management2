@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Helper } from '../../types';
 import { loadHelpers } from '../../services/dataService';
 import { buildWageLedgerEntry } from '../../utils/wageLedgerGenerator';
@@ -122,7 +122,7 @@ const WageLedgerPage: React.FC = () => {
         </div>
       </div>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <main className="mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6" style={{ maxWidth: '100%' }}>
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h2 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
             <span className="material-symbols-outlined text-base text-gray-600">tune</span>
@@ -284,17 +284,11 @@ const WageLedgerPage: React.FC = () => {
                 PDF出力
               </button>
             </div>
-            <div
-              className="overflow-x-auto bg-white rounded-xl border border-gray-200"
-              style={{ maxWidth: '100%' }}
-            >
-              <div
-                data-wage-ledger-helper={entry.helper.helperId}
-                style={{ display: 'inline-block' }}
-              >
+            <WageLedgerAutoFit>
+              <div data-wage-ledger-helper={entry.helper.helperId}>
                 <WageLedgerTable entry={entry} calendarYear={calendarYear} />
               </div>
-            </div>
+            </WageLedgerAutoFit>
           </div>
         ))}
       </main>
@@ -311,5 +305,70 @@ const FieldGroup: React.FC<{ label: string; children: React.ReactNode }> = ({
     {children}
   </div>
 );
+
+/**
+ * 賃金台帳テーブル(幅1720px固定)を画面幅にフィットさせるラッパー。
+ * コンテナ幅を計測し、不足分だけ transform: scale で縮小する（拡大はしない）。
+ * 縮小後の表示高さもラッパー側に反映してレイアウトが詰まらないようにする。
+ */
+const WageLedgerAutoFit: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const outerRef = useRef<HTMLDivElement | null>(null);
+  const innerRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+  const [innerSize, setInnerSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+
+  useEffect(() => {
+    const update = () => {
+      const outer = outerRef.current;
+      const inner = innerRef.current;
+      if (!outer || !inner) return;
+      const innerW = inner.scrollWidth;
+      const innerH = inner.scrollHeight;
+      const outerW = outer.clientWidth;
+      const next = innerW > 0 ? Math.min(1, outerW / innerW) : 1;
+      setScale(next);
+      setInnerSize({ w: innerW, h: innerH });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    if (outerRef.current) ro.observe(outerRef.current);
+    if (innerRef.current) ro.observe(innerRef.current);
+    window.addEventListener('resize', update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={outerRef}
+      className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+      style={{ width: '100%' }}
+    >
+      <div
+        style={{
+          width: '100%',
+          height: innerSize.h * scale,
+          position: 'relative',
+        }}
+      >
+        <div
+          ref={innerRef}
+          style={{
+            transform: `scale(${scale})`,
+            transformOrigin: 'top left',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: innerSize.w || 'auto',
+          }}
+        >
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default WageLedgerPage;

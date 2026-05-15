@@ -26,11 +26,26 @@ export async function exportWageLedgerPdf(
     await (document as any).fonts.ready;
   }
 
-  const canvas = await html2canvas(target, {
-    scale: 2,
-    useCORS: true,
-    backgroundColor: '#ffffff',
+  // 親に transform: scale が掛かっている場合は一時的に解除して原寸キャプチャ
+  const scaledAncestors = collectScaledAncestors(target);
+  const originalTransforms = scaledAncestors.map((el) => el.style.transform);
+  scaledAncestors.forEach((el) => {
+    el.style.transform = 'none';
   });
+
+  let canvas: HTMLCanvasElement;
+  try {
+    canvas = await html2canvas(target, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      windowWidth: target.scrollWidth,
+    });
+  } finally {
+    scaledAncestors.forEach((el, i) => {
+      el.style.transform = originalTransforms[i];
+    });
+  }
   const imgData = canvas.toDataURL('image/png');
 
   const paper = isAnnual ? A4_LANDSCAPE : A4_PORTRAIT;
@@ -73,4 +88,15 @@ function findRenderedElement(helperId: string): HTMLElement | null {
   return document.querySelector(
     `[data-wage-ledger-helper="${helperId}"]`
   ) as HTMLElement | null;
+}
+
+function collectScaledAncestors(el: HTMLElement): HTMLElement[] {
+  const result: HTMLElement[] = [];
+  let cur: HTMLElement | null = el;
+  while (cur) {
+    const t = cur.style?.transform;
+    if (t && t.includes('scale')) result.push(cur);
+    cur = cur.parentElement as HTMLElement | null;
+  }
+  return result;
 }
