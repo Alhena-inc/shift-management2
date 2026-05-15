@@ -22,45 +22,10 @@ const LaborManagementPage: React.FC = () => {
     status: 'available' | 'coming_soon';
   }> = [
     {
-      icon: 'health_and_safety',
-      iconBgColor: '#FFEBEE',
-      title: '社会保険料の確認',
-      description: '健康保険・厚生年金・介護保険・雇用保険・子育て支援金の料率と計算を確認',
-      status: 'coming_soon',
-    },
-    {
-      icon: 'assignment',
-      iconBgColor: '#FFF3E0',
-      title: '算定基礎届',
-      description: '4〜6月の平均報酬から標準報酬月額を見直し（毎年7月）',
-      status: 'coming_soon',
-    },
-    {
-      icon: 'trending_up',
-      iconBgColor: '#F3E5F5',
-      title: '月額変更届（随時改定）',
-      description: '報酬の固定的変動による随時改定の対象者を確認',
-      status: 'coming_soon',
-    },
-    {
-      icon: 'family_restroom',
-      iconBgColor: '#E8F5E9',
-      title: '育休・産休 保険料免除',
-      description: '免除期間の登録と給与計算への反映',
-      status: 'coming_soon',
-    },
-    {
       icon: 'menu_book',
       iconBgColor: '#E3F2FD',
       title: '賃金台帳',
       description: '法定帳簿としての賃金台帳を出力',
-      status: 'coming_soon',
-    },
-    {
-      icon: 'event_available',
-      iconBgColor: '#E0F2F1',
-      title: '有給休暇 管理',
-      description: '付与・取得状況の管理と年5日取得義務の確認',
       status: 'coming_soon',
     },
   ];
@@ -128,36 +93,6 @@ const LaborManagementPage: React.FC = () => {
               </div>
             );
           })}
-        </div>
-
-        {/* 補足情報 */}
-        <div className="mt-8 bg-white rounded-xl p-5 border border-gray-100">
-          <h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
-            <span className="material-symbols-outlined text-gray-600 text-base">info</span>
-            適用中の料率（2026年度）
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-            <div>
-              <p className="text-gray-500 text-xs">健康保険（本人）</p>
-              <p className="font-semibold text-gray-900">5.065%</p>
-            </div>
-            <div>
-              <p className="text-gray-500 text-xs">介護保険（40歳以上）</p>
-              <p className="font-semibold text-gray-900">0.81%</p>
-            </div>
-            <div>
-              <p className="text-gray-500 text-xs">厚生年金</p>
-              <p className="font-semibold text-gray-900">9.15%</p>
-            </div>
-            <div>
-              <p className="text-gray-500 text-xs">雇用保険（2026/4〜）</p>
-              <p className="font-semibold text-gray-900">0.50%</p>
-            </div>
-            <div>
-              <p className="text-gray-500 text-xs">子育て支援金（本人）</p>
-              <p className="font-semibold text-gray-900">0.115%</p>
-            </div>
-          </div>
         </div>
       </main>
     </div>
