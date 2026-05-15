@@ -82,6 +82,15 @@ const HomePage: React.FC = () => {
       requiredRole: 'admin' as const
     },
     {
+      icon: 'work',
+      iconBgColor: '#FFEBEE',
+      hoverColor: '#C62828',
+      title: '労務管理',
+      description: '社会保険・労働保険・労務関連書類の管理',
+      path: '/labor',
+      requiredRole: 'admin' as const
+    },
+    {
       icon: 'playlist_add',
       iconBgColor: '#FFE8E8',
       hoverColor: '#E91E63',
