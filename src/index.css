@@ -373,6 +373,20 @@ table tbody td {
   vertical-align: top;
 }
 
+/* 賃金台帳テーブルはシフト表用の高さルールを上書き */
+table.wage-ledger-table tbody tr,
+table.wage-ledger-table thead tr {
+  height: auto !important;
+}
+
+table.wage-ledger-table tbody td,
+table.wage-ledger-table thead th {
+  height: 22px !important;
+  vertical-align: middle !important;
+  line-height: 1.25 !important;
+  padding: 1px 5px !important;
+}
+
 table tbody td[data-cell-key] {
   width: 80px !important;
   min-width: 80px !important;

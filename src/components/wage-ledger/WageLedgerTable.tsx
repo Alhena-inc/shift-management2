@@ -25,10 +25,9 @@ const reiwaYear = (calYear: number): number => calYear - 2018;
 
 const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
   const { helper, months, totals, bonuses } = entry;
-  // 12ヶ月固定
-  const fixedMonths: WageLedgerMonth[] = months.length === 12
-    ? months
-    : padToTwelve(months, calendarYear);
+  // この帳票は1〜12月の12ヶ月固定レイアウト。
+  // 単月で生成された場合も、その月だけ値を入れ、他は空欄として12列で表示する。
+  const fixedMonths: WageLedgerMonth[] = padToTwelve(months, calendarYear);
 
   return (
     <div
@@ -72,6 +71,7 @@ const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
         {/* 月次テーブル */}
         <table
+          className="wage-ledger-table"
           style={{
             borderCollapse: 'collapse',
             fontSize: 11,
@@ -373,7 +373,7 @@ const TotalRow: React.FC<{ label: string; cells: string[]; total: string }> = ({
 );
 
 const BonusTable: React.FC<{ bonuses: WageLedgerBonusColumn[] }> = ({ bonuses }) => (
-  <table style={{ borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
+  <table className="wage-ledger-table" style={{ borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
     <colgroup>
       <col style={{ width: 110 }} />
       {bonuses.map((_, i) => (
@@ -470,19 +470,25 @@ function sumBy<T>(arr: T[], pick: (x: T) => number): number {
 function th(): React.CSSProperties {
   return {
     border: `1px solid ${BORDER}`,
-    padding: '4px 6px',
+    padding: '3px 6px',
     fontWeight: 700,
     fontSize: 11,
+    lineHeight: 1.25,
     background: ORANGE_BG,
+    boxSizing: 'border-box',
+    verticalAlign: 'middle',
   };
 }
 
 function td(): React.CSSProperties {
   return {
     border: `1px solid ${BORDER}`,
-    padding: '3px 6px',
-    height: 18,
+    padding: '1px 5px',
+    lineHeight: 1.25,
+    height: 22,
     background: '#fff',
+    boxSizing: 'border-box',
+    verticalAlign: 'middle',
   };
 }
 
