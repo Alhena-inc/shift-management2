@@ -38,7 +38,7 @@ const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
         fontFamily:
           '"Yu Gothic", "Hiragino Sans", "Noto Sans JP", "Meiryo", sans-serif',
         color: '#000',
-        minWidth: '1280px',
+        width: '1720px',
       }}
     >
       {/* タイトル */}
@@ -80,12 +80,12 @@ const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
           }}
         >
           <colgroup>
-            <col style={{ width: 28 }} />
-            <col style={{ width: 100 }} />
+            <col style={{ width: 32 }} />
+            <col style={{ width: 130 }} />
             {fixedMonths.map((_, i) => (
-              <col key={`c-${i}`} style={{ width: 64 }} />
+              <col key={`c-${i}`} style={{ width: 92 }} />
             ))}
-            <col style={{ width: 70, background: ORANGE_LIGHT }} />
+            <col style={{ width: 96, background: ORANGE_LIGHT }} />
           </colgroup>
           <thead>
             <tr style={{ background: ORANGE_BG }}>
@@ -137,29 +137,39 @@ const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
             <SubtotalRow label="非課税計" cells={fixedMonths.map((m) => numOrZero(m.earnings.nonTaxableTotal))} total={numOrZero(sumBy(fixedMonths, (m) => m.earnings.nonTaxableTotal))} />
             <TotalRow label="総　支　給　額" cells={fixedMonths.map((m) => numOrZero(m.earnings.totalEarnings))} total={numOrZero(totals.totalEarnings)} />
 
-            {/* 控除額ブロック */}
-            <CategoryBlock
+            {/* 控除額ブロック（社会保険＋税金まとめて1カテゴリ） */}
+            <CategoryBlockWithSubtotals
               label="控除額"
-              rows={[
-                rowYen('健 康 保 険', fixedMonths.map((m) => m.deductions.healthInsurance + m.deductions.careInsurance), sumBy(fixedMonths, (m) => m.deductions.healthInsurance + m.deductions.careInsurance)),
-                rowYen('厚生年金保険', fixedMonths.map((m) => m.deductions.pensionInsurance), sumBy(fixedMonths, (m) => m.deductions.pensionInsurance)),
-                rowYen('雇 用 保 険', fixedMonths.map((m) => m.deductions.employmentInsurance), sumBy(fixedMonths, (m) => m.deductions.employmentInsurance)),
+              groups={[
+                {
+                  rows: [
+                    rowYen('健 康 保 険', fixedMonths.map((m) => m.deductions.healthInsurance + m.deductions.careInsurance), sumBy(fixedMonths, (m) => m.deductions.healthInsurance + m.deductions.careInsurance)),
+                    rowYen('厚生年金保険', fixedMonths.map((m) => m.deductions.pensionInsurance), sumBy(fixedMonths, (m) => m.deductions.pensionInsurance)),
+                    rowYen('雇 用 保 険', fixedMonths.map((m) => m.deductions.employmentInsurance), sumBy(fixedMonths, (m) => m.deductions.employmentInsurance)),
+                  ],
+                  subtotal: {
+                    label: '社会保険計',
+                    cells: fixedMonths.map((m) => numOrZero(m.deductions.socialInsuranceTotal)),
+                    total: numOrZero(sumBy(fixedMonths, (m) => m.deductions.socialInsuranceTotal)),
+                  },
+                },
+                {
+                  rows: [
+                    rowYen('所 得 税', fixedMonths.map((m) => m.deductions.incomeTax), sumBy(fixedMonths, (m) => m.deductions.incomeTax)),
+                    rowYen('住 民 税', fixedMonths.map((m) => m.deductions.residentTax), sumBy(fixedMonths, (m) => m.deductions.residentTax)),
+                    rowYen('退職積立金', fixedMonths.map((m) => m.deductions.retirementSavings), 0),
+                    rowYen('旅 行 積 立', fixedMonths.map((m) => m.deductions.travelSavings), 0),
+                    rowYen(blankLabel(), fixedMonths.map(() => 0), 0),
+                    rowYen('年 末 調 整', fixedMonths.map((m) => m.deductions.yearEndAdjustment), sumBy(fixedMonths, (m) => m.deductions.yearEndAdjustment)),
+                  ],
+                  subtotal: {
+                    label: '控 除 合 計',
+                    cells: fixedMonths.map((m) => numOrZero(m.deductions.totalDeductions)),
+                    total: numOrZero(totals.totalDeductions),
+                  },
+                },
               ]}
             />
-            <SubtotalRow label="社会保険計" cells={fixedMonths.map((m) => numOrZero(m.deductions.socialInsuranceTotal))} total={numOrZero(sumBy(fixedMonths, (m) => m.deductions.socialInsuranceTotal))} />
-
-            <CategoryBlock
-              label=""
-              rows={[
-                rowYen('所 得 税', fixedMonths.map((m) => m.deductions.incomeTax), sumBy(fixedMonths, (m) => m.deductions.incomeTax)),
-                rowYen('住 民 税', fixedMonths.map((m) => m.deductions.residentTax), sumBy(fixedMonths, (m) => m.deductions.residentTax)),
-                rowYen('退職積立金', fixedMonths.map((m) => m.deductions.retirementSavings), 0),
-                rowYen('旅 行 積 立', fixedMonths.map((m) => m.deductions.travelSavings), 0),
-                rowYen(blankLabel(), fixedMonths.map(() => 0), 0),
-                rowYen('年 末 調 整', fixedMonths.map((m) => m.deductions.yearEndAdjustment), sumBy(fixedMonths, (m) => m.deductions.yearEndAdjustment)),
-              ]}
-            />
-            <SubtotalRow label="控 除 合 計" cells={fixedMonths.map((m) => numOrZero(m.deductions.totalDeductions))} total={numOrZero(totals.totalDeductions)} />
 
             {/* 差引支給額 */}
             <TotalRow label="差引支給額" cells={fixedMonths.map((m) => numOrZero(m.netPayment))} total={numOrZero(totals.totalNetPayment)} />
@@ -206,7 +216,7 @@ const CategoryBlock: React.FC<{ label: string; rows: RowDef[] }> = ({ label, row
     <>
       {rows.map((r, idx) => (
         <tr key={`${label}-${idx}`}>
-          {idx === 0 && label && (
+          {idx === 0 ? (
             <td
               rowSpan={rows.length}
               style={{
@@ -215,18 +225,17 @@ const CategoryBlock: React.FC<{ label: string; rows: RowDef[] }> = ({ label, row
                 textOrientation: 'upright',
                 background: '#fff',
                 textAlign: 'center',
-                fontWeight: 600,
-                letterSpacing: '0.3em',
-                width: 28,
+                fontWeight: 700,
+                letterSpacing: '0.4em',
+                fontSize: 12,
               }}
             >
               {label}
             </td>
-          )}
-          {(idx > 0 || !label) && label === '' && idx === 0 && (
-            <td style={{ ...td(), borderRight: 'none', background: '#fff' }}></td>
-          )}
-          <td style={{ ...td(), background: '#fff', whiteSpace: 'nowrap' }}>{r.label}</td>
+          ) : null}
+          <td style={{ ...td(), background: '#fff', whiteSpace: 'nowrap', textAlign: 'center' }}>
+            {r.label}
+          </td>
           {r.cells.map((c, i) => (
             <td key={`c-${i}`} style={{ ...td(), textAlign: 'right' }}>{c}</td>
           ))}
@@ -234,6 +243,98 @@ const CategoryBlock: React.FC<{ label: string; rows: RowDef[] }> = ({ label, row
             {r.total}
           </td>
         </tr>
+      ))}
+    </>
+  );
+};
+
+interface SubGroup {
+  rows: RowDef[];
+  subtotal: { label: string; cells: string[]; total: string };
+}
+
+const CategoryBlockWithSubtotals: React.FC<{ label: string; groups: SubGroup[] }> = ({
+  label,
+  groups,
+}) => {
+  const totalRows = groups.reduce((sum, g) => sum + g.rows.length + 1, 0);
+  let printed = 0;
+  return (
+    <>
+      {groups.map((g, gi) => (
+        <React.Fragment key={`grp-${gi}`}>
+          {g.rows.map((r, ri) => {
+            const isFirstOfAll = printed === 0;
+            printed += 1;
+            return (
+              <tr key={`grp-${gi}-r-${ri}`}>
+                {isFirstOfAll && (
+                  <td
+                    rowSpan={totalRows}
+                    style={{
+                      ...td(),
+                      writingMode: 'vertical-rl',
+                      textOrientation: 'upright',
+                      background: '#fff',
+                      textAlign: 'center',
+                      fontWeight: 700,
+                      letterSpacing: '0.4em',
+                      fontSize: 12,
+                    }}
+                  >
+                    {label}
+                  </td>
+                )}
+                <td
+                  style={{ ...td(), background: '#fff', whiteSpace: 'nowrap', textAlign: 'center' }}
+                >
+                  {r.label}
+                </td>
+                {r.cells.map((c, i) => (
+                  <td key={`c-${i}`} style={{ ...td(), textAlign: 'right' }}>{c}</td>
+                ))}
+                <td
+                  style={{ ...td(), textAlign: 'right', background: ORANGE_LIGHT, fontWeight: 600 }}
+                >
+                  {r.total}
+                </td>
+              </tr>
+            );
+          })}
+          {/* グループのsubtotal */}
+          <tr key={`grp-${gi}-sub`}>
+            <td
+              style={{
+                ...td(),
+                background: '#fff',
+                fontWeight: 700,
+                textAlign: 'center',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {g.subtotal.label}
+            </td>
+            {g.subtotal.cells.map((c, i) => (
+              <td key={`s-${gi}-${i}`} style={{ ...td(), textAlign: 'right', fontWeight: 700 }}>
+                {c}
+              </td>
+            ))}
+            <td
+              style={{
+                ...td(),
+                textAlign: 'right',
+                background: ORANGE_LIGHT,
+                fontWeight: 700,
+              }}
+            >
+              {g.subtotal.total}
+            </td>
+          </tr>
+          {(() => {
+            printed += 1;
+            return null;
+          })()}
+        </React.Fragment>
       ))}
     </>
   );
@@ -274,11 +375,11 @@ const TotalRow: React.FC<{ label: string; cells: string[]; total: string }> = ({
 const BonusTable: React.FC<{ bonuses: WageLedgerBonusColumn[] }> = ({ bonuses }) => (
   <table style={{ borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
     <colgroup>
-      <col style={{ width: 96 }} />
+      <col style={{ width: 110 }} />
       {bonuses.map((_, i) => (
-        <col key={`bc-${i}`} style={{ width: 56 }} />
+        <col key={`bc-${i}`} style={{ width: 68 }} />
       ))}
-      <col style={{ width: 56, background: ORANGE_LIGHT }} />
+      <col style={{ width: 68, background: ORANGE_LIGHT }} />
     </colgroup>
     <thead>
       <tr style={{ background: ORANGE_BG }}>

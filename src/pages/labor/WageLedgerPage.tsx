@@ -284,8 +284,14 @@ const WageLedgerPage: React.FC = () => {
                 PDF出力
               </button>
             </div>
-            <div className="overflow-x-auto bg-white rounded-xl border border-gray-200">
-              <div data-wage-ledger-helper={entry.helper.helperId}>
+            <div
+              className="overflow-x-auto bg-white rounded-xl border border-gray-200"
+              style={{ maxWidth: '100%' }}
+            >
+              <div
+                data-wage-ledger-helper={entry.helper.helperId}
+                style={{ display: 'inline-block' }}
+              >
                 <WageLedgerTable entry={entry} calendarYear={calendarYear} />
               </div>
             </div>
