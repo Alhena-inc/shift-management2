@@ -1,350 +1,463 @@
 import React from 'react';
-import type { WageLedgerEntry, WageLedgerMonth } from '../../types/wageLedger';
+import type {
+  WageLedgerBonusColumn,
+  WageLedgerEntry,
+  WageLedgerMonth,
+} from '../../types/wageLedger';
 
 interface Props {
   entry: WageLedgerEntry;
+  calendarYear: number; // 表紙年（西暦）— 「令和X年」表記の元
 }
 
-const yen = (n: number): string =>
-  n === 0 ? '' : n.toLocaleString('ja-JP') + ' 円';
+const ORANGE_BG = '#FBE5D6';
+const ORANGE_HEADER = '#F4B084';
+const ORANGE_LIGHT = '#FFF2E8';
+const BORDER = '#7F7F7F';
 
-const hours = (n: number): string => (n === 0 ? '' : `${n.toFixed(1)} h`);
-const days = (n: number): string => (n === 0 ? '' : `${n} 日`);
+/** 数値整形：0は空欄、3桁区切り */
+const yen = (n: number): string => (n === 0 ? '' : n.toLocaleString('ja-JP'));
+const hours = (n: number): string => (n === 0 ? '0' : `${n.toFixed(1)}`);
+const days = (n: number): string => (n === 0 ? '0' : `${n}`);
+const numOrZero = (n: number): string => (n === 0 ? '0' : n.toLocaleString('ja-JP'));
 
-const WageLedgerTable: React.FC<Props> = ({ entry }) => {
-  const { helper, months, totals } = entry;
-  const isMonthly = months.length === 1;
-  const colSpan = months.length + 1; // 月数 + 合計
+const reiwaYear = (calYear: number): number => calYear - 2018;
+
+const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
+  const { helper, months, totals, bonuses } = entry;
+  // 12ヶ月固定
+  const fixedMonths: WageLedgerMonth[] = months.length === 12
+    ? months
+    : padToTwelve(months, calendarYear);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      {/* ヘッダー部 */}
-      <div className="px-5 py-4 border-b border-gray-200 bg-gray-50">
-        <div className="flex justify-between items-start gap-4">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">賃金台帳</h2>
-            <p className="text-xs text-gray-500">
-              労働基準法第108条・施行規則第54条に基づく法定帳簿
-            </p>
-          </div>
-          <p className="text-sm text-gray-700">事業所名：{helper.officeName}</p>
-        </div>
-        <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-          <Field label="氏名" value={helper.helperName} />
-          <Field label="性別" value={genderLabel(helper.gender)} />
-          <Field label="従業員番号" value={helper.employeeNumber ?? '－'} />
-          <Field label="雇用形態" value={helper.employmentTypeLabel || '－'} />
-          <Field label="入社日" value={formatJp(helper.hireDate) ?? '－'} />
-          <Field
-            label="退職日"
-            value={helper.resignationDate ? formatJp(helper.resignationDate)! : '在職中'}
-          />
-          <Field label="生年月日" value={formatJp(helper.birthDate) ?? '－'} />
-          <Field
-            label="特例事項"
-            value={
-              helper.isExecutive
-                ? '役員（労働時間欄記載不要）'
-                : helper.isManager
-                ? '管理監督者'
-                : '－'
-            }
-          />
-        </div>
+    <div
+      className="bg-white"
+      style={{
+        padding: '12px 16px',
+        fontFamily:
+          '"Yu Gothic", "Hiragino Sans", "Noto Sans JP", "Meiryo", sans-serif',
+        color: '#000',
+        minWidth: '1280px',
+      }}
+    >
+      {/* タイトル */}
+      <div style={{ position: 'relative', marginBottom: 4 }}>
+        <h1 style={{ textAlign: 'center', fontSize: 22, fontWeight: 700, margin: 0 }}>
+          賃金台帳
+        </h1>
+        <span style={{ position: 'absolute', right: 0, top: 6, fontSize: 12 }}>
+          {helper.officeName}
+        </span>
       </div>
 
-      {/* 明細表 */}
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-xs border-collapse">
-          <thead className="bg-gray-100 text-gray-700">
-            <tr>
-              <th className="border border-gray-300 p-2 text-left w-40 sticky left-0 bg-gray-100">
-                項目
-              </th>
-              {months.map((m) => (
-                <th key={`${m.year}-${m.month}`} className="border border-gray-300 p-2">
-                  {m.year}年{m.month}月
+      {/* ヘッダー（令和年・氏名・性別） */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          gap: 24,
+          padding: '4px 4px 8px',
+          fontSize: 12,
+        }}
+      >
+        <span>令和{reiwaYear(calendarYear)}年</span>
+        <span style={{ borderBottom: '1px solid #000', minWidth: 200, paddingBottom: 2 }}>
+          氏名：{helper.helperName}
+        </span>
+        <span>性別：{helper.gender === 'male' ? '男' : helper.gender === 'female' ? '女' : ''}</span>
+      </div>
+
+      {/* メインテーブル＋賞与テーブル横並び */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+        {/* 月次テーブル */}
+        <table
+          style={{
+            borderCollapse: 'collapse',
+            fontSize: 11,
+            tableLayout: 'fixed',
+            flex: '1 1 auto',
+          }}
+        >
+          <colgroup>
+            <col style={{ width: 28 }} />
+            <col style={{ width: 100 }} />
+            {fixedMonths.map((_, i) => (
+              <col key={`c-${i}`} style={{ width: 64 }} />
+            ))}
+            <col style={{ width: 70, background: ORANGE_LIGHT }} />
+          </colgroup>
+          <thead>
+            <tr style={{ background: ORANGE_BG }}>
+              <th style={th()} colSpan={2}>賃金計算期間</th>
+              {fixedMonths.map((m) => (
+                <th key={`h-${m.month}`} style={th()}>
+                  {m.month}月分
                 </th>
               ))}
-              {!isMonthly && (
-                <th className="border border-gray-300 p-2 bg-gray-200">合計</th>
-              )}
+              <th style={{ ...th(), background: ORANGE_HEADER }}>計</th>
             </tr>
           </thead>
           <tbody>
-            <PeriodRow months={months} />
-            <AttendanceRows months={months} totals={totals} isMonthly={isMonthly} />
-
-            <SectionRow label="【支給】" colSpan={colSpan} />
-            <EarningRow label="基本給" months={months} pick={(m) => m.earnings.basePay} totalKey="basePay" isMonthly={isMonthly} />
-            <EarningRow label="処遇改善加算手当" months={months} pick={(m) => m.earnings.treatmentAllowance} totalKey="treatmentAllowance" isMonthly={isMonthly} />
-            <EarningRow label="同行手当" months={months} pick={(m) => m.earnings.accompanyAllowance} totalKey="accompanyAllowance" isMonthly={isMonthly} />
-            <EarningRow label="事務・営業手当" months={months} pick={(m) => m.earnings.officeAllowance} totalKey="officeAllowance" isMonthly={isMonthly} />
-            <EarningRow label="深夜手当" months={months} pick={(m) => m.earnings.nightAllowance} totalKey="nightAllowance" isMonthly={isMonthly} />
-            <EarningRow label="年末年始特別手当" months={months} pick={(m) => m.earnings.newYearAllowance} totalKey="newYearAllowance" isMonthly={isMonthly} />
-            <EarningRow label="残業手当" months={months} pick={(m) => m.earnings.overtimeAllowance} totalKey="overtimeAllowance" isMonthly={isMonthly} />
-            <EarningRow label="特別手当" months={months} pick={(m) => m.earnings.specialAllowance} totalKey="specialAllowance" isMonthly={isMonthly} />
-            <EarningRow label="役員報酬" months={months} pick={(m) => m.earnings.directorCompensation} totalKey="directorCompensation" isMonthly={isMonthly} />
-            <EarningRow label="通勤手当（課税）" months={months} pick={(m) => m.earnings.commutingAllowance} totalKey="commutingAllowance" isMonthly={isMonthly} />
-            <EarningRow label="通勤手当（非課税）" months={months} pick={(m) => m.earnings.nonTaxableCommuting} totalKey="nonTaxableCommuting" isMonthly={isMonthly} />
-            <OtherAllowancesRows months={months} isMonthly={isMonthly} />
-            <TotalRow
-              label="支給合計"
-              months={months}
-              pick={(m) => m.earnings.totalEarnings}
-              total={totals.totalEarnings}
-              isMonthly={isMonthly}
+            {/* 勤怠ブロック */}
+            <CategoryBlock
+              label="勤怠"
+              rows={[
+                row('出 勤 日 数', fixedMonths.map((m) => days(m.attendance.workDays)), days(totals.workDays)),
+                row('有給取得日数', fixedMonths.map((m) => days(m.attendance.paidLeaveTaken)), '0'),
+                row('欠 勤 日 数', fixedMonths.map((m) => days(m.attendance.absenceDays)), days(sumBy(fixedMonths, (m) => m.attendance.absenceDays))),
+                row('特 別 休 暇', fixedMonths.map((m) => days(m.attendance.specialLeaveDays)), '0'),
+                row('出 勤 時 間', fixedMonths.map((m) => hours(m.attendance.workHours)), hours(totals.workHours)),
+                row('時間外労働時間', fixedMonths.map((m) => hours(m.attendance.overtimeHours)), hours(totals.overtimeHours)),
+                row('法定内休出時間', fixedMonths.map((m) => hours(m.attendance.legalInsideHolidayHours)), '0'),
+                row('法定外休出時間', fixedMonths.map((m) => hours(m.attendance.legalOutsideHolidayHours)), hours(totals.holidayWorkHours)),
+                row('遅 早 時 間', fixedMonths.map((m) => hours(m.attendance.tardyEarlyHours)), '0'),
+              ]}
             />
 
-            <SectionRow label="【控除】" colSpan={colSpan} />
-            <DeductionRow label="健康保険料" months={months} pick={(m) => m.deductions.healthInsurance} isMonthly={isMonthly} />
-            <DeductionRow label="介護保険料" months={months} pick={(m) => m.deductions.careInsurance} isMonthly={isMonthly} />
-            <DeductionRow label="厚生年金保険料" months={months} pick={(m) => m.deductions.pensionInsurance} isMonthly={isMonthly} />
-            <DeductionRow label="雇用保険料" months={months} pick={(m) => m.deductions.employmentInsurance} isMonthly={isMonthly} />
-            <DeductionRow label="子ども・子育て支援金" months={months} pick={(m) => m.deductions.childcareSupport} isMonthly={isMonthly} />
-            <DeductionRow label="源泉所得税" months={months} pick={(m) => m.deductions.incomeTax} isMonthly={isMonthly} />
-            <DeductionRow label="住民税" months={months} pick={(m) => m.deductions.residentTax} isMonthly={isMonthly} />
-            <DeductionRow label="立替金" months={months} pick={(m) => m.deductions.reimbursement} isMonthly={isMonthly} />
-            <DeductionRow label="前払給与" months={months} pick={(m) => m.deductions.advancePayment} isMonthly={isMonthly} />
-            <DeductionRow label="年末調整" months={months} pick={(m) => m.deductions.yearEndAdjustment} isMonthly={isMonthly} />
-            <TotalRow
-              label="控除合計"
-              months={months}
-              pick={(m) => m.deductions.totalDeductions}
-              total={totals.totalDeductions}
-              isMonthly={isMonthly}
+            {/* 支給額ブロック */}
+            <CategoryBlock
+              label="支給額"
+              rows={[
+                rowYen('基 本 給', fixedMonths.map((m) => m.earnings.basePay), sumBy(fixedMonths, (m) => m.earnings.basePay)),
+                rowYen(blankLabel(), fixedMonths.map(() => 0), 0),
+                rowYen(blankLabel(), fixedMonths.map(() => 0), 0),
+                rowYen(blankLabel(), fixedMonths.map(() => 0), 0),
+                rowYen('有 休 手 当', fixedMonths.map((m) => m.earnings.paidLeaveAllowance), 0),
+                rowYen('時間外手当', fixedMonths.map((m) => m.earnings.overtimeAllowance), sumBy(fixedMonths, (m) => m.earnings.overtimeAllowance)),
+                rowYen('休 日 手 当', fixedMonths.map((m) => m.earnings.holidayAllowance), 0),
+                rowYen('控 除 額', fixedMonths.map((m) => m.earnings.deductionMisc), 0),
+                rowYen('通勤費（非課税）', fixedMonths.map((m) => m.earnings.nonTaxableCommuting), sumBy(fixedMonths, (m) => m.earnings.nonTaxableCommuting)),
+                rowYen('通勤費（課税）', fixedMonths.map((m) => m.earnings.commutingAllowance), sumBy(fixedMonths, (m) => m.earnings.commutingAllowance)),
+              ]}
             />
 
-            <TotalRow
-              label="差引支給額"
-              months={months}
-              pick={(m) => m.netPayment}
-              total={totals.totalNetPayment}
-              isMonthly={isMonthly}
-              emphasize
+            {/* 課税計 / 非課税計 / 総支給額（強調行） */}
+            <SubtotalRow label="課税計" cells={fixedMonths.map((m) => numOrZero(m.earnings.taxableTotal))} total={numOrZero(sumBy(fixedMonths, (m) => m.earnings.taxableTotal))} />
+            <SubtotalRow label="非課税計" cells={fixedMonths.map((m) => numOrZero(m.earnings.nonTaxableTotal))} total={numOrZero(sumBy(fixedMonths, (m) => m.earnings.nonTaxableTotal))} />
+            <TotalRow label="総　支　給　額" cells={fixedMonths.map((m) => numOrZero(m.earnings.totalEarnings))} total={numOrZero(totals.totalEarnings)} />
+
+            {/* 控除額ブロック */}
+            <CategoryBlock
+              label="控除額"
+              rows={[
+                rowYen('健 康 保 険', fixedMonths.map((m) => m.deductions.healthInsurance + m.deductions.careInsurance), sumBy(fixedMonths, (m) => m.deductions.healthInsurance + m.deductions.careInsurance)),
+                rowYen('厚生年金保険', fixedMonths.map((m) => m.deductions.pensionInsurance), sumBy(fixedMonths, (m) => m.deductions.pensionInsurance)),
+                rowYen('雇 用 保 険', fixedMonths.map((m) => m.deductions.employmentInsurance), sumBy(fixedMonths, (m) => m.deductions.employmentInsurance)),
+              ]}
             />
-            <SimpleRow label="銀行振込額" months={months} pick={(m) => yen(m.bankTransfer)} isMonthly={isMonthly} />
-            <SimpleRow label="現金支給額" months={months} pick={(m) => yen(m.cashPayment)} isMonthly={isMonthly} />
+            <SubtotalRow label="社会保険計" cells={fixedMonths.map((m) => numOrZero(m.deductions.socialInsuranceTotal))} total={numOrZero(sumBy(fixedMonths, (m) => m.deductions.socialInsuranceTotal))} />
+
+            <CategoryBlock
+              label=""
+              rows={[
+                rowYen('所 得 税', fixedMonths.map((m) => m.deductions.incomeTax), sumBy(fixedMonths, (m) => m.deductions.incomeTax)),
+                rowYen('住 民 税', fixedMonths.map((m) => m.deductions.residentTax), sumBy(fixedMonths, (m) => m.deductions.residentTax)),
+                rowYen('退職積立金', fixedMonths.map((m) => m.deductions.retirementSavings), 0),
+                rowYen('旅 行 積 立', fixedMonths.map((m) => m.deductions.travelSavings), 0),
+                rowYen(blankLabel(), fixedMonths.map(() => 0), 0),
+                rowYen('年 末 調 整', fixedMonths.map((m) => m.deductions.yearEndAdjustment), sumBy(fixedMonths, (m) => m.deductions.yearEndAdjustment)),
+              ]}
+            />
+            <SubtotalRow label="控 除 合 計" cells={fixedMonths.map((m) => numOrZero(m.deductions.totalDeductions))} total={numOrZero(totals.totalDeductions)} />
+
+            {/* 差引支給額 */}
+            <TotalRow label="差引支給額" cells={fixedMonths.map((m) => numOrZero(m.netPayment))} total={numOrZero(totals.totalNetPayment)} />
+
+            {/* 領収印行 */}
+            <tr>
+              <td colSpan={2} style={{ ...td(), background: '#fff', textAlign: 'center' }}>領　収　印</td>
+              {fixedMonths.map((m) => (
+                <td key={`r-${m.month}`} style={{ ...td(), height: 36 }}></td>
+              ))}
+              <td style={{ ...td(), background: ORANGE_LIGHT }}></td>
+            </tr>
           </tbody>
         </table>
-      </div>
 
-      {/* 整合性アラート */}
-      {months.some((m) => m.hasData && !m.reconciles) && (
-        <div className="px-5 py-3 bg-amber-50 border-t border-amber-200 text-xs text-amber-800">
-          ⚠️ 一部の月で「差引支給額 ≠ 支給合計 − 控除合計」となっています。給与明細をご確認ください。
-        </div>
-      )}
-
-      <div className="px-5 py-3 border-t border-gray-200 text-xs text-gray-500 flex justify-between flex-wrap gap-2">
-        <span>本台帳は労働基準法第108条・施行規則第54条に基づき作成しています。</span>
-        <span>出力日：{new Date().toLocaleDateString('ja-JP')}</span>
+        {/* 賞与テーブル */}
+        <BonusTable bonuses={bonuses} />
       </div>
     </div>
   );
 };
 
-interface FieldProps {
+/* ─────────── 内部コンポーネント ─────────── */
+
+interface RowDef {
   label: string;
-  value: string;
-}
-const Field: React.FC<FieldProps> = ({ label, value }) => (
-  <div className="flex gap-2">
-    <span className="text-gray-500 min-w-[5rem]">{label}：</span>
-    <span className="text-gray-900 font-medium">{value}</span>
-  </div>
-);
-
-const PeriodRow: React.FC<{ months: WageLedgerMonth[] }> = ({ months }) => (
-  <tr>
-    <td className="border border-gray-300 p-2 bg-gray-50 sticky left-0">
-      賃金計算期間
-    </td>
-    {months.map((m) => (
-      <td key={`p-${m.year}-${m.month}`} className="border border-gray-300 p-2 text-center text-gray-700">
-        {formatPeriod(m.periodStart, m.periodEnd)}
-      </td>
-    ))}
-    {months.length > 1 && <td className="border border-gray-300 p-2 bg-gray-50"></td>}
-  </tr>
-);
-
-interface AttRowsProps {
-  months: WageLedgerMonth[];
-  totals: WageLedgerEntry['totals'];
-  isMonthly: boolean;
-}
-const AttendanceRows: React.FC<AttRowsProps> = ({ months, totals, isMonthly }) => {
-  return (
-    <>
-      <SimpleRow label="労働日数" months={months} pick={(m) => days(m.attendance.workDays)} total={!isMonthly ? days(totals.workDays) : undefined} isMonthly={isMonthly} />
-      <SimpleRow label="労働時間数" months={months} pick={(m) => hours(m.attendance.workHours)} total={!isMonthly ? hours(totals.workHours) : undefined} isMonthly={isMonthly} />
-      <SimpleRow label="時間外労働時間数" months={months} pick={(m) => hours(m.attendance.overtimeHours)} total={!isMonthly ? hours(totals.overtimeHours) : undefined} isMonthly={isMonthly} />
-      <SimpleRow label="休日労働時間数" months={months} pick={(m) => hours(m.attendance.holidayWorkHours)} total={!isMonthly ? hours(totals.holidayWorkHours) : undefined} isMonthly={isMonthly} />
-      <SimpleRow label="深夜労働時間数" months={months} pick={(m) => hours(m.attendance.nightWorkHours)} total={!isMonthly ? hours(totals.nightWorkHours) : undefined} isMonthly={isMonthly} />
-    </>
-  );
-};
-
-const SectionRow: React.FC<{ label: string; colSpan: number }> = ({ label, colSpan }) => (
-  <tr>
-    <td colSpan={colSpan} className="border border-gray-300 p-2 bg-blue-50 font-semibold text-blue-900">
-      {label}
-    </td>
-  </tr>
-);
-
-interface NumberRowProps {
-  label: string;
-  months: WageLedgerMonth[];
-  pick: (m: WageLedgerMonth) => number;
-  totalKey?: keyof WageLedgerMonth['earnings'];
-  isMonthly: boolean;
-}
-const EarningRow: React.FC<NumberRowProps> = ({ label, months, pick, isMonthly }) => {
-  const total = months.reduce((sum, m) => sum + pick(m), 0);
-  if (total === 0) return null;
-  return (
-    <tr>
-      <td className="border border-gray-300 p-2 sticky left-0 bg-white">{label}</td>
-      {months.map((m) => (
-        <td key={`${label}-${m.year}-${m.month}`} className="border border-gray-300 p-2 text-right">
-          {yen(pick(m))}
-        </td>
-      ))}
-      {!isMonthly && <td className="border border-gray-300 p-2 text-right bg-gray-50 font-medium">{yen(total)}</td>}
-    </tr>
-  );
-};
-
-const DeductionRow: React.FC<{
-  label: string;
-  months: WageLedgerMonth[];
-  pick: (m: WageLedgerMonth) => number;
-  isMonthly: boolean;
-}> = ({ label, months, pick, isMonthly }) => {
-  const total = months.reduce((sum, m) => sum + pick(m), 0);
-  if (total === 0) return null;
-  return (
-    <tr>
-      <td className="border border-gray-300 p-2 sticky left-0 bg-white">{label}</td>
-      {months.map((m) => (
-        <td key={`${label}-${m.year}-${m.month}`} className="border border-gray-300 p-2 text-right">
-          {yen(pick(m))}
-        </td>
-      ))}
-      {!isMonthly && <td className="border border-gray-300 p-2 text-right bg-gray-50 font-medium">{yen(total)}</td>}
-    </tr>
-  );
-};
-
-const OtherAllowancesRows: React.FC<{ months: WageLedgerMonth[]; isMonthly: boolean }> = ({
-  months,
-  isMonthly,
-}) => {
-  const names = new Set<string>();
-  months.forEach((m) =>
-    m.earnings.otherAllowances.forEach((a) => {
-      if (a.amount !== 0) names.add(a.name);
-    })
-  );
-  if (names.size === 0) return null;
-  return (
-    <>
-      {Array.from(names).map((name) => {
-        const total = months.reduce(
-          (sum, m) =>
-            sum +
-            m.earnings.otherAllowances
-              .filter((a) => a.name === name)
-              .reduce((s, a) => s + a.amount, 0),
-          0
-        );
-        return (
-          <tr key={`oth-${name}`}>
-            <td className="border border-gray-300 p-2 sticky left-0 bg-white">{name}</td>
-            {months.map((m) => {
-              const v = m.earnings.otherAllowances
-                .filter((a) => a.name === name)
-                .reduce((s, a) => s + a.amount, 0);
-              return (
-                <td
-                  key={`${name}-${m.year}-${m.month}`}
-                  className="border border-gray-300 p-2 text-right"
-                >
-                  {yen(v)}
-                </td>
-              );
-            })}
-            {!isMonthly && (
-              <td className="border border-gray-300 p-2 text-right bg-gray-50 font-medium">
-                {yen(total)}
-              </td>
-            )}
-          </tr>
-        );
-      })}
-    </>
-  );
-};
-
-interface TotalRowProps {
-  label: string;
-  months: WageLedgerMonth[];
-  pick: (m: WageLedgerMonth) => number;
-  total: number;
-  isMonthly: boolean;
+  cells: string[];
+  total: string;
   emphasize?: boolean;
 }
-const TotalRow: React.FC<TotalRowProps> = ({ label, months, pick, total, isMonthly, emphasize }) => (
-  <tr className={emphasize ? 'bg-yellow-50 font-bold' : 'bg-gray-50 font-medium'}>
-    <td className="border border-gray-300 p-2 sticky left-0 ${emphasize ? 'bg-yellow-50' : 'bg-gray-50'}">{label}</td>
-    {months.map((m) => (
-      <td key={`tot-${label}-${m.year}-${m.month}`} className="border border-gray-300 p-2 text-right">
-        {yen(pick(m))}
-      </td>
-    ))}
-    {!isMonthly && <td className="border border-gray-300 p-2 text-right">{yen(total)}</td>}
-  </tr>
-);
 
-interface SimpleRowProps {
-  label: string;
-  months: WageLedgerMonth[];
-  pick: (m: WageLedgerMonth) => string;
-  total?: string;
-  isMonthly: boolean;
+function row(label: string, cells: string[], total: string): RowDef {
+  return { label, cells, total };
 }
-const SimpleRow: React.FC<SimpleRowProps> = ({ label, months, pick, total, isMonthly }) => (
+function rowYen(label: string, vals: number[], total: number): RowDef {
+  return { label, cells: vals.map((v) => yen(v)), total: yen(total) };
+}
+function blankLabel(): string {
+  return '';
+}
+
+const CategoryBlock: React.FC<{ label: string; rows: RowDef[] }> = ({ label, rows }) => {
+  return (
+    <>
+      {rows.map((r, idx) => (
+        <tr key={`${label}-${idx}`}>
+          {idx === 0 && label && (
+            <td
+              rowSpan={rows.length}
+              style={{
+                ...td(),
+                writingMode: 'vertical-rl',
+                textOrientation: 'upright',
+                background: '#fff',
+                textAlign: 'center',
+                fontWeight: 600,
+                letterSpacing: '0.3em',
+                width: 28,
+              }}
+            >
+              {label}
+            </td>
+          )}
+          {(idx > 0 || !label) && label === '' && idx === 0 && (
+            <td style={{ ...td(), borderRight: 'none', background: '#fff' }}></td>
+          )}
+          <td style={{ ...td(), background: '#fff', whiteSpace: 'nowrap' }}>{r.label}</td>
+          {r.cells.map((c, i) => (
+            <td key={`c-${i}`} style={{ ...td(), textAlign: 'right' }}>{c}</td>
+          ))}
+          <td style={{ ...td(), textAlign: 'right', background: ORANGE_LIGHT, fontWeight: 600 }}>
+            {r.total}
+          </td>
+        </tr>
+      ))}
+    </>
+  );
+};
+
+const SubtotalRow: React.FC<{ label: string; cells: string[]; total: string }> = ({
+  label,
+  cells,
+  total,
+}) => (
   <tr>
-    <td className="border border-gray-300 p-2 sticky left-0 bg-white">{label}</td>
-    {months.map((m) => (
-      <td key={`s-${label}-${m.year}-${m.month}`} className="border border-gray-300 p-2 text-right">
-        {pick(m)}
-      </td>
+    <td colSpan={2} style={{ ...td(), background: '#fff', fontWeight: 700, textAlign: 'center' }}>{label}</td>
+    {cells.map((c, i) => (
+      <td key={`st-${i}`} style={{ ...td(), textAlign: 'right' }}>{c}</td>
     ))}
-    {!isMonthly && <td className="border border-gray-300 p-2 text-right bg-gray-50">{total ?? ''}</td>}
+    <td style={{ ...td(), textAlign: 'right', background: ORANGE_LIGHT, fontWeight: 700 }}>
+      {total}
+    </td>
   </tr>
 );
 
-function genderLabel(g: string): string {
-  if (g === 'male') return '男';
-  if (g === 'female') return '女';
-  return 'その他';
+const TotalRow: React.FC<{ label: string; cells: string[]; total: string }> = ({
+  label,
+  cells,
+  total,
+}) => (
+  <tr style={{ background: ORANGE_BG }}>
+    <td colSpan={2} style={{ ...td(), fontWeight: 800, textAlign: 'center' }}>{label}</td>
+    {cells.map((c, i) => (
+      <td key={`tt-${i}`} style={{ ...td(), textAlign: 'right', fontWeight: 700 }}>{c}</td>
+    ))}
+    <td style={{ ...td(), textAlign: 'right', background: ORANGE_HEADER, fontWeight: 800 }}>
+      {total}
+    </td>
+  </tr>
+);
+
+const BonusTable: React.FC<{ bonuses: WageLedgerBonusColumn[] }> = ({ bonuses }) => (
+  <table style={{ borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
+    <colgroup>
+      <col style={{ width: 96 }} />
+      {bonuses.map((_, i) => (
+        <col key={`bc-${i}`} style={{ width: 56 }} />
+      ))}
+      <col style={{ width: 56, background: ORANGE_LIGHT }} />
+    </colgroup>
+    <thead>
+      <tr style={{ background: ORANGE_BG }}>
+        <th style={th()}>賞与</th>
+        {bonuses.map((b, i) => (
+          <th key={`bh-${i}`} style={th()}>{b.label}</th>
+        ))}
+        <th style={{ ...th(), background: ORANGE_HEADER }}>計</th>
+      </tr>
+    </thead>
+    <tbody>
+      <BonusRow label="賞 与 額" vals={bonuses.map((b) => b.bonusAmount)} />
+      <BonusRow label="" vals={bonuses.map(() => 0)} />
+      <BonusRow label="" vals={bonuses.map(() => 0)} />
+      <BonusRow label="" vals={bonuses.map(() => 0)} />
+      <BonusRow label="" vals={bonuses.map(() => 0)} />
+      <BonusRow label="" vals={bonuses.map(() => 0)} />
+      <BonusRow label="" vals={bonuses.map(() => 0)} />
+      <BonusRow label="" vals={bonuses.map(() => 0)} />
+      <SubtotalBonusRow label="課税計" vals={bonuses.map((b) => b.taxableTotal)} />
+      <SubtotalBonusRow label="非課税計" vals={bonuses.map((b) => b.nonTaxableTotal)} />
+      <TotalBonusRow label="総支給額" vals={bonuses.map((b) => b.totalEarnings)} />
+      <BonusRow label="健康保険" vals={bonuses.map((b) => b.healthInsurance)} />
+      <BonusRow label="厚生年金保険" vals={bonuses.map((b) => b.pensionInsurance)} />
+      <BonusRow label="雇用保険" vals={bonuses.map((b) => b.employmentInsurance)} />
+      <SubtotalBonusRow label="社会保険計" vals={bonuses.map((b) => b.socialInsuranceTotal)} />
+      <BonusRow label="所 得 税" vals={bonuses.map((b) => b.incomeTax)} />
+      <BonusRow label="" vals={bonuses.map(() => 0)} />
+      <BonusRow label="" vals={bonuses.map(() => 0)} />
+      <BonusRow label="" vals={bonuses.map(() => 0)} />
+      <BonusRow label="" vals={bonuses.map(() => 0)} />
+      <BonusRow label="" vals={bonuses.map(() => 0)} />
+      <SubtotalBonusRow label="控 除 合 計" vals={bonuses.map((b) => b.totalDeductions)} />
+      <TotalBonusRow label="差引支給額" vals={bonuses.map((b) => b.netPayment)} />
+      <tr>
+        <td style={{ ...td(), textAlign: 'center' }}>領 収 印</td>
+        {bonuses.map((_, i) => (
+          <td key={`br-${i}`} style={{ ...td(), height: 36 }}></td>
+        ))}
+        <td style={{ ...td(), background: ORANGE_LIGHT }}></td>
+      </tr>
+    </tbody>
+  </table>
+);
+
+const BonusRow: React.FC<{ label: string; vals: number[] }> = ({ label, vals }) => (
+  <tr>
+    <td style={{ ...td(), background: '#fff' }}>{label}</td>
+    {vals.map((v, i) => (
+      <td key={`bn-${i}`} style={{ ...td(), textAlign: 'right' }}>{yen(v)}</td>
+    ))}
+    <td style={{ ...td(), background: ORANGE_LIGHT, textAlign: 'right', fontWeight: 600 }}>
+      {yen(vals.reduce((s, v) => s + v, 0))}
+    </td>
+  </tr>
+);
+
+const SubtotalBonusRow: React.FC<{ label: string; vals: number[] }> = ({ label, vals }) => (
+  <tr>
+    <td style={{ ...td(), fontWeight: 700, textAlign: 'center' }}>{label}</td>
+    {vals.map((v, i) => (
+      <td key={`sbn-${i}`} style={{ ...td(), textAlign: 'right' }}>{numOrZero(v)}</td>
+    ))}
+    <td style={{ ...td(), background: ORANGE_LIGHT, textAlign: 'right', fontWeight: 700 }}>
+      {numOrZero(vals.reduce((s, v) => s + v, 0))}
+    </td>
+  </tr>
+);
+
+const TotalBonusRow: React.FC<{ label: string; vals: number[] }> = ({ label, vals }) => (
+  <tr style={{ background: ORANGE_BG }}>
+    <td style={{ ...td(), fontWeight: 800, textAlign: 'center' }}>{label}</td>
+    {vals.map((v, i) => (
+      <td key={`tbn-${i}`} style={{ ...td(), textAlign: 'right', fontWeight: 700 }}>{numOrZero(v)}</td>
+    ))}
+    <td style={{ ...td(), background: ORANGE_HEADER, textAlign: 'right', fontWeight: 800 }}>
+      {numOrZero(vals.reduce((s, v) => s + v, 0))}
+    </td>
+  </tr>
+);
+
+/* ─────────── ヘルパ ─────────── */
+
+function sumBy<T>(arr: T[], pick: (x: T) => number): number {
+  return arr.reduce((s, x) => s + pick(x), 0);
 }
 
-function formatJp(date?: string): string | null {
-  if (!date) return null;
-  const m = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return date;
-  return `${m[1]}年${parseInt(m[2], 10)}月${parseInt(m[3], 10)}日`;
+function th(): React.CSSProperties {
+  return {
+    border: `1px solid ${BORDER}`,
+    padding: '4px 6px',
+    fontWeight: 700,
+    fontSize: 11,
+    background: ORANGE_BG,
+  };
 }
 
-function formatPeriod(start: string, end: string): string {
-  const s = start.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  const e = end.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!s || !e) return `${start}〜${end}`;
-  return `${parseInt(s[2], 10)}/${parseInt(s[3], 10)}〜${parseInt(e[2], 10)}/${parseInt(e[3], 10)}`;
+function td(): React.CSSProperties {
+  return {
+    border: `1px solid ${BORDER}`,
+    padding: '3px 6px',
+    height: 18,
+    background: '#fff',
+  };
+}
+
+function padToTwelve(months: WageLedgerMonth[], calYear: number): WageLedgerMonth[] {
+  // 1〜12月の順に並べる（年度通年が来た場合も、暦年表示なので1月始まりにそろえる）
+  const map = new Map<number, WageLedgerMonth>();
+  for (const m of months) {
+    if (m.year === calYear) map.set(m.month, m);
+  }
+  const result: WageLedgerMonth[] = [];
+  for (let m = 1; m <= 12; m++) {
+    result.push(
+      map.get(m) ?? {
+        year: calYear,
+        month: m,
+        periodStart: '',
+        periodEnd: '',
+        hasData: false,
+        attendance: {
+          workDays: 0,
+          workHours: 0,
+          overtimeHours: 0,
+          holidayWorkHours: 0,
+          nightWorkHours: 0,
+          paidLeaveTaken: 0,
+          absenceDays: 0,
+          specialLeaveDays: 0,
+          legalInsideHolidayHours: 0,
+          legalOutsideHolidayHours: 0,
+          tardyEarlyHours: 0,
+        },
+        earnings: {
+          basePay: 0,
+          treatmentAllowance: 0,
+          accompanyAllowance: 0,
+          officeAllowance: 0,
+          nightAllowance: 0,
+          newYearAllowance: 0,
+          overtimeAllowance: 0,
+          commutingAllowance: 0,
+          nonTaxableCommuting: 0,
+          specialAllowance: 0,
+          directorCompensation: 0,
+          paidLeaveAllowance: 0,
+          holidayAllowance: 0,
+          deductionMisc: 0,
+          otherAllowances: [],
+          taxableTotal: 0,
+          nonTaxableTotal: 0,
+          totalEarnings: 0,
+        },
+        deductions: {
+          healthInsurance: 0,
+          careInsurance: 0,
+          pensionInsurance: 0,
+          employmentInsurance: 0,
+          childcareSupport: 0,
+          socialInsuranceTotal: 0,
+          incomeTax: 0,
+          residentTax: 0,
+          retirementSavings: 0,
+          travelSavings: 0,
+          advancePayment: 0,
+          reimbursement: 0,
+          yearEndAdjustment: 0,
+          otherDeductions: [],
+          totalDeductions: 0,
+        },
+        netPayment: 0,
+        bankTransfer: 0,
+        cashPayment: 0,
+        reconciles: true,
+      }
+    );
+  }
+  return result;
 }
 
 export default WageLedgerTable;

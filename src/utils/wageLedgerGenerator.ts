@@ -8,6 +8,7 @@ import { loadPayslipByHelperAndMonth } from '../services/payslipService';
 import { calculateLaborTime } from './laborTimeCalculator';
 import {
   FISCAL_MONTH_ORDER,
+  CALENDAR_MONTH_ORDER,
   getCalendarYearForFiscalMonth,
   type WageLedgerEarnings,
   type WageLedgerDeductions,
@@ -26,6 +27,10 @@ export interface BuildWageLedgerOptions {
   targetMonth?: number;
   shifts?: Shift[];
   officeName?: string;
+  /** 'calendar' = 1〜12月（暦年）、'fiscal' = 4〜3月（年度） */
+  monthOrder?: 'calendar' | 'fiscal';
+  /** 暦年順で取得する場合の暦年（fiscalYearの代わりに使用） */
+  calendarYear?: number;
 }
 
 export async function buildWageLedgerEntry(
@@ -35,19 +40,45 @@ export async function buildWageLedgerEntry(
   const helperInfo = toHelperInfo(helper, options.officeName);
   const months: WageLedgerMonth[] = [];
 
+  const useCalendar = options.monthOrder === 'calendar';
   const targets =
     options.periodMode === 'monthly' && options.targetMonth
       ? [options.targetMonth]
+      : useCalendar
+      ? CALENDAR_MONTH_ORDER
       : FISCAL_MONTH_ORDER;
 
   for (const month of targets) {
-    const calYear = getCalendarYearForFiscalMonth(options.fiscalYear, month);
+    const calYear = useCalendar
+      ? options.calendarYear ?? options.fiscalYear
+      : getCalendarYearForFiscalMonth(options.fiscalYear, month);
     const payslip = await loadPayslipByHelperAndMonth(helper.id, calYear, month);
     months.push(buildMonth(helperInfo, calYear, month, payslip, options.shifts));
   }
 
   const totals = aggregateTotals(months);
-  return { helper: helperInfo, months, totals };
+  const bonuses = [
+    emptyBonus('賞与1'),
+    emptyBonus('賞与2'),
+  ];
+  return { helper: helperInfo, months, totals, bonuses };
+}
+
+function emptyBonus(label: string) {
+  return {
+    label,
+    bonusAmount: 0,
+    taxableTotal: 0,
+    nonTaxableTotal: 0,
+    totalEarnings: 0,
+    healthInsurance: 0,
+    pensionInsurance: 0,
+    employmentInsurance: 0,
+    socialInsuranceTotal: 0,
+    incomeTax: 0,
+    totalDeductions: 0,
+    netPayment: 0,
+  };
 }
 
 function toHelperInfo(helper: Helper, officeNameOverride?: string): WageLedgerHelperInfo {
@@ -143,6 +174,12 @@ function buildMonth(
       overtimeHours: overtime,
       holidayWorkHours: holiday,
       nightWorkHours: labor.nightWorkHours,
+      paidLeaveTaken: 0,
+      absenceDays: attendance.absences,
+      specialLeaveDays: 0,
+      legalInsideHolidayHours: 0,
+      legalOutsideHolidayHours: holiday,
+      tardyEarlyHours: 0,
     },
     earnings,
     deductions,
@@ -165,19 +202,29 @@ function emptyMonth(
     periodStart,
     periodEnd,
     hasData: false,
-    attendance: {
-      workDays: 0,
-      workHours: 0,
-      overtimeHours: 0,
-      holidayWorkHours: 0,
-      nightWorkHours: 0,
-    },
+    attendance: emptyAttendance(),
     earnings: emptyEarnings(),
     deductions: emptyDeductions(),
     netPayment: 0,
     bankTransfer: 0,
     cashPayment: 0,
     reconciles: true,
+  };
+}
+
+function emptyAttendance() {
+  return {
+    workDays: 0,
+    workHours: 0,
+    overtimeHours: 0,
+    holidayWorkHours: 0,
+    nightWorkHours: 0,
+    paidLeaveTaken: 0,
+    absenceDays: 0,
+    specialLeaveDays: 0,
+    legalInsideHolidayHours: 0,
+    legalOutsideHolidayHours: 0,
+    tardyEarlyHours: 0,
   };
 }
 
@@ -194,7 +241,12 @@ function emptyEarnings(): WageLedgerEarnings {
     nonTaxableCommuting: 0,
     specialAllowance: 0,
     directorCompensation: 0,
+    paidLeaveAllowance: 0,
+    holidayAllowance: 0,
+    deductionMisc: 0,
     otherAllowances: [],
+    taxableTotal: 0,
+    nonTaxableTotal: 0,
     totalEarnings: 0,
   };
 }
@@ -206,8 +258,11 @@ function emptyDeductions(): WageLedgerDeductions {
     pensionInsurance: 0,
     employmentInsurance: 0,
     childcareSupport: 0,
+    socialInsuranceTotal: 0,
     incomeTax: 0,
     residentTax: 0,
+    retirementSavings: 0,
+    travelSavings: 0,
     advancePayment: 0,
     reimbursement: 0,
     yearEndAdjustment: 0,
@@ -220,6 +275,7 @@ interface ExtractedAttendance {
   workDays: number;
   totalWorkHours: number;
   nightHours22to8: number;
+  absences: number;
 }
 
 function extractAttendance(payslip: Payslip): ExtractedAttendance {
@@ -229,6 +285,7 @@ function extractAttendance(payslip: Payslip): ExtractedAttendance {
       workDays: a.totalWorkDays ?? 0,
       totalWorkHours: a.totalWorkHours ?? 0,
       nightHours22to8: (a.nightNormalHours ?? 0) + (a.nightAccompanyHours ?? 0),
+      absences: a.absences ?? 0,
     };
   }
   if (isHourlyPayslip(payslip)) {
@@ -237,9 +294,10 @@ function extractAttendance(payslip: Payslip): ExtractedAttendance {
       workDays: a.totalWorkDays ?? 0,
       totalWorkHours: a.totalWorkHours ?? 0,
       nightHours22to8: (a.nightNormalHours ?? 0) + (a.nightAccompanyHours ?? 0),
+      absences: a.absences ?? 0,
     };
   }
-  return { workDays: 0, totalWorkHours: 0, nightHours22to8: 0 };
+  return { workDays: 0, totalWorkHours: 0, nightHours22to8: 0, absences: 0 };
 }
 
 interface ExtractedAmounts {
@@ -303,6 +361,20 @@ function extractAmounts(payslip: Payslip): ExtractedAmounts {
       : isHourlyPayslip(payslip)
       ? (payslip.payments.totalPayment ?? sumEarnings(earnings))
       : sumEarnings(earnings)
+  );
+  // 非課税計 = 非課税通勤手当 + その他手当のうち非課税分
+  earnings.nonTaxableTotal = roundYen(
+    earnings.nonTaxableCommuting +
+      earnings.otherAllowances
+        .filter((a) => !a.taxable)
+        .reduce((sum, a) => sum + (a.amount ?? 0), 0)
+  );
+  earnings.taxableTotal = roundYen(earnings.totalEarnings - earnings.nonTaxableTotal);
+  deductions.socialInsuranceTotal = roundYen(
+    deductions.healthInsurance +
+      deductions.careInsurance +
+      deductions.pensionInsurance +
+      deductions.employmentInsurance
   );
   deductions.totalDeductions = roundYen(d.totalDeduction ?? sumDeductions(deductions));
 
