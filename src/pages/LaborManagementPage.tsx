@@ -26,7 +26,8 @@ const LaborManagementPage: React.FC = () => {
       iconBgColor: '#E3F2FD',
       title: '賃金台帳',
       description: '法定帳簿としての賃金台帳を出力',
-      status: 'coming_soon',
+      path: '/labor/wage-ledger',
+      status: 'available',
     },
   ];
 

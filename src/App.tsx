@@ -18,6 +18,7 @@ import HelperManagementPage from './pages/HelperManagementPage';
 import HelperDetailPage from './pages/HelperDetailPage';
 import DeletedHelpersPage from './pages/DeletedHelpersPage';
 import LaborManagementPage from './pages/LaborManagementPage';
+import WageLedgerPage from './pages/labor/WageLedgerPage';
 import CareClientManagementPage from './pages/CareClientManagementPage';
 import CareClientDetailPage from './pages/CareClientDetailPage';
 import PayslipDemo from './pages/PayslipDemo';
@@ -679,6 +680,33 @@ function App() {
     return (
       <Layout user={user}>
         <PayslipListPage onClose={() => window.location.href = '/'} />
+      </Layout>
+    );
+  }
+
+  // /labor/wage-ledger（賃金台帳）- 管理者のみ
+  if (path === '/labor/wage-ledger' || path === '/labor/wage-ledger/') {
+    if (userRole !== 'admin') {
+      return (
+        <Layout user={user}>
+          <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-md p-8 max-w-md w-full text-center">
+              <h2 className="text-xl font-bold text-gray-800 mb-2">アクセス権限がありません</h2>
+              <p className="text-gray-600 mb-6">このページは管理者のみアクセスできます。</p>
+              <button
+                onClick={() => window.location.href = '/'}
+                className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                ホームに戻る
+              </button>
+            </div>
+          </div>
+        </Layout>
+      );
+    }
+    return (
+      <Layout user={user}>
+        <WageLedgerPage />
       </Layout>
     );
   }
