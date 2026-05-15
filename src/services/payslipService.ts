@@ -99,7 +99,7 @@ const rowToPayslip = (row: any): Payslip => {
     if (data.age === undefined) data.age = 30;
     if (data.dependents === undefined) data.dependents = 0;
     if (!data.insuranceTypes) {
-      data.insuranceTypes = data.employmentType === '契約社員'
+      data.insuranceTypes = (data.employmentType === '契約社員' || data.employmentType === '役員')
         ? ['health', 'pension', 'employment']
         : ['employment'];
     }
@@ -533,11 +533,16 @@ export const createEmptyHourlyPayslip = (
     };
   });
 
-  // 雇用形態を判定（helper.employmentTypeがcontract、fulltimeなら契約社員扱い）
-  const payslipEmploymentType: '契約社員' | 'アルバイト' =
-    helper.employmentType === 'contract' || helper.employmentType === 'fulltime'
-      ? '契約社員'
-      : 'アルバイト';
+  // 雇用形態を判定（helper.employmentTypeから給与明細上の雇用形態へマッピング）
+  // - executive → 役員（子育て支援金の徴収開始タイミング判定に使用）
+  // - contract / fulltime → 契約社員（固定給扱い）
+  // - その他 → アルバイト（時給扱い）
+  const payslipEmploymentType: '契約社員' | 'アルバイト' | '役員' =
+    helper.employmentType === 'executive'
+      ? '役員'
+      : helper.employmentType === 'contract' || helper.employmentType === 'fulltime'
+        ? '契約社員'
+        : 'アルバイト';
 
   console.log('給与明細雇用形態:', payslipEmploymentType);
 

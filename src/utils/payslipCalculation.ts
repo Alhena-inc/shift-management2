@@ -1094,8 +1094,8 @@ function isFixedSalaryEmployee(helper: Helper): boolean {
   }
 
   // salaryTypeが設定されていない場合は、employmentTypeから推測
-  if (helper.employmentType === 'fulltime' || helper.employmentType === 'contract') {
-    // 正社員・契約社員は固定給制
+  if (helper.employmentType === 'executive' || helper.employmentType === 'fulltime' || helper.employmentType === 'contract') {
+    // 役員・正社員・契約社員は固定給制
     return true;
   }
 

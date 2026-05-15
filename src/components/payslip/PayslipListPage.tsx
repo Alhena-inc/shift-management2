@@ -618,6 +618,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
   // 雇用形態のラベルを取得
   const getEmploymentTypeLabel = (type?: string) => {
     switch (type) {
+      case 'executive': return '役員';
       case 'fulltime': return '正社員';
       case 'parttime': return 'パート';
       case 'contract': return '契約社員';
@@ -630,6 +631,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
   // 雇用形態バッジの色
   const getEmploymentTypeBadgeColor = (type?: string) => {
     switch (type) {
+      case 'executive': return 'bg-red-100 text-red-800';
       case 'fulltime': return 'bg-blue-100 text-blue-800';
       case 'contract': return 'bg-indigo-100 text-indigo-800';
       case 'parttime': return 'bg-green-100 text-green-800';

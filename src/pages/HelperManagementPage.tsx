@@ -38,6 +38,8 @@ const HelperManagementPage: React.FC = () => {
   // ステータスバッジの色（ヘルパーはデフォルトで稼働中扱い）
   const getEmploymentTypeBadge = (helper: Helper) => {
     switch (helper.employmentType) {
+      case 'executive':
+        return { color: 'bg-red-100 text-red-800', label: '役員' };
       case 'fulltime':
         return { color: 'bg-blue-100 text-blue-800', label: '正社員' };
       case 'contract':
@@ -144,7 +146,7 @@ const HelperManagementPage: React.FC = () => {
               const employmentBadge = getEmploymentTypeBadge(helper);
 
               // 給与タイプ判定（詳細ページと同じロジックにする）
-              let isFixedSalary = helper.employmentType === 'fulltime' || helper.employmentType === 'contract';
+              let isFixedSalary = helper.employmentType === 'executive' || helper.employmentType === 'fulltime' || helper.employmentType === 'contract';
               if (helper.salaryType) {
                 isFixedSalary = helper.salaryType === 'fixed';
               }

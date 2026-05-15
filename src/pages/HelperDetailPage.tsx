@@ -250,8 +250,8 @@ const HelperDetailPage: React.FC = () => {
     if (helper?.salaryType) {
       return helper.salaryType;
     }
-    // employmentTypeから推測
-    return helper?.employmentType === 'fulltime' || helper?.employmentType === 'contract'
+    // employmentTypeから推測（役員・正社員・契約社員は固定給）
+    return helper?.employmentType === 'executive' || helper?.employmentType === 'fulltime' || helper?.employmentType === 'contract'
       ? 'fixed'
       : 'hourly';
   };
