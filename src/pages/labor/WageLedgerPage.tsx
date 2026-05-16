@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Helper } from '../../types';
 import { loadHelpers } from '../../services/dataService';
+import { loadDeletedHelpers } from '../../services/supabaseService';
 import { buildWageLedgerEntry } from '../../utils/wageLedgerGenerator';
 import type { WageLedgerEntry } from '../../types/wageLedger';
 import WageLedgerTable from '../../components/wage-ledger/WageLedgerTable';
@@ -16,12 +17,36 @@ interface Filter {
   calendarYear: number;
   /** 'active'=在職のみ / 'all'=全員 / 'resigned'=退職者のみ */
   resignedFilter: ResignedFilter;
+  /** 削除済みヘルパー（deleted_helpers）も候補に含める */
+  includeDeleted: boolean;
   officeName: string;
   helperIds: string[] | null;
 }
 
+/** 削除済みヘルパーレコードを Helper 形式に変換 */
+function deletedRowToHelper(row: any): Helper {
+  const original = row.original_data;
+  if (original && typeof original === 'object') {
+    return { ...original, id: original.id || row.original_id, deleted: true, status: '退職' } as Helper;
+  }
+  return {
+    id: row.original_id || row.id,
+    name: row.name || '(名前不明)',
+    gender: (row.gender ?? 'male') as 'male' | 'female',
+    order: row.order_index ?? 9999,
+    email: row.email,
+    hourlyRate: row.hourly_wage,
+    role: row.role,
+    insurances: row.insurances,
+    standardRemuneration: row.standard_remuneration,
+    deleted: true,
+    status: '退職',
+  } as Helper;
+}
+
 const WageLedgerPage: React.FC = () => {
   const [helpers, setHelpers] = useState<Helper[]>([]);
+  const [deletedHelpers, setDeletedHelpers] = useState<Helper[]>([]);
   const [loading, setLoading] = useState(false);
   const [entries, setEntries] = useState<{ entry: WageLedgerEntry; calendarYear: number }[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +56,7 @@ const WageLedgerPage: React.FC = () => {
   const [filter, setFilter] = useState<Filter>({
     calendarYear: currentYear,
     resignedFilter: 'active',
+    includeDeleted: false,
     officeName,
     helperIds: null,
   });
@@ -47,12 +73,33 @@ const WageLedgerPage: React.FC = () => {
     })();
   }, []);
 
-  // 個別選択UIに表示する候補（退職者フィルターを反映）
+  // 削除済みヘルパーは「含める」が ON のときだけロード
+  useEffect(() => {
+    if (!filter.includeDeleted) {
+      setDeletedHelpers([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await loadDeletedHelpers();
+        if (!cancelled) {
+          setDeletedHelpers(rows.map(deletedRowToHelper));
+        }
+      } catch (e) {
+        console.error('削除済みヘルパー読み込み失敗', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [filter.includeDeleted]);
+
+  // 個別選択UIに表示する候補（退職者フィルター・削除済み含めるを反映）
   const pickableHelpers = useMemo(() => {
-    if (filter.resignedFilter === 'all') return helpers;
-    if (filter.resignedFilter === 'resigned') return helpers.filter((h) => h.status === '退職');
-    return helpers.filter((h) => h.status !== '退職');
-  }, [helpers, filter.resignedFilter]);
+    const merged = filter.includeDeleted ? [...helpers, ...deletedHelpers] : helpers;
+    if (filter.resignedFilter === 'all') return merged;
+    if (filter.resignedFilter === 'resigned') return merged.filter((h) => h.status === '退職' || h.deleted);
+    return merged.filter((h) => h.status !== '退職' && !h.deleted);
+  }, [helpers, deletedHelpers, filter.resignedFilter, filter.includeDeleted]);
 
   const targetHelpers = useMemo(() => {
     if (filter.helperIds == null) return pickableHelpers;
@@ -164,7 +211,6 @@ const WageLedgerPage: React.FC = () => {
                   setFilter((f) => ({
                     ...f,
                     resignedFilter: e.target.value as ResignedFilter,
-                    // フィルター変更時は個別選択を全クリア（ノイズ防止）
                     helperIds: f.helperIds === null ? null : [],
                   }))
                 }
@@ -175,6 +221,20 @@ const WageLedgerPage: React.FC = () => {
                 <option value="resigned">退職者のみ</option>
               </select>
             </div>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={filter.includeDeleted}
+                onChange={(e) =>
+                  setFilter((f) => ({
+                    ...f,
+                    includeDeleted: e.target.checked,
+                    helperIds: f.helperIds === null ? null : [],
+                  }))
+                }
+              />
+              削除済みヘルパーも含める
+            </label>
             <div className="flex items-center gap-3 text-sm text-gray-700">
               <span className="text-xs text-gray-500">対象範囲：</span>
               <label className="flex items-center gap-1">
@@ -357,9 +417,16 @@ const HelperPicker: React.FC<HelperPickerProps> = ({ helpers, selectedIds, onCha
                     onChange={() => toggle(h.id)}
                   />
                   <span className="truncate">{h.name}</span>
-                  {h.status === '退職' && (
-                    <span className="ml-auto text-[10px] text-gray-500">退職</span>
-                  )}
+                  <span className="ml-auto flex items-center gap-1 shrink-0">
+                    {h.deleted && (
+                      <span className="text-[10px] px-1 py-0.5 bg-red-100 text-red-700 rounded">
+                        削除済
+                      </span>
+                    )}
+                    {h.status === '退職' && !h.deleted && (
+                      <span className="text-[10px] text-gray-500">退職</span>
+                    )}
+                  </span>
                 </label>
               );
             })}
