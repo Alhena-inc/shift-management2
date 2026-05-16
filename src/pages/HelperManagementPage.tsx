@@ -7,8 +7,6 @@ const HelperManagementPage: React.FC = () => {
   const [helpers, setHelpers] = useState<Helper[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  // 退職者フィルター
-  const [statusFilter, setStatusFilter] = useState<'active' | 'all' | 'resigned'>('active');
 
   // ヘルパーデータのリアルタイム監視
   useEffect(() => {
@@ -22,33 +20,20 @@ const HelperManagementPage: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // 検索フィルターとソート
+  // 検索フィルターとソート（退職者も区別なくシフト表の順序で表示）
   const filteredHelpers = helpers
-    .filter(helper => !helper.deleted) // 削除済みヘルパーを除外
-    .filter(helper => {
-      const isResigned = helper.status === '退職';
-      if (statusFilter === 'active' && isResigned) return false;
-      if (statusFilter === 'resigned' && !isResigned) return false;
-      return true;
-    })
+    .filter(helper => !helper.deleted)
     .filter(helper => {
       const query = searchQuery.toLowerCase();
       return helper.name.toLowerCase().includes(query);
     })
     .sort((a, b) => {
-      // 退職者は最後に
-      const aResigned = a.status === '退職' ? 1 : 0;
-      const bResigned = b.status === '退職' ? 1 : 0;
-      if (aResigned !== bResigned) return aResigned - bResigned;
       // シフト表に入れないヘルパーは後ろに
       const aExcluded = a.excludeFromShift ? 1 : 0;
       const bExcluded = b.excludeFromShift ? 1 : 0;
       if (aExcluded !== bExcluded) return aExcluded - bExcluded;
       return (a.order || 0) - (b.order || 0);
     });
-
-  const activeCount = helpers.filter(h => !h.deleted && h.status !== '退職').length;
-  const resignedCount = helpers.filter(h => !h.deleted && h.status === '退職').length;
 
   // ステータスバッジの色（ヘルパーはデフォルトで稼働中扱い）
   const getEmploymentTypeBadge = (helper: Helper) => {
@@ -146,49 +131,6 @@ const HelperManagementPage: React.FC = () => {
           </p>
         </div>
 
-        {/* 在職/退職タブ */}
-        <div className="mb-6 flex items-center gap-1 border-b border-gray-200">
-          <button
-            onClick={() => setStatusFilter('active')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              statusFilter === 'active'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            在職者
-            <span className="ml-2 text-xs bg-gray-100 text-gray-700 rounded-full px-2 py-0.5">
-              {activeCount}
-            </span>
-          </button>
-          <button
-            onClick={() => setStatusFilter('resigned')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              statusFilter === 'resigned'
-                ? 'border-amber-600 text-amber-700'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            退職者
-            <span className="ml-2 text-xs bg-amber-100 text-amber-800 rounded-full px-2 py-0.5">
-              {resignedCount}
-            </span>
-          </button>
-          <button
-            onClick={() => setStatusFilter('all')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              statusFilter === 'all'
-                ? 'border-gray-700 text-gray-900'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            全員
-            <span className="ml-2 text-xs bg-gray-100 text-gray-700 rounded-full px-2 py-0.5">
-              {activeCount + resignedCount}
-            </span>
-          </button>
-        </div>
-
         {/* ローディング */}
         {isLoading && (
           <div className="text-center py-12">
@@ -209,23 +151,17 @@ const HelperManagementPage: React.FC = () => {
                 isFixedSalary = helper.salaryType === 'fixed';
               }
 
-              const isResigned = helper.status === '退職';
-
               return (
                 <div
                   key={helper.id}
-                  className={`bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow border overflow-hidden cursor-pointer flex flex-col h-full ${
-                    isResigned ? 'border-gray-300 opacity-80' : 'border-gray-200'
-                  }`}
+                  className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow border border-gray-200 overflow-hidden cursor-pointer flex flex-col h-full"
                   onClick={() => window.location.href = `/helpers/${helper.id}`}
                 >
-                  {/* カードヘッダー（退職者はグレー / 男性は青 / 女性はピンク） */}
+                  {/* カードヘッダー（男性は青 / 女性はピンク） */}
                   <div className={`px-6 py-4 border-b border-gray-200 ${
-                    isResigned
-                      ? 'bg-gradient-to-r from-gray-100 to-gray-200'
-                      : helper.gender === 'female'
-                        ? 'bg-gradient-to-r from-pink-50 to-rose-50'
-                        : 'bg-gradient-to-r from-blue-50 to-indigo-50'
+                    helper.gender === 'female'
+                      ? 'bg-gradient-to-r from-pink-50 to-rose-50'
+                      : 'bg-gradient-to-r from-blue-50 to-indigo-50'
                   }`}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
@@ -233,14 +169,9 @@ const HelperManagementPage: React.FC = () => {
                           <span className="text-xs font-bold px-1.5 py-0.5 bg-gray-600 text-white rounded opacity-60">
                             #{helper.order}
                           </span>
-                          <h3 className={`text-lg font-bold ${isResigned ? 'text-gray-600' : 'text-gray-800'}`}>
+                          <h3 className="text-lg font-bold text-gray-800">
                             {helper.name}
                           </h3>
-                          {isResigned && (
-                            <span className="px-2 py-0.5 text-[10px] font-bold bg-gray-700 text-white rounded">
-                              退職
-                            </span>
-                          )}
                         </div>
                       </div>
                       <span className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${employmentBadge.color}`}>
@@ -356,11 +287,7 @@ const HelperManagementPage: React.FC = () => {
               />
             </svg>
             <p className="text-gray-500 text-lg font-medium">
-              {statusFilter === 'resigned'
-                ? '退職者はいません'
-                : statusFilter === 'active'
-                  ? '在職ヘルパーが見つかりません'
-                  : 'ヘルパーが見つかりません'}
+              ヘルパーが見つかりません
             </p>
             {searchQuery && (
               <p className="text-gray-400 text-sm mt-2">検索条件を変更してください</p>

@@ -153,9 +153,14 @@ const DeletedHelpersPage: React.FC = () => {
     fetchDeletedHelpers();
   }, []);
 
-  // ヘルパーを在職者として復元
+  // ヘルパーを在職者として復元（ヘルパー一覧の元の位置に戻す）
   const handleRestore = async (helperId: string, helperName: string) => {
-    if (!confirm(`${helperName} を「在職者」として復元しますか？\n通常のヘルパー一覧に戻ります。`)) {
+    if (!confirm(
+      `${helperName} を復元しますか？\n\n` +
+      `・ヘルパー一覧の元の位置（シフト表の場所）に戻ります\n` +
+      `・雇用形態・基本給・処遇改善・保有資格などすべての情報が復元されます\n` +
+      `・過去の給与明細・賃金台帳もそのまま参照できます`
+    )) {
       return;
     }
 
@@ -278,7 +283,7 @@ const DeletedHelpersPage: React.FC = () => {
                   削除済みヘルパー
                 </h1>
                 <p className="text-gray-600 text-xs sm:text-sm mt-0.5">
-                  在職復元・退職者として復元・完全削除を選択できます
+                  復元するとヘルパー一覧の元の位置（シフト表の場所）に戻ります
                 </p>
               </div>
             </div>
@@ -454,22 +459,14 @@ const DeletedHelpersPage: React.FC = () => {
                       </div>
 
                       {/* アクション */}
-                      <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 grid grid-cols-3 gap-1.5">
+                      <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 grid grid-cols-2 gap-1.5">
                         <button
                           onClick={() => handleRestore(helper.id, helper.name)}
                           disabled={isBusy}
                           className="inline-flex items-center justify-center px-2 py-2 text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
-                          title="通常のヘルパー一覧に戻す"
+                          title="ヘルパー一覧の元の位置に戻す（全情報・シフト表の位置も含めて）"
                         >
-                          {isBusy && busy?.action === 'restore' ? '…' : '在職復元'}
-                        </button>
-                        <button
-                          onClick={() => handleRestoreAsResigned(helper.id, helper.name)}
-                          disabled={isBusy}
-                          className="inline-flex items-center justify-center px-2 py-2 text-xs font-medium rounded-md text-white bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
-                          title="退職者として復元（明細データを保持）"
-                        >
-                          {isBusy && busy?.action === 'resigned' ? '…' : '退職者復元'}
+                          {isBusy && busy?.action === 'restore' ? '復元中…' : '🔄 復元'}
                         </button>
                         <button
                           onClick={() => handlePermanentDelete(helper.id, helper.name)}
@@ -477,7 +474,7 @@ const DeletedHelpersPage: React.FC = () => {
                           className="inline-flex items-center justify-center px-2 py-2 text-xs font-medium rounded-md text-white bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
                           title="完全削除（復元不可）"
                         >
-                          {isBusy && busy?.action === 'delete' ? '…' : '完全削除'}
+                          {isBusy && busy?.action === 'delete' ? '削除中…' : '🗑️ 完全削除'}
                         </button>
                       </div>
                     </div>
@@ -539,16 +536,17 @@ const DeletedHelpersPage: React.FC = () => {
               <h3 className="text-sm font-semibold text-blue-800 mb-1">削除済みヘルパーについて</h3>
               <ul className="text-sm text-blue-700 space-y-1 list-disc pl-5">
                 <li>
-                  <strong>在職復元</strong>：通常のヘルパー一覧に戻します。新規シフト・明細の作成対象になります。
+                  <strong>🔄 復元</strong>：ヘルパー一覧の元の位置（シフト表の場所）に戻します。
+                  雇用形態・基本給・処遇改善・保有資格・住所・税区分などすべての情報が
+                  削除時の状態で復元されます。
                 </li>
                 <li>
-                  <strong>退職者復元</strong>：退職者として復元します。
-                  過去の給与明細・賃金台帳の情報は保持され、
-                  給与明細一覧／賃金台帳の「退職者のみ」フィルターから参照できます。
-                </li>
-                <li>
-                  <strong>完全削除</strong>：このページからも消去します。
+                  <strong>🗑️ 完全削除</strong>：このページからも消去します。
                   関連データは復元できなくなるためご注意ください。
+                </li>
+                <li>
+                  過去の給与明細・賃金台帳は復元しなくても参照可能です
+                  （給与明細一覧・賃金台帳の「削除済みヘルパーも含める」オプション）。
                 </li>
               </ul>
             </div>
