@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { Helper } from '../types';
 import { loadHelpers, saveHelpers } from '../services/dataService';
+import { loadDeletedHelperAsHelper } from '../services/supabaseService';
 
 type TabType = 'basic' | 'qualifications' | 'salary';
 
@@ -12,10 +13,15 @@ const HelperDetailPage: React.FC = () => {
   const [showQualificationPicker, setShowQualificationPicker] = useState(false);
   const [qualificationSearch, setQualificationSearch] = useState('');
   const [pendingQualifications, setPendingQualifications] = useState<{ name: string; date: string }[]>([]);
+  // 削除済みヘルパー表示モード（読み取り専用）
+  const [deletedMeta, setDeletedMeta] = useState<{ deleted_at: string; deleted_by: string; deletion_reason: string } | null>(null);
 
   // URLからIDを取得
   const helperId = window.location.pathname.split('/helpers/')[1]?.split('?')[0];
-  const isNewMode = new URLSearchParams(window.location.search).get('new') === '1';
+  const params = new URLSearchParams(window.location.search);
+  const isNewMode = params.get('new') === '1';
+  const isDeletedMode = params.get('deleted') === '1';
+  const isReadOnly = isDeletedMode; // 削除済みは読み取り専用
 
   useEffect(() => {
     if (isNewMode) {
@@ -41,6 +47,21 @@ const HelperDetailPage: React.FC = () => {
     }
     const fetchHelper = async () => {
       setIsLoading(true);
+      if (isDeletedMode && helperId) {
+        // 削除済みヘルパーを deleted_helpers から読み込む（読み取り専用）
+        const result = await loadDeletedHelperAsHelper(helperId);
+        if (result) {
+          const h = result.helper;
+          const insurances = h.insurances || [];
+          if (insurances.includes('health') && !insurances.includes('pension')) {
+            h.insurances = [...insurances, 'pension'];
+          }
+          setHelper(h);
+          setDeletedMeta(result.deletedMeta);
+        }
+        setIsLoading(false);
+        return;
+      }
       const helpers = await loadHelpers();
       const foundHelper = helpers.find(h => h.id === helperId);
       if (foundHelper) {
@@ -55,7 +76,7 @@ const HelperDetailPage: React.FC = () => {
       setIsLoading(false);
     };
     fetchHelper();
-  }, [helperId]);
+  }, [helperId, isDeletedMode]);
 
   const handleSave = async () => {
     if (!helper) return;
@@ -342,17 +363,22 @@ const HelperDetailPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 sm:gap-4 min-w-0">
               <button
-                onClick={() => window.location.href = '/helpers'}
+                onClick={() => window.location.href = isDeletedMode ? '/deleted-helpers' : '/helpers'}
                 className="px-3 py-2 sm:px-4 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-1 text-gray-700 text-sm sm:text-base flex-shrink-0"
               >
-                ← <span className="hidden sm:inline">{isNewMode ? '戻る' : '戻る'}</span>
+                ← <span className="hidden sm:inline">戻る</span>
               </button>
-              <h1 className="text-lg sm:text-2xl font-bold text-gray-800 truncate">
+              <h1 className="text-lg sm:text-2xl font-bold text-gray-800 truncate flex items-center gap-2">
                 {isNewMode && !helper.name ? '新規ヘルパー' : helper.name}
+                {isDeletedMode && (
+                  <span className="px-2 py-0.5 text-[10px] font-bold bg-red-600 text-white rounded">
+                    削除済み
+                  </span>
+                )}
               </h1>
             </div>
             <div className="flex gap-2 sm:gap-3 flex-shrink-0">
-              {!isNewMode && (
+              {!isReadOnly && !isNewMode && (
                 <button
                   onClick={handleDelete}
                   disabled={isSaving}
@@ -364,19 +390,33 @@ const HelperDetailPage: React.FC = () => {
                   🗑️ <span className="hidden sm:inline">削除</span>
                 </button>
               )}
-              <button
-                onClick={handleSave}
-                disabled={isSaving}
-                className={`px-4 sm:px-6 py-2 rounded-lg font-medium flex items-center gap-2 text-sm sm:text-base ${isSaving
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
-                  }`}
-              >
-                {isSaving ? '保存中...' : (isNewMode ? '💾 登録' : '💾 保存')}
-              </button>
+              {!isReadOnly && (
+                <button
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className={`px-4 sm:px-6 py-2 rounded-lg font-medium flex items-center gap-2 text-sm sm:text-base ${isSaving
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                    }`}
+                >
+                  {isSaving ? '保存中...' : (isNewMode ? '💾 登録' : '💾 保存')}
+                </button>
+              )}
             </div>
           </div>
         </div>
+
+        {/* 削除済みバナー */}
+        {isDeletedMode && deletedMeta && (
+          <div className="bg-amber-50 border-t border-b border-amber-200 px-4 sm:px-6 py-2">
+            <div className="max-w-6xl mx-auto text-xs sm:text-sm text-amber-900 flex flex-wrap items-center gap-x-4 gap-y-1">
+              <span className="font-semibold">⚠️ 読み取り専用</span>
+              <span>削除日時: {new Date(deletedMeta.deleted_at).toLocaleString('ja-JP')}</span>
+              {deletedMeta.deleted_by && <span>削除者: {deletedMeta.deleted_by}</span>}
+              {deletedMeta.deletion_reason && <span>理由: {deletedMeta.deletion_reason}</span>}
+            </div>
+          </div>
+        )}
 
         {/* タブナビゲーション */}
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
@@ -399,7 +439,12 @@ const HelperDetailPage: React.FC = () => {
 
       {/* メインコンテンツ */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-8">
-        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-8">
+        <fieldset
+          disabled={isReadOnly}
+          className={`bg-white rounded-xl shadow-sm p-4 sm:p-8 ${
+            isReadOnly ? 'pointer-events-none select-text opacity-95' : ''
+          }`}
+        >
           {/* タブ1: 基本 */}
           {activeTab === 'basic' && (
             <div className="space-y-8">
@@ -1563,7 +1608,7 @@ const HelperDetailPage: React.FC = () => {
               </div>
             </div>
           )}
-        </div>
+        </fieldset>
       </main>
     </div>
   );

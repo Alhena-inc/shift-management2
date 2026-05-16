@@ -398,6 +398,59 @@ export const softDeleteHelper = async (helperId: string, deletedBy?: string): Pr
   }
 };
 
+/**
+ * 削除済みヘルパーを1件取得し、Helper 互換のオブジェクトとして返す。
+ * original_data があればそれを優先（全項目復元）、なければ既存カラムから構築。
+ * 削除済みヘルパーの詳細を在籍ヘルパーと同じ画面で表示するために使う。
+ */
+export const loadDeletedHelperAsHelper = async (
+  deletedHelperId: string
+): Promise<{ helper: Helper; deletedMeta: { deleted_at: string; deleted_by: string; deletion_reason: string } } | null> => {
+  try {
+    // deletedHelperId は deleted_helpers.id でも original_id でもどちらでも受け付ける
+    const { data, error } = await supabase
+      .from('deleted_helpers')
+      .select('*')
+      .or(`id.eq.${deletedHelperId},original_id.eq.${deletedHelperId}`)
+      .order('deleted_at', { ascending: false })
+      .limit(1);
+    if (error || !data || data.length === 0) return null;
+    const row = data[0];
+
+    // original_data があればフル復元、なければ既存カラムから最低限を構築
+    const original = (row as any).original_data;
+    let helper: Helper;
+    if (original && typeof original === 'object') {
+      helper = { ...(original as Helper), deleted: true };
+    } else {
+      helper = {
+        id: (row as any).original_id || (row as any).id,
+        name: (row as any).name || '',
+        gender: ((row as any).gender ?? 'male') as 'male' | 'female',
+        order: (row as any).order_index ?? 0,
+        email: (row as any).email,
+        hourlyRate: (row as any).hourly_wage,
+        role: (row as any).role,
+        insurances: (row as any).insurances,
+        standardRemuneration: (row as any).standard_remuneration,
+        deleted: true,
+      } as Helper;
+    }
+
+    return {
+      helper,
+      deletedMeta: {
+        deleted_at: (row as any).deleted_at,
+        deleted_by: (row as any).deleted_by,
+        deletion_reason: (row as any).deletion_reason,
+      },
+    };
+  } catch (error) {
+    console.error('削除済みヘルパー取得エラー:', error);
+    return null;
+  }
+};
+
 // 削除済みヘルパーを取得
 export const loadDeletedHelpers = async (): Promise<any[]> => {
   try {

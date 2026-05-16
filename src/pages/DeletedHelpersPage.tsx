@@ -414,10 +414,13 @@ const DeletedHelpersPage: React.FC = () => {
                           )}
                         </div>
                         <button
-                          onClick={() => setDetailHelper(helper)}
-                          className="w-full mt-2 px-2 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-100"
+                          onClick={() => {
+                            const origId = helper.original_id || helper.id;
+                            window.location.href = `/helpers/${origId}?deleted=1`;
+                          }}
+                          className="w-full mt-2 px-2 py-1.5 text-xs font-medium text-white bg-gray-700 hover:bg-gray-800 rounded"
                         >
-                          詳細を見る
+                          詳細を見る（在籍と同じ画面）
                         </button>
                       </div>
 
