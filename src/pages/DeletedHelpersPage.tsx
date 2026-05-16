@@ -5,6 +5,8 @@ import {
   restoreHelper,
   restoreHelperAsResigned,
   permanentlyDeleteHelper,
+  findOrphanedDeletedHelpers,
+  unhideHelper,
 } from '../services/supabaseService';
 
 interface DeletedHelper {
@@ -40,6 +42,15 @@ const DeletedHelpersPage: React.FC = () => {
 
   // 詳細表示中のヘルパー
   const [detailHelper, setDetailHelper] = useState<DeletedHelper | null>(null);
+  // 失踪ヘルパー（helpers に deleted=true で残っているが見えないもの）
+  const [orphanedHelpers, setOrphanedHelpers] = useState<Array<{
+    id: string;
+    name: string;
+    status?: string;
+    hire_date?: string;
+    updated_at?: string;
+  }>>([]);
+  const [unhiding, setUnhiding] = useState<string | null>(null);
 
   // 選択ヘルパー
   const toggleSelect = (id: string) => {
@@ -64,13 +75,31 @@ const DeletedHelpersPage: React.FC = () => {
   const fetchDeletedHelpers = async () => {
     setLoading(true);
     try {
-      const helpers = await loadDeletedHelpers();
+      const [helpers, orphans] = await Promise.all([
+        loadDeletedHelpers(),
+        findOrphanedDeletedHelpers(),
+      ]);
       setDeletedHelpers(helpers);
+      setOrphanedHelpers(orphans);
       setSelectedIds(new Set());
     } catch (error) {
       console.error('削除済みヘルパー読み込みエラー:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUnhideOrphan = async (helperId: string, name: string) => {
+    if (!confirm(`${name} をヘルパー一覧に再表示しますか？\n（過去のバグで非表示になってしまった方を救済する機能です）`)) return;
+    setUnhiding(helperId);
+    try {
+      await unhideHelper(helperId);
+      alert(`${name} を再表示しました`);
+      await fetchDeletedHelpers();
+    } catch (e) {
+      alert('再表示に失敗しました');
+    } finally {
+      setUnhiding(null);
     }
   };
 
@@ -459,6 +488,45 @@ const DeletedHelpersPage: React.FC = () => {
             </>
           )}
         </div>
+
+        {/* 失踪ヘルパー救済セクション（helpers に deleted=true で残っているもの） */}
+        {orphanedHelpers.length > 0 && (
+          <div className="mt-4 bg-yellow-50 border border-yellow-300 rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-yellow-900 mb-2 flex items-center gap-2">
+              ⚠️ 非表示になっているヘルパー（{orphanedHelpers.length}件）
+            </h3>
+            <p className="text-xs text-yellow-800 mb-3">
+              過去の不具合により、復元したのに一覧に表示されないヘルパーが見つかりました。
+              「再表示」ボタンで通常のヘルパー一覧に戻せます。
+            </p>
+            <div className="space-y-2">
+              {orphanedHelpers.map((h) => (
+                <div key={h.id} className="flex items-center justify-between gap-3 bg-white border border-yellow-200 rounded-md px-3 py-2">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className="font-medium text-gray-900 truncate">{h.name}</span>
+                    {h.status && (
+                      <span className="text-[10px] px-1.5 py-0.5 bg-gray-200 text-gray-700 rounded">
+                        {h.status}
+                      </span>
+                    )}
+                    {h.updated_at && (
+                      <span className="text-[10px] text-gray-500">
+                        最終更新: {new Date(h.updated_at).toLocaleDateString('ja-JP')}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleUnhideOrphan(h.id, h.name)}
+                    disabled={unhiding === h.id}
+                    className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 rounded whitespace-nowrap"
+                  >
+                    {unhiding === h.id ? '処理中…' : '再表示'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* 情報パネル */}
         <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">

@@ -400,6 +400,51 @@ export const softDeleteHelper = async (helperId: string, deletedBy?: string): Pr
 };
 
 /**
+ * orphan な「helpers に deleted=true で残っているが、deleted_helpers にもない」ヘルパーを救済。
+ * 過去の restoreHelper() のバグで deleted=true のまま復元されたケースを修復するために使う。
+ * 復活させたいヘルパー一覧を返す（実行はユーザーが個別に判断）。
+ */
+export const findOrphanedDeletedHelpers = async (): Promise<Array<{
+  id: string;
+  name: string;
+  status?: string;
+  hire_date?: string;
+  updated_at?: string;
+}>> => {
+  try {
+    const { data, error } = await supabase
+      .from('helpers')
+      .select('id, name, status, hire_date, updated_at')
+      .eq('deleted', true);
+    if (error) {
+      console.warn('orphan ヘルパー検索エラー:', error);
+      return [];
+    }
+    return (data || []) as any;
+  } catch (e) {
+    console.error('findOrphanedDeletedHelpers エラー:', e);
+    return [];
+  }
+};
+
+/**
+ * orphan な helpers (deleted=true) を復活させる（deleted=false に戻す）。
+ */
+export const unhideHelper = async (helperId: string): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('helpers')
+      .update({ deleted: false, updated_at: new Date().toISOString() })
+      .eq('id', helperId);
+    if (error) throw error;
+    console.log(`✅ ヘルパー ${helperId} を再表示しました`);
+  } catch (e) {
+    console.error('unhideHelper エラー:', e);
+    throw e;
+  }
+};
+
+/**
  * 削除済みヘルパーの original_data を更新する（情報補完用）。
  * 既存の削除済みヘルパーで雇用形態・基本給・処遇改善などが失われている場合に
  * 手動で再入力・保存できるようにする。
@@ -498,7 +543,85 @@ export const loadDeletedHelpers = async (): Promise<any[]> => {
   }
 };
 
-// ヘルパーを復元（deleted_helpersからhelpersに戻す）
+/**
+ * deleted_helpers レコードから helpers テーブル復元用のペイロードを構築。
+ * original_data があれば全フィールド復元、なければ既存カラムから最低限を復元。
+ * Helper オブジェクトを helpers テーブルのスキーマ（snake_case）に正規化する。
+ */
+function buildHelperRestorePayload(
+  deletedRow: any,
+  overrides: Record<string, any> = {}
+): Record<string, any> {
+  const original = deletedRow.original_data;
+  const helperLike = (original && typeof original === 'object') ? original : null;
+
+  // helpers テーブルへ insert する形式（snake_case）
+  // original_data からの値は camelCase なので、両方をマージ
+  const payload: Record<string, any> = {
+    id: deletedRow.original_id || helperLike?.id || undefined,
+    name: deletedRow.name ?? helperLike?.name,
+    email: deletedRow.email ?? helperLike?.email,
+    gender: deletedRow.gender ?? helperLike?.gender ?? 'male',
+    order_index: deletedRow.order_index ?? helperLike?.order ?? 0,
+    role: deletedRow.role ?? helperLike?.role ?? 'staff',
+    personal_token: deletedRow.personal_token ?? helperLike?.personalToken,
+    insurances: deletedRow.insurances ?? helperLike?.insurances ?? [],
+    standard_remuneration: deletedRow.standard_remuneration ?? helperLike?.standardRemuneration ?? 0,
+    hourly_rate: deletedRow.hourly_wage ?? helperLike?.hourlyRate ?? 0,
+    deleted: false,
+    created_at: deletedRow.original_created_at || helperLike?.createdAt || new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  // original_data からのみ取得できる詳細情報（helpers テーブルの全カラムを埋める）
+  if (helperLike) {
+    Object.assign(payload, {
+      last_name: helperLike.lastName,
+      first_name: helperLike.firstName,
+      name_kana: helperLike.nameKana,
+      birth_date: helperLike.birthDate,
+      postal_code: helperLike.postalCode,
+      address: helperLike.address,
+      phone: helperLike.phone,
+      emergency_contact: helperLike.emergencyContact,
+      emergency_contact_phone: helperLike.emergencyContactPhone,
+      spreadsheet_gid: helperLike.spreadsheetGid,
+      salary_type: helperLike.salaryType ?? 'hourly',
+      employment_type: helperLike.employmentType ?? 'parttime',
+      hire_date: helperLike.hireDate,
+      department: helperLike.department,
+      cash_payment: helperLike.cashPayment ?? false,
+      exclude_from_shift: helperLike.excludeFromShift ?? false,
+      treatment_improvement_per_hour: helperLike.treatmentImprovementPerHour ?? 0,
+      office_hourly_rate: helperLike.officeHourlyRate ?? 1000,
+      base_salary: helperLike.baseSalary ?? 0,
+      treatment_allowance: helperLike.treatmentAllowance ?? 0,
+      other_allowances: helperLike.otherAllowances ?? [],
+      dependents: helperLike.dependents ?? 0,
+      resident_tax_type: helperLike.residentTaxType ?? 'special',
+      residential_tax: helperLike.residentialTax ?? 0,
+      age: helperLike.age,
+      has_withholding_tax: helperLike.hasWithholdingTax !== false,
+      tax_column_type: helperLike.taxColumnType ?? 'main',
+      contract_period: helperLike.contractPeriod,
+      qualifications: helperLike.qualifications ?? [],
+      qualification_dates: helperLike.qualificationDates ?? {},
+      service_types: helperLike.serviceTypes ?? [],
+      commute_methods: helperLike.commuteMethods ?? [],
+      attendance_template: helperLike.attendanceTemplate,
+      monthly_payments: helperLike.monthlyPayments ?? {},
+    });
+  }
+
+  // 上書き値（status='退職' など）
+  Object.assign(payload, overrides);
+
+  // undefined を除去（Supabase に送るとエラーになるケース回避）
+  Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
+  return payload;
+}
+
+// ヘルパーを復元（deleted_helpersからhelpersに戻す） — 全フィールド復元
 export const restoreHelper = async (deletedHelperId: string): Promise<void> => {
   try {
     console.log(`♻️ ヘルパーを復元中: ${deletedHelperId}`);
@@ -515,23 +638,9 @@ export const restoreHelper = async (deletedHelperId: string): Promise<void> => {
       throw new Error('削除済みヘルパーが見つかりません');
     }
 
-    // 2. helpersテーブルに復元（元のIDを使用）
-    const { error: insertError } = await supabase
-      .from('helpers')
-      .insert({
-        id: deletedHelper.original_id || undefined, // 元のIDがあれば使用
-        name: deletedHelper.name,
-        email: deletedHelper.email,
-        hourly_wage: deletedHelper.hourly_wage,
-        order_index: deletedHelper.order_index,
-        gender: deletedHelper.gender,
-        personal_token: deletedHelper.personal_token,
-        role: deletedHelper.role,
-        insurances: deletedHelper.insurances,
-        standard_remuneration: deletedHelper.standard_remuneration,
-        created_at: deletedHelper.original_created_at || new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      });
+    // 2. helpersテーブルに全フィールド復元（status='active'、シフト表元位置含む）
+    const payload = buildHelperRestorePayload(deletedHelper, { status: 'active' });
+    const { error: insertError } = await supabase.from('helpers').upsert(payload);
 
     if (insertError) {
       console.error('ヘルパー復元エラー:', insertError);
@@ -583,24 +692,9 @@ export const restoreHelperAsResigned = async (deletedHelperId: string): Promise<
       throw new Error('削除済みヘルパーが見つかりません');
     }
 
-    // helpers テーブルに status='退職' で復元
-    const { error: insertError } = await supabase
-      .from('helpers')
-      .insert({
-        id: deletedHelper.original_id || undefined,
-        name: deletedHelper.name,
-        email: deletedHelper.email,
-        hourly_wage: deletedHelper.hourly_wage,
-        order_index: deletedHelper.order_index,
-        gender: deletedHelper.gender,
-        personal_token: deletedHelper.personal_token,
-        role: deletedHelper.role,
-        insurances: deletedHelper.insurances,
-        standard_remuneration: deletedHelper.standard_remuneration,
-        status: '退職',
-        created_at: deletedHelper.original_created_at || new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      });
+    // helpers テーブルに status='退職' で全フィールド復元
+    const payload = buildHelperRestorePayload(deletedHelper, { status: '退職' });
+    const { error: insertError } = await supabase.from('helpers').upsert(payload);
 
     if (insertError) {
       console.error('退職者復元エラー:', insertError);
