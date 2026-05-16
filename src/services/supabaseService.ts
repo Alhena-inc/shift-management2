@@ -323,24 +323,36 @@ export const softDeleteHelper = async (helperId: string, deletedBy?: string): Pr
     }
 
     // 2. deleted_helpersテーブルにデータをコピー
-    const { error: insertError } = await supabase
+    //    既存カラムに加えて、original_data に helpers レコード全体を JSON で保存
+    //    （詳細モーダルで雇用形態・基本給・処遇改善・所属事業所などを参照できるようにする）
+    const insertPayload: Record<string, any> = {
+      original_id: helper.id,
+      name: helper.name,
+      email: helper.email,
+      hourly_wage: helper.hourly_wage,
+      order_index: helper.order_index,
+      gender: helper.gender,
+      personal_token: helper.personal_token,
+      role: helper.role,
+      insurances: helper.insurances,
+      standard_remuneration: helper.standard_remuneration,
+      deleted_by: deletedBy || 'unknown',
+      deletion_reason: '手動削除',
+      original_created_at: helper.created_at,
+      original_updated_at: helper.updated_at,
+      original_data: helper, // 全カラムのスナップショット（カラムがあれば保存される）
+    };
+    let { error: insertError } = await supabase
       .from('deleted_helpers')
-      .insert({
-        original_id: helper.id,
-        name: helper.name,
-        email: helper.email,
-        hourly_wage: helper.hourly_wage,
-        order_index: helper.order_index,
-        gender: helper.gender,
-        personal_token: helper.personal_token,
-        role: helper.role,
-        insurances: helper.insurances,
-        standard_remuneration: helper.standard_remuneration,
-        deleted_by: deletedBy || 'unknown',
-        deletion_reason: '手動削除',
-        original_created_at: helper.created_at,
-        original_updated_at: helper.updated_at
-      });
+      .insert(insertPayload);
+
+    // original_data カラムが存在しない場合（旧スキーマ）はそれを除いて再試行
+    if (insertError && (insertError.code === '42703' || /column .* does not exist/i.test(insertError.message ?? ''))) {
+      console.warn('original_data カラムが未作成のため、既存カラムのみで保存します');
+      delete (insertPayload as any).original_data;
+      const retry = await supabase.from('deleted_helpers').insert(insertPayload);
+      insertError = retry.error;
+    }
 
     if (insertError) {
       // deleted_helpersテーブルが存在しない場合のエラーハンドリング

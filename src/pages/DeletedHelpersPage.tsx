@@ -16,6 +16,15 @@ interface DeletedHelper {
   deleted_at: string;
   deleted_by: string;
   deletion_reason: string;
+  // 削除時に保存されている追加情報
+  hourly_wage?: number;
+  order_index?: number;
+  gender?: string;
+  insurances?: string[];
+  standard_remuneration?: number;
+  original_created_at?: string;
+  /** 削除時のヘルパー全体スナップショット（JSONB、新スキーマで保存される） */
+  original_data?: any;
 }
 
 const DeletedHelpersPage: React.FC = () => {
@@ -28,6 +37,9 @@ const DeletedHelpersPage: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+
+  // 詳細表示中のヘルパー
+  const [detailHelper, setDetailHelper] = useState<DeletedHelper | null>(null);
 
   // 選択ヘルパー
   const toggleSelect = (id: string) => {
@@ -345,24 +357,68 @@ const DeletedHelpersPage: React.FC = () => {
                             {helper.email || '-'}
                           </span>
                         </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-gray-500 shrink-0">削除日時:</span>
-                          <span className="font-medium text-gray-800 text-xs">
-                            {new Date(helper.deleted_at).toLocaleString('ja-JP')}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-gray-500 shrink-0">削除者:</span>
-                          <span className="font-medium text-gray-800 truncate text-xs">
-                            {helper.deleted_by || '-'}
-                          </span>
-                        </div>
-                        {helper.deletion_reason && (
-                          <div className="pt-1 border-t border-gray-100">
-                            <span className="text-gray-500 text-xs">理由:</span>
-                            <p className="text-gray-700 text-xs mt-0.5">{helper.deletion_reason}</p>
+                        {(helper.hourly_wage ?? 0) > 0 && (
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-gray-500 shrink-0">基本時給:</span>
+                            <span className="font-medium text-gray-800">
+                              {Number(helper.hourly_wage).toLocaleString()}円
+                            </span>
                           </div>
                         )}
+                        {helper.gender && (
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-gray-500 shrink-0">性別:</span>
+                            <span className="font-medium text-gray-800">
+                              {helper.gender === 'male' ? '男性' : helper.gender === 'female' ? '女性' : helper.gender}
+                            </span>
+                          </div>
+                        )}
+                        {(helper.standard_remuneration ?? 0) > 0 && (
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-gray-500 shrink-0">標準報酬月額:</span>
+                            <span className="font-medium text-gray-800">
+                              {Number(helper.standard_remuneration).toLocaleString()}円
+                            </span>
+                          </div>
+                        )}
+                        {Array.isArray(helper.insurances) && helper.insurances.length > 0 && (
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-gray-500 shrink-0">加入保険:</span>
+                            <span className="font-medium text-gray-800 text-right">
+                              {helper.insurances
+                                .map((i) => ({ health: '健保', care: '介護', pension: '厚年', employment: '雇保' } as Record<string, string>)[i] || i)
+                                .join('・')}
+                            </span>
+                          </div>
+                        )}
+                        <div className="pt-2 mt-2 border-t border-gray-100 space-y-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-gray-500 shrink-0 text-xs">削除日時:</span>
+                            <span className="font-medium text-gray-700 text-xs">
+                              {new Date(helper.deleted_at).toLocaleString('ja-JP')}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-gray-500 shrink-0 text-xs">削除者:</span>
+                            <span className="font-medium text-gray-700 truncate text-xs">
+                              {helper.deleted_by || '-'}
+                            </span>
+                          </div>
+                          {helper.deletion_reason && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-gray-500 shrink-0 text-xs">理由:</span>
+                              <span className="font-medium text-gray-700 truncate text-xs">
+                                {helper.deletion_reason}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => setDetailHelper(helper)}
+                          className="w-full mt-2 px-2 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-100"
+                        >
+                          詳細を見る
+                        </button>
                       </div>
 
                       {/* アクション */}
@@ -427,7 +483,123 @@ const DeletedHelpersPage: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* 詳細モーダル */}
+        {detailHelper && (
+          <DeletedHelperDetailModal
+            helper={detailHelper}
+            onClose={() => setDetailHelper(null)}
+          />
+        )}
       </main>
+    </div>
+  );
+};
+
+/* ────────── 詳細モーダル ────────── */
+const DeletedHelperDetailModal: React.FC<{
+  helper: DeletedHelper;
+  onClose: () => void;
+}> = ({ helper, onClose }) => {
+  const original = helper.original_data ?? {};
+
+  const Row: React.FC<{ label: string; value?: any }> = ({ label, value }) => {
+    if (value === undefined || value === null || value === '') return null;
+    return (
+      <div className="flex justify-between gap-3 py-1.5 text-sm border-b border-gray-100">
+        <span className="text-gray-500 shrink-0">{label}</span>
+        <span className="font-medium text-gray-800 text-right break-all">
+          {typeof value === 'number' ? value.toLocaleString() : String(value)}
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              {helper.name}
+              <span className="px-1.5 py-0.5 text-[10px] font-bold bg-red-600 text-white rounded">
+                削除済み
+              </span>
+            </h2>
+            <p className="text-xs text-gray-500 mt-0.5">削除時のスナップショット</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
+            aria-label="閉じる"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* 基本情報 */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">基本情報</h3>
+            <Row label="氏名" value={helper.name} />
+            <Row label="メール" value={helper.email} />
+            <Row label="権限" value={helper.role === 'admin' ? '管理者' : 'スタッフ'} />
+            <Row label="性別" value={helper.gender === 'male' ? '男性' : helper.gender === 'female' ? '女性' : helper.gender} />
+            <Row label="並び順" value={helper.order_index} />
+            <Row label="基本時給" value={helper.hourly_wage ? `${Number(helper.hourly_wage).toLocaleString()}円` : undefined} />
+            <Row label="標準報酬月額" value={helper.standard_remuneration ? `${Number(helper.standard_remuneration).toLocaleString()}円` : undefined} />
+            <Row
+              label="加入保険"
+              value={
+                Array.isArray(helper.insurances) && helper.insurances.length > 0
+                  ? helper.insurances
+                      .map((i) => ({ health: '健保', care: '介護', pension: '厚年', employment: '雇保' } as Record<string, string>)[i] || i)
+                      .join('・')
+                  : undefined
+              }
+            />
+          </div>
+
+          {/* 削除情報 */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">削除情報</h3>
+            <Row label="削除日時" value={new Date(helper.deleted_at).toLocaleString('ja-JP')} />
+            <Row label="削除者" value={helper.deleted_by} />
+            <Row label="削除理由" value={helper.deletion_reason} />
+            <Row label="登録日時" value={helper.original_created_at ? new Date(helper.original_created_at).toLocaleString('ja-JP') : undefined} />
+          </div>
+
+          {/* 削除時のスナップショット（あれば） */}
+          {original && Object.keys(original).length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">削除時の詳細データ</h3>
+              <Row label="雇用形態" value={original.employmentType || original.employment_type} />
+              <Row label="基本給(月)" value={original.baseSalary ?? original.base_salary} />
+              <Row label="処遇改善" value={original.treatmentAllowance ?? original.treatment_allowance} />
+              <Row label="所属事業所" value={original.officeName || original.office_name} />
+              <Row label="入社日" value={original.hireDate || original.hire_date} />
+              <Row label="退職日" value={original.resignationDate || original.resignation_date} />
+              <Row label="生年月日" value={original.birthDate || original.birth_date} />
+              <Row label="従業員番号" value={original.employeeNumber || original.employee_number} />
+              <details className="mt-3">
+                <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
+                  全フィールドを表示（JSON）
+                </summary>
+                <pre className="mt-2 p-2 bg-gray-50 rounded text-[10px] text-gray-700 overflow-x-auto">
+                  {JSON.stringify(original, null, 2)}
+                </pre>
+              </details>
+            </div>
+          )}
+        </div>
+        <div className="px-5 py-3 border-t border-gray-200 bg-gray-50 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-100"
+          >
+            閉じる
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
