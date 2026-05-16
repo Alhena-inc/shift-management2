@@ -6,7 +6,8 @@ import { isHourlyPayslip } from '../../types/payslip';
 import {
   loadPayslipsByMonth,
   savePayslip,
-  deletePayslip
+  deletePayslip,
+  loadLatestPayslipMonthForHelpers,
 } from '../../services/payslipService';
 import { loadHelpers, loadShiftsForMonth } from '../../services/dataService';
 import { generatePayslipFromShifts } from '../../utils/payslipCalculation';
@@ -41,6 +42,8 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
   const [activeDownloadMenuHelperId, setActiveDownloadMenuHelperId] = useState<string | null>(null);
   // 退職者の表示モード：'active'=在職のみ / 'all'=全員 / 'resigned'=退職者のみ
   const [resignedFilter, setResignedFilter] = useState<'active' | 'all' | 'resigned'>('active');
+  // 退職者ごとの最終明細月（helperId → {year, month}）
+  const [latestPayslipMonth, setLatestPayslipMonth] = useState<Map<string, { year: number; month: number }>>(new Map());
   const printViewRef = useRef<HTMLDivElement>(null);
 
   // ヘルパーをソート・フィルタリング
@@ -97,6 +100,29 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // 退職者の最終明細月をロード（退職者を表示する時のみ）
+  useEffect(() => {
+    if (resignedFilter === 'active') {
+      setLatestPayslipMonth(new Map());
+      return;
+    }
+    const resignedHelpers = helpers.filter((h) => h.status === '退職');
+    if (resignedHelpers.length === 0) {
+      setLatestPayslipMonth(new Map());
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const map = await loadLatestPayslipMonthForHelpers(resignedHelpers.map((h) => h.id));
+        if (!cancelled) setLatestPayslipMonth(map);
+      } catch (e) {
+        console.error('最終明細月の取得失敗', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [helpers, resignedFilter]);
 
   // メニュー外クリックで閉じる処理
   useEffect(() => {
@@ -837,14 +863,32 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
                           {index + 1}
                         </td>
                         <td className="border border-gray-300 px-3 py-2 text-sm">
-                          <span className="inline-flex items-center gap-1.5">
-                            {helper.name}
+                          <div className="inline-flex items-center gap-1.5 flex-wrap">
+                            <span>{helper.name}</span>
                             {helper.status === '退職' && (
                               <span className="px-1.5 py-0.5 text-[10px] font-medium bg-gray-200 text-gray-700 rounded">
                                 退職
                               </span>
                             )}
-                          </span>
+                            {helper.status === '退職' && latestPayslipMonth.get(helper.id) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const lp = latestPayslipMonth.get(helper.id);
+                                  if (lp) {
+                                    setSelectedYear(lp.year);
+                                    setSelectedMonth(lp.month);
+                                  }
+                                }}
+                                className="px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-800 hover:bg-amber-200 rounded transition-colors"
+                                title="この月にジャンプ"
+                              >
+                                最終明細：
+                                {latestPayslipMonth.get(helper.id)!.year}年
+                                {latestPayslipMonth.get(helper.id)!.month}月
+                              </button>
+                            )}
+                          </div>
                         </td>
                         <td className="border border-gray-300 px-2 py-2 text-sm text-center">
                           <span className={`px-2 py-0.5 rounded text-xs font-medium ${getEmploymentTypeBadgeColor(helper.employmentType)}`}>

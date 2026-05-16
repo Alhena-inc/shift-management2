@@ -182,6 +182,43 @@ export const loadPayslipsByMonth = async (year: number, month: number): Promise<
   }
 };
 
+/**
+ * 指定ヘルパー群の「最終明細月」を取得する。
+ * Map<helperId, { year, month }> を返す。明細が存在しないヘルパーはMapに含まれない。
+ * 退職者の最後の明細がいつだったか一覧表示するために使う。
+ */
+export const loadLatestPayslipMonthForHelpers = async (
+  helperIds: string[]
+): Promise<Map<string, { year: number; month: number }>> => {
+  const result = new Map<string, { year: number; month: number }>();
+  if (helperIds.length === 0) return result;
+
+  try {
+    const { data, error } = await supabase
+      .from('payslips')
+      .select('helper_id, year, month')
+      .in('helper_id', helperIds)
+      .order('year', { ascending: false })
+      .order('month', { ascending: false });
+
+    if (error) throw error;
+
+    for (const row of data ?? []) {
+      const hid = (row as any).helper_id as string;
+      if (!result.has(hid)) {
+        result.set(hid, {
+          year: (row as any).year as number,
+          month: (row as any).month as number,
+        });
+      }
+    }
+    return result;
+  } catch (error) {
+    console.error('最終明細月読み込みエラー:', error);
+    return result;
+  }
+};
+
 // ヘルパーと年月を指定して給与明細を取得
 export const loadPayslipByHelperAndMonth = async (
   helperId: string,
