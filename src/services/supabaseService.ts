@@ -540,7 +540,7 @@ export const loadDeletedHelperAsHelper = async (
     if (error || !data || data.length === 0) return null;
     const row = data[0];
 
-    // original_data があればフル復元、なければ既存カラムから最低限を構築
+    // original_data があればフル復元、なければ既存カラムから構築
     // 1) original_data カラム
     // 2) deletion_reason に埋め込まれた __SNAPSHOT__ JSON（カラム未作成時のフォールバック）
     // 3) 既存カラムからの最低限の構築
@@ -555,12 +555,12 @@ export const loadDeletedHelperAsHelper = async (
       }
     }
 
+    // applyDefaults=true でデフォルト値も埋める（在籍ヘルパーと同じUX、編集時に上書き可能）
     let helper: Helper;
     if (original && typeof original === 'object') {
-      helper = { ...helperRowToHelper(original, false), deleted: true };
+      helper = { ...helperRowToHelper(original, true), deleted: true };
       helper.id = (row as any).original_id || helper.id;
     } else {
-      // 既存カラムから構築（applyDefaults=false でデータなしは undefined のまま）
       helper = helperRowToHelper({
         id: (row as any).original_id || (row as any).id,
         name: (row as any).name || '',
@@ -571,7 +571,7 @@ export const loadDeletedHelperAsHelper = async (
         role: (row as any).role,
         insurances: (row as any).insurances,
         standard_remuneration: (row as any).standard_remuneration,
-      }, false);
+      }, true);
       helper.deleted = true;
     }
 

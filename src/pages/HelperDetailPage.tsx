@@ -16,15 +16,14 @@ const HelperDetailPage: React.FC = () => {
   // 削除済みヘルパー表示モード（読み取り専用、編集モードで補完可能）
   const [deletedMeta, setDeletedMeta] = useState<{ deleted_at: string; deleted_by: string; deletion_reason: string } | null>(null);
   const [deletedRowId, setDeletedRowId] = useState<string | null>(null);
-  const [deletedEditMode, setDeletedEditMode] = useState(false);
 
   // URLからIDを取得
   const helperId = window.location.pathname.split('/helpers/')[1]?.split('?')[0];
   const params = new URLSearchParams(window.location.search);
   const isNewMode = params.get('new') === '1';
   const isDeletedMode = params.get('deleted') === '1';
-  // 削除済みは通常は読み取り専用、ただし「情報を補完」モードのみ編集可能
-  const isReadOnly = isDeletedMode && !deletedEditMode;
+  // 削除済みでも最初から編集可能（在籍ヘルパー詳細と同じ操作感）
+  const isReadOnly = false;
 
   useEffect(() => {
     if (isNewMode) {
@@ -85,7 +84,7 @@ const HelperDetailPage: React.FC = () => {
   const handleSave = async () => {
     if (!helper) return;
 
-    // 削除済みヘルパーの編集モード：original_data を更新
+    // 削除済みヘルパーモード：original_data を更新（在籍と同じUXで保存）
     if (isDeletedMode) {
       if (!deletedRowId) {
         alert('削除済みヘルパー情報の取得に失敗しています');
@@ -99,8 +98,7 @@ const HelperDetailPage: React.FC = () => {
       try {
         const helperToSave = { ...helper, gender: helper.gender || 'male', deleted: true };
         await updateDeletedHelperOriginalData(deletedRowId, helperToSave);
-        alert('削除済みヘルパー情報を補完して保存しました');
-        setDeletedEditMode(false);
+        alert('削除済みヘルパー情報を保存しました');
       } catch (e) {
         console.error('削除済みヘルパー更新エラー', e);
         alert('保存に失敗しました');
@@ -408,27 +406,7 @@ const HelperDetailPage: React.FC = () => {
               </h1>
             </div>
             <div className="flex gap-2 sm:gap-3 flex-shrink-0">
-              {/* 削除済みモード：編集前は「情報を補完」ボタン */}
-              {isDeletedMode && !deletedEditMode && (
-                <button
-                  onClick={() => setDeletedEditMode(true)}
-                  className="px-3 py-2 sm:px-4 sm:py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium text-sm sm:text-base"
-                  title="雇用形態・基本給・処遇改善など消えた情報を手動で補完できます"
-                >
-                  ✏️ <span className="hidden sm:inline">情報を補完</span>
-                </button>
-              )}
-              {/* 削除済みモード：編集中はキャンセル */}
-              {isDeletedMode && deletedEditMode && (
-                <button
-                  onClick={() => setDeletedEditMode(false)}
-                  disabled={isSaving}
-                  className="px-3 py-2 sm:px-4 sm:py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium text-sm sm:text-base"
-                >
-                  キャンセル
-                </button>
-              )}
-              {/* 通常モードの削除ボタン */}
+              {/* 通常モードの削除ボタン（削除済みモードでは非表示） */}
               {!isDeletedMode && !isNewMode && (
                 <button
                   onClick={handleDelete}
@@ -441,38 +419,26 @@ const HelperDetailPage: React.FC = () => {
                   🗑️ <span className="hidden sm:inline">削除</span>
                 </button>
               )}
-              {/* 保存ボタン：通常モード or 削除済み編集モード */}
-              {(!isDeletedMode || deletedEditMode) && (
-                <button
-                  onClick={handleSave}
-                  disabled={isSaving}
-                  className={`px-4 sm:px-6 py-2 rounded-lg font-medium flex items-center gap-2 text-sm sm:text-base ${isSaving
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                    }`}
-                >
-                  {isSaving ? '保存中...' : (isNewMode ? '💾 登録' : '💾 保存')}
-                </button>
-              )}
+              {/* 保存ボタン（常に表示、削除済みでもそのまま編集可能） */}
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className={`px-4 sm:px-6 py-2 rounded-lg font-medium flex items-center gap-2 text-sm sm:text-base ${isSaving
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+              >
+                {isSaving ? '保存中...' : (isNewMode ? '💾 登録' : '💾 保存')}
+              </button>
             </div>
           </div>
         </div>
 
         {/* 削除済みバナー */}
         {isDeletedMode && deletedMeta && (
-          <div className={`border-t border-b px-4 sm:px-6 py-2 ${
-            deletedEditMode
-              ? 'bg-blue-50 border-blue-200'
-              : 'bg-amber-50 border-amber-200'
-          }`}>
-            <div className={`max-w-6xl mx-auto text-xs sm:text-sm flex flex-wrap items-center gap-x-4 gap-y-1 ${
-              deletedEditMode ? 'text-blue-900' : 'text-amber-900'
-            }`}>
-              <span className="font-semibold">
-                {deletedEditMode
-                  ? '✏️ 補完モード（保存で original_data に反映されます）※未設定項目はデフォルト表示なので、必要なら正しい値を入力してください'
-                  : '⚠️ 読み取り専用'}
-              </span>
+          <div className="bg-amber-50 border-t border-b border-amber-200 px-4 sm:px-6 py-2">
+            <div className="max-w-6xl mx-auto text-xs sm:text-sm text-amber-900 flex flex-wrap items-center gap-x-4 gap-y-1">
+              <span className="font-semibold">📦 削除済みヘルパー（保存で情報を更新できます）</span>
               <span>削除日時: {new Date(deletedMeta.deleted_at).toLocaleString('ja-JP')}</span>
               {deletedMeta.deleted_by && <span>削除者: {deletedMeta.deleted_by}</span>}
               {deletedMeta.deletion_reason && <span>理由: {deletedMeta.deletion_reason}</span>}
