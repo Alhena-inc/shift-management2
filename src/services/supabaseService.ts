@@ -350,13 +350,15 @@ export const softDeleteHelper = async (helperId: string, deletedBy?: string): Pr
     }
 
     // 2. deleted_helpersテーブルにデータをコピー
-    //    既存カラムに加えて、original_data に helpers レコード全体を JSON で保存
-    //    （詳細モーダルで雇用形態・基本給・処遇改善・所属事業所などを参照できるようにする）
+    //    helpers の全カラム（hourly_rate, hourly_wage どちらでも対応）を取り込み、
+    //    original_data に helpers レコード全体を JSON で保存
+    const fullSnapshot = helper; // helpers の DB 行（snake_case 全カラム）
     const basePayload: Record<string, any> = {
       original_id: helper.id,
       name: helper.name,
       email: helper.email,
-      hourly_wage: helper.hourly_wage,
+      // hourly_rate / hourly_wage どちらにも対応
+      hourly_wage: helper.hourly_rate ?? helper.hourly_wage ?? null,
       order_index: helper.order_index,
       gender: helper.gender,
       personal_token: helper.personal_token,
@@ -369,17 +371,40 @@ export const softDeleteHelper = async (helperId: string, deletedBy?: string): Pr
       original_updated_at: helper.updated_at,
     };
 
-    // まず original_data 付きで insert を試みる
-    const payloadWithSnapshot = { ...basePayload, original_data: helper };
+    // ★ original_data カラムがあれば JSONB に丸ごと保存
+    //   なければ deletion_reason に JSON文字列を埋め込んでバックアップ（ハック対応）
+    const payloadWithSnapshot = { ...basePayload, original_data: fullSnapshot };
     let { error: insertError } = await supabase
       .from('deleted_helpers')
       .insert(payloadWithSnapshot);
 
-    // 失敗したら original_data を除いて再試行（カラム未作成・型不一致等を救済）
     if (insertError) {
-      console.warn('original_data 付きの保存に失敗。既存カラムのみで再試行します:', insertError.message);
-      const retry = await supabase.from('deleted_helpers').insert(basePayload);
-      insertError = retry.error;
+      console.warn('⚠️ original_data 付きの保存に失敗:', insertError.message);
+      console.warn('   → original_data カラムが未作成の可能性があります。');
+      console.warn('   → Supabase で以下のSQLを実行してください：');
+      console.warn('   ALTER TABLE deleted_helpers ADD COLUMN IF NOT EXISTS original_data JSONB;');
+
+      // フォールバック1: deletion_reason に JSON 文字列を埋め込んで保存
+      const snapshotJson = JSON.stringify(fullSnapshot);
+      const fallbackPayload = {
+        ...basePayload,
+        deletion_reason: `手動削除__SNAPSHOT__${snapshotJson}`,
+      };
+      const retry1 = await supabase.from('deleted_helpers').insert(fallbackPayload);
+
+      if (retry1.error) {
+        console.warn('JSON 埋め込みも失敗。既存カラムのみで再試行:', retry1.error.message);
+        // フォールバック2: 完全に既存カラムのみで保存（情報の大半が失われる）
+        const retry2 = await supabase.from('deleted_helpers').insert(basePayload);
+        insertError = retry2.error;
+        if (!insertError) {
+          console.warn('⚠️ ヘルパーは削除されましたが、雇用形態・基本給・処遇改善などの詳細情報は');
+          console.warn('   保存できませんでした。Supabase でマイグレーション SQL を実行してください。');
+        }
+      } else {
+        insertError = null;
+        console.log('✅ deletion_reason に JSON スナップショットを埋め込んで保存しました');
+      }
     }
 
     if (insertError) {
@@ -516,16 +541,26 @@ export const loadDeletedHelperAsHelper = async (
     const row = data[0];
 
     // original_data があればフル復元、なければ既存カラムから最低限を構築
-    // 削除済み詳細表示では applyDefaults=false にして、データがないフィールドは
-    // undefined のまま残す（補填編集時に誤ったデフォルト値で上書きされないため）
-    const original = (row as any).original_data;
+    // 1) original_data カラム
+    // 2) deletion_reason に埋め込まれた __SNAPSHOT__ JSON（カラム未作成時のフォールバック）
+    // 3) 既存カラムからの最低限の構築
+    let original: any = (row as any).original_data;
+    const reason: string = (row as any).deletion_reason ?? '';
+    if (!original && typeof reason === 'string' && reason.includes('__SNAPSHOT__')) {
+      try {
+        const jsonPart = reason.split('__SNAPSHOT__').slice(1).join('__SNAPSHOT__');
+        original = JSON.parse(jsonPart);
+      } catch (e) {
+        console.warn('deletion_reason 埋め込み JSON のパースに失敗:', e);
+      }
+    }
+
     let helper: Helper;
     if (original && typeof original === 'object') {
       helper = { ...helperRowToHelper(original, false), deleted: true };
       helper.id = (row as any).original_id || helper.id;
     } else {
-      // フォールバック：deleted_helpers の既存カラムから最低限を構築
-      // applyDefaults=false で「データなし」を保持
+      // 既存カラムから構築（applyDefaults=false でデータなしは undefined のまま）
       helper = helperRowToHelper({
         id: (row as any).original_id || (row as any).id,
         name: (row as any).name || '',
@@ -540,13 +575,20 @@ export const loadDeletedHelperAsHelper = async (
       helper.deleted = true;
     }
 
+    // deletion_reason から __SNAPSHOT__ 部分を取り除いて表示用に整形
+    let displayReason: string = (row as any).deletion_reason ?? '';
+    if (typeof displayReason === 'string' && displayReason.includes('__SNAPSHOT__')) {
+      const prefix = displayReason.split('__SNAPSHOT__')[0];
+      displayReason = (prefix && prefix.trim()) || '手動削除';
+    }
+
     return {
       helper,
       deletedRowId: (row as any).id, // deleted_helpers.id（編集保存時に使う）
       deletedMeta: {
         deleted_at: (row as any).deleted_at,
         deleted_by: (row as any).deleted_by,
-        deletion_reason: (row as any).deletion_reason,
+        deletion_reason: displayReason,
       },
     };
   } catch (error) {
@@ -568,7 +610,26 @@ export const loadDeletedHelpers = async (): Promise<any[]> => {
       return [];
     }
 
-    return data || [];
+    // deletion_reason に埋め込まれた __SNAPSHOT__ JSON を分離して
+    // 表示用 reason は読みやすい形に整形（JSON は original_data へ持ち上げる）
+    return (data || []).map((row: any) => {
+      const reason: string = row.deletion_reason ?? '';
+      if (typeof reason === 'string' && reason.includes('__SNAPSHOT__')) {
+        const [prefix, ...rest] = reason.split('__SNAPSHOT__');
+        const jsonPart = rest.join('__SNAPSHOT__');
+        try {
+          const snapshot = JSON.parse(jsonPart);
+          return {
+            ...row,
+            deletion_reason: (prefix && prefix.trim()) || '手動削除',
+            original_data: row.original_data ?? snapshot,
+          };
+        } catch {
+          return row;
+        }
+      }
+      return row;
+    });
   } catch (error) {
     console.error('削除済みヘルパー取得エラー:', error);
     return [];
@@ -584,9 +645,16 @@ function buildHelperRestorePayload(
   deletedRow: any,
   overrides: Record<string, any> = {}
 ): Record<string, any> {
-  const original = deletedRow.original_data;
-  // original_data は snake_case でも camelCase でも入っている可能性があるため
-  // helperRowToHelper で一旦 camelCase に正規化してから snake_case にマッピング
+  // original_data カラム or deletion_reason 内の __SNAPSHOT__ JSON のどちらかを採用
+  let original: any = deletedRow.original_data;
+  const reason: string = deletedRow.deletion_reason ?? '';
+  if (!original && typeof reason === 'string' && reason.includes('__SNAPSHOT__')) {
+    try {
+      const jsonPart = reason.split('__SNAPSHOT__').slice(1).join('__SNAPSHOT__');
+      original = JSON.parse(jsonPart);
+    } catch {}
+  }
+
   const helperLike: Helper | null = (original && typeof original === 'object')
     ? helperRowToHelper(original)
     : null;
