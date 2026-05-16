@@ -572,6 +572,11 @@ export function generateFixedPayslipFromShifts(
     payslip.deductions.items.push({ name: '住民税', amount: payslip.deductions.residentTax });
   }
 
+  // 課税計・非課税計
+  (payslip.totals as any).nonTaxableTotal = nonTaxableOtherAllowances;
+  (payslip.totals as any).taxableTotal =
+    payslip.payments.totalPayment - nonTaxableOtherAllowances;
+
   // 差引支給額
   payslip.totals.netPayment = payslip.payments.totalPayment - payslip.deductions.totalDeduction;
 
@@ -1066,6 +1071,11 @@ export function generateHourlyPayslipFromShifts(
   if ((payslip.deductions.residentTax || 0) > 0) {
     payslip.deductions.items.push({ name: '住民税', amount: payslip.deductions.residentTax });
   }
+
+  // 課税計・非課税計
+  (payslip.totals as any).nonTaxableTotal = nonTaxableOtherAllowances;
+  (payslip.totals as any).taxableTotal =
+    payslip.payments.totalPayment - nonTaxableOtherAllowances;
 
   // 差引支給額
   payslip.totals.netPayment = payslip.payments.totalPayment - payslip.deductions.totalDeduction;

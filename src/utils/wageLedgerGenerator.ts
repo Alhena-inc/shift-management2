@@ -200,6 +200,21 @@ function mapEarnings(payslip: Payslip): WageLedgerEarnings {
   // その他手当（通勤費以外）
   const otherAllowances = collectOtherAllowances(p.otherAllowances);
 
+  const totalPayment = p.totalPayment ?? 0;
+
+  // 課税計・非課税計：payslip.totals に値があればそれを採用
+  // ない場合（旧データ）は payments.totalPayment と非課税分から算出して補完
+  const storedTaxable = (payslip.totals as any)?.taxableTotal;
+  const storedNonTaxable = (payslip.totals as any)?.nonTaxableTotal;
+  const nonTaxableTotal =
+    typeof storedNonTaxable === 'number' && storedNonTaxable > 0
+      ? storedNonTaxable
+      : computeFallbackNonTaxable(p, nonTaxableCommuting);
+  const taxableTotal =
+    typeof storedTaxable === 'number' && storedTaxable > 0
+      ? storedTaxable
+      : Math.max(0, totalPayment - nonTaxableTotal);
+
   return {
     basePay,
     directorCompensation: p.directorCompensation ?? 0,
@@ -218,11 +233,22 @@ function mapEarnings(payslip: Payslip): WageLedgerEarnings {
     nonTaxableCommuting,
     reimbursement,
     otherAllowances,
-    // 集計：payslip の値をそのまま採用（再計算しない）
-    taxableTotal: (payslip.totals as any)?.taxableTotal ?? 0,
-    nonTaxableTotal: (payslip.totals as any)?.nonTaxableTotal ?? 0,
-    totalEarnings: p.totalPayment ?? 0,
+    taxableTotal,
+    nonTaxableTotal,
+    totalEarnings: totalPayment,
   };
+}
+
+/**
+ * payslip.totals.nonTaxableTotal が未保存の旧データ用フォールバック。
+ * 非課税通勤費 + otherAllowances のうち taxExempt=true の合計を返す。
+ */
+function computeFallbackNonTaxable(payments: any, nonTaxableCommuting: number): number {
+  const items: DeductionItem[] = payments?.otherAllowances ?? [];
+  const nonTaxableOther = items
+    .filter((it) => it.taxExempt && !/通勤|交通費/.test(it.name ?? ''))
+    .reduce((sum, it) => sum + (it.amount ?? 0), 0);
+  return nonTaxableCommuting + nonTaxableOther;
 }
 
 function computeNonTaxableCommuting(payments: any): number {
