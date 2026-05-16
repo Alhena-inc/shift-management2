@@ -150,7 +150,6 @@ const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
                 rowYen('欠勤控除', fixedMonths.map((m) => m.earnings.absenceDeduction), sumBy(fixedMonths, (m) => m.earnings.absenceDeduction)),
                 rowYen('通勤費(非課税)', fixedMonths.map((m) => m.earnings.nonTaxableCommuting), sumBy(fixedMonths, (m) => m.earnings.nonTaxableCommuting)),
                 rowYen('通勤費(課税)', fixedMonths.map((m) => m.earnings.taxableCommuting), sumBy(fixedMonths, (m) => m.earnings.taxableCommuting)),
-                rowYen('立替金', fixedMonths.map((m) => m.earnings.reimbursement), sumBy(fixedMonths, (m) => m.earnings.reimbursement)),
               ]}
             />
 
@@ -184,6 +183,7 @@ const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
                     rowYen('退職積立金', fixedMonths.map((m) => m.deductions.retirementSavings), sumBy(fixedMonths, (m) => m.deductions.retirementSavings)),
                     rowYen('旅 行 積 立', fixedMonths.map((m) => m.deductions.travelSavings), sumBy(fixedMonths, (m) => m.deductions.travelSavings)),
                     rowYen('前 払 給 与', fixedMonths.map((m) => m.deductions.advancePayment), sumBy(fixedMonths, (m) => m.deductions.advancePayment)),
+                    rowYen('立 替 金', fixedMonths.map((m) => m.deductions.reimbursement), sumBy(fixedMonths, (m) => m.deductions.reimbursement)),
                     rowYen('年 末 調 整', fixedMonths.map((m) => m.deductions.yearEndAdjustment), sumBy(fixedMonths, (m) => m.deductions.yearEndAdjustment)),
                   ],
                   subtotal: {
@@ -579,6 +579,7 @@ function makeBlankMonth(year: number, month: number): WageLedgerMonth {
       retirementSavings: 0,
       travelSavings: 0,
       advancePayment: 0,
+      reimbursement: 0,
       yearEndAdjustment: 0,
       totalDeductions: 0,
     },

@@ -90,6 +90,7 @@ export interface WageLedgerDeductions {
   retirementSavings: number;   // 退職積立金
   travelSavings: number;       // 旅行積立
   advancePayment: number;      // 前払給与 = deductions.advancePayment
+  reimbursement: number;       // 立替金 = deductions.reimbursement（負値=還付）
   yearEndAdjustment: number;   // 年末調整 = deductions.yearEndAdjustment
   totalDeductions: number;     // 控除合計 = deductions.totalDeduction
 }

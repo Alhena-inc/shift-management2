@@ -202,18 +202,11 @@ function mapEarnings(payslip: Payslip): WageLedgerEarnings {
 
   const totalPayment = p.totalPayment ?? 0;
 
-  // 課税計・非課税計：payslip.totals に値があればそれを採用
-  // ない場合（旧データ）は payments.totalPayment と非課税分から算出して補完
-  const storedTaxable = (payslip.totals as any)?.taxableTotal;
-  const storedNonTaxable = (payslip.totals as any)?.nonTaxableTotal;
-  const nonTaxableTotal =
-    typeof storedNonTaxable === 'number' && storedNonTaxable > 0
-      ? storedNonTaxable
-      : computeFallbackNonTaxable(p, nonTaxableCommuting);
-  const taxableTotal =
-    typeof storedTaxable === 'number' && storedTaxable > 0
-      ? storedTaxable
-      : Math.max(0, totalPayment - nonTaxableTotal);
+  // 課税計・非課税計：payslip.totals の値をそのまま採用（再計算・フォールバック廃止）
+  // 給与明細と完全一致させるため、payslip 側で計算済みの値だけを使用する。
+  // 明細側で空欄なら台帳でも空欄を出す（独自補完しない）。
+  const taxableTotal = (payslip.totals as any)?.taxableTotal ?? 0;
+  const nonTaxableTotal = (payslip.totals as any)?.nonTaxableTotal ?? 0;
 
   return {
     basePay,
@@ -237,18 +230,6 @@ function mapEarnings(payslip: Payslip): WageLedgerEarnings {
     nonTaxableTotal,
     totalEarnings: totalPayment,
   };
-}
-
-/**
- * payslip.totals.nonTaxableTotal が未保存の旧データ用フォールバック。
- * 非課税通勤費 + otherAllowances のうち taxExempt=true の合計を返す。
- */
-function computeFallbackNonTaxable(payments: any, nonTaxableCommuting: number): number {
-  const items: DeductionItem[] = payments?.otherAllowances ?? [];
-  const nonTaxableOther = items
-    .filter((it) => it.taxExempt && !/通勤|交通費/.test(it.name ?? ''))
-    .reduce((sum, it) => sum + (it.amount ?? 0), 0);
-  return nonTaxableCommuting + nonTaxableOther;
 }
 
 function computeNonTaxableCommuting(payments: any): number {
@@ -294,6 +275,7 @@ function mapDeductions(payslip: Payslip): WageLedgerDeductions {
     retirementSavings: d.retirementSavings ?? 0,
     travelSavings: d.travelSavings ?? 0,
     advancePayment: d.advancePayment ?? 0,
+    reimbursement: d.reimbursement ?? 0,
     yearEndAdjustment: d.yearEndAdjustment ?? 0,
     // 控除合計：payslip.deductions.totalDeduction を採用（明細と一致）
     totalDeductions: d.totalDeduction ?? 0,
@@ -377,6 +359,7 @@ function emptyDeductions(): WageLedgerDeductions {
     retirementSavings: 0,
     travelSavings: 0,
     advancePayment: 0,
+    reimbursement: 0,
     yearEndAdjustment: 0,
     totalDeductions: 0,
   };
