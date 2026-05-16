@@ -207,21 +207,24 @@ const WageLedgerPage: React.FC = () => {
               <span className="text-xs text-gray-500">対象：</span>
               <select
                 value={filter.resignedFilter}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const newFilter = e.target.value as ResignedFilter;
                   setFilter((f) => ({
                     ...f,
-                    resignedFilter: e.target.value as ResignedFilter,
+                    resignedFilter: newFilter,
+                    // 「退職者のみ」or「全員」を選んだら自動で削除済みも含める
+                    includeDeleted: newFilter !== 'active' ? true : f.includeDeleted,
                     helperIds: f.helperIds === null ? null : [],
-                  }))
-                }
+                  }));
+                }}
                 className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white"
               >
                 <option value="active">在職者のみ</option>
-                <option value="all">全員（退職者含む）</option>
-                <option value="resigned">退職者のみ</option>
+                <option value="all">全員（退職者・削除済みヘルパー含む）</option>
+                <option value="resigned">退職者・削除済みヘルパーのみ</option>
               </select>
             </div>
-            <label className="flex items-center gap-2 text-sm text-gray-700">
+            <label className="flex items-center gap-2 text-sm text-gray-700" title="削除済みヘルパーページに移動された方も候補に表示">
               <input
                 type="checkbox"
                 checked={filter.includeDeleted}
@@ -257,6 +260,18 @@ const WageLedgerPage: React.FC = () => {
               </label>
             </div>
           </div>
+
+          {/* 該当者がいない時のヘルプ */}
+          {pickableHelpers.length === 0 && (
+            <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-900">
+              <strong>該当するヘルパーがいません。</strong>
+              {filter.resignedFilter === 'resigned' && !filter.includeDeleted && (
+                <span>
+                  　退職者がいない場合、「<strong>削除済みヘルパーも含める</strong>」にチェックを入れてみてください。
+                </span>
+              )}
+            </div>
+          )}
 
           <HelperPicker
             helpers={pickableHelpers}
