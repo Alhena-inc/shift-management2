@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import type { Helper, Shift } from '../../types';
-import { loadHelpers, loadShiftsForMonth } from '../../services/dataService';
+import type { Helper } from '../../types';
+import { loadHelpers } from '../../services/dataService';
 import { buildWageLedgerEntry } from '../../utils/wageLedgerGenerator';
 import type { WageLedgerEntry } from '../../types/wageLedger';
 import WageLedgerTable from '../../components/wage-ledger/WageLedgerTable';
@@ -57,20 +57,13 @@ const WageLedgerPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      // 時間外労働の算定（労基法32条）にはシフトデータが必要
-      // 対象年の12ヶ月分シフトをまとめて取得
-      const months = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-      const shiftBatches = await Promise.all(
-        months.map((m) => loadShiftsForMonth(filter.calendarYear, m).catch(() => [] as Shift[]))
-      );
-      const allShifts: Shift[] = shiftBatches.flat();
-
+      // 賃金台帳は給与明細（payslip）のみから構築する。
+      // シフトデータからの再計算は行わない。
       const results: { entry: WageLedgerEntry; calendarYear: number }[] = [];
       for (const h of targetHelpers) {
         const entry = await buildWageLedgerEntry(h, {
           calendarYear: filter.calendarYear,
           officeName: filter.officeName,
-          shifts: allShifts,
         });
         results.push({ entry, calendarYear: filter.calendarYear });
       }

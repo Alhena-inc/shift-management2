@@ -1,11 +1,15 @@
 // 賃金台帳のデータ集約ロジック
-// payslip と Helper から WageLedgerEntry を構築する
+//
+// 設計方針：給与明細（payslip）を Single Source of Truth として扱う。
+// - 賃金台帳側で再計算・再集計・項目統合は一切行わない
+// - payslip の各フィールドを1対1でマッピングするだけ
+// - payslip にない月は空欄、payslip 内に値がない項目は0
+// - 年間計は各月の payslip 値を単純合算するのみ
 
-import type { Helper, Shift } from '../types';
+import type { Helper } from '../types';
 import type { Payslip, FixedPayslip, HourlyPayslip, DeductionItem } from '../types/payslip';
 import { isFixedPayslip, isHourlyPayslip, getCompanyInfo } from '../types/payslip';
 import { loadPayslipByHelperAndMonth } from '../services/payslipService';
-import { calculateLaborTime } from './laborTimeCalculator';
 import {
   CALENDAR_MONTH_ORDER,
   type WageLedgerEarnings,
@@ -21,7 +25,6 @@ import {
 export interface BuildWageLedgerOptions {
   /** 対象年（暦年） */
   calendarYear: number;
-  shifts?: Shift[];
   officeName?: string;
 }
 
@@ -34,20 +37,12 @@ export async function buildWageLedgerEntry(
 
   for (const month of CALENDAR_MONTH_ORDER) {
     const payslip = await loadPayslipByHelperAndMonth(helper.id, options.calendarYear, month);
-    months.push(buildMonth(helperInfo, options.calendarYear, month, payslip, options.shifts));
+    months.push(buildMonth(helperInfo, options.calendarYear, month, payslip));
   }
 
   const totals = aggregateTotals(months);
-  const bonuses = [
-    emptyBonus('賞与1'),
-    emptyBonus('賞与2'),
-  ];
-  return {
-    helper: helperInfo,
-    months,
-    totals,
-    bonuses,
-  };
+  const bonuses = [emptyBonus('賞与1'), emptyBonus('賞与2')];
+  return { helper: helperInfo, months, totals, bonuses };
 }
 
 function emptyBonus(label: string) {
@@ -96,20 +91,13 @@ function buildFullName(helper: Helper): string {
 function labelForEmploymentType(t: WageLedgerEmploymentType, isExecutive: boolean): string {
   if (isExecutive) return '役員';
   switch (t) {
-    case 'fulltime':
-      return '正社員';
-    case 'parttime':
-      return 'パート';
-    case 'contract':
-      return '契約社員';
-    case 'temporary':
-      return '派遣';
-    case 'outsourced':
-      return '業務委託';
-    case 'executive':
-      return '役員';
-    default:
-      return '';
+    case 'fulltime': return '正社員';
+    case 'parttime': return 'パート';
+    case 'contract': return '契約社員';
+    case 'temporary': return '派遣';
+    case 'outsourced': return '業務委託';
+    case 'executive': return '役員';
+    default: return '';
   }
 }
 
@@ -117,8 +105,7 @@ function buildMonth(
   helperInfo: WageLedgerHelperInfo,
   year: number,
   month: number,
-  payslip: Payslip | null,
-  shifts?: Shift[]
+  payslip: Payslip | null
 ): WageLedgerMonth {
   const periodStart = formatDate(year, month, 1);
   const periodEnd = formatDate(year, month, daysInMonth(year, month));
@@ -127,57 +114,155 @@ function buildMonth(
     return emptyMonth(year, month, periodStart, periodEnd);
   }
 
-  const { earnings, deductions, totals } = extractAmounts(payslip);
-  const attendance = extractAttendance(payslip);
-  // 労基法32条準拠：日8h超 + 週40h超（二重カウント防止）
-  // shifts がない場合は overtime は0となり、payslip側の手動値を尊重するため
-  // 計算側で上書きしない（現状の本実装は時間外算定にshiftsを使用）
-  const labor = calculateLaborTime({
-    totalWorkHours: attendance.totalWorkHours,
-    nightHours22to8: attendance.nightHours22to8,
-    year,
-    month,
-    shifts,
-    helperId: helperInfo.helperId,
-  });
-
-  const netExpected = earnings.totalEarnings - deductions.totalDeductions;
-  const reconciles = Math.abs(netExpected - totals.netPayment) < 1;
-
-  // 管理監督者・役員は時間外/休日労働の記載不要（深夜は記載必要）
-  const overtime = helperInfo.isExecutive || helperInfo.isManager ? 0 : labor.overtimeHours;
-  const holiday = helperInfo.isExecutive || helperInfo.isManager ? 0 : labor.holidayWorkHours;
-  // 役員は労働時間欄も記載不要
-  const workDays = helperInfo.isExecutive ? 0 : attendance.workDays;
-  const workHours = helperInfo.isExecutive ? 0 : labor.workHours;
-
   return {
     year,
     month,
     periodStart,
     periodEnd,
     hasData: true,
-    attendance: {
-      workDays,
-      workHours,
-      overtimeHours: overtime,
-      holidayWorkHours: holiday,
-      nightWorkHours: labor.nightWorkHours,
-      paidLeaveTaken: 0,
-      absenceDays: attendance.absences,
-      specialLeaveDays: 0,
-      legalInsideHolidayHours: 0,
-      legalOutsideHolidayHours: holiday,
-      tardyEarlyHours: 0,
-    },
-    earnings,
-    deductions,
-    netPayment: totals.netPayment,
-    bankTransfer: totals.bankTransfer,
-    cashPayment: totals.cashPayment,
-    reconciles,
+    attendance: mapAttendance(payslip, helperInfo),
+    earnings: mapEarnings(payslip),
+    deductions: mapDeductions(payslip),
+    netPayment: roundYen(payslip.totals?.netPayment ?? 0),
+    bankTransfer: roundYen(payslip.totals?.bankTransfer ?? 0),
+    cashPayment: roundYen(payslip.totals?.cashPayment ?? 0),
   };
 }
+
+/* ───────────────── 勤怠：payslip.attendance から1対1 ───────────────── */
+
+function mapAttendance(
+  payslip: Payslip,
+  helperInfo: WageLedgerHelperInfo
+): WageLedgerMonth['attendance'] {
+  const a: any = payslip.attendance ?? {};
+  // 役員：労働時間欄は記載不要
+  const workDays = helperInfo.isExecutive ? 0 : (a.totalWorkDays ?? 0);
+  const workHours = helperInfo.isExecutive ? 0 : (a.totalWorkHours ?? 0);
+  // 管理監督者・役員：時間外/休日労働の記載不要（深夜は記載必要）
+  const isExempt = helperInfo.isExecutive || helperInfo.isManager;
+  const overtimeHours = isExempt ? 0 : (a.overtimeHours ?? 0);
+  const holidayWorkHours = isExempt ? 0 : (a.legalHolidayWorkHours ?? a.holidayWorkHours ?? 0);
+  const legalOutsideHolidayHours = isExempt
+    ? 0
+    : (a.nonLegalHolidayWorkHours ?? a.legalOutsideHolidayHours ?? holidayWorkHours);
+  // 深夜：(深夜)稼働 + (深夜)同行
+  const nightWorkHours = (a.nightNormalHours ?? 0) + (a.nightAccompanyHours ?? 0);
+
+  return {
+    workDays,
+    workHours,
+    overtimeHours,
+    holidayWorkHours,
+    nightWorkHours: round1(nightWorkHours),
+    paidLeaveTaken: a.paidLeaveDays ?? 0,
+    absenceDays: a.absences ?? 0,
+    specialLeaveDays: a.specialLeaveDays ?? 0,
+    legalInsideHolidayHours: a.legalInsideHolidayHours ?? 0,
+    legalOutsideHolidayHours,
+    tardyEarlyHours: a.lateEarlyHours ?? 0,
+  };
+}
+
+/* ───────────────── 支給：payslip.payments から1対1 ───────────────── */
+
+function mapEarnings(payslip: Payslip): WageLedgerEarnings {
+  const p: any = payslip.payments ?? {};
+  const d: any = payslip.deductions ?? {};
+
+  // 処遇改善：固定はトップレベル、時給は payments.treatmentAllowancePay
+  let treatmentAllowance = 0;
+  if (isFixedPayslip(payslip)) {
+    treatmentAllowance = (payslip as FixedPayslip & { treatmentAllowance?: number }).treatmentAllowance ?? 0;
+  } else if (isHourlyPayslip(payslip)) {
+    treatmentAllowance = (payslip as HourlyPayslip).payments.treatmentAllowancePay ?? 0;
+  }
+
+  // 立替金：給与明細で「+表示」されている支給扱い項目
+  const reimbursement = d.reimbursement ?? 0;
+
+  // 通勤費（非課税）：otherAllowances から「通勤/交通費」名でかつ taxExempt のものを合算
+  //   ＋ payments.nonTaxableAllowance / manualNonTaxableAllowance があればそれを優先
+  const nonTaxableCommuting = computeNonTaxableCommuting(p);
+
+  // その他手当（通勤費以外）
+  const otherAllowances = collectOtherAllowances(p.otherAllowances);
+
+  return {
+    basePay: p.basePay ?? 0,
+    directorCompensation: p.directorCompensation ?? 0,
+    treatmentAllowance,
+    accompanyAllowance: p.accompanyPay ?? 0,
+    officeAllowance: p.officePay ?? 0,
+    specialAllowance: p.specialAllowance ?? 0,
+    newYearAllowance: p.yearEndNewYearAllowance ?? 0,
+    overtimeAllowance: p.overtimePay ?? 0,
+    holidayAllowance: p.holidayAllowance ?? 0,
+    nightAllowance: p.nightAllowance ?? 0,
+    over60hAllowance: p.over60Pay ?? 0,
+    lateEarlyDeduction: d.lateEarlyDeduction ?? 0,
+    absenceDeduction: d.absenceDeduction ?? 0,
+    taxableCommuting: p.taxableCommute ?? 0,
+    nonTaxableCommuting,
+    reimbursement,
+    otherAllowances,
+    // 集計：payslip の値をそのまま採用（再計算しない）
+    taxableTotal: (payslip.totals as any)?.taxableTotal ?? 0,
+    nonTaxableTotal: (payslip.totals as any)?.nonTaxableTotal ?? 0,
+    totalEarnings: p.totalPayment ?? 0,
+  };
+}
+
+function computeNonTaxableCommuting(payments: any): number {
+  // 明細UIで明示的に保持されている manualNonTaxableAllowance を最優先
+  if (typeof payments.manualNonTaxableAllowance === 'number') {
+    return payments.manualNonTaxableAllowance;
+  }
+  const items: DeductionItem[] = payments.otherAllowances ?? [];
+  return items
+    .filter((it) => it.taxExempt && /通勤|交通費/.test(it.name ?? ''))
+    .reduce((sum, it) => sum + (it.amount ?? 0), 0);
+}
+
+function collectOtherAllowances(items: DeductionItem[] | undefined): {
+  name: string;
+  amount: number;
+  taxable: boolean;
+}[] {
+  if (!items || items.length === 0) return [];
+  return items
+    .filter((it) => !/通勤|交通費/.test(it.name ?? ''))
+    .map((it) => ({
+      name: it.name || 'その他手当',
+      amount: it.amount ?? 0,
+      taxable: !it.taxExempt,
+    }));
+}
+
+/* ───────────────── 控除：payslip.deductions から1対1 ───────────────── */
+
+function mapDeductions(payslip: Payslip): WageLedgerDeductions {
+  const d: any = payslip.deductions ?? {};
+  return {
+    healthInsurance: d.healthInsurance ?? 0,
+    careInsurance: d.careInsurance ?? 0,
+    pensionInsurance: d.pensionInsurance ?? 0,
+    employmentInsurance: d.employmentInsurance ?? 0,
+    childcareSupport: (payslip as any).childcareSupport ?? 0,
+    // 再計算しない。payslip の値をそのまま採用
+    socialInsuranceTotal: d.socialInsuranceTotal ?? 0,
+    incomeTax: d.incomeTax ?? 0,
+    residentTax: d.residentTax ?? 0,
+    retirementSavings: d.retirementSavings ?? 0,
+    travelSavings: d.travelSavings ?? 0,
+    advancePayment: d.advancePayment ?? 0,
+    yearEndAdjustment: d.yearEndAdjustment ?? 0,
+    // 控除合計：payslip.deductions.totalDeduction を採用（明細と一致）
+    totalDeductions: d.totalDeduction ?? 0,
+  };
+}
+
+/* ───────────────── 空データ ───────────────── */
 
 function emptyMonth(
   year: number,
@@ -197,7 +282,6 @@ function emptyMonth(
     netPayment: 0,
     bankTransfer: 0,
     cashPayment: 0,
-    reconciles: true,
   };
 }
 
@@ -220,19 +304,21 @@ function emptyAttendance() {
 function emptyEarnings(): WageLedgerEarnings {
   return {
     basePay: 0,
+    directorCompensation: 0,
     treatmentAllowance: 0,
     accompanyAllowance: 0,
     officeAllowance: 0,
-    nightAllowance: 0,
+    specialAllowance: 0,
     newYearAllowance: 0,
     overtimeAllowance: 0,
-    commutingAllowance: 0,
-    nonTaxableCommuting: 0,
-    specialAllowance: 0,
-    directorCompensation: 0,
-    paidLeaveAllowance: 0,
     holidayAllowance: 0,
-    deductionMisc: 0,
+    nightAllowance: 0,
+    over60hAllowance: 0,
+    lateEarlyDeduction: 0,
+    absenceDeduction: 0,
+    taxableCommuting: 0,
+    nonTaxableCommuting: 0,
+    reimbursement: 0,
     otherAllowances: [],
     taxableTotal: 0,
     nonTaxableTotal: 0,
@@ -253,194 +339,12 @@ function emptyDeductions(): WageLedgerDeductions {
     retirementSavings: 0,
     travelSavings: 0,
     advancePayment: 0,
-    reimbursement: 0,
     yearEndAdjustment: 0,
-    otherDeductions: [],
     totalDeductions: 0,
   };
 }
 
-interface ExtractedAttendance {
-  workDays: number;
-  totalWorkHours: number;
-  nightHours22to8: number;
-  absences: number;
-}
-
-function extractAttendance(payslip: Payslip): ExtractedAttendance {
-  if (isFixedPayslip(payslip)) {
-    const a = payslip.attendance;
-    return {
-      workDays: a.totalWorkDays ?? 0,
-      totalWorkHours: a.totalWorkHours ?? 0,
-      nightHours22to8: (a.nightNormalHours ?? 0) + (a.nightAccompanyHours ?? 0),
-      absences: a.absences ?? 0,
-    };
-  }
-  if (isHourlyPayslip(payslip)) {
-    const a = payslip.attendance;
-    return {
-      workDays: a.totalWorkDays ?? 0,
-      totalWorkHours: a.totalWorkHours ?? 0,
-      nightHours22to8: (a.nightNormalHours ?? 0) + (a.nightAccompanyHours ?? 0),
-      absences: a.absences ?? 0,
-    };
-  }
-  return { workDays: 0, totalWorkHours: 0, nightHours22to8: 0, absences: 0 };
-}
-
-interface ExtractedAmounts {
-  earnings: WageLedgerEarnings;
-  deductions: WageLedgerDeductions;
-  totals: {
-    netPayment: number;
-    bankTransfer: number;
-    cashPayment: number;
-  };
-}
-
-function extractAmounts(payslip: Payslip): ExtractedAmounts {
-  const earnings = emptyEarnings();
-  const deductions = emptyDeductions();
-
-  if (isFixedPayslip(payslip)) {
-    const p = payslip as FixedPayslip;
-    earnings.basePay = p.payments.basePay ?? 0;
-    earnings.treatmentAllowance = (p as any).treatmentAllowance ?? 0;
-    earnings.accompanyAllowance = p.payments.accompanyPay ?? 0;
-    earnings.officeAllowance = p.payments.officePay ?? 0;
-    earnings.nightAllowance = p.payments.nightAllowance ?? 0;
-    earnings.overtimeAllowance = p.payments.overtimePay ?? 0;
-    earnings.specialAllowance = p.payments.specialAllowance ?? 0;
-    earnings.directorCompensation = p.payments.directorCompensation ?? 0;
-    distributeCommutingAndOthers(earnings, p.payments.otherAllowances);
-  } else if (isHourlyPayslip(payslip)) {
-    const p = payslip as HourlyPayslip;
-    earnings.basePay =
-      (p.payments.basePay ?? p.payments.normalWorkPay ?? 0);
-    earnings.treatmentAllowance = p.payments.treatmentAllowancePay ?? 0;
-    earnings.accompanyAllowance =
-      (p.payments.accompanyPay ?? 0) + (p.payments.nightAccompanyPay ?? 0);
-    earnings.officeAllowance = p.payments.officePay ?? 0;
-    earnings.nightAllowance =
-      (p.payments.nightAllowance ?? 0) + (p.payments.nightNormalPay ?? 0);
-    earnings.newYearAllowance = p.payments.yearEndNewYearAllowance ?? 0;
-    earnings.specialAllowance = p.payments.specialAllowance ?? 0;
-    earnings.directorCompensation = p.payments.directorCompensation ?? 0;
-    distributeCommutingAndOthers(earnings, p.payments.otherAllowances);
-  }
-
-  // 控除（共通）
-  const d = payslip.deductions;
-  deductions.healthInsurance = d.healthInsurance ?? 0;
-  deductions.careInsurance = d.careInsurance ?? 0;
-  deductions.pensionInsurance = d.pensionInsurance ?? 0;
-  deductions.employmentInsurance = d.employmentInsurance ?? 0;
-  deductions.childcareSupport = (payslip as any).childcareSupport ?? 0;
-  deductions.incomeTax = d.incomeTax ?? 0;
-  deductions.residentTax = d.residentTax ?? 0;
-  deductions.advancePayment = d.advancePayment ?? 0;
-  deductions.reimbursement = d.reimbursement ?? 0;
-  deductions.yearEndAdjustment = d.yearEndAdjustment ?? 0;
-
-  // payslip 既存の totalPayment / totalDeduction を採用（手動補正反映を尊重）
-  earnings.totalEarnings = roundYen(
-    isFixedPayslip(payslip)
-      ? (payslip.payments.totalPayment ?? sumEarnings(earnings))
-      : isHourlyPayslip(payslip)
-      ? (payslip.payments.totalPayment ?? sumEarnings(earnings))
-      : sumEarnings(earnings)
-  );
-  // 非課税計 = 非課税通勤手当 + その他手当のうち非課税分
-  earnings.nonTaxableTotal = roundYen(
-    earnings.nonTaxableCommuting +
-      earnings.otherAllowances
-        .filter((a) => !a.taxable)
-        .reduce((sum, a) => sum + (a.amount ?? 0), 0)
-  );
-  earnings.taxableTotal = roundYen(earnings.totalEarnings - earnings.nonTaxableTotal);
-  // 社会保険計 = 健保 + 介護 + 厚年 + 雇保 + 子育て支援金（2026年4月〜）
-  deductions.socialInsuranceTotal = roundYen(
-    deductions.healthInsurance +
-      deductions.careInsurance +
-      deductions.pensionInsurance +
-      deductions.employmentInsurance +
-      deductions.childcareSupport
-  );
-  deductions.totalDeductions = roundYen(d.totalDeduction ?? sumDeductions(deductions));
-
-  return {
-    earnings,
-    deductions,
-    totals: {
-      netPayment: roundYen(payslip.totals.netPayment ?? earnings.totalEarnings - deductions.totalDeductions),
-      bankTransfer: roundYen(payslip.totals.bankTransfer ?? 0),
-      cashPayment: roundYen(payslip.totals.cashPayment ?? 0),
-    },
-  };
-}
-
-function distributeCommutingAndOthers(
-  earnings: WageLedgerEarnings,
-  items: DeductionItem[] | undefined
-): void {
-  if (!items || items.length === 0) return;
-  for (const item of items) {
-    const name = (item.name ?? '').trim();
-    const amount = item.amount ?? 0;
-    if (!name && amount === 0) continue;
-    if (isCommutingName(name)) {
-      if (item.taxExempt) {
-        earnings.nonTaxableCommuting += amount;
-      } else {
-        earnings.commutingAllowance += amount;
-      }
-    } else {
-      earnings.otherAllowances.push({
-        name: name || 'その他手当',
-        amount,
-        taxable: !item.taxExempt,
-      });
-    }
-  }
-}
-
-function isCommutingName(name: string): boolean {
-  return /通勤|交通費/.test(name);
-}
-
-function sumEarnings(e: WageLedgerEarnings): number {
-  return (
-    e.basePay +
-    e.treatmentAllowance +
-    e.accompanyAllowance +
-    e.officeAllowance +
-    e.nightAllowance +
-    e.newYearAllowance +
-    e.overtimeAllowance +
-    e.commutingAllowance +
-    e.nonTaxableCommuting +
-    e.specialAllowance +
-    e.directorCompensation +
-    e.otherAllowances.reduce((sum, a) => sum + (a.amount ?? 0), 0)
-  );
-}
-
-function sumDeductions(d: WageLedgerDeductions): number {
-  return (
-    d.healthInsurance +
-    d.careInsurance +
-    d.pensionInsurance +
-    d.employmentInsurance +
-    d.childcareSupport +
-    d.incomeTax +
-    d.residentTax +
-    d.advancePayment +
-    d.reimbursement +
-    d.yearEndAdjustment +
-    d.otherDeductions.reduce((sum, o) => sum + (o.amount ?? 0), 0)
-  );
-}
+/* ───────────────── 年間計：単純合算のみ ───────────────── */
 
 function aggregateTotals(months: WageLedgerMonth[]): WageLedgerTotals {
   return months.reduce<WageLedgerTotals>(

@@ -96,6 +96,23 @@ const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
               ))}
               <th style={{ ...th(), background: ORANGE_HEADER }}>計</th>
             </tr>
+            {/* 賃金計算期間の日付明記（労基則54条準拠） */}
+            <tr style={{ background: ORANGE_LIGHT }}>
+              <td colSpan={2} style={{ ...td(), background: ORANGE_LIGHT, textAlign: 'center', fontSize: 9, fontWeight: 600 }}>
+                計算期間
+              </td>
+              {fixedMonths.map((m) => (
+                <td
+                  key={`p-${m.month}`}
+                  style={{ ...td(), background: ORANGE_LIGHT, textAlign: 'center', fontSize: 9 }}
+                >
+                  {m.month}/1〜{m.month}/{daysInMonth(calendarYear, m.month)}
+                </td>
+              ))}
+              <td style={{ ...td(), background: ORANGE_LIGHT, textAlign: 'center', fontSize: 9 }}>
+                1/1〜12/31
+              </td>
+            </tr>
           </thead>
           <tbody>
             {/* 勤怠ブロック */}
@@ -114,20 +131,26 @@ const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
               ]}
             />
 
-            {/* 支給額ブロック */}
+            {/* 支給額ブロック — payslip.payments と1対1マッピング */}
             <CategoryBlock
               label="支給額"
               rows={[
                 rowYen('基 本 給', fixedMonths.map((m) => m.earnings.basePay), sumBy(fixedMonths, (m) => m.earnings.basePay)),
-                rowYen(blankLabel(), fixedMonths.map(() => 0), 0),
-                rowYen(blankLabel(), fixedMonths.map(() => 0), 0),
-                rowYen(blankLabel(), fixedMonths.map(() => 0), 0),
-                rowYen('有 休 手 当', fixedMonths.map((m) => m.earnings.paidLeaveAllowance), 0),
-                rowYen('時間外手当', fixedMonths.map((m) => m.earnings.overtimeAllowance), sumBy(fixedMonths, (m) => m.earnings.overtimeAllowance)),
-                rowYen('休 日 手 当', fixedMonths.map((m) => m.earnings.holidayAllowance), 0),
-                rowYen('控 除 額', fixedMonths.map((m) => m.earnings.deductionMisc), 0),
-                rowYen('通勤費（非課税）', fixedMonths.map((m) => m.earnings.nonTaxableCommuting), sumBy(fixedMonths, (m) => m.earnings.nonTaxableCommuting)),
-                rowYen('通勤費（課税）', fixedMonths.map((m) => m.earnings.commutingAllowance), sumBy(fixedMonths, (m) => m.earnings.commutingAllowance)),
+                rowYen('役員報酬', fixedMonths.map((m) => m.earnings.directorCompensation), sumBy(fixedMonths, (m) => m.earnings.directorCompensation)),
+                rowYen('処遇改善手当', fixedMonths.map((m) => m.earnings.treatmentAllowance), sumBy(fixedMonths, (m) => m.earnings.treatmentAllowance)),
+                rowYen('同行研修手当', fixedMonths.map((m) => m.earnings.accompanyAllowance), sumBy(fixedMonths, (m) => m.earnings.accompanyAllowance)),
+                rowYen('事務・営業手当', fixedMonths.map((m) => m.earnings.officeAllowance), sumBy(fixedMonths, (m) => m.earnings.officeAllowance)),
+                rowYen('特別手当', fixedMonths.map((m) => m.earnings.specialAllowance), sumBy(fixedMonths, (m) => m.earnings.specialAllowance)),
+                rowYen('年末年始手当', fixedMonths.map((m) => m.earnings.newYearAllowance), sumBy(fixedMonths, (m) => m.earnings.newYearAllowance)),
+                rowYen('残業手当', fixedMonths.map((m) => m.earnings.overtimeAllowance), sumBy(fixedMonths, (m) => m.earnings.overtimeAllowance)),
+                rowYen('休日出勤', fixedMonths.map((m) => m.earnings.holidayAllowance), sumBy(fixedMonths, (m) => m.earnings.holidayAllowance)),
+                rowYen('深夜残業', fixedMonths.map((m) => m.earnings.nightAllowance), sumBy(fixedMonths, (m) => m.earnings.nightAllowance)),
+                rowYen('60h超残業', fixedMonths.map((m) => m.earnings.over60hAllowance), sumBy(fixedMonths, (m) => m.earnings.over60hAllowance)),
+                rowYen('遅早控除', fixedMonths.map((m) => m.earnings.lateEarlyDeduction), sumBy(fixedMonths, (m) => m.earnings.lateEarlyDeduction)),
+                rowYen('欠勤控除', fixedMonths.map((m) => m.earnings.absenceDeduction), sumBy(fixedMonths, (m) => m.earnings.absenceDeduction)),
+                rowYen('通勤費(非課税)', fixedMonths.map((m) => m.earnings.nonTaxableCommuting), sumBy(fixedMonths, (m) => m.earnings.nonTaxableCommuting)),
+                rowYen('通勤費(課税)', fixedMonths.map((m) => m.earnings.taxableCommuting), sumBy(fixedMonths, (m) => m.earnings.taxableCommuting)),
+                rowYen('立替金', fixedMonths.map((m) => m.earnings.reimbursement), sumBy(fixedMonths, (m) => m.earnings.reimbursement)),
               ]}
             />
 
@@ -136,16 +159,17 @@ const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
             <SubtotalRow label="非課税計" cells={fixedMonths.map((m) => numOrZero(m.earnings.nonTaxableTotal))} total={numOrZero(sumBy(fixedMonths, (m) => m.earnings.nonTaxableTotal))} />
             <TotalRow label="総　支　給　額" cells={fixedMonths.map((m) => numOrZero(m.earnings.totalEarnings))} total={numOrZero(totals.totalEarnings)} />
 
-            {/* 控除額ブロック（社会保険＋税金まとめて1カテゴリ） */}
+            {/* 控除額ブロック — payslip.deductions と1対1マッピング */}
             <CategoryBlockWithSubtotals
               label="控除額"
               groups={[
                 {
                   rows: [
-                    rowYen('健 康 保 険', fixedMonths.map((m) => m.deductions.healthInsurance + m.deductions.careInsurance), sumBy(fixedMonths, (m) => m.deductions.healthInsurance + m.deductions.careInsurance)),
+                    rowYen('健康保険', fixedMonths.map((m) => m.deductions.healthInsurance), sumBy(fixedMonths, (m) => m.deductions.healthInsurance)),
+                    rowYen('介護保険', fixedMonths.map((m) => m.deductions.careInsurance), sumBy(fixedMonths, (m) => m.deductions.careInsurance)),
                     rowYen('厚生年金保険', fixedMonths.map((m) => m.deductions.pensionInsurance), sumBy(fixedMonths, (m) => m.deductions.pensionInsurance)),
-                    rowYen('雇 用 保 険', fixedMonths.map((m) => m.deductions.employmentInsurance), sumBy(fixedMonths, (m) => m.deductions.employmentInsurance)),
-                    rowYen('子育て支援金', fixedMonths.map((m) => m.deductions.childcareSupport), sumBy(fixedMonths, (m) => m.deductions.childcareSupport)),
+                    rowYen('雇用保険', fixedMonths.map((m) => m.deductions.employmentInsurance), sumBy(fixedMonths, (m) => m.deductions.employmentInsurance)),
+                    rowYen('子ども・子育て支援金', fixedMonths.map((m) => m.deductions.childcareSupport), sumBy(fixedMonths, (m) => m.deductions.childcareSupport)),
                   ],
                   subtotal: {
                     label: '社会保険計',
@@ -157,9 +181,9 @@ const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
                   rows: [
                     rowYen('所 得 税', fixedMonths.map((m) => m.deductions.incomeTax), sumBy(fixedMonths, (m) => m.deductions.incomeTax)),
                     rowYen('住 民 税', fixedMonths.map((m) => m.deductions.residentTax), sumBy(fixedMonths, (m) => m.deductions.residentTax)),
-                    rowYen('退職積立金', fixedMonths.map((m) => m.deductions.retirementSavings), 0),
-                    rowYen('旅 行 積 立', fixedMonths.map((m) => m.deductions.travelSavings), 0),
-                    rowYen(blankLabel(), fixedMonths.map(() => 0), 0),
+                    rowYen('退職積立金', fixedMonths.map((m) => m.deductions.retirementSavings), sumBy(fixedMonths, (m) => m.deductions.retirementSavings)),
+                    rowYen('旅 行 積 立', fixedMonths.map((m) => m.deductions.travelSavings), sumBy(fixedMonths, (m) => m.deductions.travelSavings)),
+                    rowYen('前 払 給 与', fixedMonths.map((m) => m.deductions.advancePayment), sumBy(fixedMonths, (m) => m.deductions.advancePayment)),
                     rowYen('年 末 調 整', fixedMonths.map((m) => m.deductions.yearEndAdjustment), sumBy(fixedMonths, (m) => m.deductions.yearEndAdjustment)),
                   ],
                   subtotal: {
@@ -198,7 +222,6 @@ interface RowDef {
   label: string;
   cells: string[];
   total: string;
-  emphasize?: boolean;
 }
 
 function row(label: string, cells: string[], total: string): RowDef {
@@ -206,9 +229,6 @@ function row(label: string, cells: string[], total: string): RowDef {
 }
 function rowYen(label: string, vals: number[], total: number): RowDef {
   return { label, cells: vals.map((v) => yen(v)), total: yen(total) };
-}
-function blankLabel(): string {
-  return '';
 }
 
 const CategoryBlock: React.FC<{ label: string; rows: RowDef[] }> = ({ label, rows }) => {
@@ -493,78 +513,83 @@ function td(): React.CSSProperties {
 }
 
 function padToTwelve(months: WageLedgerMonth[], calYear: number): WageLedgerMonth[] {
-  // 1〜12月の順に並べる（年度通年が来た場合も、暦年表示なので1月始まりにそろえる）
+  // 1〜12月の順に並べる
   const map = new Map<number, WageLedgerMonth>();
   for (const m of months) {
     if (m.year === calYear) map.set(m.month, m);
   }
   const result: WageLedgerMonth[] = [];
   for (let m = 1; m <= 12; m++) {
-    result.push(
-      map.get(m) ?? {
-        year: calYear,
-        month: m,
-        periodStart: '',
-        periodEnd: '',
-        hasData: false,
-        attendance: {
-          workDays: 0,
-          workHours: 0,
-          overtimeHours: 0,
-          holidayWorkHours: 0,
-          nightWorkHours: 0,
-          paidLeaveTaken: 0,
-          absenceDays: 0,
-          specialLeaveDays: 0,
-          legalInsideHolidayHours: 0,
-          legalOutsideHolidayHours: 0,
-          tardyEarlyHours: 0,
-        },
-        earnings: {
-          basePay: 0,
-          treatmentAllowance: 0,
-          accompanyAllowance: 0,
-          officeAllowance: 0,
-          nightAllowance: 0,
-          newYearAllowance: 0,
-          overtimeAllowance: 0,
-          commutingAllowance: 0,
-          nonTaxableCommuting: 0,
-          specialAllowance: 0,
-          directorCompensation: 0,
-          paidLeaveAllowance: 0,
-          holidayAllowance: 0,
-          deductionMisc: 0,
-          otherAllowances: [],
-          taxableTotal: 0,
-          nonTaxableTotal: 0,
-          totalEarnings: 0,
-        },
-        deductions: {
-          healthInsurance: 0,
-          careInsurance: 0,
-          pensionInsurance: 0,
-          employmentInsurance: 0,
-          childcareSupport: 0,
-          socialInsuranceTotal: 0,
-          incomeTax: 0,
-          residentTax: 0,
-          retirementSavings: 0,
-          travelSavings: 0,
-          advancePayment: 0,
-          reimbursement: 0,
-          yearEndAdjustment: 0,
-          otherDeductions: [],
-          totalDeductions: 0,
-        },
-        netPayment: 0,
-        bankTransfer: 0,
-        cashPayment: 0,
-        reconciles: true,
-      }
-    );
+    result.push(map.get(m) ?? makeBlankMonth(calYear, m));
   }
   return result;
+}
+
+function makeBlankMonth(year: number, month: number): WageLedgerMonth {
+  return {
+    year,
+    month,
+    periodStart: '',
+    periodEnd: '',
+    hasData: false,
+    attendance: {
+      workDays: 0,
+      workHours: 0,
+      overtimeHours: 0,
+      holidayWorkHours: 0,
+      nightWorkHours: 0,
+      paidLeaveTaken: 0,
+      absenceDays: 0,
+      specialLeaveDays: 0,
+      legalInsideHolidayHours: 0,
+      legalOutsideHolidayHours: 0,
+      tardyEarlyHours: 0,
+    },
+    earnings: {
+      basePay: 0,
+      directorCompensation: 0,
+      treatmentAllowance: 0,
+      accompanyAllowance: 0,
+      officeAllowance: 0,
+      specialAllowance: 0,
+      newYearAllowance: 0,
+      overtimeAllowance: 0,
+      holidayAllowance: 0,
+      nightAllowance: 0,
+      over60hAllowance: 0,
+      lateEarlyDeduction: 0,
+      absenceDeduction: 0,
+      taxableCommuting: 0,
+      nonTaxableCommuting: 0,
+      reimbursement: 0,
+      otherAllowances: [],
+      taxableTotal: 0,
+      nonTaxableTotal: 0,
+      totalEarnings: 0,
+    },
+    deductions: {
+      healthInsurance: 0,
+      careInsurance: 0,
+      pensionInsurance: 0,
+      employmentInsurance: 0,
+      childcareSupport: 0,
+      socialInsuranceTotal: 0,
+      incomeTax: 0,
+      residentTax: 0,
+      retirementSavings: 0,
+      travelSavings: 0,
+      advancePayment: 0,
+      yearEndAdjustment: 0,
+      totalDeductions: 0,
+    },
+    netPayment: 0,
+    bankTransfer: 0,
+    cashPayment: 0,
+  };
+}
+
+function daysInMonth(y: number, m: number): number {
+  return new Date(y, m, 0).getDate();
 }
 
 export default WageLedgerTable;
