@@ -325,7 +325,7 @@ export const softDeleteHelper = async (helperId: string, deletedBy?: string): Pr
     // 2. deleted_helpersテーブルにデータをコピー
     //    既存カラムに加えて、original_data に helpers レコード全体を JSON で保存
     //    （詳細モーダルで雇用形態・基本給・処遇改善・所属事業所などを参照できるようにする）
-    const insertPayload: Record<string, any> = {
+    const basePayload: Record<string, any> = {
       original_id: helper.id,
       name: helper.name,
       email: helper.email,
@@ -340,17 +340,18 @@ export const softDeleteHelper = async (helperId: string, deletedBy?: string): Pr
       deletion_reason: '手動削除',
       original_created_at: helper.created_at,
       original_updated_at: helper.updated_at,
-      original_data: helper, // 全カラムのスナップショット（カラムがあれば保存される）
     };
+
+    // まず original_data 付きで insert を試みる
+    const payloadWithSnapshot = { ...basePayload, original_data: helper };
     let { error: insertError } = await supabase
       .from('deleted_helpers')
-      .insert(insertPayload);
+      .insert(payloadWithSnapshot);
 
-    // original_data カラムが存在しない場合（旧スキーマ）はそれを除いて再試行
-    if (insertError && (insertError.code === '42703' || /column .* does not exist/i.test(insertError.message ?? ''))) {
-      console.warn('original_data カラムが未作成のため、既存カラムのみで保存します');
-      delete (insertPayload as any).original_data;
-      const retry = await supabase.from('deleted_helpers').insert(insertPayload);
+    // 失敗したら original_data を除いて再試行（カラム未作成・型不一致等を救済）
+    if (insertError) {
+      console.warn('original_data 付きの保存に失敗。既存カラムのみで再試行します:', insertError.message);
+      const retry = await supabase.from('deleted_helpers').insert(basePayload);
       insertError = retry.error;
     }
 
