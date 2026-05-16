@@ -114,6 +114,62 @@ function buildMonth(
     return emptyMonth(year, month, periodStart, periodEnd);
   }
 
+  // 給与明細と同じ計算式で再計算（payslip の値を最優先、なければ式で算出）
+  const earnings = mapEarnings(payslip);
+  const deductions = mapDeductions(payslip);
+
+  // 総支給額：payslip.payments.totalPayment を採用（明細PDFと同じ）
+  // ない場合のフォールバックとして、給与明細と同じ計算式で算出
+  const p: any = payslip.payments ?? {};
+  const storedTotalPayment = p.totalPayment;
+  const computedTotalPayment =
+    (p.basePay ?? 0) +
+    ((payslip as any).treatmentAllowance ?? p.treatmentAllowancePay ?? 0) +
+    (p.accompanyPay ?? 0) +
+    (p.officePay ?? 0) +
+    (p.yearEndNewYearAllowance ?? 0) +
+    (p.emergencyAllowance ?? 0) +
+    (p.nightAllowance ?? 0) +
+    (p.specialAllowance ?? 0) +
+    (p.directorCompensation ?? 0) +
+    (p.overtimePay ?? 0) +
+    (p.over60Pay ?? 0) +
+    (p.holidayAllowance ?? 0) +
+    (p.taxableCommute ?? 0) +
+    (p.transportAllowance ?? 0) +
+    (p.expenseReimbursement ?? 0) +
+    (p.otherAllowances ?? []).reduce((s: number, a: any) => s + (a.amount ?? 0), 0);
+  const totalPayment = typeof storedTotalPayment === 'number' && storedTotalPayment > 0
+    ? storedTotalPayment
+    : computedTotalPayment;
+
+  // 課税計・非課税計：payslip.totals 優先、なければ式で再計算
+  const nonTaxableCommuting = earnings.nonTaxableCommuting;
+  const nonTaxableOtherFromAllowances = (p.otherAllowances ?? [])
+    .filter((a: any) => a.taxExempt && !/通勤|交通費/.test(a.name ?? ''))
+    .reduce((s: number, a: any) => s + (a.amount ?? 0), 0);
+  const computedNonTaxable = nonTaxableCommuting + nonTaxableOtherFromAllowances;
+
+  const storedTaxable = (payslip.totals as any)?.taxableTotal;
+  const storedNonTaxable = (payslip.totals as any)?.nonTaxableTotal;
+  const nonTaxableTotal = (typeof storedNonTaxable === 'number' && storedNonTaxable > 0)
+    ? storedNonTaxable
+    : computedNonTaxable;
+  const taxableTotal = (typeof storedTaxable === 'number' && storedTaxable > 0)
+    ? storedTaxable
+    : Math.max(0, totalPayment - nonTaxableTotal);
+
+  // 上書き
+  earnings.totalEarnings = roundYen(totalPayment);
+  earnings.taxableTotal = roundYen(taxableTotal);
+  earnings.nonTaxableTotal = roundYen(nonTaxableTotal);
+
+  // 差引支給額：payslip.totals.netPayment 優先、なければ totalPayment - totalDeduction
+  const storedNetPayment = payslip.totals?.netPayment;
+  const netPayment = (typeof storedNetPayment === 'number' && storedNetPayment !== 0)
+    ? storedNetPayment
+    : (totalPayment - deductions.totalDeductions);
+
   return {
     year,
     month,
@@ -121,9 +177,9 @@ function buildMonth(
     periodEnd,
     hasData: true,
     attendance: mapAttendance(payslip, helperInfo),
-    earnings: mapEarnings(payslip),
-    deductions: mapDeductions(payslip),
-    netPayment: roundYen(payslip.totals?.netPayment ?? 0),
+    earnings,
+    deductions,
+    netPayment: roundYen(netPayment),
     bankTransfer: roundYen(payslip.totals?.bankTransfer ?? 0),
     cashPayment: roundYen(payslip.totals?.cashPayment ?? 0),
   };
