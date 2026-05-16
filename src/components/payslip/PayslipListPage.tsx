@@ -677,7 +677,7 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
           </div>
 
           {/* 年月セレクター */}
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium text-gray-700">年:</label>
               <select
@@ -723,9 +723,9 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
             <button
               onClick={handleBulkCreatePayslips}
               disabled={creating || loading}
-              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-3 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed inline-flex items-center gap-1.5 whitespace-nowrap"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
               </svg>
               一括作成
@@ -735,17 +735,17 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
             <button
               onClick={handleBulkCreateSelectedPayslips}
               disabled={creating || loading || selectedCount === 0}
-              className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-3 py-2 bg-emerald-600 text-white text-sm rounded hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed inline-flex items-center gap-1.5 whitespace-nowrap"
               title="チェックしたヘルパーの給与明細を作成/更新"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               選択一括作成{selectedCount > 0 ? `(${selectedCount})` : ''}
             </button>
 
             {/* PDF出力モード選択 */}
-            <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded border border-gray-200">
+            <div className="flex items-center gap-2 bg-gray-50 px-2 py-1 rounded border border-gray-200 whitespace-nowrap">
               <label className="text-sm font-medium text-gray-700">出力:</label>
               <select
                 value={pdfExportMode}
@@ -762,9 +762,9 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
             <button
               onClick={handleBulkPdfDownload}
               disabled={generatingPdf || loading || (selectedCount > 0 ? payslips.filter(p => selectedHelperIds.has(p.helperId)).length === 0 : payslips.length === 0)}
-              className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-3 py-2 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed inline-flex items-center gap-1.5 whitespace-nowrap"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               {generatingPdf ? `PDF生成中 (${pdfProgress.current}/${pdfProgress.total})` : (selectedCount > 0 ? `選択ダウンロード(${selectedCount})` : '一括ダウンロード')}
@@ -774,9 +774,9 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
             <button
               onClick={handleBulkDelete}
               disabled={creating || loading || payslips.length === 0}
-              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-3 py-2 bg-red-600 text-white text-sm rounded hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed inline-flex items-center gap-1.5 whitespace-nowrap"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
               </svg>
               一括削除
