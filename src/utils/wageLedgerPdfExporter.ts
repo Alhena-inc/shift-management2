@@ -6,18 +6,15 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import type { WageLedgerEntry } from '../types/wageLedger';
 
-const A4_PORTRAIT = { w: 210, h: 297 }; // mm
-const A4_LANDSCAPE = { w: 297, h: 210 };
+// 賃金台帳は 1〜12月の年単位レイアウト固定（A4横）
+const A4_LANDSCAPE = { w: 297, h: 210 }; // mm
 const MARGIN_MM = 15;
 
 export async function exportWageLedgerPdf(
   entry: WageLedgerEntry,
-  fiscalYear: number,
+  calendarYear: number,
   element?: HTMLElement | null
 ): Promise<void> {
-  // 単月モードは A4縦、通年モードは A4横
-  const isAnnual = !entry.isMonthlyMode;
-
   const target = element ?? findRenderedElement(entry.helper.helperId);
   if (!target) {
     throw new Error('賃金台帳のプレビュー要素が見つかりません。プレビュー生成後に再度お試しください。');
@@ -49,9 +46,9 @@ export async function exportWageLedgerPdf(
   }
   const imgData = canvas.toDataURL('image/png');
 
-  const paper = isAnnual ? A4_LANDSCAPE : A4_PORTRAIT;
+  const paper = A4_LANDSCAPE;
   const pdf = new jsPDF({
-    orientation: isAnnual ? 'landscape' : 'portrait',
+    orientation: 'landscape',
     unit: 'mm',
     format: 'a4',
   });
@@ -81,9 +78,7 @@ export async function exportWageLedgerPdf(
     }
   }
 
-  const filename = entry.isMonthlyMode && entry.targetMonth
-    ? `賃金台帳_${entry.helper.helperName}_${fiscalYear}年${entry.targetMonth}月分.pdf`
-    : `賃金台帳_${entry.helper.helperName}_${fiscalYear}年.pdf`;
+  const filename = `賃金台帳_${entry.helper.helperName}_${calendarYear}年.pdf`;
   pdf.save(filename);
 }
 

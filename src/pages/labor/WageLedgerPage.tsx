@@ -2,22 +2,16 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Helper, Shift } from '../../types';
 import { loadHelpers, loadShiftsForMonth } from '../../services/dataService';
 import { buildWageLedgerEntry } from '../../utils/wageLedgerGenerator';
-import type {
-  WageLedgerEntry,
-  WageLedgerPeriodMode,
-} from '../../types/wageLedger';
+import type { WageLedgerEntry } from '../../types/wageLedger';
 import WageLedgerTable from '../../components/wage-ledger/WageLedgerTable';
 import { exportWageLedgerPdf } from '../../utils/wageLedgerPdfExporter';
 import { getCompanyInfo } from '../../types/payslip';
 
 const now = new Date();
 const currentYear = now.getFullYear();
-const currentMonth = now.getMonth() + 1;
 
 interface Filter {
   calendarYear: number;
-  periodMode: WageLedgerPeriodMode;
-  targetMonth: number;
   includeResigned: boolean;
   officeName: string;
   helperIds: string[] | null;
@@ -33,8 +27,6 @@ const WageLedgerPage: React.FC = () => {
 
   const [filter, setFilter] = useState<Filter>({
     calendarYear: currentYear,
-    periodMode: 'annual',
-    targetMonth: currentMonth,
     includeResigned: false,
     officeName,
     helperIds: null,
@@ -66,10 +58,8 @@ const WageLedgerPage: React.FC = () => {
     setError(null);
     try {
       // 時間外労働の算定（労基法32条）にはシフトデータが必要
-      // 対象月のシフトをまとめて取得
-      const months = filter.periodMode === 'monthly' && filter.targetMonth
-        ? [filter.targetMonth]
-        : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+      // 対象年の12ヶ月分シフトをまとめて取得
+      const months = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
       const shiftBatches = await Promise.all(
         months.map((m) => loadShiftsForMonth(filter.calendarYear, m).catch(() => [] as Shift[]))
       );
@@ -78,11 +68,7 @@ const WageLedgerPage: React.FC = () => {
       const results: { entry: WageLedgerEntry; calendarYear: number }[] = [];
       for (const h of targetHelpers) {
         const entry = await buildWageLedgerEntry(h, {
-          fiscalYear: filter.calendarYear,
           calendarYear: filter.calendarYear,
-          monthOrder: 'calendar',
-          periodMode: filter.periodMode,
-          targetMonth: filter.targetMonth,
           officeName: filter.officeName,
           shifts: allShifts,
         });
@@ -139,7 +125,7 @@ const WageLedgerPage: React.FC = () => {
             <span className="material-symbols-outlined text-base text-gray-600">tune</span>
             出力条件
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FieldGroup label="対象年（暦年）">
               <select
                 value={filter.calendarYear}
@@ -151,48 +137,6 @@ const WageLedgerPage: React.FC = () => {
                 {[currentYear, currentYear - 1, currentYear - 2, currentYear - 3].map((y) => (
                   <option key={y} value={y}>
                     {y}年（令和{y - 2018}年）
-                  </option>
-                ))}
-              </select>
-            </FieldGroup>
-
-            <FieldGroup label="対象期間">
-              <div className="flex items-center gap-3 pt-2 text-sm">
-                <label className="flex items-center gap-1">
-                  <input
-                    type="radio"
-                    checked={filter.periodMode === 'annual'}
-                    onChange={() =>
-                      setFilter((f) => ({ ...f, periodMode: 'annual' }))
-                    }
-                  />
-                  通年（1〜12月）
-                </label>
-                <label className="flex items-center gap-1">
-                  <input
-                    type="radio"
-                    checked={filter.periodMode === 'monthly'}
-                    onChange={() =>
-                      setFilter((f) => ({ ...f, periodMode: 'monthly' }))
-                    }
-                  />
-                  単月
-                </label>
-              </div>
-            </FieldGroup>
-
-            <FieldGroup label="対象月（単月時）">
-              <select
-                disabled={filter.periodMode !== 'monthly'}
-                value={filter.targetMonth}
-                onChange={(e) =>
-                  setFilter((f) => ({ ...f, targetMonth: parseInt(e.target.value, 10) }))
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm disabled:bg-gray-100"
-              >
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                  <option key={m} value={m}>
-                    {m}月
                   </option>
                 ))}
               </select>

@@ -7,9 +7,7 @@ import { isFixedPayslip, isHourlyPayslip, getCompanyInfo } from '../types/paysli
 import { loadPayslipByHelperAndMonth } from '../services/payslipService';
 import { calculateLaborTime } from './laborTimeCalculator';
 import {
-  FISCAL_MONTH_ORDER,
   CALENDAR_MONTH_ORDER,
-  getCalendarYearForFiscalMonth,
   type WageLedgerEarnings,
   type WageLedgerDeductions,
   type WageLedgerEntry,
@@ -18,19 +16,13 @@ import {
   type WageLedgerTotals,
   type WageLedgerEmploymentType,
   type WageLedgerGender,
-  type WageLedgerPeriodMode,
 } from '../types/wageLedger';
 
 export interface BuildWageLedgerOptions {
-  fiscalYear: number;
-  periodMode: WageLedgerPeriodMode;
-  targetMonth?: number;
+  /** 対象年（暦年） */
+  calendarYear: number;
   shifts?: Shift[];
   officeName?: string;
-  /** 'calendar' = 1〜12月（暦年）、'fiscal' = 4〜3月（年度） */
-  monthOrder?: 'calendar' | 'fiscal';
-  /** 暦年順で取得する場合の暦年（fiscalYearの代わりに使用） */
-  calendarYear?: number;
 }
 
 export async function buildWageLedgerEntry(
@@ -40,20 +32,9 @@ export async function buildWageLedgerEntry(
   const helperInfo = toHelperInfo(helper, options.officeName);
   const months: WageLedgerMonth[] = [];
 
-  const useCalendar = options.monthOrder === 'calendar';
-  const targets =
-    options.periodMode === 'monthly' && options.targetMonth
-      ? [options.targetMonth]
-      : useCalendar
-      ? CALENDAR_MONTH_ORDER
-      : FISCAL_MONTH_ORDER;
-
-  for (const month of targets) {
-    const calYear = useCalendar
-      ? options.calendarYear ?? options.fiscalYear
-      : getCalendarYearForFiscalMonth(options.fiscalYear, month);
-    const payslip = await loadPayslipByHelperAndMonth(helper.id, calYear, month);
-    months.push(buildMonth(helperInfo, calYear, month, payslip, options.shifts));
+  for (const month of CALENDAR_MONTH_ORDER) {
+    const payslip = await loadPayslipByHelperAndMonth(helper.id, options.calendarYear, month);
+    months.push(buildMonth(helperInfo, options.calendarYear, month, payslip, options.shifts));
   }
 
   const totals = aggregateTotals(months);
@@ -61,14 +42,11 @@ export async function buildWageLedgerEntry(
     emptyBonus('賞与1'),
     emptyBonus('賞与2'),
   ];
-  const isMonthlyMode = options.periodMode === 'monthly' && !!options.targetMonth;
   return {
     helper: helperInfo,
     months,
     totals,
     bonuses,
-    isMonthlyMode,
-    targetMonth: isMonthlyMode ? options.targetMonth : undefined,
   };
 }
 

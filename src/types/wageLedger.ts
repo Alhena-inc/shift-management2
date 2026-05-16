@@ -128,31 +128,14 @@ export interface WageLedgerEntry {
   months: WageLedgerMonth[];
   totals: WageLedgerTotals;
   bonuses: WageLedgerBonusColumn[]; // 賞与1, 賞与2（現状空）
-  /** 単月モードフラグ（true のとき months は対象1ヶ月のみ） */
-  isMonthlyMode: boolean;
-  /** 単月モード時の対象月（1〜12） */
-  targetMonth?: number;
 }
-
-export type WageLedgerPeriodMode = 'monthly' | 'annual';
 
 export interface WageLedgerFilter {
   fiscalYear: number;
-  periodMode: WageLedgerPeriodMode;
-  targetMonth?: number;
   includeResigned: boolean;
   officeName: string;
   helperIds: string[] | null;
 }
 
-export const FISCAL_MONTH_ORDER: number[] = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
-// 賃金台帳の表示は暦年（1〜12月）が一般的なため、暦年順を用意
+// 賃金台帳は暦年（1〜12月）の年単位レイアウト固定
 export const CALENDAR_MONTH_ORDER: number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-
-export function getFiscalYearForMonth(year: number, month: number): number {
-  return month >= 4 ? year : year - 1;
-}
-
-export function getCalendarYearForFiscalMonth(fiscalYear: number, month: number): number {
-  return month >= 4 ? fiscalYear : fiscalYear + 1;
-}
