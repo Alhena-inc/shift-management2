@@ -175,6 +175,87 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
 };
 
 // ヘルパーを読み込み
+/**
+ * helpers テーブルの行（snake_case）を Helper 型（camelCase）に変換する。
+ * loadHelpers と loadDeletedHelperAsHelper の両方で使用する。
+ */
+function helperRowToHelper(row: any): Helper {
+  return {
+    // 基本フィールド
+    id: row.id,
+    name: row.name,
+    order: row.order_index ?? row.order ?? 0,
+
+    // 基本情報
+    lastName: row.last_name ?? row.lastName ?? undefined,
+    firstName: row.first_name ?? row.firstName ?? undefined,
+    nameKana: row.name_kana ?? row.nameKana ?? undefined,
+    gender: (row.gender || 'male') as 'male' | 'female',
+    birthDate: row.birth_date ?? row.birthDate ?? undefined,
+    postalCode: row.postal_code ?? row.postalCode ?? undefined,
+    address: row.address ?? undefined,
+    phone: row.phone ?? undefined,
+    email: row.email ?? undefined,
+    emergencyContact: row.emergency_contact ?? row.emergencyContact ?? undefined,
+    emergencyContactPhone: row.emergency_contact_phone ?? row.emergencyContactPhone ?? undefined,
+
+    // 権限・アカウント
+    role: row.role || 'staff',
+    personalToken: row.personal_token ?? row.personalToken ?? undefined,
+    spreadsheetGid: row.spreadsheet_gid ?? row.spreadsheetGid ?? undefined,
+
+    // 雇用・給与タイプ
+    salaryType: row.salary_type ?? row.salaryType ?? 'hourly',
+    employmentType: row.employment_type ?? row.employmentType ?? 'parttime',
+    hireDate: row.hire_date ?? row.hireDate ?? undefined,
+    department: row.department ?? undefined,
+    status: row.status ?? 'active',
+    cashPayment: row.cash_payment ?? row.cashPayment ?? false,
+    excludeFromShift: row.exclude_from_shift ?? row.excludeFromShift ?? false,
+
+    // 時給制
+    hourlyRate: row.hourly_rate ?? row.hourlyRate ?? row.hourly_wage ?? 2000,
+    treatmentImprovementPerHour: row.treatment_improvement_per_hour ?? row.treatmentImprovementPerHour ?? 0,
+    officeHourlyRate: row.office_hourly_rate ?? row.officeHourlyRate ?? 1000,
+
+    // 固定給制
+    baseSalary: row.base_salary ?? row.baseSalary ?? 0,
+    treatmentAllowance: row.treatment_allowance ?? row.treatmentAllowance ?? 0,
+    otherAllowances: row.other_allowances ?? row.otherAllowances ?? [],
+
+    // 税務情報
+    dependents: row.dependents ?? 0,
+    residentTaxType: row.resident_tax_type ?? row.residentTaxType ?? 'special',
+    residentialTax: row.residential_tax ?? row.residentialTax ?? 0,
+    age: row.age ?? undefined,
+    standardRemuneration: row.standard_remuneration ?? row.standardRemuneration ?? 0,
+    hasWithholdingTax: row.has_withholding_tax !== false && row.hasWithholdingTax !== false,
+    taxColumnType: row.tax_column_type ?? row.taxColumnType ?? 'main',
+    contractPeriod: row.contract_period ?? row.contractPeriod ?? undefined,
+
+    // 資格・スキル
+    qualifications: row.qualifications ?? [],
+    qualificationDates: row.qualification_dates ?? row.qualificationDates ?? {},
+    serviceTypes: row.service_types ?? row.serviceTypes ?? [],
+    commuteMethods: row.commute_methods ?? row.commuteMethods ?? [],
+
+    // 保険
+    insurances: (row.insurances ?? []) as any[],
+
+    // 勤怠テンプレート
+    attendanceTemplate: row.attendance_template ?? row.attendanceTemplate ?? {
+      enabled: false,
+      weekday: { startTime: '09:00', endTime: '18:00', breakMinutes: 60 },
+      excludeWeekends: true,
+      excludeHolidays: false,
+      excludedDateRanges: []
+    },
+
+    // 月別支払いデータ
+    monthlyPayments: row.monthly_payments ?? row.monthlyPayments ?? {},
+  } as Helper;
+}
+
 export const loadHelpers = async (): Promise<Helper[]> => {
   try {
     console.log('📥 ヘルパー読み込み開始...');
@@ -220,83 +301,7 @@ export const loadHelpers = async (): Promise<Helper[]> => {
     // データ形式を変換（全フィールド対応）
     const helpers: Helper[] = (data || [])
       .filter(row => !row.deleted) // 削除済みを除外
-      .map(row => {
-        // 個人情報をログに含めない
-        return {
-          // 基本フィールド
-          id: row.id,
-          name: row.name,
-          order: row.order_index || 0,
-
-          // 基本情報
-          lastName: row.last_name || undefined,
-          firstName: row.first_name || undefined,
-          nameKana: row.name_kana || undefined,
-          gender: (row.gender || 'male') as 'male' | 'female',
-          birthDate: row.birth_date || undefined,
-          postalCode: row.postal_code || undefined,
-          address: row.address || undefined,
-          phone: row.phone || undefined,
-          email: row.email || undefined,
-          emergencyContact: row.emergency_contact || undefined,
-          emergencyContactPhone: row.emergency_contact_phone || undefined,
-
-          // 権限・アカウント
-          role: row.role || 'staff',
-          personalToken: row.personal_token || undefined,
-          spreadsheetGid: row.spreadsheet_gid || undefined,
-
-          // 雇用・給与タイプ
-          salaryType: row.salary_type || 'hourly',
-          employmentType: row.employment_type || 'parttime',
-          hireDate: row.hire_date || undefined,
-          department: row.department || undefined,
-          status: row.status || 'active',
-          cashPayment: row.cash_payment || false,
-          excludeFromShift: row.exclude_from_shift || false,
-
-          // 時給制
-          hourlyRate: row.hourly_rate || row.hourly_wage || 2000,
-          treatmentImprovementPerHour: row.treatment_improvement_per_hour || 0,
-          officeHourlyRate: row.office_hourly_rate || 1000,
-
-          // 固定給制
-          baseSalary: row.base_salary || 0,
-          treatmentAllowance: row.treatment_allowance || 0,
-          otherAllowances: row.other_allowances || [],
-
-          // 税務情報
-          dependents: row.dependents || 0,
-          residentTaxType: row.resident_tax_type || 'special',
-          residentialTax: row.residential_tax || 0,
-          age: row.age || undefined,
-          standardRemuneration: row.standard_remuneration || 0,
-          hasWithholdingTax: row.has_withholding_tax !== false,
-          taxColumnType: row.tax_column_type || 'main',
-          contractPeriod: row.contract_period || undefined,
-
-          // 資格・スキル
-          qualifications: row.qualifications || [],
-          qualificationDates: row.qualification_dates || {},
-          serviceTypes: row.service_types || [],
-          commuteMethods: row.commute_methods || [],
-
-          // 保険
-          insurances: row.insurances as any[] || [],
-
-          // 勤怠テンプレート
-          attendanceTemplate: row.attendance_template || {
-            enabled: false,
-            weekday: { startTime: '09:00', endTime: '18:00', breakMinutes: 60 },
-            excludeWeekends: true,
-            excludeHolidays: false,
-            excludedDateRanges: []
-          },
-
-          // 月別支払いデータ（交通費・経費・手当・返済）
-          monthlyPayments: row.monthly_payments || {}
-        };
-      });
+      .map(helperRowToHelper);
 
     return helpers;
   } catch (error) {
@@ -489,23 +494,29 @@ export const loadDeletedHelperAsHelper = async (
     const row = data[0];
 
     // original_data があればフル復元、なければ既存カラムから最低限を構築
+    // original_data は helpers の DB 行（snake_case）または Helper 形式（camelCase）の
+    // どちらの可能性もある。helperRowToHelper は両方を受け付ける。
     const original = (row as any).original_data;
     let helper: Helper;
     if (original && typeof original === 'object') {
-      helper = { ...(original as Helper), deleted: true };
+      // original_data から snake_case/camelCase 両対応で全フィールドを復元
+      helper = { ...helperRowToHelper(original), deleted: true };
+      // id だけは deleted_helpers.original_id を優先
+      helper.id = (row as any).original_id || helper.id;
     } else {
-      helper = {
+      // フォールバック：deleted_helpers の既存カラムから最低限を構築
+      helper = helperRowToHelper({
         id: (row as any).original_id || (row as any).id,
         name: (row as any).name || '',
-        gender: ((row as any).gender ?? 'male') as 'male' | 'female',
-        order: (row as any).order_index ?? 0,
+        gender: (row as any).gender,
+        order_index: (row as any).order_index,
         email: (row as any).email,
-        hourlyRate: (row as any).hourly_wage,
+        hourly_wage: (row as any).hourly_wage,
         role: (row as any).role,
         insurances: (row as any).insurances,
-        standardRemuneration: (row as any).standard_remuneration,
-        deleted: true,
-      } as Helper;
+        standard_remuneration: (row as any).standard_remuneration,
+      });
+      helper.deleted = true;
     }
 
     return {
@@ -553,10 +564,13 @@ function buildHelperRestorePayload(
   overrides: Record<string, any> = {}
 ): Record<string, any> {
   const original = deletedRow.original_data;
-  const helperLike = (original && typeof original === 'object') ? original : null;
+  // original_data は snake_case でも camelCase でも入っている可能性があるため
+  // helperRowToHelper で一旦 camelCase に正規化してから snake_case にマッピング
+  const helperLike: Helper | null = (original && typeof original === 'object')
+    ? helperRowToHelper(original)
+    : null;
 
   // helpers テーブルへ insert する形式（snake_case）
-  // original_data からの値は camelCase なので、両方をマージ
   const payload: Record<string, any> = {
     id: deletedRow.original_id || helperLike?.id || undefined,
     name: deletedRow.name ?? helperLike?.name,
@@ -569,11 +583,11 @@ function buildHelperRestorePayload(
     standard_remuneration: deletedRow.standard_remuneration ?? helperLike?.standardRemuneration ?? 0,
     hourly_rate: deletedRow.hourly_wage ?? helperLike?.hourlyRate ?? 0,
     deleted: false,
-    created_at: deletedRow.original_created_at || helperLike?.createdAt || new Date().toISOString(),
+    created_at: deletedRow.original_created_at || new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
 
-  // original_data からのみ取得できる詳細情報（helpers テーブルの全カラムを埋める）
+  // helperLike がある場合は helpers テーブルの全カラムを埋める
   if (helperLike) {
     Object.assign(payload, {
       last_name: helperLike.lastName,
