@@ -400,6 +400,31 @@ export const softDeleteHelper = async (helperId: string, deletedBy?: string): Pr
 };
 
 /**
+ * 削除済みヘルパーの original_data を更新する（情報補完用）。
+ * 既存の削除済みヘルパーで雇用形態・基本給・処遇改善などが失われている場合に
+ * 手動で再入力・保存できるようにする。
+ */
+export const updateDeletedHelperOriginalData = async (
+  deletedHelperRowId: string,
+  helper: Helper
+): Promise<void> => {
+  try {
+    console.log(`✏️ 削除済みヘルパーの original_data を更新中: ${deletedHelperRowId}`);
+    const { error } = await supabase
+      .from('deleted_helpers')
+      .update({ original_data: helper, original_updated_at: new Date().toISOString() })
+      .eq('id', deletedHelperRowId);
+    if (error) {
+      console.error('削除済みヘルパー更新エラー:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('削除済みヘルパー更新エラー:', error);
+    throw error;
+  }
+};
+
+/**
  * 削除済みヘルパーを1件取得し、Helper 互換のオブジェクトとして返す。
  * original_data があればそれを優先（全項目復元）、なければ既存カラムから構築。
  * 削除済みヘルパーの詳細を在籍ヘルパーと同じ画面で表示するために使う。
@@ -440,6 +465,7 @@ export const loadDeletedHelperAsHelper = async (
 
     return {
       helper,
+      deletedRowId: (row as any).id, // deleted_helpers.id（編集保存時に使う）
       deletedMeta: {
         deleted_at: (row as any).deleted_at,
         deleted_by: (row as any).deleted_by,
