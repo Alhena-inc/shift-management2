@@ -44,14 +44,16 @@ const WageLedgerPage: React.FC = () => {
     })();
   }, []);
 
+  // 個別選択UIに表示する候補（退職者フラグを反映）
+  const pickableHelpers = useMemo(() => {
+    return filter.includeResigned ? helpers : helpers.filter((h) => h.status !== '退職');
+  }, [helpers, filter.includeResigned]);
+
   const targetHelpers = useMemo(() => {
-    const base = filter.includeResigned
-      ? helpers
-      : helpers.filter((h) => h.status !== '退職');
-    if (filter.helperIds == null) return base;
+    if (filter.helperIds == null) return pickableHelpers;
     const idSet = new Set(filter.helperIds);
-    return base.filter((h) => idSet.has(h.id));
-  }, [helpers, filter]);
+    return pickableHelpers.filter((h) => idSet.has(h.id));
+  }, [pickableHelpers, filter.helperIds]);
 
   const handleGenerate = async () => {
     setLoading(true);
@@ -159,44 +161,34 @@ const WageLedgerPage: React.FC = () => {
               />
               退職者を含む
             </label>
-            <label className="flex items-center gap-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                checked={filter.helperIds === null}
-                onChange={(e) =>
-                  setFilter((f) => ({
-                    ...f,
-                    helperIds: e.target.checked ? null : [],
-                  }))
-                }
-              />
-              全員対象
-            </label>
+            <div className="flex items-center gap-3 text-sm text-gray-700">
+              <span className="text-xs text-gray-500">対象範囲：</span>
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="helperScope"
+                  checked={filter.helperIds === null}
+                  onChange={() => setFilter((f) => ({ ...f, helperIds: null }))}
+                />
+                全員
+              </label>
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="helperScope"
+                  checked={filter.helperIds !== null}
+                  onChange={() => setFilter((f) => ({ ...f, helperIds: f.helperIds ?? [] }))}
+                />
+                個別選択
+              </label>
+            </div>
           </div>
 
-          {filter.helperIds !== null && (
-            <div className="mt-3 border border-gray-200 rounded-lg p-3 max-h-48 overflow-y-auto">
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                {helpers.map((h) => (
-                  <label key={h.id} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={filter.helperIds?.includes(h.id) ?? false}
-                      onChange={(e) => {
-                        setFilter((f) => {
-                          const ids = new Set(f.helperIds ?? []);
-                          if (e.target.checked) ids.add(h.id);
-                          else ids.delete(h.id);
-                          return { ...f, helperIds: Array.from(ids) };
-                        });
-                      }}
-                    />
-                    {h.name}
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
+          <HelperPicker
+            helpers={pickableHelpers}
+            selectedIds={filter.helperIds}
+            onChange={(ids) => setFilter((f) => ({ ...f, helperIds: ids }))}
+          />
 
           <div className="mt-4 flex justify-end">
             <button
@@ -253,6 +245,121 @@ const FieldGroup: React.FC<{ label: string; children: React.ReactNode }> = ({
     {children}
   </div>
 );
+
+interface HelperPickerProps {
+  helpers: Helper[];
+  /** null = 全員対象（個別選択UIは非表示） */
+  selectedIds: string[] | null;
+  onChange: (ids: string[]) => void;
+}
+
+/** ヘルパー個別選択UI：検索・全選択/解除・選択数表示付き */
+const HelperPicker: React.FC<HelperPickerProps> = ({ helpers, selectedIds, onChange }) => {
+  const [query, setQuery] = useState('');
+
+  if (selectedIds === null) return null;
+
+  const lowered = query.trim().toLowerCase();
+  const filtered = lowered
+    ? helpers.filter((h) =>
+        [h.name, h.lastName, h.firstName]
+          .filter(Boolean)
+          .some((s) => (s as string).toLowerCase().includes(lowered))
+      )
+    : helpers;
+
+  const selectedSet = new Set(selectedIds);
+  const visibleAllSelected =
+    filtered.length > 0 && filtered.every((h) => selectedSet.has(h.id));
+
+  const toggle = (id: string) => {
+    const next = new Set(selectedSet);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onChange(Array.from(next));
+  };
+
+  const selectVisibleAll = () => {
+    const next = new Set(selectedSet);
+    for (const h of filtered) next.add(h.id);
+    onChange(Array.from(next));
+  };
+
+  const clearVisible = () => {
+    const next = new Set(selectedSet);
+    for (const h of filtered) next.delete(h.id);
+    onChange(Array.from(next));
+  };
+
+  return (
+    <div className="mt-3 border border-gray-200 rounded-lg p-3 bg-gray-50">
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="名前で絞り込み…"
+          className="flex-1 min-w-[180px] px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white"
+        />
+        <button
+          type="button"
+          onClick={selectVisibleAll}
+          className="px-3 py-1.5 text-xs bg-white border border-gray-300 rounded-lg hover:bg-gray-100"
+        >
+          表示中を全選択
+        </button>
+        <button
+          type="button"
+          onClick={clearVisible}
+          className="px-3 py-1.5 text-xs bg-white border border-gray-300 rounded-lg hover:bg-gray-100"
+        >
+          表示中を解除
+        </button>
+        <span className="text-xs text-gray-600 ml-auto">
+          選択中：<strong className="text-gray-900">{selectedIds.length}</strong> 名 / 候補 {helpers.length} 名
+        </span>
+      </div>
+      {filtered.length === 0 ? (
+        <div className="py-6 text-center text-sm text-gray-500">
+          該当するヘルパーがいません
+        </div>
+      ) : (
+        <div className="max-h-64 overflow-y-auto pr-1">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+            {filtered.map((h) => {
+              const checked = selectedSet.has(h.id);
+              return (
+                <label
+                  key={h.id}
+                  className={`flex items-center gap-2 text-sm px-2 py-1.5 rounded border cursor-pointer transition-colors ${
+                    checked
+                      ? 'bg-blue-50 border-blue-300 text-blue-900'
+                      : 'bg-white border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggle(h.id)}
+                  />
+                  <span className="truncate">{h.name}</span>
+                  {h.status === '退職' && (
+                    <span className="ml-auto text-[10px] text-gray-500">退職</span>
+                  )}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {!visibleAllSelected && filtered.length > 0 && lowered === '' && (
+        <div className="mt-2 text-[11px] text-gray-500">
+          ヒント：上の「対象範囲」を「全員」に切り替えると、選択を保持したまま全員出力に切替できます。
+        </div>
+      )}
+    </div>
+  );
+};
 
 /**
  * 賃金台帳テーブル(幅1720px固定)を画面幅にフィットさせるラッパー。
