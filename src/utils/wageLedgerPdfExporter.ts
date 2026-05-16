@@ -15,7 +15,8 @@ export async function exportWageLedgerPdf(
   fiscalYear: number,
   element?: HTMLElement | null
 ): Promise<void> {
-  const isAnnual = entry.months.length > 1;
+  // 単月モードは A4縦、通年モードは A4横
+  const isAnnual = !entry.isMonthlyMode;
 
   const target = element ?? findRenderedElement(entry.helper.helperId);
   if (!target) {
@@ -80,7 +81,9 @@ export async function exportWageLedgerPdf(
     }
   }
 
-  const filename = `賃金台帳_${entry.helper.helperName}_${fiscalYear}年度.pdf`;
+  const filename = entry.isMonthlyMode && entry.targetMonth
+    ? `賃金台帳_${entry.helper.helperName}_${fiscalYear}年${entry.targetMonth}月分.pdf`
+    : `賃金台帳_${entry.helper.helperName}_${fiscalYear}年.pdf`;
   pdf.save(filename);
 }
 

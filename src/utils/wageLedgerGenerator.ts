@@ -61,7 +61,15 @@ export async function buildWageLedgerEntry(
     emptyBonus('賞与1'),
     emptyBonus('賞与2'),
   ];
-  return { helper: helperInfo, months, totals, bonuses };
+  const isMonthlyMode = options.periodMode === 'monthly' && !!options.targetMonth;
+  return {
+    helper: helperInfo,
+    months,
+    totals,
+    bonuses,
+    isMonthlyMode,
+    targetMonth: isMonthlyMode ? options.targetMonth : undefined,
+  };
 }
 
 function emptyBonus(label: string) {
@@ -143,6 +151,9 @@ function buildMonth(
 
   const { earnings, deductions, totals } = extractAmounts(payslip);
   const attendance = extractAttendance(payslip);
+  // 労基法32条準拠：日8h超 + 週40h超（二重カウント防止）
+  // shifts がない場合は overtime は0となり、payslip側の手動値を尊重するため
+  // 計算側で上書きしない（現状の本実装は時間外算定にshiftsを使用）
   const labor = calculateLaborTime({
     totalWorkHours: attendance.totalWorkHours,
     nightHours22to8: attendance.nightHours22to8,
@@ -370,11 +381,13 @@ function extractAmounts(payslip: Payslip): ExtractedAmounts {
         .reduce((sum, a) => sum + (a.amount ?? 0), 0)
   );
   earnings.taxableTotal = roundYen(earnings.totalEarnings - earnings.nonTaxableTotal);
+  // 社会保険計 = 健保 + 介護 + 厚年 + 雇保 + 子育て支援金（2026年4月〜）
   deductions.socialInsuranceTotal = roundYen(
     deductions.healthInsurance +
       deductions.careInsurance +
       deductions.pensionInsurance +
-      deductions.employmentInsurance
+      deductions.employmentInsurance +
+      deductions.childcareSupport
   );
   deductions.totalDeductions = roundYen(d.totalDeduction ?? sumDeductions(deductions));
 

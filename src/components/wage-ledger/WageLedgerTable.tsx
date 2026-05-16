@@ -24,10 +24,17 @@ const numOrZero = (n: number): string => (n === 0 ? '0' : n.toLocaleString('ja-J
 const reiwaYear = (calYear: number): number => calYear - 2018;
 
 const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
-  const { helper, months, totals, bonuses } = entry;
-  // この帳票は1〜12月の12ヶ月固定レイアウト。
-  // 単月で生成された場合も、その月だけ値を入れ、他は空欄として12列で表示する。
-  const fixedMonths: WageLedgerMonth[] = padToTwelve(months, calendarYear);
+  const { helper, months, totals, bonuses, isMonthlyMode, targetMonth } = entry;
+  // 通年モード：1〜12月の12ヶ月固定レイアウト
+  // 単月モード：対象月のみ1列で表示（A4縦想定）
+  const fixedMonths: WageLedgerMonth[] = isMonthlyMode
+    ? months.filter((m) => !targetMonth || m.month === targetMonth)
+    : padToTwelve(months, calendarYear);
+
+  // 単月時は賞与列・計列を非表示にしてA4縦に収める
+  const showTotalCol = !isMonthlyMode;
+  const showBonus = !isMonthlyMode;
+  const containerWidth = isMonthlyMode ? 720 : 1720;
 
   return (
     <div
@@ -37,7 +44,7 @@ const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
         fontFamily:
           '"Yu Gothic", "Hiragino Sans", "Noto Sans JP", "Meiryo", sans-serif',
         color: '#000',
-        width: '1720px',
+        width: `${containerWidth}px`,
       }}
     >
       {/* タイトル */}
@@ -83,9 +90,9 @@ const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
             <col style={{ width: 32 }} />
             <col style={{ width: 130 }} />
             {fixedMonths.map((_, i) => (
-              <col key={`c-${i}`} style={{ width: 92 }} />
+              <col key={`c-${i}`} style={{ width: isMonthlyMode ? 200 : 92 }} />
             ))}
-            <col style={{ width: 96, background: ORANGE_LIGHT }} />
+            {showTotalCol && <col style={{ width: 96, background: ORANGE_LIGHT }} />}
           </colgroup>
           <thead>
             <tr style={{ background: ORANGE_BG }}>
@@ -95,13 +102,14 @@ const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
                   {m.month}月分
                 </th>
               ))}
-              <th style={{ ...th(), background: ORANGE_HEADER }}>計</th>
+              {showTotalCol && <th style={{ ...th(), background: ORANGE_HEADER }}>計</th>}
             </tr>
           </thead>
           <tbody>
             {/* 勤怠ブロック */}
             <CategoryBlock
               label="勤怠"
+              showTotalCol={showTotalCol}
               rows={[
                 row('出 勤 日 数', fixedMonths.map((m) => days(m.attendance.workDays)), days(totals.workDays)),
                 row('有給取得日数', fixedMonths.map((m) => days(m.attendance.paidLeaveTaken)), '0'),
@@ -118,6 +126,7 @@ const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
             {/* 支給額ブロック */}
             <CategoryBlock
               label="支給額"
+              showTotalCol={showTotalCol}
               rows={[
                 rowYen('基 本 給', fixedMonths.map((m) => m.earnings.basePay), sumBy(fixedMonths, (m) => m.earnings.basePay)),
                 rowYen(blankLabel(), fixedMonths.map(() => 0), 0),
@@ -133,19 +142,21 @@ const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
             />
 
             {/* 課税計 / 非課税計 / 総支給額（強調行） */}
-            <SubtotalRow label="課税計" cells={fixedMonths.map((m) => numOrZero(m.earnings.taxableTotal))} total={numOrZero(sumBy(fixedMonths, (m) => m.earnings.taxableTotal))} />
-            <SubtotalRow label="非課税計" cells={fixedMonths.map((m) => numOrZero(m.earnings.nonTaxableTotal))} total={numOrZero(sumBy(fixedMonths, (m) => m.earnings.nonTaxableTotal))} />
-            <TotalRow label="総　支　給　額" cells={fixedMonths.map((m) => numOrZero(m.earnings.totalEarnings))} total={numOrZero(totals.totalEarnings)} />
+            <SubtotalRow label="課税計" cells={fixedMonths.map((m) => numOrZero(m.earnings.taxableTotal))} total={numOrZero(sumBy(fixedMonths, (m) => m.earnings.taxableTotal))} showTotalCol={showTotalCol} />
+            <SubtotalRow label="非課税計" cells={fixedMonths.map((m) => numOrZero(m.earnings.nonTaxableTotal))} total={numOrZero(sumBy(fixedMonths, (m) => m.earnings.nonTaxableTotal))} showTotalCol={showTotalCol} />
+            <TotalRow label="総　支　給　額" cells={fixedMonths.map((m) => numOrZero(m.earnings.totalEarnings))} total={numOrZero(totals.totalEarnings)} showTotalCol={showTotalCol} />
 
             {/* 控除額ブロック（社会保険＋税金まとめて1カテゴリ） */}
             <CategoryBlockWithSubtotals
               label="控除額"
+              showTotalCol={showTotalCol}
               groups={[
                 {
                   rows: [
                     rowYen('健 康 保 険', fixedMonths.map((m) => m.deductions.healthInsurance + m.deductions.careInsurance), sumBy(fixedMonths, (m) => m.deductions.healthInsurance + m.deductions.careInsurance)),
                     rowYen('厚生年金保険', fixedMonths.map((m) => m.deductions.pensionInsurance), sumBy(fixedMonths, (m) => m.deductions.pensionInsurance)),
                     rowYen('雇 用 保 険', fixedMonths.map((m) => m.deductions.employmentInsurance), sumBy(fixedMonths, (m) => m.deductions.employmentInsurance)),
+                    rowYen('子育て支援金', fixedMonths.map((m) => m.deductions.childcareSupport), sumBy(fixedMonths, (m) => m.deductions.childcareSupport)),
                   ],
                   subtotal: {
                     label: '社会保険計',
@@ -172,7 +183,7 @@ const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
             />
 
             {/* 差引支給額 */}
-            <TotalRow label="差引支給額" cells={fixedMonths.map((m) => numOrZero(m.netPayment))} total={numOrZero(totals.totalNetPayment)} />
+            <TotalRow label="差引支給額" cells={fixedMonths.map((m) => numOrZero(m.netPayment))} total={numOrZero(totals.totalNetPayment)} showTotalCol={showTotalCol} />
 
             {/* 領収印行 */}
             <tr>
@@ -180,13 +191,13 @@ const WageLedgerTable: React.FC<Props> = ({ entry, calendarYear }) => {
               {fixedMonths.map((m) => (
                 <td key={`r-${m.month}`} style={{ ...td(), height: 36 }}></td>
               ))}
-              <td style={{ ...td(), background: ORANGE_LIGHT }}></td>
+              {showTotalCol && <td style={{ ...td(), background: ORANGE_LIGHT }}></td>}
             </tr>
           </tbody>
         </table>
 
-        {/* 賞与テーブル */}
-        <BonusTable bonuses={bonuses} />
+        {/* 賞与テーブル（通年モードのみ） */}
+        {showBonus && <BonusTable bonuses={bonuses} />}
       </div>
     </div>
   );
@@ -211,7 +222,7 @@ function blankLabel(): string {
   return '';
 }
 
-const CategoryBlock: React.FC<{ label: string; rows: RowDef[] }> = ({ label, rows }) => {
+const CategoryBlock: React.FC<{ label: string; rows: RowDef[]; showTotalCol?: boolean }> = ({ label, rows, showTotalCol = true }) => {
   return (
     <>
       {rows.map((r, idx) => (
@@ -239,9 +250,11 @@ const CategoryBlock: React.FC<{ label: string; rows: RowDef[] }> = ({ label, row
           {r.cells.map((c, i) => (
             <td key={`c-${i}`} style={{ ...td(), textAlign: 'right' }}>{c}</td>
           ))}
-          <td style={{ ...td(), textAlign: 'right', background: ORANGE_LIGHT, fontWeight: 600 }}>
-            {r.total}
-          </td>
+          {showTotalCol && (
+            <td style={{ ...td(), textAlign: 'right', background: ORANGE_LIGHT, fontWeight: 600 }}>
+              {r.total}
+            </td>
+          )}
         </tr>
       ))}
     </>
@@ -253,9 +266,10 @@ interface SubGroup {
   subtotal: { label: string; cells: string[]; total: string };
 }
 
-const CategoryBlockWithSubtotals: React.FC<{ label: string; groups: SubGroup[] }> = ({
+const CategoryBlockWithSubtotals: React.FC<{ label: string; groups: SubGroup[]; showTotalCol?: boolean }> = ({
   label,
   groups,
+  showTotalCol = true,
 }) => {
   const totalRows = groups.reduce((sum, g) => sum + g.rows.length + 1, 0);
   let printed = 0;
@@ -293,11 +307,13 @@ const CategoryBlockWithSubtotals: React.FC<{ label: string; groups: SubGroup[] }
                 {r.cells.map((c, i) => (
                   <td key={`c-${i}`} style={{ ...td(), textAlign: 'right' }}>{c}</td>
                 ))}
-                <td
-                  style={{ ...td(), textAlign: 'right', background: ORANGE_LIGHT, fontWeight: 600 }}
-                >
-                  {r.total}
-                </td>
+                {showTotalCol && (
+                  <td
+                    style={{ ...td(), textAlign: 'right', background: ORANGE_LIGHT, fontWeight: 600 }}
+                  >
+                    {r.total}
+                  </td>
+                )}
               </tr>
             );
           })}
@@ -319,16 +335,18 @@ const CategoryBlockWithSubtotals: React.FC<{ label: string; groups: SubGroup[] }
                 {c}
               </td>
             ))}
-            <td
-              style={{
-                ...td(),
-                textAlign: 'right',
-                background: ORANGE_LIGHT,
-                fontWeight: 700,
-              }}
-            >
-              {g.subtotal.total}
-            </td>
+            {showTotalCol && (
+              <td
+                style={{
+                  ...td(),
+                  textAlign: 'right',
+                  background: ORANGE_LIGHT,
+                  fontWeight: 700,
+                }}
+              >
+                {g.subtotal.total}
+              </td>
+            )}
           </tr>
           {(() => {
             printed += 1;
@@ -340,35 +358,41 @@ const CategoryBlockWithSubtotals: React.FC<{ label: string; groups: SubGroup[] }
   );
 };
 
-const SubtotalRow: React.FC<{ label: string; cells: string[]; total: string }> = ({
+const SubtotalRow: React.FC<{ label: string; cells: string[]; total: string; showTotalCol?: boolean }> = ({
   label,
   cells,
   total,
+  showTotalCol = true,
 }) => (
   <tr>
     <td colSpan={2} style={{ ...td(), background: '#fff', fontWeight: 700, textAlign: 'center' }}>{label}</td>
     {cells.map((c, i) => (
       <td key={`st-${i}`} style={{ ...td(), textAlign: 'right' }}>{c}</td>
     ))}
-    <td style={{ ...td(), textAlign: 'right', background: ORANGE_LIGHT, fontWeight: 700 }}>
-      {total}
-    </td>
+    {showTotalCol && (
+      <td style={{ ...td(), textAlign: 'right', background: ORANGE_LIGHT, fontWeight: 700 }}>
+        {total}
+      </td>
+    )}
   </tr>
 );
 
-const TotalRow: React.FC<{ label: string; cells: string[]; total: string }> = ({
+const TotalRow: React.FC<{ label: string; cells: string[]; total: string; showTotalCol?: boolean }> = ({
   label,
   cells,
   total,
+  showTotalCol = true,
 }) => (
   <tr style={{ background: ORANGE_BG }}>
     <td colSpan={2} style={{ ...td(), fontWeight: 800, textAlign: 'center' }}>{label}</td>
     {cells.map((c, i) => (
       <td key={`tt-${i}`} style={{ ...td(), textAlign: 'right', fontWeight: 700 }}>{c}</td>
     ))}
-    <td style={{ ...td(), textAlign: 'right', background: ORANGE_HEADER, fontWeight: 800 }}>
-      {total}
-    </td>
+    {showTotalCol && (
+      <td style={{ ...td(), textAlign: 'right', background: ORANGE_HEADER, fontWeight: 800 }}>
+        {total}
+      </td>
+    )}
   </tr>
 );
 

@@ -128,6 +128,10 @@ export interface WageLedgerEntry {
   months: WageLedgerMonth[];
   totals: WageLedgerTotals;
   bonuses: WageLedgerBonusColumn[]; // 賞与1, 賞与2（現状空）
+  /** 単月モードフラグ（true のとき months は対象1ヶ月のみ） */
+  isMonthlyMode: boolean;
+  /** 単月モード時の対象月（1〜12） */
+  targetMonth?: number;
 }
 
 export type WageLedgerPeriodMode = 'monthly' | 'annual';
