@@ -183,6 +183,52 @@ export const loadPayslipsByMonth = async (year: number, month: number): Promise<
 };
 
 /**
+ * 指定ヘルパーの全給与明細を年月降順で取得する。
+ * 退職者の全期間明細を一覧表示するために使う。
+ */
+export const loadAllPayslipsForHelper = async (helperId: string): Promise<Payslip[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('payslips')
+      .select('*')
+      .eq('helper_id', helperId)
+      .order('year', { ascending: false })
+      .order('month', { ascending: false });
+
+    if (error) throw error;
+    return (data ?? []).map(rowToPayslip);
+  } catch (error) {
+    console.error('全期間明細読み込みエラー:', error);
+    return [];
+  }
+};
+
+/**
+ * 指定ヘルパー群の「明細件数」を取得する。退職者一覧での件数バッジ表示用。
+ */
+export const loadPayslipCountForHelpers = async (
+  helperIds: string[]
+): Promise<Map<string, number>> => {
+  const result = new Map<string, number>();
+  if (helperIds.length === 0) return result;
+  try {
+    const { data, error } = await supabase
+      .from('payslips')
+      .select('helper_id')
+      .in('helper_id', helperIds);
+    if (error) throw error;
+    for (const row of data ?? []) {
+      const hid = (row as any).helper_id as string;
+      result.set(hid, (result.get(hid) ?? 0) + 1);
+    }
+    return result;
+  } catch (error) {
+    console.error('明細件数取得エラー:', error);
+    return result;
+  }
+};
+
+/**
  * 指定ヘルパー群の「最終明細月」を取得する。
  * Map<helperId, { year, month }> を返す。明細が存在しないヘルパーはMapに含まれない。
  * 退職者の最後の明細がいつだったか一覧表示するために使う。

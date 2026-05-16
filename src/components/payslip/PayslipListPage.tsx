@@ -8,7 +8,9 @@ import {
   savePayslip,
   deletePayslip,
   loadLatestPayslipMonthForHelpers,
+  loadPayslipCountForHelpers,
 } from '../../services/payslipService';
+import HelperPayslipsModal from './HelperPayslipsModal';
 import { loadHelpers, loadShiftsForMonth } from '../../services/dataService';
 import { generatePayslipFromShifts } from '../../utils/payslipCalculation';
 import { downloadPayslipPdf, downloadBulkPayslipPdf } from '../../services/pdfService';
@@ -44,34 +46,60 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
   const [resignedFilter, setResignedFilter] = useState<'active' | 'all' | 'resigned'>('active');
   // 退職者ごとの最終明細月（helperId → {year, month}）
   const [latestPayslipMonth, setLatestPayslipMonth] = useState<Map<string, { year: number; month: number }>>(new Map());
+  // 退職者ごとの全明細件数
+  const [payslipCountByHelper, setPayslipCountByHelper] = useState<Map<string, number>>(new Map());
+  // 全期間明細モーダル表示中のヘルパー
+  const [allPayslipsHelper, setAllPayslipsHelper] = useState<Helper | null>(null);
   const printViewRef = useRef<HTMLDivElement>(null);
 
   // ヘルパーをソート・フィルタリング
+  // payslip がある月では、ヘルパーマスタに存在しない（削除済み）helper も
+  // payslip 自身の helperName から疑似 Helper を作って一覧に出す。
   const sortedHelpers = useMemo(() => {
-    // 1. 重複排除
-    const uniqueHelpersMap = new Map();
+    // 1. 重複排除（マスタ由来）
+    const uniqueHelpersMap = new Map<string, Helper>();
     helpers.forEach(h => {
       if (!uniqueHelpersMap.has(h.id)) {
         uniqueHelpersMap.set(h.id, h);
       }
     });
 
-    // 2. フィルタリングとソート
+    // 2. payslip にだけ存在するヘルパー（マスタ削除済み）を補完
+    payslips.forEach((p) => {
+      if (!uniqueHelpersMap.has(p.helperId)) {
+        uniqueHelpersMap.set(p.helperId, {
+          id: p.helperId,
+          name: p.helperName || '(名前不明)',
+          status: '削除済み' as any,
+          deleted: true,
+          order: 9999, // 末尾に並べる
+        } as Helper);
+      }
+    });
+
+    // 3. フィルタリングとソート
     return Array.from(uniqueHelpersMap.values())
       .filter(helper => {
+        // 削除済み（マスタにない）でも payslip がある月は常に表示
+        const hasPayslipThisMonth = payslips.some(p => p.helperId === helper.id);
+        if (helper.deleted && hasPayslipThisMonth) {
+          // 退職者フィルター（active=在職のみ）の時は削除済みも除外しない
+          // → 明細が存在する以上、何らかの形で出す
+          if (resignedFilter === 'resigned') return true; // 退職者のみモードでも表示
+          return true;
+        }
+
         // 退職者フィルター
         const isResigned = helper.status === '退職';
         if (resignedFilter === 'active' && isResigned) return false;
         if (resignedFilter === 'resigned' && !isResigned) return false;
 
-        // 削除されていないヘルパーは常に表示（退職者フィルター通過後）
+        // 削除されていないヘルパーは常に表示
         if (!helper.deleted) return true;
 
-        // 削除されている場合、その月にデータ（シフト、給与明細）があるかチェック
+        // 削除されている場合、その月のシフトがあれば表示
         const hasShifts = shifts.some(s => s.helperId === helper.id);
-        const hasPayslip = payslips.some(p => p.helperId === helper.id);
-
-        return hasShifts || hasPayslip;
+        return hasShifts || hasPayslipThisMonth;
       })
       .sort((a, b) => (a.order || 0) - (b.order || 0) || a.id.localeCompare(b.id));
   }, [helpers, shifts, payslips, resignedFilter]);
@@ -101,28 +129,42 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
     loadData();
   }, [loadData]);
 
-  // 退職者の最終明細月をロード（退職者を表示する時のみ）
+  // 退職者・削除済みヘルパーの「最終明細月」「全明細件数」をロード
+  // （在職以外を表示する時に取得して、件数バッジ・最終月バッジを描画）
   useEffect(() => {
-    if (resignedFilter === 'active') {
+    // 対象IDの集合：退職者 + payslip にのみ存在する削除済みヘルパー
+    const targetIds = new Set<string>();
+    helpers.forEach((h) => {
+      if (h.status === '退職' || h.deleted) targetIds.add(h.id);
+    });
+    payslips.forEach((p) => {
+      // マスタに存在しない（削除済み）ヘルパーIDも対象に加える
+      if (!helpers.some((h) => h.id === p.helperId)) targetIds.add(p.helperId);
+    });
+
+    if (targetIds.size === 0) {
       setLatestPayslipMonth(new Map());
-      return;
-    }
-    const resignedHelpers = helpers.filter((h) => h.status === '退職');
-    if (resignedHelpers.length === 0) {
-      setLatestPayslipMonth(new Map());
+      setPayslipCountByHelper(new Map());
       return;
     }
     let cancelled = false;
     (async () => {
       try {
-        const map = await loadLatestPayslipMonthForHelpers(resignedHelpers.map((h) => h.id));
-        if (!cancelled) setLatestPayslipMonth(map);
+        const ids = Array.from(targetIds);
+        const [latest, counts] = await Promise.all([
+          loadLatestPayslipMonthForHelpers(ids),
+          loadPayslipCountForHelpers(ids),
+        ]);
+        if (!cancelled) {
+          setLatestPayslipMonth(latest);
+          setPayslipCountByHelper(counts);
+        }
       } catch (e) {
-        console.error('最終明細月の取得失敗', e);
+        console.error('明細メタ情報取得失敗', e);
       }
     })();
     return () => { cancelled = true; };
-  }, [helpers, resignedFilter]);
+  }, [helpers, payslips]);
 
   // メニュー外クリックで閉じる処理
   useEffect(() => {
@@ -864,13 +906,35 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
                         </td>
                         <td className="border border-gray-300 px-3 py-2 text-sm">
                           <div className="inline-flex items-center gap-1.5 flex-wrap">
-                            <span>{helper.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => setAllPayslipsHelper(helper)}
+                              className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                              title="このヘルパーの全期間明細を表示"
+                            >
+                              {helper.name}
+                            </button>
                             {helper.status === '退職' && (
                               <span className="px-1.5 py-0.5 text-[10px] font-medium bg-gray-200 text-gray-700 rounded">
                                 退職
                               </span>
                             )}
-                            {helper.status === '退職' && latestPayslipMonth.get(helper.id) && (
+                            {helper.deleted && helper.status !== '退職' && (
+                              <span className="px-1.5 py-0.5 text-[10px] font-medium bg-red-100 text-red-700 rounded">
+                                削除済み
+                              </span>
+                            )}
+                            {(payslipCountByHelper.get(helper.id) ?? 0) > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setAllPayslipsHelper(helper)}
+                                className="px-1.5 py-0.5 text-[10px] font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 rounded transition-colors"
+                                title="このヘルパーの全期間明細を表示"
+                              >
+                                全{payslipCountByHelper.get(helper.id)}件
+                              </button>
+                            )}
+                            {latestPayslipMonth.get(helper.id) && (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -883,9 +947,9 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
                                 className="px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-800 hover:bg-amber-200 rounded transition-colors"
                                 title="この月にジャンプ"
                               >
-                                最終明細：
-                                {latestPayslipMonth.get(helper.id)!.year}年
-                                {latestPayslipMonth.get(helper.id)!.month}月
+                                最終：
+                                {latestPayslipMonth.get(helper.id)!.year}/
+                                {latestPayslipMonth.get(helper.id)!.month}
                               </button>
                             )}
                           </div>
@@ -1022,6 +1086,24 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
           </div>
         </div>
       </div>
+
+      {/* 全期間明細モーダル */}
+      {allPayslipsHelper && (
+        <HelperPayslipsModal
+          helper={allPayslipsHelper}
+          onClose={() => setAllPayslipsHelper(null)}
+          onEdit={(p) => {
+            setAllPayslipsHelper(null);
+            setEditingPayslip(p);
+            setShowEditModal(true);
+          }}
+          onPdfDownload={(p) => {
+            setAllPayslipsHelper(null);
+            handleDownloadPdf(p, pdfExportMode);
+          }}
+          onChanged={() => loadData()}
+        />
+      )}
 
       {/* 編集モーダル */}
       {showEditModal && editingPayslip && (
