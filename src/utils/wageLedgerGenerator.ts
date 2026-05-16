@@ -178,6 +178,18 @@ function mapEarnings(payslip: Payslip): WageLedgerEarnings {
     treatmentAllowance = (payslip as HourlyPayslip).payments.treatmentAllowancePay ?? 0;
   }
 
+  // 基本給：純粋な基本給を取得
+  //   - payslip.baseSalary（マスタ値）が定義されていればそれを優先
+  //   - 旧データで payments.basePay に「合算値」が入っている場合への防衛
+  //   - baseSalary がない（時給制）場合は payments.basePay をそのまま採用
+  let basePay = p.basePay ?? 0;
+  if (isFixedPayslip(payslip)) {
+    const baseSalary = (payslip as FixedPayslip).baseSalary ?? 0;
+    if (baseSalary > 0) {
+      basePay = baseSalary;
+    }
+  }
+
   // 立替金：給与明細で「+表示」されている支給扱い項目
   const reimbursement = d.reimbursement ?? 0;
 
@@ -189,7 +201,7 @@ function mapEarnings(payslip: Payslip): WageLedgerEarnings {
   const otherAllowances = collectOtherAllowances(p.otherAllowances);
 
   return {
-    basePay: p.basePay ?? 0,
+    basePay,
     directorCompensation: p.directorCompensation ?? 0,
     treatmentAllowance,
     accompanyAllowance: p.accompanyPay ?? 0,

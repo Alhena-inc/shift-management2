@@ -351,17 +351,19 @@ export function generateFixedPayslipFromShifts(
     }));
   }
 
-  // 月給合計 = 基本給 + 処遇改善手当 + その他手当（課税・非課税含む）
+  // 月給合計（参考値）= 基本給 + 処遇改善手当 + その他手当（課税・非課税含む）
   const otherAllowancesTotal = payslip.payments.otherAllowances.reduce((sum, item) => sum + item.amount, 0);
   payslip.totalSalary = payslip.baseSalary + payslip.treatmentAllowance + otherAllowancesTotal;
 
   // 給与計算
-  // 基本給支給額に月給合計を設定
-  payslip.payments.basePay = payslip.totalSalary;
+  // payments.basePay は「純粋な基本給」を保持する（処遇改善手当・その他手当は別フィールド）
+  payslip.payments.basePay = payslip.baseSalary;
 
-  // 支給額合計（基本給支給額には既に月給合計が含まれる）
+  // 支給額合計 = 基本給 + 処遇改善手当 + その他手当 + 各種手当
   payslip.payments.totalPayment =
     payslip.payments.basePay +
+    payslip.treatmentAllowance +
+    otherAllowancesTotal +
     payslip.payments.overtimePay +
     payslip.payments.expenseReimbursement +
     payslip.payments.transportAllowance +
@@ -416,8 +418,10 @@ export function generateFixedPayslipFromShifts(
       .filter(a => a.taxExempt)
       .reduce((sum, a) => sum + a.amount, 0)
     : 0;
+  // 保険算定基礎額 = 基本給 + 処遇改善 + 残業 + 緊急時 + 夜間 + その他手当（課税分のみ）
   const insuranceBaseAmount =
     (payslip.payments.basePay || 0) +
+    (payslip.treatmentAllowance || 0) +
     (payslip.payments.overtimePay || 0) +
     (payslip.payments.emergencyAllowance || 0) +
     (payslip.payments.nightAllowance || 0) +
@@ -487,10 +491,11 @@ export function generateFixedPayslipFromShifts(
   payslip.deductions.socialInsuranceTotal = (insuranceResult.total || 0) + childcareSupport;
 
   // 課税対象額を計算（課税月給 - 社会保険料計）
-  // basePay = totalSalary = baseSalary + treatmentAllowance + otherAllowancesTotal
-  // ※basePay には既に全ての手当が含まれているため、非課税分のみ除外する
+  // 課税月給 = 基本給 + 処遇改善 + その他手当（課税分のみ）
   const taxableBaseSalary =
-    (payslip.payments.basePay || 0) -
+    (payslip.payments.basePay || 0) +
+    (payslip.treatmentAllowance || 0) +
+    otherAllowancesTotal -
     nonTaxableOtherAllowances;
   // 参照用金額 = 課税支給額 - 社会保険料計（子育て支援金含む）
   const taxableAmount = taxableBaseSalary - payslip.deductions.socialInsuranceTotal;
