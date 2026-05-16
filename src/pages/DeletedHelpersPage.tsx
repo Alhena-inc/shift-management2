@@ -212,31 +212,40 @@ const DeletedHelpersPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-2 sm:p-4">
-      <div className="max-w-6xl mx-auto">
-        {/* ヘッダー */}
-        <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-4">
+    <div className="min-h-screen bg-gray-50">
+      {/* ヘッダー（ヘルパー管理と同じスタイル） */}
+      <header className="bg-white shadow-sm sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-lg sm:text-2xl font-bold text-gray-800 flex items-center gap-2">
-                <svg className="w-6 h-6 sm:w-8 sm:h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => window.location.href = '/helpers'}
+                className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                title="ヘルパー管理に戻る"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
-                削除済みヘルパー
-              </h1>
-              <p className="text-gray-600 text-xs sm:text-sm mt-1">
-                在職復元・退職者として復元・完全削除を選択できます
-              </p>
+              </button>
+              <div>
+                <h1 className="text-lg sm:text-2xl font-bold text-gray-800 flex items-center gap-2">
+                  <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  削除済みヘルパー
+                </h1>
+                <p className="text-gray-600 text-xs sm:text-sm mt-0.5">
+                  在職復元・退職者として復元・完全削除を選択できます
+                </p>
+              </div>
             </div>
-            <button
-              onClick={() => window.location.href = '/'}
-              className="px-3 py-2 sm:px-4 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm"
-            >
-              戻る
-            </button>
           </div>
         </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-8">
 
         {/* 削除済みヘルパーリスト */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -285,168 +294,108 @@ const DeletedHelpersPage: React.FC = () => {
               </button>
             </div>
 
-            {/* スマホ: カード表示 */}
-            <div className="sm:hidden divide-y divide-gray-200">
-              {deletedHelpers.map((helper) => (
-                <div key={helper.id} className={`p-4 ${selectedIds.has(helper.id) ? 'bg-red-50' : ''}`}>
-                  <div className="flex items-center justify-between mb-2 gap-2">
-                    <label className="flex items-center gap-2 flex-1 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(helper.id)}
-                        onChange={() => toggleSelect(helper.id)}
-                        className="w-4 h-4"
-                      />
-                      <span className="font-medium text-gray-900">{helper.name}</span>
-                    </label>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      helper.role === 'admin' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {helper.role === 'admin' ? '管理者' : 'スタッフ'}
-                    </span>
-                  </div>
-                  <div className="text-xs text-gray-500 space-y-1 mb-3">
-                    <div>削除日時: {new Date(helper.deleted_at).toLocaleString('ja-JP')}</div>
-                    {helper.email && <div>メール: {helper.email}</div>}
-                    {helper.deleted_by && <div>削除者: {helper.deleted_by}</div>}
-                    {helper.deletion_reason && <div>理由: {helper.deletion_reason}</div>}
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      onClick={() => handleRestore(helper.id, helper.name)}
-                      disabled={busy?.id === helper.id}
-                      className="inline-flex items-center justify-center px-2 py-2 text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                    >
-                      {busy?.id === helper.id && busy.action === 'restore' ? '処理中…' : '在職復元'}
-                    </button>
-                    <button
-                      onClick={() => handleRestoreAsResigned(helper.id, helper.name)}
-                      disabled={busy?.id === helper.id}
-                      className="inline-flex items-center justify-center px-2 py-2 text-xs font-medium rounded-md text-white bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                    >
-                      {busy?.id === helper.id && busy.action === 'resigned' ? '処理中…' : '退職者復元'}
-                    </button>
-                    <button
-                      onClick={() => handlePermanentDelete(helper.id, helper.name)}
-                      disabled={busy?.id === helper.id}
-                      className="inline-flex items-center justify-center px-2 py-2 text-xs font-medium rounded-md text-white bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                    >
-                      {busy?.id === helper.id && busy.action === 'delete' ? '削除中…' : '完全削除'}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {/* ヘルパーカード一覧（ヘルパー管理ページと同じデザイン） */}
+            <div className="p-4 sm:p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {deletedHelpers.map((helper) => {
+                  const isSelected = selectedIds.has(helper.id);
+                  const isAdmin = helper.role === 'admin';
+                  const isBusy = busy?.id === helper.id;
 
-            {/* PC: テーブル表示 */}
-            <div className="hidden sm:block overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-10">
-                      <input
-                        type="checkbox"
-                        checked={isAllSelected}
-                        onChange={toggleSelectAll}
-                        className="w-4 h-4"
-                        title={isAllSelected ? '全て解除' : '全て選択'}
-                      />
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      名前
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      メールアドレス
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      権限
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      削除日時
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      削除者
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      削除理由
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      操作
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {deletedHelpers.map((helper) => (
-                    <tr
+                  return (
+                    <div
                       key={helper.id}
-                      className={`hover:bg-gray-50 ${selectedIds.has(helper.id) ? 'bg-red-50' : ''}`}
+                      className={`bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow border overflow-hidden flex flex-col h-full ${
+                        isSelected ? 'border-red-400 ring-2 ring-red-200' : 'border-gray-200'
+                      }`}
                     >
-                      <td className="px-3 py-4 text-center">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(helper.id)}
-                          onChange={() => toggleSelect(helper.id)}
-                          className="w-4 h-4"
-                        />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{helper.name}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">{helper.email || '-'}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          helper.role === 'admin'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {helper.role === 'admin' ? '管理者' : 'スタッフ'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">
-                          {new Date(helper.deleted_at).toLocaleString('ja-JP')}
+                      {/* カードヘッダー（削除済みはグレー） */}
+                      <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-100 to-gray-200">
+                        <div className="flex items-start justify-between gap-2">
+                          <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleSelect(helper.id)}
+                              className="w-4 h-4 shrink-0"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <div className="flex items-center gap-2 flex-wrap min-w-0">
+                              <h3 className="text-lg font-bold text-gray-700 truncate">
+                                {helper.name}
+                              </h3>
+                              <span className="px-2 py-0.5 text-[10px] font-bold bg-red-600 text-white rounded">
+                                削除済み
+                              </span>
+                            </div>
+                          </label>
+                          <span className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
+                            isAdmin ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {isAdmin ? '管理者' : 'スタッフ'}
+                          </span>
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">{helper.deleted_by || '-'}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-gray-500">{helper.deletion_reason || '-'}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => handleRestore(helper.id, helper.name)}
-                            disabled={busy?.id === helper.id}
-                            title="通常のヘルパー一覧に戻す"
-                            className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                          >
-                            {busy?.id === helper.id && busy.action === 'restore' ? '…' : '在職復元'}
-                          </button>
-                          <button
-                            onClick={() => handleRestoreAsResigned(helper.id, helper.name)}
-                            disabled={busy?.id === helper.id}
-                            title="退職者として復元（明細データを保持）"
-                            className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded-md text-white bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                          >
-                            {busy?.id === helper.id && busy.action === 'resigned' ? '…' : '退職者復元'}
-                          </button>
-                          <button
-                            onClick={() => handlePermanentDelete(helper.id, helper.name)}
-                            disabled={busy?.id === helper.id}
-                            title="完全削除（復元不可）"
-                            className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded-md text-white bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                          >
-                            {busy?.id === helper.id && busy.action === 'delete' ? '…' : '完全削除'}
-                          </button>
+                      </div>
+
+                      {/* カードコンテンツ */}
+                      <div className="px-6 py-4 space-y-2 flex-1 text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-gray-500 shrink-0">メール:</span>
+                          <span className="font-medium text-gray-800 truncate">
+                            {helper.email || '-'}
+                          </span>
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-gray-500 shrink-0">削除日時:</span>
+                          <span className="font-medium text-gray-800 text-xs">
+                            {new Date(helper.deleted_at).toLocaleString('ja-JP')}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-gray-500 shrink-0">削除者:</span>
+                          <span className="font-medium text-gray-800 truncate text-xs">
+                            {helper.deleted_by || '-'}
+                          </span>
+                        </div>
+                        {helper.deletion_reason && (
+                          <div className="pt-1 border-t border-gray-100">
+                            <span className="text-gray-500 text-xs">理由:</span>
+                            <p className="text-gray-700 text-xs mt-0.5">{helper.deletion_reason}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* アクション */}
+                      <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 grid grid-cols-3 gap-1.5">
+                        <button
+                          onClick={() => handleRestore(helper.id, helper.name)}
+                          disabled={isBusy}
+                          className="inline-flex items-center justify-center px-2 py-2 text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
+                          title="通常のヘルパー一覧に戻す"
+                        >
+                          {isBusy && busy?.action === 'restore' ? '…' : '在職復元'}
+                        </button>
+                        <button
+                          onClick={() => handleRestoreAsResigned(helper.id, helper.name)}
+                          disabled={isBusy}
+                          className="inline-flex items-center justify-center px-2 py-2 text-xs font-medium rounded-md text-white bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
+                          title="退職者として復元（明細データを保持）"
+                        >
+                          {isBusy && busy?.action === 'resigned' ? '…' : '退職者復元'}
+                        </button>
+                        <button
+                          onClick={() => handlePermanentDelete(helper.id, helper.name)}
+                          disabled={isBusy}
+                          className="inline-flex items-center justify-center px-2 py-2 text-xs font-medium rounded-md text-white bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
+                          title="完全削除（復元不可）"
+                        >
+                          {isBusy && busy?.action === 'delete' ? '…' : '完全削除'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
             </>
           )}
@@ -478,7 +427,7 @@ const DeletedHelpersPage: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 };
