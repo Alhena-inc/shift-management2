@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { loadDeletedHelpers, restoreHelper } from '../services/supabaseService';
+import {
+  loadDeletedHelpers,
+  restoreHelper,
+  restoreHelperAsResigned,
+  permanentlyDeleteHelper,
+} from '../services/supabaseService';
 
 interface DeletedHelper {
   id: string;
@@ -17,7 +22,8 @@ const DeletedHelpersPage: React.FC = () => {
   const { role } = useAuth();
   const [deletedHelpers, setDeletedHelpers] = useState<DeletedHelper[]>([]);
   const [loading, setLoading] = useState(true);
-  const [restoring, setRestoring] = useState<string | null>(null);
+  // 行ごとの処理中状態：'restore' / 'resigned' / 'delete'
+  const [busy, setBusy] = useState<{ id: string; action: 'restore' | 'resigned' | 'delete' } | null>(null);
 
   // 削除済みヘルパーを読み込み
   const fetchDeletedHelpers = async () => {
@@ -36,23 +42,74 @@ const DeletedHelpersPage: React.FC = () => {
     fetchDeletedHelpers();
   }, []);
 
-  // ヘルパーを復元
+  // ヘルパーを在職者として復元
   const handleRestore = async (helperId: string, helperName: string) => {
-    if (!confirm(`${helperName} を復元しますか？`)) {
+    if (!confirm(`${helperName} を「在職者」として復元しますか？\n通常のヘルパー一覧に戻ります。`)) {
       return;
     }
 
-    setRestoring(helperId);
+    setBusy({ id: helperId, action: 'restore' });
     try {
       await restoreHelper(helperId);
-      alert(`${helperName} を復元しました`);
-      // リストを再読み込み
+      alert(`${helperName} を在職者として復元しました`);
       await fetchDeletedHelpers();
     } catch (error) {
       console.error('復元エラー:', error);
       alert('復元に失敗しました');
     } finally {
-      setRestoring(null);
+      setBusy(null);
+    }
+  };
+
+  // ヘルパーを退職者として復元（給与明細データは保持）
+  const handleRestoreAsResigned = async (helperId: string, helperName: string) => {
+    if (!confirm(
+      `${helperName} を「退職者」として復元しますか？\n\n` +
+      `・過去の給与明細・賃金台帳の情報は保持されます\n` +
+      `・給与明細一覧／賃金台帳の「退職者のみ」フィルターから参照可能になります\n` +
+      `・新規シフト・新規明細の作成対象からは外れます`
+    )) {
+      return;
+    }
+
+    setBusy({ id: helperId, action: 'resigned' });
+    try {
+      await restoreHelperAsResigned(helperId);
+      alert(`${helperName} を退職者として復元しました`);
+      await fetchDeletedHelpers();
+    } catch (error) {
+      console.error('退職者復元エラー:', error);
+      alert('退職者として復元に失敗しました');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // 削除済みヘルパーを完全削除
+  const handlePermanentDelete = async (helperId: string, helperName: string) => {
+    if (!confirm(
+      `⚠️ ${helperName} を完全に削除しますか？\n\n` +
+      `・このページからも消えます\n` +
+      `・関連する給与明細データも参照できなくなります\n` +
+      `・この操作は取り消せません`
+    )) {
+      return;
+    }
+    // 二段階確認
+    if (!confirm(`本当に削除しますか？\n${helperName} のデータは復元できません。`)) {
+      return;
+    }
+
+    setBusy({ id: helperId, action: 'delete' });
+    try {
+      await permanentlyDeleteHelper(helperId);
+      alert(`${helperName} を完全削除しました`);
+      await fetchDeletedHelpers();
+    } catch (error) {
+      console.error('完全削除エラー:', error);
+      alert('完全削除に失敗しました');
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -99,7 +156,7 @@ const DeletedHelpersPage: React.FC = () => {
                 削除済みヘルパー
               </h1>
               <p className="text-gray-600 text-xs sm:text-sm mt-1">
-                削除されたヘルパーの確認と復元ができます
+                在職復元・退職者として復元・完全削除を選択できます
               </p>
             </div>
             <button
@@ -147,17 +204,29 @@ const DeletedHelpersPage: React.FC = () => {
                     {helper.deleted_by && <div>削除者: {helper.deleted_by}</div>}
                     {helper.deletion_reason && <div>理由: {helper.deletion_reason}</div>}
                   </div>
-                  <button
-                    onClick={() => handleRestore(helper.id, helper.name)}
-                    disabled={restoring === helper.id}
-                    className={`w-full inline-flex items-center justify-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white ${
-                      restoring === helper.id
-                        ? 'bg-gray-400 cursor-not-allowed'
-                        : 'bg-blue-600 hover:bg-blue-700'
-                    }`}
-                  >
-                    {restoring === helper.id ? '復元中...' : '復元'}
-                  </button>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => handleRestore(helper.id, helper.name)}
+                      disabled={busy?.id === helper.id}
+                      className="inline-flex items-center justify-center px-2 py-2 text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                      {busy?.id === helper.id && busy.action === 'restore' ? '処理中…' : '在職復元'}
+                    </button>
+                    <button
+                      onClick={() => handleRestoreAsResigned(helper.id, helper.name)}
+                      disabled={busy?.id === helper.id}
+                      className="inline-flex items-center justify-center px-2 py-2 text-xs font-medium rounded-md text-white bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                      {busy?.id === helper.id && busy.action === 'resigned' ? '処理中…' : '退職者復元'}
+                    </button>
+                    <button
+                      onClick={() => handlePermanentDelete(helper.id, helper.name)}
+                      disabled={busy?.id === helper.id}
+                      className="inline-flex items-center justify-center px-2 py-2 text-xs font-medium rounded-md text-white bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                      {busy?.id === helper.id && busy.action === 'delete' ? '削除中…' : '完全削除'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -220,33 +289,32 @@ const DeletedHelpersPage: React.FC = () => {
                         <div className="text-sm text-gray-500">{helper.deletion_reason || '-'}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
-                        <button
-                          onClick={() => handleRestore(helper.id, helper.name)}
-                          disabled={restoring === helper.id}
-                          className={`inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white ${
-                            restoring === helper.id
-                              ? 'bg-gray-400 cursor-not-allowed'
-                              : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
-                          }`}
-                        >
-                          {restoring === helper.id ? (
-                            <>
-                              <svg className="animate-spin -ml-1 mr-2 h-3 w-3 text-white" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                              </svg>
-                              復元中...
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                              </svg>
-                              復元
-                            </>
-                          )}
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => handleRestore(helper.id, helper.name)}
+                            disabled={busy?.id === helper.id}
+                            title="通常のヘルパー一覧に戻す"
+                            className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                          >
+                            {busy?.id === helper.id && busy.action === 'restore' ? '…' : '在職復元'}
+                          </button>
+                          <button
+                            onClick={() => handleRestoreAsResigned(helper.id, helper.name)}
+                            disabled={busy?.id === helper.id}
+                            title="退職者として復元（明細データを保持）"
+                            className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded-md text-white bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                          >
+                            {busy?.id === helper.id && busy.action === 'resigned' ? '…' : '退職者復元'}
+                          </button>
+                          <button
+                            onClick={() => handlePermanentDelete(helper.id, helper.name)}
+                            disabled={busy?.id === helper.id}
+                            title="完全削除（復元不可）"
+                            className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded-md text-white bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                          >
+                            {busy?.id === helper.id && busy.action === 'delete' ? '…' : '完全削除'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -266,10 +334,20 @@ const DeletedHelpersPage: React.FC = () => {
             </svg>
             <div>
               <h3 className="text-sm font-semibold text-blue-800 mb-1">削除済みヘルパーについて</h3>
-              <p className="text-sm text-blue-700">
-                削除されたヘルパーは完全に消去されず、このページで確認・復元できます。
-                復元すると、ヘルパー一覧に再び表示されるようになります。
-              </p>
+              <ul className="text-sm text-blue-700 space-y-1 list-disc pl-5">
+                <li>
+                  <strong>在職復元</strong>：通常のヘルパー一覧に戻します。新規シフト・明細の作成対象になります。
+                </li>
+                <li>
+                  <strong>退職者復元</strong>：退職者として復元します。
+                  過去の給与明細・賃金台帳の情報は保持され、
+                  給与明細一覧／賃金台帳の「退職者のみ」フィルターから参照できます。
+                </li>
+                <li>
+                  <strong>完全削除</strong>：このページからも消去します。
+                  関連データは復元できなくなるためご注意ください。
+                </li>
+              </ul>
             </div>
           </div>
         </div>

@@ -471,6 +471,99 @@ export const restoreHelper = async (deletedHelperId: string): Promise<void> => {
   }
 };
 
+/**
+ * 削除済みヘルパーを「退職者」として復元する。
+ * helpers テーブルに status='退職' で戻し、deleted_helpers から削除する。
+ * 過去の給与明細・賃金台帳データは保持される（helperId が同じため）。
+ */
+export const restoreHelperAsResigned = async (deletedHelperId: string): Promise<void> => {
+  try {
+    console.log(`🏷️ ヘルパーを退職者として復元中: ${deletedHelperId}`);
+
+    const { data: deletedHelper, error: fetchError } = await supabase
+      .from('deleted_helpers')
+      .select('*')
+      .eq('id', deletedHelperId)
+      .single();
+
+    if (fetchError || !deletedHelper) {
+      console.error('削除済みヘルパー取得エラー:', fetchError);
+      throw new Error('削除済みヘルパーが見つかりません');
+    }
+
+    // helpers テーブルに status='退職' で復元
+    const { error: insertError } = await supabase
+      .from('helpers')
+      .insert({
+        id: deletedHelper.original_id || undefined,
+        name: deletedHelper.name,
+        email: deletedHelper.email,
+        hourly_wage: deletedHelper.hourly_wage,
+        order_index: deletedHelper.order_index,
+        gender: deletedHelper.gender,
+        personal_token: deletedHelper.personal_token,
+        role: deletedHelper.role,
+        insurances: deletedHelper.insurances,
+        standard_remuneration: deletedHelper.standard_remuneration,
+        status: '退職',
+        created_at: deletedHelper.original_created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+    if (insertError) {
+      console.error('退職者復元エラー:', insertError);
+      throw insertError;
+    }
+
+    // deleted_helpers から削除
+    const { error: deleteError } = await supabase
+      .from('deleted_helpers')
+      .delete()
+      .eq('id', deletedHelperId);
+
+    if (deleteError) {
+      console.error('削除済みテーブルからの削除エラー:', deleteError);
+      // ロールバック
+      if (deletedHelper.original_id) {
+        await supabase
+          .from('helpers')
+          .delete()
+          .eq('id', deletedHelper.original_id);
+      }
+      throw deleteError;
+    }
+
+    console.log(`✅ ヘルパーを退職者として復元しました (ID: ${deletedHelperId})`);
+  } catch (error) {
+    console.error('退職者復元エラー:', error);
+    throw error;
+  }
+};
+
+/**
+ * 削除済みヘルパーを完全削除する（deleted_helpers テーブルからも消す）。
+ * 関連する給与明細データは Cascade 設定に依存。
+ */
+export const permanentlyDeleteHelper = async (deletedHelperId: string): Promise<void> => {
+  try {
+    console.log(`🗑️ ヘルパーを完全削除: ${deletedHelperId}`);
+    const { error } = await supabase
+      .from('deleted_helpers')
+      .delete()
+      .eq('id', deletedHelperId);
+
+    if (error) {
+      console.error('完全削除エラー:', error);
+      throw error;
+    }
+
+    console.log(`✅ ヘルパーを完全削除しました (ID: ${deletedHelperId})`);
+  } catch (error) {
+    console.error('完全削除エラー:', error);
+    throw error;
+  }
+};
+
 // シフトを保存（月ごと）
 export const saveShiftsForMonth = async (year: number, month: number, shifts: Shift[]): Promise<void> => {
   try {
