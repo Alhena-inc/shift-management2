@@ -39,6 +39,8 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
   const [bulkPdfMode, setBulkPdfMode] = useState(false);
   const [pdfExportMode, setPdfExportMode] = useState<'all' | 'payslip' | 'attendance'>('all');
   const [activeDownloadMenuHelperId, setActiveDownloadMenuHelperId] = useState<string | null>(null);
+  // 退職者の表示モード：'active'=在職のみ / 'all'=全員 / 'resigned'=退職者のみ
+  const [resignedFilter, setResignedFilter] = useState<'active' | 'all' | 'resigned'>('active');
   const printViewRef = useRef<HTMLDivElement>(null);
 
   // ヘルパーをソート・フィルタリング
@@ -54,20 +56,22 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
     // 2. フィルタリングとソート
     return Array.from(uniqueHelpersMap.values())
       .filter(helper => {
-        // 削除されていないヘルパーは常に表示
+        // 退職者フィルター
+        const isResigned = helper.status === '退職';
+        if (resignedFilter === 'active' && isResigned) return false;
+        if (resignedFilter === 'resigned' && !isResigned) return false;
+
+        // 削除されていないヘルパーは常に表示（退職者フィルター通過後）
         if (!helper.deleted) return true;
 
         // 削除されている場合、その月にデータ（シフト、給与明細）があるかチェック
-        // シフトがあるか
         const hasShifts = shifts.some(s => s.helperId === helper.id);
-
-        // 給与明細があるか
         const hasPayslip = payslips.some(p => p.helperId === helper.id);
 
         return hasShifts || hasPayslip;
       })
       .sort((a, b) => (a.order || 0) - (b.order || 0) || a.id.localeCompare(b.id));
-  }, [helpers, shifts, payslips]);
+  }, [helpers, shifts, payslips, resignedFilter]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -700,6 +704,21 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
               </select>
             </div>
 
+            {/* 退職者フィルター */}
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">対象:</label>
+              <select
+                value={resignedFilter}
+                onChange={(e) => setResignedFilter(e.target.value as 'active' | 'all' | 'resigned')}
+                className="bg-white border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                title="退職者の表示モード"
+              >
+                <option value="active">在職者のみ</option>
+                <option value="all">全員（退職者含む）</option>
+                <option value="resigned">退職者のみ</option>
+              </select>
+            </div>
+
             {/* 一括作成ボタン */}
             <button
               onClick={handleBulkCreatePayslips}
@@ -818,7 +837,14 @@ export const PayslipListPage: React.FC<PayslipListPageProps> = ({ onClose, shift
                           {index + 1}
                         </td>
                         <td className="border border-gray-300 px-3 py-2 text-sm">
-                          {helper.name}
+                          <span className="inline-flex items-center gap-1.5">
+                            {helper.name}
+                            {helper.status === '退職' && (
+                              <span className="px-1.5 py-0.5 text-[10px] font-medium bg-gray-200 text-gray-700 rounded">
+                                退職
+                              </span>
+                            )}
+                          </span>
                         </td>
                         <td className="border border-gray-300 px-2 py-2 text-sm text-center">
                           <span className={`px-2 py-0.5 rounded text-xs font-medium ${getEmploymentTypeBadgeColor(helper.employmentType)}`}>

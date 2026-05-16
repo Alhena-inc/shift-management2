@@ -10,9 +10,12 @@ import { getCompanyInfo } from '../../types/payslip';
 const now = new Date();
 const currentYear = now.getFullYear();
 
+type ResignedFilter = 'active' | 'all' | 'resigned';
+
 interface Filter {
   calendarYear: number;
-  includeResigned: boolean;
+  /** 'active'=在職のみ / 'all'=全員 / 'resigned'=退職者のみ */
+  resignedFilter: ResignedFilter;
   officeName: string;
   helperIds: string[] | null;
 }
@@ -27,7 +30,7 @@ const WageLedgerPage: React.FC = () => {
 
   const [filter, setFilter] = useState<Filter>({
     calendarYear: currentYear,
-    includeResigned: false,
+    resignedFilter: 'active',
     officeName,
     helperIds: null,
   });
@@ -44,10 +47,12 @@ const WageLedgerPage: React.FC = () => {
     })();
   }, []);
 
-  // 個別選択UIに表示する候補（退職者フラグを反映）
+  // 個別選択UIに表示する候補（退職者フィルターを反映）
   const pickableHelpers = useMemo(() => {
-    return filter.includeResigned ? helpers : helpers.filter((h) => h.status !== '退職');
-  }, [helpers, filter.includeResigned]);
+    if (filter.resignedFilter === 'all') return helpers;
+    if (filter.resignedFilter === 'resigned') return helpers.filter((h) => h.status === '退職');
+    return helpers.filter((h) => h.status !== '退職');
+  }, [helpers, filter.resignedFilter]);
 
   const targetHelpers = useMemo(() => {
     if (filter.helperIds == null) return pickableHelpers;
@@ -151,16 +156,25 @@ const WageLedgerPage: React.FC = () => {
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-4">
-            <label className="flex items-center gap-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                checked={filter.includeResigned}
+            <div className="flex items-center gap-2 text-sm text-gray-700">
+              <span className="text-xs text-gray-500">対象：</span>
+              <select
+                value={filter.resignedFilter}
                 onChange={(e) =>
-                  setFilter((f) => ({ ...f, includeResigned: e.target.checked }))
+                  setFilter((f) => ({
+                    ...f,
+                    resignedFilter: e.target.value as ResignedFilter,
+                    // フィルター変更時は個別選択を全クリア（ノイズ防止）
+                    helperIds: f.helperIds === null ? null : [],
+                  }))
                 }
-              />
-              退職者を含む
-            </label>
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white"
+              >
+                <option value="active">在職者のみ</option>
+                <option value="all">全員（退職者含む）</option>
+                <option value="resigned">退職者のみ</option>
+              </select>
+            </div>
             <div className="flex items-center gap-3 text-sm text-gray-700">
               <span className="text-xs text-gray-500">対象範囲：</span>
               <label className="flex items-center gap-1">
