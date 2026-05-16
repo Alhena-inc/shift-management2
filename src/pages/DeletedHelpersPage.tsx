@@ -24,6 +24,29 @@ const DeletedHelpersPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   // 行ごとの処理中状態：'restore' / 'resigned' / 'delete'
   const [busy, setBusy] = useState<{ id: string; action: 'restore' | 'resigned' | 'delete' } | null>(null);
+  // 一括選択
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+
+  // 選択ヘルパー
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const isAllSelected = deletedHelpers.length > 0 && deletedHelpers.every((h) => selectedIds.has(h.id));
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(deletedHelpers.map((h) => h.id)));
+    }
+  };
 
   // 削除済みヘルパーを読み込み
   const fetchDeletedHelpers = async () => {
@@ -31,11 +54,58 @@ const DeletedHelpersPage: React.FC = () => {
     try {
       const helpers = await loadDeletedHelpers();
       setDeletedHelpers(helpers);
+      setSelectedIds(new Set());
     } catch (error) {
       console.error('削除済みヘルパー読み込みエラー:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  // 選択した複数ヘルパーを一括完全削除
+  const handleBulkPermanentDelete = async () => {
+    const targets = deletedHelpers.filter((h) => selectedIds.has(h.id));
+    if (targets.length === 0) return;
+
+    if (!confirm(
+      `⚠️ 選択した ${targets.length} 件のヘルパーを完全削除しますか？\n\n` +
+      `${targets.slice(0, 5).map((h) => `・${h.name}`).join('\n')}` +
+      `${targets.length > 5 ? `\n・…他 ${targets.length - 5} 件` : ''}` +
+      `\n\n・このページからも消えます\n` +
+      `・関連する給与明細データも参照できなくなります\n` +
+      `・この操作は取り消せません`
+    )) {
+      return;
+    }
+    if (!confirm(`本当に ${targets.length} 件を完全削除しますか？\nこの操作は元に戻せません。`)) {
+      return;
+    }
+
+    setBulkDeleting(true);
+    setBulkProgress({ done: 0, total: targets.length });
+    const errors: { name: string; error: any }[] = [];
+
+    for (let i = 0; i < targets.length; i++) {
+      const h = targets[i];
+      try {
+        await permanentlyDeleteHelper(h.id);
+      } catch (error) {
+        console.error(`${h.name} の削除エラー:`, error);
+        errors.push({ name: h.name, error });
+      }
+      setBulkProgress({ done: i + 1, total: targets.length });
+    }
+
+    setBulkDeleting(false);
+    if (errors.length === 0) {
+      alert(`${targets.length} 件を完全削除しました`);
+    } else {
+      alert(
+        `完全削除を実行しました（成功 ${targets.length - errors.length} 件 / 失敗 ${errors.length} 件）\n\n` +
+        `失敗：\n${errors.slice(0, 5).map((e) => `・${e.name}`).join('\n')}`
+      );
+    }
+    await fetchDeletedHelpers();
   };
 
   useEffect(() => {
@@ -186,12 +256,49 @@ const DeletedHelpersPage: React.FC = () => {
             </div>
           ) : (
             <>
+            {/* 一括操作バー */}
+            <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isAllSelected}
+                  onChange={toggleSelectAll}
+                  className="w-4 h-4"
+                />
+                {isAllSelected ? '全て解除' : '全て選択'}
+              </label>
+              <span className="text-sm text-gray-600">
+                選択中：<strong className="text-gray-900">{selectedIds.size}</strong> / {deletedHelpers.length} 件
+              </span>
+              <button
+                onClick={handleBulkPermanentDelete}
+                disabled={selectedIds.size === 0 || bulkDeleting}
+                className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md text-white bg-red-600 hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                {bulkDeleting
+                  ? `削除中… (${bulkProgress.done}/${bulkProgress.total})`
+                  : `選択した ${selectedIds.size} 件を完全削除`}
+              </button>
+            </div>
+
             {/* スマホ: カード表示 */}
             <div className="sm:hidden divide-y divide-gray-200">
               {deletedHelpers.map((helper) => (
-                <div key={helper.id} className="p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="font-medium text-gray-900">{helper.name}</div>
+                <div key={helper.id} className={`p-4 ${selectedIds.has(helper.id) ? 'bg-red-50' : ''}`}>
+                  <div className="flex items-center justify-between mb-2 gap-2">
+                    <label className="flex items-center gap-2 flex-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(helper.id)}
+                        onChange={() => toggleSelect(helper.id)}
+                        className="w-4 h-4"
+                      />
+                      <span className="font-medium text-gray-900">{helper.name}</span>
+                    </label>
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                       helper.role === 'admin' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
                     }`}>
@@ -236,6 +343,15 @@ const DeletedHelpersPage: React.FC = () => {
               <table className="w-full">
                 <thead className="bg-gray-50 border-b">
                   <tr>
+                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-10">
+                      <input
+                        type="checkbox"
+                        checked={isAllSelected}
+                        onChange={toggleSelectAll}
+                        className="w-4 h-4"
+                        title={isAllSelected ? '全て解除' : '全て選択'}
+                      />
+                    </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       名前
                     </th>
@@ -261,7 +377,18 @@ const DeletedHelpersPage: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {deletedHelpers.map((helper) => (
-                    <tr key={helper.id} className="hover:bg-gray-50">
+                    <tr
+                      key={helper.id}
+                      className={`hover:bg-gray-50 ${selectedIds.has(helper.id) ? 'bg-red-50' : ''}`}
+                    >
+                      <td className="px-3 py-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(helper.id)}
+                          onChange={() => toggleSelect(helper.id)}
+                          className="w-4 h-4"
+                        />
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">{helper.name}</div>
                       </td>
