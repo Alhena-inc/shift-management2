@@ -469,7 +469,9 @@ const HelperDetailPage: React.FC = () => {
               deletedEditMode ? 'text-blue-900' : 'text-amber-900'
             }`}>
               <span className="font-semibold">
-                {deletedEditMode ? '✏️ 削除済みヘルパーの情報補完中（保存で original_data に反映されます）' : '⚠️ 読み取り専用'}
+                {deletedEditMode
+                  ? '✏️ 補完モード（保存で original_data に反映されます）※未設定項目はデフォルト表示なので、必要なら正しい値を入力してください'
+                  : '⚠️ 読み取り専用'}
               </span>
               <span>削除日時: {new Date(deletedMeta.deleted_at).toLocaleString('ja-JP')}</span>
               {deletedMeta.deleted_by && <span>削除者: {deletedMeta.deleted_by}</span>}

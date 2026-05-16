@@ -178,82 +178,104 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
 /**
  * helpers テーブルの行（snake_case）を Helper 型（camelCase）に変換する。
  * loadHelpers と loadDeletedHelperAsHelper の両方で使用する。
+ *
+ * @param row DB行（snake_case）または既に変換済みオブジェクト（camelCase）
+ * @param applyDefaults true: 未指定フィールドにデフォルト値を埋める（loadHelpers用）
+ *                      false: undefined のまま残す（削除済み詳細表示用）
  */
-function helperRowToHelper(row: any): Helper {
-  return {
-    // 基本フィールド
+function helperRowToHelper(row: any, applyDefaults: boolean = true): Helper {
+  // snake_case と camelCase の両方を見て値を取得
+  const pick = <T>(snake: string, camel: string, fallback?: T): T => {
+    const v = row[snake] !== undefined ? row[snake] : row[camel];
+    return (v === undefined || v === null) ? (fallback as T) : v;
+  };
+
+  const helper: any = {
     id: row.id,
     name: row.name,
-    order: row.order_index ?? row.order ?? 0,
+    order: pick('order_index', 'order', applyDefaults ? 0 : undefined),
 
     // 基本情報
-    lastName: row.last_name ?? row.lastName ?? undefined,
-    firstName: row.first_name ?? row.firstName ?? undefined,
-    nameKana: row.name_kana ?? row.nameKana ?? undefined,
-    gender: (row.gender || 'male') as 'male' | 'female',
-    birthDate: row.birth_date ?? row.birthDate ?? undefined,
-    postalCode: row.postal_code ?? row.postalCode ?? undefined,
+    lastName: pick('last_name', 'lastName'),
+    firstName: pick('first_name', 'firstName'),
+    nameKana: pick('name_kana', 'nameKana'),
+    gender: row.gender || (applyDefaults ? 'male' : undefined),
+    birthDate: pick('birth_date', 'birthDate'),
+    postalCode: pick('postal_code', 'postalCode'),
     address: row.address ?? undefined,
     phone: row.phone ?? undefined,
     email: row.email ?? undefined,
-    emergencyContact: row.emergency_contact ?? row.emergencyContact ?? undefined,
-    emergencyContactPhone: row.emergency_contact_phone ?? row.emergencyContactPhone ?? undefined,
+    emergencyContact: pick('emergency_contact', 'emergencyContact'),
+    emergencyContactPhone: pick('emergency_contact_phone', 'emergencyContactPhone'),
 
     // 権限・アカウント
-    role: row.role || 'staff',
-    personalToken: row.personal_token ?? row.personalToken ?? undefined,
-    spreadsheetGid: row.spreadsheet_gid ?? row.spreadsheetGid ?? undefined,
+    role: row.role || (applyDefaults ? 'staff' : undefined),
+    personalToken: pick('personal_token', 'personalToken'),
+    spreadsheetGid: pick('spreadsheet_gid', 'spreadsheetGid'),
 
-    // 雇用・給与タイプ
-    salaryType: row.salary_type ?? row.salaryType ?? 'hourly',
-    employmentType: row.employment_type ?? row.employmentType ?? 'parttime',
-    hireDate: row.hire_date ?? row.hireDate ?? undefined,
+    // 雇用・給与タイプ（補填モードでは undefined のまま残し、デフォルト値で誤って上書きしない）
+    salaryType: pick('salary_type', 'salaryType', applyDefaults ? 'hourly' : undefined),
+    employmentType: pick('employment_type', 'employmentType', applyDefaults ? 'parttime' : undefined),
+    hireDate: pick('hire_date', 'hireDate'),
     department: row.department ?? undefined,
-    status: row.status ?? 'active',
-    cashPayment: row.cash_payment ?? row.cashPayment ?? false,
-    excludeFromShift: row.exclude_from_shift ?? row.excludeFromShift ?? false,
+    status: row.status ?? (applyDefaults ? 'active' : undefined),
+    cashPayment: pick('cash_payment', 'cashPayment', applyDefaults ? false : undefined),
+    excludeFromShift: pick('exclude_from_shift', 'excludeFromShift', applyDefaults ? false : undefined),
 
-    // 時給制
-    hourlyRate: row.hourly_rate ?? row.hourlyRate ?? row.hourly_wage ?? 2000,
-    treatmentImprovementPerHour: row.treatment_improvement_per_hour ?? row.treatmentImprovementPerHour ?? 0,
-    officeHourlyRate: row.office_hourly_rate ?? row.officeHourlyRate ?? 1000,
+    // 時給制（補填モードでは数値デフォルトを入れない）
+    hourlyRate: row.hourly_rate ?? row.hourlyRate ?? row.hourly_wage ?? (applyDefaults ? 2000 : undefined),
+    treatmentImprovementPerHour: pick('treatment_improvement_per_hour', 'treatmentImprovementPerHour', applyDefaults ? 0 : undefined),
+    officeHourlyRate: pick('office_hourly_rate', 'officeHourlyRate', applyDefaults ? 1000 : undefined),
 
     // 固定給制
-    baseSalary: row.base_salary ?? row.baseSalary ?? 0,
-    treatmentAllowance: row.treatment_allowance ?? row.treatmentAllowance ?? 0,
-    otherAllowances: row.other_allowances ?? row.otherAllowances ?? [],
+    baseSalary: pick('base_salary', 'baseSalary', applyDefaults ? 0 : undefined),
+    treatmentAllowance: pick('treatment_allowance', 'treatmentAllowance', applyDefaults ? 0 : undefined),
+    otherAllowances: pick('other_allowances', 'otherAllowances', applyDefaults ? [] : undefined),
 
     // 税務情報
-    dependents: row.dependents ?? 0,
-    residentTaxType: row.resident_tax_type ?? row.residentTaxType ?? 'special',
-    residentialTax: row.residential_tax ?? row.residentialTax ?? 0,
+    dependents: row.dependents ?? (applyDefaults ? 0 : undefined),
+    residentTaxType: pick('resident_tax_type', 'residentTaxType', applyDefaults ? 'special' : undefined),
+    residentialTax: pick('residential_tax', 'residentialTax', applyDefaults ? 0 : undefined),
     age: row.age ?? undefined,
-    standardRemuneration: row.standard_remuneration ?? row.standardRemuneration ?? 0,
-    hasWithholdingTax: row.has_withholding_tax !== false && row.hasWithholdingTax !== false,
-    taxColumnType: row.tax_column_type ?? row.taxColumnType ?? 'main',
-    contractPeriod: row.contract_period ?? row.contractPeriod ?? undefined,
+    standardRemuneration: pick('standard_remuneration', 'standardRemuneration', applyDefaults ? 0 : undefined),
+    hasWithholdingTax: (row.has_withholding_tax !== false && row.hasWithholdingTax !== false),
+    taxColumnType: pick('tax_column_type', 'taxColumnType', applyDefaults ? 'main' : undefined),
+    contractPeriod: pick('contract_period', 'contractPeriod'),
 
     // 資格・スキル
-    qualifications: row.qualifications ?? [],
-    qualificationDates: row.qualification_dates ?? row.qualificationDates ?? {},
-    serviceTypes: row.service_types ?? row.serviceTypes ?? [],
-    commuteMethods: row.commute_methods ?? row.commuteMethods ?? [],
+    qualifications: row.qualifications ?? (applyDefaults ? [] : undefined),
+    qualificationDates: pick('qualification_dates', 'qualificationDates', applyDefaults ? {} : undefined),
+    serviceTypes: pick('service_types', 'serviceTypes', applyDefaults ? [] : undefined),
+    commuteMethods: pick('commute_methods', 'commuteMethods', applyDefaults ? [] : undefined),
 
     // 保険
-    insurances: (row.insurances ?? []) as any[],
+    insurances: row.insurances ?? (applyDefaults ? [] : undefined),
 
     // 勤怠テンプレート
-    attendanceTemplate: row.attendance_template ?? row.attendanceTemplate ?? {
+    attendanceTemplate: pick('attendance_template', 'attendanceTemplate', applyDefaults ? {
       enabled: false,
       weekday: { startTime: '09:00', endTime: '18:00', breakMinutes: 60 },
       excludeWeekends: true,
       excludeHolidays: false,
       excludedDateRanges: []
-    },
+    } : undefined),
 
     // 月別支払いデータ
-    monthlyPayments: row.monthly_payments ?? row.monthlyPayments ?? {},
-  } as Helper;
+    monthlyPayments: pick('monthly_payments', 'monthlyPayments', applyDefaults ? {} : undefined),
+
+    // 子育て支援金徴収タイミング（明細計算用、デフォルトなし）
+    kosodateShienkinCollectionTiming: pick('kosodate_shienkin_collection_timing', 'kosodateShienkinCollectionTiming'),
+
+    // 役員フラグ
+    isExecutive: pick('is_executive', 'isExecutive'),
+  };
+
+  // undefined のキーを削除（applyDefaults=false 時に空オブジェクトで上書きされないため）
+  if (!applyDefaults) {
+    Object.keys(helper).forEach((k) => helper[k] === undefined && delete helper[k]);
+  }
+
+  return helper as Helper;
 }
 
 export const loadHelpers = async (): Promise<Helper[]> => {
@@ -494,17 +516,16 @@ export const loadDeletedHelperAsHelper = async (
     const row = data[0];
 
     // original_data があればフル復元、なければ既存カラムから最低限を構築
-    // original_data は helpers の DB 行（snake_case）または Helper 形式（camelCase）の
-    // どちらの可能性もある。helperRowToHelper は両方を受け付ける。
+    // 削除済み詳細表示では applyDefaults=false にして、データがないフィールドは
+    // undefined のまま残す（補填編集時に誤ったデフォルト値で上書きされないため）
     const original = (row as any).original_data;
     let helper: Helper;
     if (original && typeof original === 'object') {
-      // original_data から snake_case/camelCase 両対応で全フィールドを復元
-      helper = { ...helperRowToHelper(original), deleted: true };
-      // id だけは deleted_helpers.original_id を優先
+      helper = { ...helperRowToHelper(original, false), deleted: true };
       helper.id = (row as any).original_id || helper.id;
     } else {
       // フォールバック：deleted_helpers の既存カラムから最低限を構築
+      // applyDefaults=false で「データなし」を保持
       helper = helperRowToHelper({
         id: (row as any).original_id || (row as any).id,
         name: (row as any).name || '',
@@ -515,7 +536,7 @@ export const loadDeletedHelperAsHelper = async (
         role: (row as any).role,
         insurances: (row as any).insurances,
         standard_remuneration: (row as any).standard_remuneration,
-      });
+      }, false);
       helper.deleted = true;
     }
 
