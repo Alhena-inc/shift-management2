@@ -1098,6 +1098,10 @@ export function generatePayslipFromShifts(
   year: number,
   month: number
 ): Payslip {
+  // 過去月の給与条件を反映：salaryHistory がある場合は対象月の設定で helper を上書き
+  // ※雇用形態の判定（固定給/時給）にも反映させるため、最上位で上書きする
+  helper = applyHelperAtMonth(helper, year, month);
+
   // 雇用形態で分岐
   if (isFixedSalaryEmployee(helper)) {
     // 固定給制：ヘルパー情報の基本給から計算
