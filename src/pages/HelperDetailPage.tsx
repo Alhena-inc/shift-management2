@@ -1652,8 +1652,8 @@ const HelperDetailPage: React.FC = () => {
                     <strong>💡 ヒント</strong>
                     <ul className="mt-1 ml-4 list-disc space-y-0.5">
                       <li><strong>現在の設定</strong>は「給与」タブで編集してください。このタブには記録しません。</li>
-                      <li>過去の期間は必ず<strong>開始日と終了日の両方</strong>を入力してください。</li>
-                      <li>例：2024年4月〜2025年12月だけ時給1,200円だった場合、その期間だけ記録します。</li>
+                      <li>過去の期間は必ず<strong>「いつから」「いつまで」</strong>を月単位で入力してください。</li>
+                      <li>例：「2025年11月〜2026年4月は固定給、2026年5月から業務委託」の場合、終了月に <strong>「2026年4月」</strong> を指定すると、4月の明細までこの設定で計算されます。</li>
                     </ul>
                   </div>
                 </div>
@@ -1775,12 +1775,12 @@ const SalaryHistoryEditor: React.FC<SalaryHistoryEditorProps> = ({ helper, onCha
                         期間 {periods.length - idx}
                       </span>
                       {isOngoing ? (
-                        <span className="text-xs font-bold px-2 py-1 bg-orange-100 text-orange-800 rounded" title="終了日を入力してください">
-                          ⚠️ 終了日が未入力
+                        <span className="text-xs font-bold px-2 py-1 bg-orange-100 text-orange-800 rounded" title="「いつまで」を入力してください">
+                          ⚠️ 終了月が未入力
                         </span>
                       ) : (
                         <span className="text-xs font-bold px-2 py-1 bg-gray-100 text-gray-700 rounded">
-                          📅 {p.startDate} 〜 {p.endDate} の月に適用
+                          📅 {formatYearMonth(p.startDate)} 〜 {formatYearMonth(p.endDate)} の明細に適用
                         </span>
                       )}
                     </div>
@@ -1793,36 +1793,12 @@ const SalaryHistoryEditor: React.FC<SalaryHistoryEditorProps> = ({ helper, onCha
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">開始日</label>
-                      <input
-                        type="date"
-                        value={p.startDate || ''}
-                        onChange={(e) => updatePeriod(idx, { startDate: e.target.value })}
-                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">終了日（空欄＝今後も続く）</label>
-                      <input
-                        type="date"
-                        value={p.endDate || ''}
-                        onChange={(e) => updatePeriod(idx, { endDate: e.target.value || undefined })}
-                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">備考</label>
-                      <input
-                        type="text"
-                        value={p.note || ''}
-                        onChange={(e) => updatePeriod(idx, { note: e.target.value })}
-                        placeholder="例：昇給・契約変更"
-                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
-                      />
-                    </div>
-                  </div>
+                  <PeriodMonthRangeEditor
+                    startDate={p.startDate}
+                    endDate={p.endDate}
+                    note={p.note}
+                    onChange={(patch) => updatePeriod(idx, patch)}
+                  />
                 </div>
 
                 {/* 期間内の設定（給与タブと同じレイアウト） */}
@@ -2206,5 +2182,77 @@ function nextDay(dateStr: string): string {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
+
+/** YYYY-MM-DD → 「YYYY年M月」 */
+function formatYearMonth(dateStr?: string): string {
+  if (!dateStr) return '';
+  const [y, m] = dateStr.split('-');
+  return `${y}年${parseInt(m, 10)}月`;
+}
+
+/** "YYYY-MM" → "YYYY-MM-01"（月初） */
+function toMonthStart(yearMonth: string): string {
+  return `${yearMonth}-01`;
+}
+
+/** "YYYY-MM" → "YYYY-MM-末日" */
+function toMonthEnd(yearMonth: string): string {
+  const [y, m] = yearMonth.split('-').map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  return `${yearMonth}-${String(lastDay).padStart(2, '0')}`;
+}
+
+/** YYYY-MM-DD から "YYYY-MM" を抽出 */
+function toYearMonthInput(dateStr?: string): string {
+  if (!dateStr) return '';
+  return dateStr.slice(0, 7);
+}
+
+/**
+ * 「いつから（開始月）」「いつまで（終了月）」と備考を入力するエディタ。
+ * date入力ではなく month入力にして、ユーザーが月単位で考えられるようにする。
+ * 内部的には開始月の月初・終了月の月末を YYYY-MM-DD で保存。
+ */
+const PeriodMonthRangeEditor: React.FC<{
+  startDate?: string;
+  endDate?: string;
+  note?: string;
+  onChange: (patch: { startDate?: string; endDate?: string; note?: string }) => void;
+}> = ({ startDate, endDate, note, onChange }) => {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">いつから（開始月）</label>
+        <input
+          type="month"
+          value={toYearMonthInput(startDate)}
+          onChange={(e) => onChange({ startDate: e.target.value ? toMonthStart(e.target.value) : undefined })}
+          className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+        />
+        <p className="text-[10px] text-gray-500 mt-1">月初日から適用されます</p>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">いつまで（終了月）</label>
+        <input
+          type="month"
+          value={toYearMonthInput(endDate)}
+          onChange={(e) => onChange({ endDate: e.target.value ? toMonthEnd(e.target.value) : undefined })}
+          className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+        />
+        <p className="text-[10px] text-gray-500 mt-1">月末日まで適用、空欄＝今後も継続</p>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">備考</label>
+        <input
+          type="text"
+          value={note || ''}
+          onChange={(e) => onChange({ note: e.target.value })}
+          placeholder="例：5月から業務委託へ変更"
+          className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+        />
+      </div>
+    </div>
+  );
+};
 
 export default HelperDetailPage;
