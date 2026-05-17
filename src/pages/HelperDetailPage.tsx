@@ -1725,23 +1725,19 @@ const SalaryHistoryEditor: React.FC<SalaryHistoryEditorProps> = ({ helper, onCha
   };
 
   return (
-    <div className="mt-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div>
-          <h3 className="text-sm font-semibold text-amber-900">📅 給与条件の期間履歴</h3>
-          <p className="text-xs text-amber-800 mt-1">
-            期間ごとに「この期間はこの給与・保険・税務設定」と一括で記録できます。
-            過去月の給与明細・賃金台帳には、その月時点の設定が自動で反映されます。
-            <br />
-            ※履歴が1件もない場合は、上の各項目の現状値が全期間に適用されます。
-          </p>
-        </div>
+    <div className="space-y-8">
+      {/* ヘッダー */}
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm text-gray-600">
+          期間ごとに「この期間はこの給与・保険・税務設定」と一括で記録できます。
+          過去月の給与明細・賃金台帳には、その月時点の設定が自動で反映されます。
+          履歴が1件もない場合は、「給与」タブの現状値が全期間に適用されます。
+        </p>
         {periods.length === 0 && (
           <button
             type="button"
             onClick={initFromCurrent}
-            className="px-3 py-1.5 text-xs font-medium text-amber-900 bg-white border border-amber-300 rounded hover:bg-amber-100 whitespace-nowrap"
-            title="現在の設定を履歴として記録"
+            className="px-4 py-2 text-sm font-medium text-blue-700 bg-white border border-blue-300 rounded-lg hover:bg-blue-50 whitespace-nowrap"
           >
             現在の設定を履歴化
           </button>
@@ -1749,187 +1745,346 @@ const SalaryHistoryEditor: React.FC<SalaryHistoryEditorProps> = ({ helper, onCha
       </div>
 
       {periods.length === 0 ? (
-        <div className="text-center text-sm text-amber-800 py-4">
-          履歴がまだありません。下の「+ 新しい期間を追加」から登録できます。
+        <div className="text-center text-sm text-gray-500 py-12 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+          履歴がまだありません。「+ 新しい期間を追加」から登録できます。
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-12">
           {periods.map((p, idx) => {
             const isOngoing = !p.endDate;
             const isFixed = p.salaryType === 'fixed';
             return (
-              <div
-                key={idx}
-                className={`p-3 rounded-md border bg-white ${
-                  isOngoing ? 'border-green-300' : 'border-amber-200'
-                }`}
-              >
+              <div key={idx} className="border-2 border-gray-200 rounded-xl overflow-hidden">
                 {/* 期間ヘッダー */}
-                <div className="flex flex-wrap items-center gap-2 mb-3">
-                  <span className="text-xs font-bold text-gray-600 px-2 py-1 bg-gray-100 rounded">
-                    期間 {periods.length - idx}
-                  </span>
-                  <input
-                    type="date"
-                    value={p.startDate || ''}
-                    onChange={(e) => updatePeriod(idx, { startDate: e.target.value })}
-                    className="px-2 py-1 border border-gray-300 rounded text-sm bg-white"
-                    title="開始日"
-                  />
-                  <span className="text-gray-500 text-sm">〜</span>
-                  <input
-                    type="date"
-                    value={p.endDate || ''}
-                    onChange={(e) => updatePeriod(idx, { endDate: e.target.value || undefined })}
-                    className="px-2 py-1 border border-gray-300 rounded text-sm bg-white"
-                    title="終了日（空欄なら現在も継続）"
-                  />
-                  {isOngoing ? (
-                    <span className="text-[10px] font-bold px-2 py-0.5 bg-green-100 text-green-800 rounded">
-                      現在も継続
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-gray-500">終了済</span>
-                  )}
-                  <input
-                    type="text"
-                    value={p.note || ''}
-                    onChange={(e) => updatePeriod(idx, { note: e.target.value })}
-                    placeholder="備考（例：昇給・契約変更）"
-                    className="flex-1 min-w-[160px] px-2 py-1 border border-gray-300 rounded text-sm bg-white"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removePeriod(idx)}
-                    className="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded"
-                    title="この期間を削除"
-                  >
-                    🗑️
-                  </button>
+                <div className={`px-6 py-4 border-b ${
+                  isOngoing
+                    ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200'
+                    : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-200'
+                }`}>
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-bold px-3 py-1 bg-white border border-gray-300 rounded">
+                        期間 {periods.length - idx}
+                      </span>
+                      {isOngoing ? (
+                        <span className="text-xs font-bold px-2 py-1 bg-green-100 text-green-800 rounded">
+                          現在も継続
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-500">終了済</span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removePeriod(idx)}
+                      className="px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded border border-red-200"
+                    >
+                      🗑️ この期間を削除
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">開始日</label>
+                      <input
+                        type="date"
+                        value={p.startDate || ''}
+                        onChange={(e) => updatePeriod(idx, { startDate: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">終了日（空欄で現在も継続）</label>
+                      <input
+                        type="date"
+                        value={p.endDate || ''}
+                        onChange={(e) => updatePeriod(idx, { endDate: e.target.value || undefined })}
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">備考</label>
+                      <input
+                        type="text"
+                        value={p.note || ''}
+                        onChange={(e) => updatePeriod(idx, { note: e.target.value })}
+                        placeholder="例：昇給・契約変更"
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                {/* 雇用・給与タイプ */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                  <div>
-                    <label className="block text-[11px] font-medium text-gray-600 mb-1">給与タイプ</label>
-                    <div className="flex gap-2 text-sm">
-                      <label className="flex-1 flex items-center gap-1.5 px-2 py-1 border rounded cursor-pointer bg-white">
-                        <input
-                          type="radio"
-                          checked={p.salaryType === 'fixed'}
-                          onChange={() => updatePeriod(idx, { salaryType: 'fixed' })}
-                        />
-                        固定給
+                {/* 期間内の設定（給与タブと同じレイアウト） */}
+                <div className="p-6 space-y-8">
+                  {/* 雇用・給与設定 */}
+                  <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
+                    <h3 className="text-lg font-bold text-gray-800 mb-6 pb-2 border-b border-gray-300">雇用・給与設定</h3>
+
+                    {/* 給与タイプ */}
+                    <div className="mb-6">
+                      <label className="block text-sm font-bold text-gray-700 mb-3">給与タイプ</label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <label className={`flex items-start gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                          isFixed ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:bg-gray-50'
+                        }`}>
+                          <input
+                            type="radio"
+                            checked={isFixed}
+                            onChange={() => updatePeriod(idx, { salaryType: 'fixed' })}
+                            className="mt-1 w-5 h-5"
+                          />
+                          <div>
+                            <div className="font-bold text-gray-800">固定給</div>
+                            <p className="text-xs text-gray-500 mt-1">月給制。基本給・処遇改善手当を設定します。</p>
+                          </div>
+                        </label>
+                        <label className={`flex items-start gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                          !isFixed ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white hover:bg-gray-50'
+                        }`}>
+                          <input
+                            type="radio"
+                            checked={!isFixed}
+                            onChange={() => updatePeriod(idx, { salaryType: 'hourly' })}
+                            className="mt-1 w-5 h-5"
+                          />
+                          <div>
+                            <div className="font-bold text-gray-800">時給</div>
+                            <p className="text-xs text-gray-500 mt-1">時給制。稼働時間に応じて計算します。</p>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* 雇用形態 */}
+                    <div className="mb-6">
+                      <label className="block text-sm font-bold text-gray-700 mb-2">雇用形態</label>
+                      <select
+                        value={p.employmentType || 'parttime'}
+                        onChange={(e) => updatePeriod(idx, { employmentType: e.target.value as any })}
+                        className="w-full md:w-1/2 px-4 py-2 bg-white border border-gray-300 rounded-lg"
+                      >
+                        {EMPLOYMENT_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 子育て徴収タイミング */}
+                    <div className="mb-6">
+                      <label className="block text-sm font-bold text-gray-700 mb-2">
+                        子育て支援金の徴収タイミング
                       </label>
-                      <label className="flex-1 flex items-center gap-1.5 px-2 py-1 border rounded cursor-pointer bg-white">
+                      <select
+                        value={p.kosodateShienkinCollectionTiming || (p.employmentType === 'executive' ? 'current_month' : 'next_month')}
+                        onChange={(e) => updatePeriod(idx, { kosodateShienkinCollectionTiming: e.target.value as any })}
+                        className="w-full md:w-1/2 px-4 py-2 bg-white border border-gray-300 rounded-lg"
+                      >
+                        <option value="next_month">翌月徴収（例：4月分→5月支給から控除、社会保険料の原則）</option>
+                        <option value="current_month">当月徴収（例：4月分→4月支給から控除）</option>
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        未設定の場合、役員はデフォルトで「当月徴収」、それ以外は「翌月徴収」として扱われます。
+                      </p>
+                    </div>
+
+                    {/* シフト表に入れない */}
+                    <div className="pt-6 border-t border-gray-300">
+                      <label className={`flex items-start gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                        p.excludeFromShift ? 'border-orange-400 bg-orange-50' : 'border-gray-200 bg-white hover:bg-gray-50'
+                      }`}>
                         <input
-                          type="radio"
-                          checked={p.salaryType !== 'fixed'}
-                          onChange={() => updatePeriod(idx, { salaryType: 'hourly' })}
+                          type="checkbox"
+                          checked={p.excludeFromShift || false}
+                          onChange={(e) => updatePeriod(idx, { excludeFromShift: e.target.checked })}
+                          className="mt-1 w-5 h-5 rounded"
                         />
-                        時給
+                        <div>
+                          <div className="font-bold text-gray-800">シフト表に入れない</div>
+                          <p className="text-xs text-gray-500 mt-1">シフト表には表示されませんが、給料計算・給与明細の対象には含まれます。</p>
+                        </div>
                       </label>
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-medium text-gray-600 mb-1">雇用形態</label>
-                    <select
-                      value={p.employmentType || ''}
-                      onChange={(e) => updatePeriod(idx, { employmentType: e.target.value as any })}
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-white"
-                    >
-                      <option value="">未設定</option>
-                      {EMPLOYMENT_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
 
-                {/* 給与額（固定給 or 時給） */}
-                {isFixed ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3 p-2 bg-blue-50 rounded">
-                    <NumField label="基本給(月)" value={p.baseSalary} onChange={(v) => updatePeriod(idx, { baseSalary: v })} />
-                    <NumField label="処遇改善手当(月)" value={p.treatmentAllowance} onChange={(v) => updatePeriod(idx, { treatmentAllowance: v })} />
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3 p-2 bg-green-50 rounded">
-                    <NumField label="基本時給" value={p.hourlyRate} onChange={(v) => updatePeriod(idx, { hourlyRate: v })} />
-                    <NumField label="処遇改善/時" value={p.treatmentImprovementPerHour} onChange={(v) => updatePeriod(idx, { treatmentImprovementPerHour: v })} />
-                    <NumField label="事務作業時給" value={p.officeHourlyRate} onChange={(v) => updatePeriod(idx, { officeHourlyRate: v })} />
-                  </div>
-                )}
-
-                {/* 税務・標準報酬 */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                  <NumField label="標準報酬月額" value={p.standardRemuneration} onChange={(v) => updatePeriod(idx, { standardRemuneration: v })} />
-                  <NumField label="扶養人数" value={p.dependents} onChange={(v) => updatePeriod(idx, { dependents: v })} />
-                  <NumField label="住民税(月)" value={p.residentialTax} onChange={(v) => updatePeriod(idx, { residentialTax: v })} />
-                  <div>
-                    <label className="block text-[11px] font-medium text-gray-600 mb-1">税区分</label>
-                    <select
-                      value={p.taxColumnType || 'main'}
-                      onChange={(e) => updatePeriod(idx, { taxColumnType: e.target.value as any })}
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-white"
-                    >
-                      <option value="main">甲欄</option>
-                      <option value="sub">乙欄</option>
-                      <option value="daily">丙欄</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* 保険セット */}
-                <div className="mb-2">
-                  <label className="block text-[11px] font-medium text-gray-600 mb-1">加入保険</label>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    {INSURANCE_TYPES.map((t) => {
-                      const checked = (p.insurances ?? []).includes(t);
-                      return (
-                        <label
-                          key={t}
-                          className={`flex items-center gap-2 px-3 py-1.5 border rounded cursor-pointer text-sm ${
-                            checked
-                              ? 'bg-blue-50 border-blue-300 text-blue-900'
-                              : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
-                          }`}
-                        >
+                  {/* 時給制 */}
+                  {!isFixed && (
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">時給情報</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">基本時給（円）</label>
                           <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleInsurance(idx, t)}
-                            className="w-4 h-4"
+                            type="number"
+                            value={p.hourlyRate ?? ''}
+                            onChange={(e) => updatePeriod(idx, { hourlyRate: e.target.value === '' ? undefined : Number(e.target.value) })}
+                            className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg"
+                            placeholder="1500"
                           />
-                          {getInsuranceLabel(t)}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">処遇改善加算/時（円）</label>
+                          <input
+                            type="number"
+                            value={p.treatmentImprovementPerHour ?? ''}
+                            onChange={(e) => updatePeriod(idx, { treatmentImprovementPerHour: e.target.value === '' ? undefined : Number(e.target.value) })}
+                            className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg"
+                            placeholder="100"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">事務作業時給（円）</label>
+                          <input
+                            type="number"
+                            value={p.officeHourlyRate ?? ''}
+                            onChange={(e) => updatePeriod(idx, { officeHourlyRate: e.target.value === '' ? undefined : Number(e.target.value) })}
+                            className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg"
+                            placeholder="1200"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
-                {/* 所属・徴収タイミング */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* 固定給 */}
+                  {isFixed && (
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">給与情報</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">基本給（円）</label>
+                          <input
+                            type="number"
+                            value={p.baseSalary ?? ''}
+                            onChange={(e) => updatePeriod(idx, { baseSalary: e.target.value === '' ? undefined : Number(e.target.value) })}
+                            className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg"
+                            placeholder="200000"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">処遇改善手当（円）</label>
+                          <input
+                            type="number"
+                            value={p.treatmentAllowance ?? ''}
+                            onChange={(e) => updatePeriod(idx, { treatmentAllowance: e.target.value === '' ? undefined : Number(e.target.value) })}
+                            className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg"
+                            placeholder="100000"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 保険加入 */}
                   <div>
-                    <label className="block text-[11px] font-medium text-gray-600 mb-1">所属</label>
-                    <input
-                      type="text"
-                      value={p.department || ''}
-                      onChange={(e) => updatePeriod(idx, { department: e.target.value || undefined })}
-                      placeholder="例：訪問介護事業所A"
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-white"
-                    />
+                    <h3 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">保険加入</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {INSURANCE_TYPES.map((t) => {
+                        const checked = (p.insurances ?? []).includes(t);
+                        const subtitle: Record<InsuranceType, string> = {
+                          health: 'Social Insurance',
+                          pension: 'Welfare Pension',
+                          care: '40歳以上',
+                          employment: '失業保険',
+                        };
+                        return (
+                          <label
+                            key={t}
+                            className="flex items-center gap-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleInsurance(idx, t)}
+                              className="w-5 h-5 rounded"
+                            />
+                            <div>
+                              <span className="text-gray-700 font-medium">{getInsuranceLabel(t)}</span>
+                              <p className="text-xs text-gray-500">{subtitle[t]}</p>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    {/* 標準報酬月額 */}
+                    <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">標準報酬月額（円）</label>
+                      <input
+                        type="number"
+                        value={p.standardRemuneration ?? ''}
+                        onChange={(e) => updatePeriod(idx, { standardRemuneration: e.target.value === '' ? undefined : Number(e.target.value) })}
+                        className="w-full md:w-1/3 px-4 py-2 bg-white border border-gray-300 rounded-lg"
+                        placeholder="0"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        社会保険料の計算に使用します。未入力の場合は、その月の総支給額から自動的に標準報酬を決定します。
+                      </p>
+                    </div>
                   </div>
+
+                  {/* 源泉徴収・税務 */}
                   <div>
-                    <label className="block text-[11px] font-medium text-gray-600 mb-1">子育て徴収タイミング</label>
-                    <select
-                      value={p.kosodateShienkinCollectionTiming || ''}
-                      onChange={(e) => updatePeriod(idx, { kosodateShienkinCollectionTiming: (e.target.value || undefined) as any })}
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-white"
-                    >
-                      <option value="">自動判定</option>
-                      <option value="current_month">当月徴収</option>
-                      <option value="next_month">翌月徴収</option>
-                    </select>
+                    <h3 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">源泉徴収設定</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <label className="flex items-center gap-3 p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+                        <input
+                          type="checkbox"
+                          checked={p.hasWithholdingTax !== false}
+                          onChange={(e) => updatePeriod(idx, { hasWithholdingTax: e.target.checked })}
+                          className="w-5 h-5 rounded"
+                        />
+                        <div>
+                          <span className="text-gray-700 font-medium">源泉徴収する</span>
+                          <p className="text-xs text-gray-500">外すと所得税を計算しません</p>
+                        </div>
+                      </label>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">扶養人数</label>
+                        <input
+                          type="number"
+                          value={p.dependents ?? ''}
+                          onChange={(e) => updatePeriod(idx, { dependents: e.target.value === '' ? undefined : Number(e.target.value) })}
+                          className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg"
+                          placeholder="0"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">税区分</label>
+                        <select
+                          value={p.taxColumnType || 'main'}
+                          onChange={(e) => updatePeriod(idx, { taxColumnType: e.target.value as any })}
+                          className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg"
+                        >
+                          <option value="main">甲欄（主たる給与）</option>
+                          <option value="sub">乙欄（従たる給与）</option>
+                          <option value="daily">丙欄（日額表）</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">住民税（月額）</label>
+                        <input
+                          type="number"
+                          value={p.residentialTax ?? ''}
+                          onChange={(e) => updatePeriod(idx, { residentialTax: e.target.value === '' ? undefined : Number(e.target.value) })}
+                          className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg"
+                          placeholder="0"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">所属事業所</label>
+                        <input
+                          type="text"
+                          value={p.department || ''}
+                          onChange={(e) => updatePeriod(idx, { department: e.target.value || undefined })}
+                          placeholder="例：訪問介護事業所A"
+                          className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1938,11 +2093,11 @@ const SalaryHistoryEditor: React.FC<SalaryHistoryEditorProps> = ({ helper, onCha
         </div>
       )}
 
-      <div className="mt-3">
+      <div>
         <button
           type="button"
           onClick={addPeriod}
-          className="w-full px-3 py-2 text-sm font-medium text-amber-900 bg-white border border-amber-300 rounded hover:bg-amber-100"
+          className="w-full px-4 py-3 text-sm font-medium text-blue-700 bg-blue-50 border-2 border-dashed border-blue-300 rounded-lg hover:bg-blue-100"
         >
           + 新しい期間を追加
         </button>
@@ -1950,26 +2105,6 @@ const SalaryHistoryEditor: React.FC<SalaryHistoryEditorProps> = ({ helper, onCha
     </div>
   );
 };
-
-const NumField: React.FC<{
-  label: string;
-  value?: number;
-  onChange: (v: number | undefined) => void;
-}> = ({ label, value, onChange }) => (
-  <div>
-    <label className="block text-[11px] font-medium text-gray-600 mb-1">{label}</label>
-    <input
-      type="number"
-      value={value ?? ''}
-      onChange={(e) => {
-        const v = e.target.value;
-        onChange(v === '' ? undefined : Number(v));
-      }}
-      className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-white"
-      placeholder="0"
-    />
-  </div>
-);
 
 function nextDay(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
