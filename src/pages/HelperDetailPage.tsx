@@ -1645,10 +1645,17 @@ const HelperDetailPage: React.FC = () => {
                 <h2 className="text-lg font-bold text-gray-800 mb-2 pb-2 border-b">
                   給与の過去設定（期間別）
                 </h2>
-                <p className="text-sm text-gray-600 mb-4">
-                  「給与」タブと同じ項目を期間ごとに記録できます。
-                  過去月の給与明細・賃金台帳には、その月時点の設定が自動で反映されます。
-                </p>
+                <div className="text-sm text-gray-600 mb-4 space-y-1">
+                  <p>「給与」タブと同じ項目を、期間ごとに記録できます。</p>
+                  <p>過去月の給与明細・賃金台帳には、<strong>その月時点の設定</strong>が自動で反映されます。</p>
+                  <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded text-xs text-blue-900">
+                    <strong>💡 バッジの意味</strong>
+                    <ul className="mt-1 ml-4 list-disc">
+                      <li><span className="px-1.5 py-0.5 bg-green-100 text-green-800 rounded">✅ 適用中（今日も有効）</span>：終了日が未設定で、今後もこの設定が使われる期間</li>
+                      <li><span className="px-1.5 py-0.5 bg-gray-200 text-gray-700 rounded">終了（過去の設定）</span>：終了日を過ぎており、現在は適用されない期間</li>
+                    </ul>
+                  </div>
+                </div>
                 <SalaryHistoryEditor
                   helper={helper}
                   onChange={(history) => handleChange('salaryHistory' as any, history)}
@@ -1767,11 +1774,13 @@ const SalaryHistoryEditor: React.FC<SalaryHistoryEditorProps> = ({ helper, onCha
                         期間 {periods.length - idx}
                       </span>
                       {isOngoing ? (
-                        <span className="text-xs font-bold px-2 py-1 bg-green-100 text-green-800 rounded">
-                          現在も継続
+                        <span className="text-xs font-bold px-2 py-1 bg-green-100 text-green-800 rounded" title="この期間の設定が、終了日未設定のため今日も適用されています">
+                          ✅ 適用中（今日も有効）
                         </span>
                       ) : (
-                        <span className="text-xs text-gray-500">終了済</span>
+                        <span className="text-xs font-bold px-2 py-1 bg-gray-200 text-gray-700 rounded" title="終了日を過ぎているため、現在は適用されていません">
+                          終了（過去の設定）
+                        </span>
                       )}
                     </div>
                     <button
@@ -1794,7 +1803,7 @@ const SalaryHistoryEditor: React.FC<SalaryHistoryEditorProps> = ({ helper, onCha
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">終了日（空欄で現在も継続）</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">終了日（空欄＝今後も続く）</label>
                       <input
                         type="date"
                         value={p.endDate || ''}
