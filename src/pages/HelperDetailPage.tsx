@@ -1646,13 +1646,14 @@ const HelperDetailPage: React.FC = () => {
                   給与の過去設定（期間別）
                 </h2>
                 <div className="text-sm text-gray-600 mb-4 space-y-1">
-                  <p>「給与」タブと同じ項目を、期間ごとに記録できます。</p>
+                  <p>過去のある期間に「今と違う給与設定」だった場合に、その期間の設定を記録します。</p>
                   <p>過去月の給与明細・賃金台帳には、<strong>その月時点の設定</strong>が自動で反映されます。</p>
                   <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded text-xs text-blue-900">
-                    <strong>💡 バッジの意味</strong>
-                    <ul className="mt-1 ml-4 list-disc">
-                      <li><span className="px-1.5 py-0.5 bg-green-100 text-green-800 rounded">✅ 適用中（今日も有効）</span>：終了日が未設定で、今後もこの設定が使われる期間</li>
-                      <li><span className="px-1.5 py-0.5 bg-gray-200 text-gray-700 rounded">終了（過去の設定）</span>：終了日を過ぎており、現在は適用されない期間</li>
+                    <strong>💡 ヒント</strong>
+                    <ul className="mt-1 ml-4 list-disc space-y-0.5">
+                      <li><strong>現在の設定</strong>は「給与」タブで編集してください。このタブには記録しません。</li>
+                      <li>過去の期間は必ず<strong>開始日と終了日の両方</strong>を入力してください。</li>
+                      <li>例：2024年4月〜2025年12月だけ時給1,200円だった場合、その期間だけ記録します。</li>
                     </ul>
                   </div>
                 </div>
@@ -1765,7 +1766,7 @@ const SalaryHistoryEditor: React.FC<SalaryHistoryEditorProps> = ({ helper, onCha
                 {/* 期間ヘッダー */}
                 <div className={`px-6 py-4 border-b ${
                   isOngoing
-                    ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200'
+                    ? 'bg-gradient-to-r from-orange-50 to-amber-50 border-orange-200'
                     : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-200'
                 }`}>
                   <div className="flex items-center justify-between gap-3 mb-3">
@@ -1774,12 +1775,12 @@ const SalaryHistoryEditor: React.FC<SalaryHistoryEditorProps> = ({ helper, onCha
                         期間 {periods.length - idx}
                       </span>
                       {isOngoing ? (
-                        <span className="text-xs font-bold px-2 py-1 bg-green-100 text-green-800 rounded" title="この期間の設定が、終了日未設定のため今日も適用されています">
-                          ✅ 適用中（今日も有効）
+                        <span className="text-xs font-bold px-2 py-1 bg-orange-100 text-orange-800 rounded" title="終了日を入力してください">
+                          ⚠️ 終了日が未入力
                         </span>
                       ) : (
-                        <span className="text-xs font-bold px-2 py-1 bg-gray-200 text-gray-700 rounded" title="終了日を過ぎているため、現在は適用されていません">
-                          終了（過去の設定）
+                        <span className="text-xs font-bold px-2 py-1 bg-gray-100 text-gray-700 rounded">
+                          📅 {p.startDate} 〜 {p.endDate} の月に適用
                         </span>
                       )}
                     </div>
