@@ -1,15 +1,33 @@
 import type { Helper } from '../types';
 import { calculateInsurance, calculateKosodateShienkin, getHealthStandardRemuneration, resolveKosodateCollectionTiming } from './insuranceCalculator';
 import { calculateWithholdingTaxByYear } from './taxCalculator';
+import { resolveInsurancesAt } from './insuranceHistory';
 
-export const deriveInsuranceTypesFromHelper = (h?: Helper, currentTypes: string[] = []): string[] => {
+/**
+ * 給与明細用：保険加入種別を導出する
+ * - 第3引数 (year, month) を渡すと insuranceHistory から期間判定（過去月にも対応）
+ * - 渡さない場合は現状の insurances を使用（後方互換）
+ */
+export const deriveInsuranceTypesFromHelper = (
+    h?: Helper,
+    currentTypes: string[] = [],
+    yearMonth?: { year: number; month: number }
+): string[] => {
     if (!h) return currentTypes;
+
+    // 保険加入履歴がある場合は期間判定で正確に算出
+    if (h.insuranceHistory && h.insuranceHistory.length > 0 && yearMonth) {
+        const age = Number((h as any).age) || 0;
+        const result = resolveInsurancesAt(h, yearMonth.year, yearMonth.month) as string[];
+        if (age >= 40 && !result.includes('care')) result.push('care');
+        return result;
+    }
+
     const ins = Array.isArray(h.insurances) ? h.insurances : [];
     const isTrue = (val: any) => val === true || val === 'true';
     const result: string[] = [];
 
     const hasLegacySocial = isTrue((h as any).hasSocialInsurance) || isTrue((h as any).socialInsurance);
-    // insurances配列が存在する場合はそれを使用、存在しない場合のみレガシーフラグを使用
     const hasInsurancesArray = Array.isArray(h.insurances);
 
     if ((hasInsurancesArray && ins.includes('health')) || (!hasInsurancesArray && hasLegacySocial)) result.push('health');
@@ -179,7 +197,11 @@ export const recalculatePayslip = (updated: any, helper?: Helper) => {
 
     // 明示的に標準報酬月額が設定されている場合は、社会保険（健康保険・厚生年金）を計算対象に含める
     // ただし、ヘルパー設定でOFFにされている場合は強制しないように修正
-    let calcTypes = deriveInsuranceTypesFromHelper(helper, updated.insuranceTypes || []);
+    let calcTypes = deriveInsuranceTypesFromHelper(
+        helper,
+        updated.insuranceTypes || [],
+        { year: updated.year, month: updated.month }
+    );
 
     // 標準報酬月額が入っていても、ヘルパー設定で除外されているなら復活させない
     // (以前のロジックでは強制的にpushしていたのを削除)

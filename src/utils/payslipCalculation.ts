@@ -7,6 +7,42 @@ import { NIGHT_START, NIGHT_END } from '../types/payslip';
 import { calculateWithholdingTaxByYear } from './taxCalculator';
 import { calculateInsurance, calculateKosodateShienkin, getHealthStandardRemuneration, resolveKosodateCollectionTiming } from './insuranceCalculator';
 import { generateFixedDailyAttendanceFromTemplate } from './attendanceTemplate';
+import { resolveInsurancesAt } from './insuranceHistory';
+
+/**
+ * 給与明細用：対象月時点の保険加入種別を決定する。
+ * insuranceHistory があれば期間判定、なければ helper.insurances + 旧フィールドからレガシー判定。
+ */
+function resolveInsurancesForPayslip(helper: Helper, year: number, month: number, age: number): string[] {
+  // 1. insuranceHistory があれば期間判定（過去月の加入状況を正確に反映）
+  if (helper.insuranceHistory && helper.insuranceHistory.length > 0) {
+    const result = resolveInsurancesAt(helper, year, month);
+    // 介護保険：40歳以上は自動加入（履歴に明示がなくても）
+    if (age >= 40 && !result.includes('care')) result.push('care');
+    return result;
+  }
+
+  // 2. 履歴がない場合は従来通り
+  const helperInsurances = helper.insurances || [];
+  const insuranceTypes: string[] = [];
+  const hasLegacySocial = (helper as any).hasSocialInsurance === true || (helper as any).socialInsurance === true;
+  const hasInsurancesArray = Array.isArray(helper.insurances);
+  if ((hasInsurancesArray && helperInsurances.includes('health')) || (!hasInsurancesArray && hasLegacySocial)) {
+    insuranceTypes.push('health');
+  }
+  if ((hasInsurancesArray && helperInsurances.includes('pension')) || (!hasInsurancesArray && hasLegacySocial)) {
+    insuranceTypes.push('pension');
+  }
+  const hasNursingInsurance = helperInsurances.includes('care')
+    || (helper as any).hasNursingInsurance === true
+    || (helper as any).nursingInsurance === true;
+  if (hasNursingInsurance || age >= 40) insuranceTypes.push('care');
+  const hasEmploymentInsurance = helperInsurances.includes('employment')
+    || (helper as any).hasEmploymentInsurance === true
+    || (helper as any).employmentInsurance === true;
+  if (hasEmploymentInsurance) insuranceTypes.push('employment');
+  return insuranceTypes;
+}
 
 /**
  * 特別手当の設定
@@ -370,45 +406,9 @@ export function generateFixedPayslipFromShifts(
     payslip.payments.emergencyAllowance +
     payslip.payments.nightAllowance;
 
-  // 社会保険料の自動計算（ヘルパー設定のチェックに従う）
+  // 社会保険料の自動計算（保険加入履歴 or 現状の insurances から導出）
   const age = helper.age || 0;
-  const helperInsurances = helper.insurances || [];
-  const insuranceTypes: string[] = [];
-
-  // 社会保険（健康保険・厚生年金）はセット扱い
-  // 社会保険（健康保険・厚生年金）
-  const hasLegacySocial =
-    (helper as any).hasSocialInsurance === true ||
-    (helper as any).socialInsurance === true;
-  const hasInsurancesArray = Array.isArray(helper.insurances);
-
-  // 健康保険
-  if ((hasInsurancesArray && helperInsurances.includes('health')) || (!hasInsurancesArray && hasLegacySocial)) {
-    insuranceTypes.push('health');
-  }
-
-  // 厚生年金
-  if ((hasInsurancesArray && helperInsurances.includes('pension')) || (!hasInsurancesArray && hasLegacySocial)) {
-    insuranceTypes.push('pension');
-  }
-
-  // 介護保険（40歳以上の場合は自動対象。明示チェックも許容）
-  const hasNursingInsurance =
-    helperInsurances.includes('care') ||
-    (helper as any).hasNursingInsurance === true ||
-    (helper as any).nursingInsurance === true;
-  if (hasNursingInsurance || age >= 40) {
-    insuranceTypes.push('care');
-  }
-
-  // 雇用保険
-  const hasEmploymentInsurance =
-    helperInsurances.includes('employment') ||
-    (helper as any).hasEmploymentInsurance === true ||
-    (helper as any).employmentInsurance === true;
-  if (hasEmploymentInsurance) {
-    insuranceTypes.push('employment');
-  }
+  const insuranceTypes: string[] = resolveInsurancesForPayslip(helper, payslip.year, payslip.month, age);
 
   // 保険計算対象額（非課税は含めない）
   // - その他手当のtaxExempt=true
@@ -883,39 +883,9 @@ export function generateHourlyPayslipFromShifts(
   payslip.payments.nightNormalPay = 0;
   payslip.payments.nightAccompanyPay = 0;
 
-  // 社会保険料の計算（時給制でも加入している場合）
+  // 社会保険料の計算（保険加入履歴 or 現状の insurances から導出）
   const age = helper.age || 0;
-  const helperInsurances = helper.insurances || [];
-  const insuranceTypes: string[] = [];
-
-  const hasLegacySocial =
-    (helper as any).hasSocialInsurance === true ||
-    (helper as any).socialInsurance === true;
-  const hasInsurancesArray = Array.isArray(helper.insurances);
-
-  if ((hasInsurancesArray && helperInsurances.includes('health')) || (!hasInsurancesArray && hasLegacySocial)) {
-    insuranceTypes.push('health');
-  }
-
-  if ((hasInsurancesArray && helperInsurances.includes('pension')) || (!hasInsurancesArray && hasLegacySocial)) {
-    insuranceTypes.push('pension');
-  }
-
-  const hasNursingInsurance =
-    helperInsurances.includes('care') ||
-    (helper as any).hasNursingInsurance === true ||
-    (helper as any).nursingInsurance === true;
-  if (hasNursingInsurance || age >= 40) {
-    insuranceTypes.push('care');
-  }
-
-  const hasEmploymentInsurance =
-    helperInsurances.includes('employment') ||
-    (helper as any).hasEmploymentInsurance === true ||
-    (helper as any).employmentInsurance === true;
-  if (hasEmploymentInsurance) {
-    insuranceTypes.push('employment');
-  }
+  const insuranceTypes: string[] = resolveInsurancesForPayslip(helper, payslip.year, payslip.month, age);
 
   // 保険計算対象額（非課税は含めない）
   // ※時給の場合も、taxExempt=true の手当や交通費/経費精算は保険計算に含めない

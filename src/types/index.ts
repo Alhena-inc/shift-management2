@@ -100,6 +100,24 @@ export interface AttendanceTemplate {
   excludedDateRanges?: AttendanceTemplateDateRange[];
 }
 
+/** 保険加入種別 */
+export type InsuranceType = 'health' | 'care' | 'pension' | 'employment';
+
+/**
+ * 保険加入期間
+ * 給与明細・賃金台帳で過去月の保険加入状況を正確に反映するための履歴。
+ */
+export interface InsuranceMembershipPeriod {
+  /** 保険種別 */
+  type: InsuranceType;
+  /** 加入開始日（YYYY-MM-DD） */
+  startDate: string;
+  /** 資格喪失日（YYYY-MM-DD）。未設定なら現在も加入中 */
+  endDate?: string;
+  /** 備考（離脱理由など） */
+  note?: string;
+}
+
 export interface Helper {
   id: string;
   name: string;           // 苗字（シフト表表示用）
@@ -177,6 +195,17 @@ export interface Helper {
   // 保険加入
   insurances?: string[];                  // ['health', 'care', 'pension', 'employment']
   // health=健康保険, care=介護保険, pension=厚生年金, employment=雇用保険
+
+  /**
+   * 保険加入履歴（途中加入・途中脱退に対応）
+   * 各保険種別ごとに「いつからいつまで」を記録できる。
+   * 過去月の給与明細・賃金台帳には、その月時点での加入状況が反映される。
+   *
+   * - 同じ type のエントリが複数あってもOK（再加入のケース）
+   * - endDate が undefined or null なら「現在も加入中」
+   * - insuranceHistory が空 or undefined の場合は insurances 配列を従来通り使用（後方互換）
+   */
+  insuranceHistory?: InsuranceMembershipPeriod[];
 
   // 保険加入（旧フィールド名、互換性のため）
   hasSocialInsurance?: boolean;           // 社会保険（健康保険・厚生年金）

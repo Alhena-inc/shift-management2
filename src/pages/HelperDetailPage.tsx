@@ -1513,6 +1513,12 @@ const HelperDetailPage: React.FC = () => {
                   </label>
                 </div>
 
+                {/* 保険加入履歴（過去月の明細・賃金台帳に正確に反映） */}
+                <InsuranceHistoryEditor
+                  helper={helper}
+                  onChange={(history) => handleChange('insuranceHistory' as any, history)}
+                />
+
                 <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     標準報酬月額（円）
@@ -1638,6 +1644,144 @@ const HelperDetailPage: React.FC = () => {
           )}
         </fieldset>
       </main>
+    </div>
+  );
+};
+
+/* ─────────────────── 保険加入履歴エディタ ─────────────────── */
+
+import type { InsuranceMembershipPeriod, InsuranceType } from '../types';
+import { getInsuranceLabel, initInsuranceHistoryFromCurrent } from '../utils/insuranceHistory';
+
+interface InsuranceHistoryEditorProps {
+  helper: Helper;
+  onChange: (history: InsuranceMembershipPeriod[]) => void;
+}
+
+const INSURANCE_TYPES: InsuranceType[] = ['health', 'care', 'pension', 'employment'];
+
+const InsuranceHistoryEditor: React.FC<InsuranceHistoryEditorProps> = ({ helper, onChange }) => {
+  const history = helper.insuranceHistory ?? [];
+
+  const addEntry = (type: InsuranceType) => {
+    const today = new Date().toISOString().slice(0, 10);
+    onChange([...history, { type, startDate: today }]);
+  };
+
+  const updateEntry = (idx: number, patch: Partial<InsuranceMembershipPeriod>) => {
+    const next = history.map((e, i) => (i === idx ? { ...e, ...patch } : e));
+    onChange(next);
+  };
+
+  const removeEntry = (idx: number) => {
+    if (!confirm('この保険加入期間を削除しますか？')) return;
+    onChange(history.filter((_, i) => i !== idx));
+  };
+
+  const initFromCurrent = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const startDate = (helper.hireDate && helper.hireDate.length === 10) ? helper.hireDate : today;
+    if (!confirm(`現在の加入保険を「${startDate} 加入開始」として履歴化します。よろしいですか？`)) return;
+    onChange(initInsuranceHistoryFromCurrent(helper, startDate));
+  };
+
+  return (
+    <div className="mt-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <h3 className="text-sm font-semibold text-amber-900">📅 保険加入期間の履歴</h3>
+          <p className="text-xs text-amber-800 mt-1">
+            途中加入・途中脱退に対応します。過去月の給与明細・賃金台帳には、その月時点での加入状況が自動で反映されます。
+            <br />
+            ※履歴が1件もない場合は、上の「保険加入」チェックボックスの現状値が全期間に適用されます。
+          </p>
+        </div>
+        {history.length === 0 && (helper.insurances?.length ?? 0) > 0 && (
+          <button
+            type="button"
+            onClick={initFromCurrent}
+            className="px-3 py-1.5 text-xs font-medium text-amber-900 bg-white border border-amber-300 rounded hover:bg-amber-100 whitespace-nowrap"
+            title="現在のチェック状態を履歴として記録"
+          >
+            現在の状態を履歴化
+          </button>
+        )}
+      </div>
+
+      {history.length === 0 ? (
+        <div className="text-center text-sm text-amber-800 py-4">
+          履歴がまだありません。下の「+ 加入期間を追加」から登録できます。
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {history
+            .map((entry, idx) => ({ entry, idx }))
+            .sort((a, b) => (a.entry.startDate < b.entry.startDate ? 1 : -1))
+            .map(({ entry, idx }) => (
+              <div
+                key={idx}
+                className="flex flex-wrap items-center gap-2 bg-white border border-amber-200 rounded-md px-3 py-2"
+              >
+                <select
+                  value={entry.type}
+                  onChange={(e) => updateEntry(idx, { type: e.target.value as InsuranceType })}
+                  className="px-2 py-1 border border-gray-300 rounded text-sm bg-white"
+                >
+                  {INSURANCE_TYPES.map((t) => (
+                    <option key={t} value={t}>{getInsuranceLabel(t)}</option>
+                  ))}
+                </select>
+                <input
+                  type="date"
+                  value={entry.startDate || ''}
+                  onChange={(e) => updateEntry(idx, { startDate: e.target.value })}
+                  className="px-2 py-1 border border-gray-300 rounded text-sm bg-white"
+                  title="加入開始日"
+                />
+                <span className="text-gray-500 text-sm">〜</span>
+                <input
+                  type="date"
+                  value={entry.endDate || ''}
+                  onChange={(e) => updateEntry(idx, { endDate: e.target.value || undefined })}
+                  className="px-2 py-1 border border-gray-300 rounded text-sm bg-white"
+                  title="資格喪失日（空欄なら現在も加入中）"
+                  placeholder="現在も加入中"
+                />
+                {!entry.endDate && (
+                  <span className="text-[10px] px-1.5 py-0.5 bg-green-100 text-green-800 rounded">加入中</span>
+                )}
+                <input
+                  type="text"
+                  value={entry.note || ''}
+                  onChange={(e) => updateEntry(idx, { note: e.target.value })}
+                  placeholder="備考（例：社保扶養に切替）"
+                  className="flex-1 min-w-[140px] px-2 py-1 border border-gray-300 rounded text-sm bg-white"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeEntry(idx)}
+                  className="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded"
+                  title="削除"
+                >
+                  🗑️
+                </button>
+              </div>
+            ))}
+        </div>
+      )}
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {INSURANCE_TYPES.map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => addEntry(t)}
+            className="px-3 py-1.5 text-xs font-medium text-amber-900 bg-white border border-amber-300 rounded hover:bg-amber-100"
+          >
+            + {getInsuranceLabel(t)}の加入期間を追加
+          </button>
+        ))}
+      </div>
     </div>
   );
 };
