@@ -1985,6 +1985,88 @@ const SalaryHistoryEditor: React.FC<SalaryHistoryEditorProps> = ({ helper, onCha
                     </div>
                   )}
 
+                  {/* その他手当（交通費・通勤費・住宅手当など） */}
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-lg font-bold text-gray-800 pb-2 border-b flex-1">その他手当</h3>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const list = [...(p.otherAllowances ?? [])];
+                          list.push({ name: '', amount: 0, taxExempt: false });
+                          updatePeriod(idx, { otherAllowances: list });
+                        }}
+                        className="ml-3 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm font-medium whitespace-nowrap"
+                      >
+                        + 手当を追加
+                      </button>
+                    </div>
+
+                    <p className="text-xs text-gray-500 mb-3">
+                      交通費・通勤費・住宅手当などを追加できます。非課税にチェックを入れると課税対象外になります。
+                    </p>
+
+                    {(p.otherAllowances ?? []).length === 0 && (
+                      <div className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-lg border border-gray-200">
+                        手当が登録されていません。「+ 手当を追加」ボタンから追加してください。
+                      </div>
+                    )}
+
+                    {(p.otherAllowances ?? []).map((allowance, aIdx) => (
+                      <div key={aIdx} className="flex gap-3 mb-3 items-center">
+                        <input
+                          type="text"
+                          value={allowance.name}
+                          onChange={(e) => {
+                            const list = [...(p.otherAllowances ?? [])];
+                            list[aIdx] = { ...list[aIdx], name: e.target.value };
+                            updatePeriod(idx, { otherAllowances: list });
+                          }}
+                          className="flex-1 px-4 py-2 bg-white border border-gray-300 rounded-lg"
+                          placeholder="例：交通費・通勤費"
+                        />
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            value={allowance.amount}
+                            onChange={(e) => {
+                              const list = [...(p.otherAllowances ?? [])];
+                              list[aIdx] = { ...list[aIdx], amount: parseFloat(e.target.value) || 0 };
+                              updatePeriod(idx, { otherAllowances: list });
+                            }}
+                            className="w-32 px-4 py-2 bg-white border border-gray-300 rounded-lg"
+                            placeholder="0"
+                          />
+                          <span className="text-sm text-gray-700 font-medium">円</span>
+                        </div>
+                        <label className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-300 cursor-pointer hover:bg-gray-100 whitespace-nowrap">
+                          <input
+                            type="checkbox"
+                            checked={allowance.taxExempt || false}
+                            onChange={(e) => {
+                              const list = [...(p.otherAllowances ?? [])];
+                              list[aIdx] = { ...list[aIdx], taxExempt: e.target.checked };
+                              updatePeriod(idx, { otherAllowances: list });
+                            }}
+                            className="w-4 h-4 rounded"
+                          />
+                          <span className="text-sm text-gray-700">非課税</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const list = (p.otherAllowances ?? []).filter((_, i) => i !== aIdx);
+                            updatePeriod(idx, { otherAllowances: list });
+                          }}
+                          className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm font-medium"
+                          title="削除"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
                   {/* 保険加入 */}
                   <div>
                     <h3 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b">保険加入</h3>
