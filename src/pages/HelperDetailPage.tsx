@@ -3,7 +3,7 @@ import type { Helper } from '../types';
 import { loadHelpers, saveHelpers } from '../services/dataService';
 import { loadDeletedHelperAsHelper, updateDeletedHelperOriginalData } from '../services/supabaseService';
 
-type TabType = 'basic' | 'qualifications' | 'salary';
+type TabType = 'basic' | 'qualifications' | 'salary' | 'salaryHistory';
 
 const HelperDetailPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('basic');
@@ -311,6 +311,7 @@ const HelperDetailPage: React.FC = () => {
     { id: 'basic' as TabType, label: '基本' },
     { id: 'qualifications' as TabType, label: '資格' },
     { id: 'salary' as TabType, label: '給与' },
+    { id: 'salaryHistory' as TabType, label: '給与過去' },
   ];
 
   const qualificationOptions = [
@@ -1513,12 +1514,6 @@ const HelperDetailPage: React.FC = () => {
                   </label>
                 </div>
 
-                {/* 給与条件履歴（過去月の明細・賃金台帳に正確に反映） */}
-                <SalaryHistoryEditor
-                  helper={helper}
-                  onChange={(history) => handleChange('salaryHistory' as any, history)}
-                />
-
                 <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     標準報酬月額（円）
@@ -1639,6 +1634,25 @@ const HelperDetailPage: React.FC = () => {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* タブ4: 給与過去 */}
+          {activeTab === 'salaryHistory' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800 mb-2 pb-2 border-b">
+                  給与の過去設定（期間別）
+                </h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  「給与」タブと同じ項目を期間ごとに記録できます。
+                  過去月の給与明細・賃金台帳には、その月時点の設定が自動で反映されます。
+                </p>
+                <SalaryHistoryEditor
+                  helper={helper}
+                  onChange={(history) => handleChange('salaryHistory' as any, history)}
+                />
               </div>
             </div>
           )}
