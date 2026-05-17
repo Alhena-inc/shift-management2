@@ -1513,10 +1513,10 @@ const HelperDetailPage: React.FC = () => {
                   </label>
                 </div>
 
-                {/* 保険加入履歴（過去月の明細・賃金台帳に正確に反映） */}
-                <InsuranceHistoryEditor
+                {/* 給与条件履歴（過去月の明細・賃金台帳に正確に反映） */}
+                <SalaryHistoryEditor
                   helper={helper}
-                  onChange={(history) => handleChange('insuranceHistory' as any, history)}
+                  onChange={(history) => handleChange('salaryHistory' as any, history)}
                 />
 
                 <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
@@ -1648,148 +1648,101 @@ const HelperDetailPage: React.FC = () => {
   );
 };
 
-/* ─────────────────── 保険加入履歴エディタ（期間セット方式） ─────────────────── */
+/* ─────────────────── 給与履歴エディタ（期間ボックス方式） ─────────────────── */
 
-import type { InsuranceMembershipPeriod, InsuranceType } from '../types';
+import type { SalaryPeriod, InsuranceType } from '../types';
 import { getInsuranceLabel } from '../utils/insuranceHistory';
+import { snapshotHelperAsPeriod } from '../utils/salaryHistory';
 
-interface InsuranceHistoryEditorProps {
+interface SalaryHistoryEditorProps {
   helper: Helper;
-  onChange: (history: InsuranceMembershipPeriod[]) => void;
+  onChange: (history: SalaryPeriod[]) => void;
 }
 
 const INSURANCE_TYPES: InsuranceType[] = ['health', 'pension', 'care', 'employment'];
 
-/**
- * 期間グループ：複数の InsuranceMembershipPeriod のうち
- * 「同じ開始日・終了日・備考」のものを1グループにまとめて編集可能にする。
- */
-interface PeriodGroup {
-  startDate: string;
-  endDate?: string;
-  note?: string;
-  types: Set<InsuranceType>;
-}
+const EMPLOYMENT_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'executive', label: '役員（役員報酬）' },
+  { value: 'fulltime', label: '正社員' },
+  { value: 'contract', label: '契約社員' },
+  { value: 'parttime', label: 'パート・アルバイト' },
+  { value: 'temporary', label: '派遣' },
+  { value: 'outsourced', label: '業務委託' },
+];
 
-/** flat な history を期間グループに変換 */
-function groupHistory(history: InsuranceMembershipPeriod[]): PeriodGroup[] {
-  const map = new Map<string, PeriodGroup>();
-  for (const entry of history) {
-    const key = `${entry.startDate || ''}__${entry.endDate || ''}__${entry.note || ''}`;
-    if (!map.has(key)) {
-      map.set(key, {
-        startDate: entry.startDate || '',
-        endDate: entry.endDate,
-        note: entry.note,
-        types: new Set(),
-      });
-    }
-    map.get(key)!.types.add(entry.type);
-  }
-  return Array.from(map.values()).sort((a, b) =>
+const SalaryHistoryEditor: React.FC<SalaryHistoryEditorProps> = ({ helper, onChange }) => {
+  // 開始日降順でソート（新しい期間が上）
+  const periods = [...(helper.salaryHistory ?? [])].sort((a, b) =>
     (a.startDate < b.startDate ? 1 : -1)
   );
-}
 
-/** 期間グループ配列を flat な history に戻す */
-function ungroup(groups: PeriodGroup[]): InsuranceMembershipPeriod[] {
-  const result: InsuranceMembershipPeriod[] = [];
-  for (const g of groups) {
-    for (const type of g.types) {
-      result.push({
-        type,
-        startDate: g.startDate,
-        endDate: g.endDate,
-        note: g.note,
-      });
-    }
-  }
-  return result;
-}
-
-const InsuranceHistoryEditor: React.FC<InsuranceHistoryEditorProps> = ({ helper, onChange }) => {
-  const groups = groupHistory(helper.insuranceHistory ?? []);
-
-  const commit = (next: PeriodGroup[]) => onChange(ungroup(next));
-
-  const updateGroup = (idx: number, patch: Partial<PeriodGroup>) => {
-    const next = groups.map((g, i) => (i === idx ? { ...g, ...patch } : g));
-    commit(next);
+  const updatePeriod = (idx: number, patch: Partial<SalaryPeriod>) => {
+    const next = periods.map((p, i) => (i === idx ? { ...p, ...patch } : p));
+    onChange(next);
   };
 
-  const toggleType = (idx: number, type: InsuranceType) => {
-    const next = groups.map((g, i) => {
-      if (i !== idx) return g;
-      const newTypes = new Set(g.types);
-      if (newTypes.has(type)) newTypes.delete(type);
-      else newTypes.add(type);
-      return { ...g, types: newTypes };
-    });
-    commit(next);
-  };
-
-  const removeGroup = (idx: number) => {
+  const removePeriod = (idx: number) => {
     if (!confirm('この期間設定を削除しますか？')) return;
-    commit(groups.filter((_, i) => i !== idx));
+    onChange(periods.filter((_, i) => i !== idx));
   };
 
-  const addGroup = () => {
+  const toggleInsurance = (idx: number, type: InsuranceType) => {
+    const current = new Set<InsuranceType>(periods[idx].insurances ?? []);
+    if (current.has(type)) current.delete(type);
+    else current.add(type);
+    updatePeriod(idx, { insurances: Array.from(current) });
+  };
+
+  const addPeriod = () => {
     const today = new Date().toISOString().slice(0, 10);
-    const lastEnd = groups[0]?.endDate;
+    const lastEnd = periods[0]?.endDate;
     const newStart = lastEnd ? nextDay(lastEnd) : today;
-    // デフォルトは現状の helper.insurances の組み合わせ
-    const defaultTypes = new Set<InsuranceType>(
-      (helper.insurances ?? []).filter((s): s is InsuranceType =>
-        INSURANCE_TYPES.includes(s as InsuranceType)
-      )
-    );
-    commit([...groups, { startDate: newStart, types: defaultTypes }]);
+    const newPeriod: SalaryPeriod = {
+      ...snapshotHelperAsPeriod(helper, newStart),
+      endDate: undefined,
+    };
+    onChange([...periods, newPeriod]);
   };
 
   const initFromCurrent = () => {
-    const today = new Date().toISOString().slice(0, 10);
-    const startDate = (helper.hireDate && helper.hireDate.length === 10) ? helper.hireDate : today;
-    if (!confirm(`現在の加入保険を「${startDate} 加入開始」として履歴化します。よろしいですか？`)) return;
-    const types = new Set<InsuranceType>(
-      (helper.insurances ?? []).filter((s): s is InsuranceType =>
-        INSURANCE_TYPES.includes(s as InsuranceType)
-      )
-    );
-    commit([{ startDate, types }]);
+    const startDate = (helper.hireDate && helper.hireDate.length === 10) ? helper.hireDate : new Date().toISOString().slice(0, 10);
+    if (!confirm(`現在の給与設定を「${startDate} 開始」の履歴として記録します。よろしいですか？`)) return;
+    onChange([snapshotHelperAsPeriod(helper, startDate)]);
   };
 
   return (
     <div className="mt-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
-          <h3 className="text-sm font-semibold text-amber-900">📅 保険加入期間の履歴</h3>
+          <h3 className="text-sm font-semibold text-amber-900">📅 給与条件の期間履歴</h3>
           <p className="text-xs text-amber-800 mt-1">
-            期間ごとに「この期間はこの保険セット」と一括で設定できます。
-            過去月の給与明細・賃金台帳には、その月時点での加入状況が自動で反映されます。
+            期間ごとに「この期間はこの給与・保険・税務設定」と一括で記録できます。
+            過去月の給与明細・賃金台帳には、その月時点の設定が自動で反映されます。
             <br />
-            ※履歴が1件もない場合は、上の「保険加入」チェックボックスの現状値が全期間に適用されます。
+            ※履歴が1件もない場合は、上の各項目の現状値が全期間に適用されます。
           </p>
         </div>
-        {groups.length === 0 && (helper.insurances?.length ?? 0) > 0 && (
+        {periods.length === 0 && (
           <button
             type="button"
             onClick={initFromCurrent}
             className="px-3 py-1.5 text-xs font-medium text-amber-900 bg-white border border-amber-300 rounded hover:bg-amber-100 whitespace-nowrap"
-            title="現在のチェック状態を履歴として記録"
+            title="現在の設定を履歴として記録"
           >
-            現在の状態を履歴化
+            現在の設定を履歴化
           </button>
         )}
       </div>
 
-      {groups.length === 0 ? (
+      {periods.length === 0 ? (
         <div className="text-center text-sm text-amber-800 py-4">
           履歴がまだありません。下の「+ 新しい期間を追加」から登録できます。
         </div>
       ) : (
-        <div className="space-y-3">
-          {groups.map((g, idx) => {
-            const isOngoing = !g.endDate;
+        <div className="space-y-4">
+          {periods.map((p, idx) => {
+            const isOngoing = !p.endDate;
+            const isFixed = p.salaryType === 'fixed';
             return (
               <div
                 key={idx}
@@ -1797,23 +1750,23 @@ const InsuranceHistoryEditor: React.FC<InsuranceHistoryEditorProps> = ({ helper,
                   isOngoing ? 'border-green-300' : 'border-amber-200'
                 }`}
               >
-                {/* 期間入力行 */}
+                {/* 期間ヘッダー */}
                 <div className="flex flex-wrap items-center gap-2 mb-3">
                   <span className="text-xs font-bold text-gray-600 px-2 py-1 bg-gray-100 rounded">
-                    期間 {groups.length - idx}
+                    期間 {periods.length - idx}
                   </span>
                   <input
                     type="date"
-                    value={g.startDate || ''}
-                    onChange={(e) => updateGroup(idx, { startDate: e.target.value })}
+                    value={p.startDate || ''}
+                    onChange={(e) => updatePeriod(idx, { startDate: e.target.value })}
                     className="px-2 py-1 border border-gray-300 rounded text-sm bg-white"
                     title="開始日"
                   />
                   <span className="text-gray-500 text-sm">〜</span>
                   <input
                     type="date"
-                    value={g.endDate || ''}
-                    onChange={(e) => updateGroup(idx, { endDate: e.target.value || undefined })}
+                    value={p.endDate || ''}
+                    onChange={(e) => updatePeriod(idx, { endDate: e.target.value || undefined })}
                     className="px-2 py-1 border border-gray-300 rounded text-sm bg-white"
                     title="終了日（空欄なら現在も継続）"
                   />
@@ -1826,14 +1779,14 @@ const InsuranceHistoryEditor: React.FC<InsuranceHistoryEditorProps> = ({ helper,
                   )}
                   <input
                     type="text"
-                    value={g.note || ''}
-                    onChange={(e) => updateGroup(idx, { note: e.target.value })}
-                    placeholder="備考（例：社保扶養に切替）"
+                    value={p.note || ''}
+                    onChange={(e) => updatePeriod(idx, { note: e.target.value })}
+                    placeholder="備考（例：昇給・契約変更）"
                     className="flex-1 min-w-[160px] px-2 py-1 border border-gray-300 rounded text-sm bg-white"
                   />
                   <button
                     type="button"
-                    onClick={() => removeGroup(idx)}
+                    onClick={() => removePeriod(idx)}
                     className="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded"
                     title="この期間を削除"
                   >
@@ -1841,29 +1794,129 @@ const InsuranceHistoryEditor: React.FC<InsuranceHistoryEditorProps> = ({ helper,
                   </button>
                 </div>
 
-                {/* 保険チェックボックス4種 */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pl-2">
-                  {INSURANCE_TYPES.map((t) => {
-                    const checked = g.types.has(t);
-                    return (
-                      <label
-                        key={t}
-                        className={`flex items-center gap-2 px-3 py-1.5 border rounded cursor-pointer text-sm transition-colors ${
-                          checked
-                            ? 'bg-blue-50 border-blue-300 text-blue-900'
-                            : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
-                        }`}
-                      >
+                {/* 雇用・給与タイプ */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 mb-1">給与タイプ</label>
+                    <div className="flex gap-2 text-sm">
+                      <label className="flex-1 flex items-center gap-1.5 px-2 py-1 border rounded cursor-pointer bg-white">
                         <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleType(idx, t)}
-                          className="w-4 h-4"
+                          type="radio"
+                          checked={p.salaryType === 'fixed'}
+                          onChange={() => updatePeriod(idx, { salaryType: 'fixed' })}
                         />
-                        {getInsuranceLabel(t)}
+                        固定給
                       </label>
-                    );
-                  })}
+                      <label className="flex-1 flex items-center gap-1.5 px-2 py-1 border rounded cursor-pointer bg-white">
+                        <input
+                          type="radio"
+                          checked={p.salaryType !== 'fixed'}
+                          onChange={() => updatePeriod(idx, { salaryType: 'hourly' })}
+                        />
+                        時給
+                      </label>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 mb-1">雇用形態</label>
+                    <select
+                      value={p.employmentType || ''}
+                      onChange={(e) => updatePeriod(idx, { employmentType: e.target.value as any })}
+                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-white"
+                    >
+                      <option value="">未設定</option>
+                      {EMPLOYMENT_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* 給与額（固定給 or 時給） */}
+                {isFixed ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3 p-2 bg-blue-50 rounded">
+                    <NumField label="基本給(月)" value={p.baseSalary} onChange={(v) => updatePeriod(idx, { baseSalary: v })} />
+                    <NumField label="処遇改善手当(月)" value={p.treatmentAllowance} onChange={(v) => updatePeriod(idx, { treatmentAllowance: v })} />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3 p-2 bg-green-50 rounded">
+                    <NumField label="基本時給" value={p.hourlyRate} onChange={(v) => updatePeriod(idx, { hourlyRate: v })} />
+                    <NumField label="処遇改善/時" value={p.treatmentImprovementPerHour} onChange={(v) => updatePeriod(idx, { treatmentImprovementPerHour: v })} />
+                    <NumField label="事務作業時給" value={p.officeHourlyRate} onChange={(v) => updatePeriod(idx, { officeHourlyRate: v })} />
+                  </div>
+                )}
+
+                {/* 税務・標準報酬 */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                  <NumField label="標準報酬月額" value={p.standardRemuneration} onChange={(v) => updatePeriod(idx, { standardRemuneration: v })} />
+                  <NumField label="扶養人数" value={p.dependents} onChange={(v) => updatePeriod(idx, { dependents: v })} />
+                  <NumField label="住民税(月)" value={p.residentialTax} onChange={(v) => updatePeriod(idx, { residentialTax: v })} />
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 mb-1">税区分</label>
+                    <select
+                      value={p.taxColumnType || 'main'}
+                      onChange={(e) => updatePeriod(idx, { taxColumnType: e.target.value as any })}
+                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-white"
+                    >
+                      <option value="main">甲欄</option>
+                      <option value="sub">乙欄</option>
+                      <option value="daily">丙欄</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 保険セット */}
+                <div className="mb-2">
+                  <label className="block text-[11px] font-medium text-gray-600 mb-1">加入保険</label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {INSURANCE_TYPES.map((t) => {
+                      const checked = (p.insurances ?? []).includes(t);
+                      return (
+                        <label
+                          key={t}
+                          className={`flex items-center gap-2 px-3 py-1.5 border rounded cursor-pointer text-sm ${
+                            checked
+                              ? 'bg-blue-50 border-blue-300 text-blue-900'
+                              : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleInsurance(idx, t)}
+                            className="w-4 h-4"
+                          />
+                          {getInsuranceLabel(t)}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 所属・徴収タイミング */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 mb-1">所属</label>
+                    <input
+                      type="text"
+                      value={p.department || ''}
+                      onChange={(e) => updatePeriod(idx, { department: e.target.value || undefined })}
+                      placeholder="例：訪問介護事業所A"
+                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 mb-1">子育て徴収タイミング</label>
+                    <select
+                      value={p.kosodateShienkinCollectionTiming || ''}
+                      onChange={(e) => updatePeriod(idx, { kosodateShienkinCollectionTiming: (e.target.value || undefined) as any })}
+                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-white"
+                    >
+                      <option value="">自動判定</option>
+                      <option value="current_month">当月徴収</option>
+                      <option value="next_month">翌月徴収</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             );
@@ -1874,7 +1927,7 @@ const InsuranceHistoryEditor: React.FC<InsuranceHistoryEditorProps> = ({ helper,
       <div className="mt-3">
         <button
           type="button"
-          onClick={addGroup}
+          onClick={addPeriod}
           className="w-full px-3 py-2 text-sm font-medium text-amber-900 bg-white border border-amber-300 rounded hover:bg-amber-100"
         >
           + 新しい期間を追加
@@ -1883,6 +1936,26 @@ const InsuranceHistoryEditor: React.FC<InsuranceHistoryEditorProps> = ({ helper,
     </div>
   );
 };
+
+const NumField: React.FC<{
+  label: string;
+  value?: number;
+  onChange: (v: number | undefined) => void;
+}> = ({ label, value, onChange }) => (
+  <div>
+    <label className="block text-[11px] font-medium text-gray-600 mb-1">{label}</label>
+    <input
+      type="number"
+      value={value ?? ''}
+      onChange={(e) => {
+        const v = e.target.value;
+        onChange(v === '' ? undefined : Number(v));
+      }}
+      className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-white"
+      placeholder="0"
+    />
+  </div>
+);
 
 function nextDay(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);

@@ -2,6 +2,7 @@ import type { Helper } from '../types';
 import { calculateInsurance, calculateKosodateShienkin, getHealthStandardRemuneration, resolveKosodateCollectionTiming } from './insuranceCalculator';
 import { calculateWithholdingTaxByYear } from './taxCalculator';
 import { resolveInsurancesAt } from './insuranceHistory';
+import { applyHelperAtMonth } from './salaryHistory';
 
 /**
  * 給与明細用：保険加入種別を導出する
@@ -66,6 +67,10 @@ export const minutesToTime = (totalMinutes: number): string => {
 };
 
 export const recalculatePayslip = (updated: any, helper?: Helper) => {
+    // 過去月の給与条件を反映：salaryHistory がある場合は対象月の設定で helper を上書き
+    if (helper && updated.year && updated.month) {
+        helper = applyHelperAtMonth(helper, updated.year, updated.month);
+    }
     // 勤怠時間の合計計算
     const att = updated.attendance || {};
     const totalMins =

@@ -118,6 +118,56 @@ export interface InsuranceMembershipPeriod {
   note?: string;
 }
 
+/**
+ * 給与条件の期間履歴
+ * 給与タブで設定する各項目について「いつからいつまでこの設定だったか」を記録し、
+ * 過去月の給与明細・賃金台帳にその月時点での給与条件を正確に反映する。
+ *
+ * - 同じ startDate/endDate を持つ複数項目は1グループとして扱う想定
+ * - undefined のフィールドは「変更なし（前期間から引き継ぐ）」ではなく
+ *   「その期間は値なし」として扱う（明示的に上書き設計）
+ */
+export interface SalaryPeriod {
+  /** 開始日（YYYY-MM-DD） */
+  startDate: string;
+  /** 終了日（YYYY-MM-DD）。未設定なら現在も適用中 */
+  endDate?: string;
+  /** 備考（昇給・配置転換など） */
+  note?: string;
+
+  // 雇用・給与タイプ
+  salaryType?: 'hourly' | 'fixed';
+  employmentType?: 'fulltime' | 'parttime' | 'contract' | 'temporary' | 'outsourced' | 'executive';
+  kosodateShienkinCollectionTiming?: 'current_month' | 'next_month';
+  excludeFromShift?: boolean;
+
+  // 時給制
+  hourlyRate?: number;
+  treatmentImprovementPerHour?: number;
+  officeHourlyRate?: number;
+
+  // 固定給制
+  baseSalary?: number;
+  treatmentAllowance?: number;
+  otherAllowances?: Array<{ name: string; amount: number; taxExempt: boolean }>;
+
+  // 税務情報
+  dependents?: number;
+  residentTaxType?: 'special' | 'normal';
+  residentialTax?: number;
+  age?: number;
+  standardRemuneration?: number;
+  hasWithholdingTax?: boolean;
+  taxColumnType?: 'main' | 'sub' | 'daily';
+  contractPeriod?: number;
+
+  // 保険加入セット
+  insurances?: InsuranceType[];
+
+  // 所属
+  department?: string;
+}
+
 export interface Helper {
   id: string;
   name: string;           // 苗字（シフト表表示用）
@@ -204,8 +254,21 @@ export interface Helper {
    * - 同じ type のエントリが複数あってもOK（再加入のケース）
    * - endDate が undefined or null なら「現在も加入中」
    * - insuranceHistory が空 or undefined の場合は insurances 配列を従来通り使用（後方互換）
+   *
+   * 注：新規実装では salaryHistory に統合されているため、こちらは後方互換のみ
    */
   insuranceHistory?: InsuranceMembershipPeriod[];
+
+  /**
+   * 給与条件の期間履歴
+   * 給与タブの全項目（給与タイプ・雇用形態・時給・基本給・処遇改善・標準報酬・扶養・保険セット等）
+   * を期間ごとにまとめて管理する。
+   *
+   * - 過去月の給与明細・賃金台帳には、その月時点の設定が自動反映される
+   * - salaryHistory が空 or 未定義の場合は、Helper の現状フィールドを全期間に適用（後方互換）
+   * - 同じ期間に重なるエントリが複数あれば、新しい順で最初に見つかったものを採用
+   */
+  salaryHistory?: SalaryPeriod[];
 
   // 保険加入（旧フィールド名、互換性のため）
   hasSocialInsurance?: boolean;           // 社会保険（健康保険・厚生年金）

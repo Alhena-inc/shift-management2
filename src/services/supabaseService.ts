@@ -90,6 +90,8 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
         // 保険
         insurances: helper.insurances || [],
         insurance_history: helper.insuranceHistory || [],
+        // 給与履歴（期間ごとの給与条件）
+        salary_history: helper.salaryHistory || [],
 
         // 勤怠テンプレート
         attendance_template: helper.attendanceTemplate || {
@@ -129,10 +131,10 @@ export const saveHelpers = async (helpers: Helper[]): Promise<void> => {
         .from('helpers')
         .upsert(helperData);
 
-      // insurance_history カラムが未作成の場合は除外して再試行
-      if (error && error.message && /insurance_history/.test(error.message)) {
-        console.warn('insurance_history カラムが未作成のため除外して再試行');
-        const { insurance_history: _, ...withoutHistory } = helperData;
+      // insurance_history / salary_history カラムが未作成の場合は除外して再試行
+      if (error && error.message && /(insurance_history|salary_history)/.test(error.message)) {
+        console.warn('insurance_history/salary_history カラムが未作成のため除外して再試行');
+        const { insurance_history: _ih, salary_history: _sh, ...withoutHistory } = helperData as any;
         const retry = await supabase.from('helpers').upsert(withoutHistory);
         error = retry.error;
         data = retry.data;
@@ -261,6 +263,7 @@ function helperRowToHelper(row: any, applyDefaults: boolean = true): Helper {
     // 保険
     insurances: row.insurances ?? (applyDefaults ? [] : undefined),
     insuranceHistory: row.insurance_history ?? row.insuranceHistory ?? (applyDefaults ? [] : undefined),
+    salaryHistory: row.salary_history ?? row.salaryHistory ?? (applyDefaults ? [] : undefined),
 
     // 勤怠テンプレート
     attendanceTemplate: pick('attendance_template', 'attendanceTemplate', applyDefaults ? {

@@ -8,6 +8,7 @@ import { calculateWithholdingTaxByYear } from './taxCalculator';
 import { calculateInsurance, calculateKosodateShienkin, getHealthStandardRemuneration, resolveKosodateCollectionTiming } from './insuranceCalculator';
 import { generateFixedDailyAttendanceFromTemplate } from './attendanceTemplate';
 import { resolveInsurancesAt } from './insuranceHistory';
+import { applyHelperAtMonth } from './salaryHistory';
 
 /**
  * 給与明細用：対象月時点の保険加入種別を決定する。
@@ -209,6 +210,8 @@ export function generateFixedPayslipFromShifts(
   year: number,
   month: number
 ): FixedPayslip {
+  // 過去月の給与条件を反映：salaryHistory がある場合は対象月の設定で helper を上書き
+  helper = applyHelperAtMonth(helper, year, month);
   const payslip = createEmptyFixedPayslip(helper, year, month);
 
   // 給与明細生成（個人情報はログに含めない）
@@ -601,6 +604,7 @@ export function generateHourlyPayslipFromShifts(
   year: number,
   month: number
 ): HourlyPayslip {
+  helper = applyHelperAtMonth(helper, year, month);
   const payslip = createEmptyHourlyPayslip(helper, year, month);
 
   // 給与明細生成（個人情報はログに含めない）
